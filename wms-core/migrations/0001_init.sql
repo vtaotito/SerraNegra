@@ -3,12 +3,19 @@
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY,
   external_order_id TEXT,
+  sap_doc_entry INTEGER,
+  sap_doc_num INTEGER,
   customer_id TEXT NOT NULL,
+  customer_name TEXT,
   ship_to_address TEXT,
   status TEXT NOT NULL,
+  carrier TEXT,
+  priority TEXT CHECK (priority IN ('P1', 'P2', 'P3')),
+  sla_due_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  version INTEGER NOT NULL DEFAULT 0
+  version INTEGER NOT NULL DEFAULT 0,
+  metadata JSONB
 );
 
 CREATE TABLE IF NOT EXISTS order_items (

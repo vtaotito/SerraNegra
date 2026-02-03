@@ -52,8 +52,15 @@ export const createOrder = (input: {
   customerId: string;
   items: OrderItem[];
   externalOrderId?: string;
+  sapDocEntry?: number;
+  sapDocNum?: number;
+  customerName?: string;
   shipToAddress?: string;
+  carrier?: string;
+  priority?: Order["priority"];
+  slaDueAt?: string;
   createdAt?: string;
+  metadata?: Record<string, unknown>;
 }): Order => {
   if (!input.customerId) {
     throw new WmsError("WMS-VAL-002", "customerId é obrigatório.");
@@ -65,13 +72,20 @@ export const createOrder = (input: {
   return {
     id: input.id,
     externalOrderId: input.externalOrderId,
+    sapDocEntry: input.sapDocEntry,
+    sapDocNum: input.sapDocNum,
     customerId: input.customerId,
+    customerName: input.customerName,
     shipToAddress: input.shipToAddress,
     status: orderStateMachine.initialState,
+    carrier: input.carrier,
+    priority: input.priority,
+    slaDueAt: input.slaDueAt,
     items: input.items,
     createdAt: now,
     updatedAt: now,
-    version: 0
+    version: 0,
+    metadata: input.metadata
   };
 };
 

@@ -22,16 +22,25 @@ export type OrderItem = {
   quantity: number;
 };
 
+export type Priority = "P1" | "P2" | "P3";
+
 export type Order = {
   id: string;
   externalOrderId?: string;
+  sapDocEntry?: number;
+  sapDocNum?: number;
   customerId: string;
+  customerName?: string;
   shipToAddress?: string;
   status: OrderStatus;
+  carrier?: string;
+  priority?: Priority;
+  slaDueAt?: string;
   items: OrderItem[];
   createdAt: string;
   updatedAt: string;
   version: number;
+  metadata?: Record<string, unknown>;
 };
 
 export type OrderEvent = {

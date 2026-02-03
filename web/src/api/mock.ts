@@ -51,20 +51,30 @@ function seededOrders(): Db {
     const slaDueAt = addHours(createdAt, slaHours);
     const orderId = `ord_${String(i + 1).padStart(4, "0")}`;
 
+    const carrier = Math.random() < 0.85 ? pick(CARRIERS) : null;
+    const priority = pick(PRIORITIES);
+    const sapDocEntry = 10000 + i;
+    const sapDocNum = 5000 + i;
+    
     const order: UiOrder = {
       orderId,
       externalOrderId: `ERP-${10000 + i}`,
+      sapDocEntry,
+      sapDocNum,
       customerId: `CUST-${String(210 + (i % 13)).padStart(3, "0")}`,
+      customerName: `Cliente ${String(210 + (i % 13)).padStart(3, "0")}`,
+      shipToAddress: `Rua ${i}, nº ${100 + i}, Bairro Centro, São Paulo - SP`,
       status,
+      carrier,
+      priority,
+      slaDueAt: iso(slaDueAt),
       items: [
         { sku: `SKU-${100 + (i % 17)}`, quantity: 1 + ((i * 3) % 5) },
         { sku: `SKU-${200 + (i % 11)}`, quantity: 1 + ((i * 7) % 4) }
       ],
       createdAt: iso(createdAt),
       updatedAt: iso(updatedAt),
-      carrier: Math.random() < 0.85 ? pick(CARRIERS) : null,
-      priority: pick(PRIORITIES),
-      slaDueAt: iso(slaDueAt),
+      metadata: { origin: "SAP_B1", docEntry: sapDocEntry },
       pendingIssues:
         Math.random() < 0.28
           ? ["Endereço incompleto", "Divergência de item (SKU)"]

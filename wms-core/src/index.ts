@@ -6,3 +6,5 @@ export * from "./state-machine/orderStateMachine.js";
 export * from "./services/orderService.js";
 export * from "./services/doubleCheckService.js";
 export * from "./services/taskService.js";
+export * from "./services/sapEnrichmentService.js";
+export * from "./services/sapIntegrationService.js";
