@@ -13,7 +13,9 @@
     "lint": "echo \"(sem lint por enquanto)\"",
     "test": "tsx --test \"wms-core/tests/**/*.test.ts\" \"tests/**/*.test.ts\"",
     "test:coverage": "c8 --reporter=text --reporter=html --reporter=lcov tsx --test \"wms-core/tests/**/*.test.ts\" \"tests/**/*.test.ts\"",
-    "otel:check": "node -e \"console.log('OTEL_SERVICE_NAME=', process.env.OTEL_SERVICE_NAME || '(unset)'); console.log('OTEL_EXPORTER_OTLP_ENDPOINT=', process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '(unset)')\""
+    "otel:check": "node -e \"console.log('OTEL_SERVICE_NAME=', process.env.OTEL_SERVICE_NAME || '(unset)'); console.log('OTEL_EXPORTER_OTLP_ENDPOINT=', process.env.OTEL_EXPORTER_OTLP_ENDPOINT || '(unset)')\"",
+    "sap:test": "npm run build && node dist/sap-connector/examples/test-connection.js",
+    "sap:example": "npm run build && node dist/sap-connector/examples/basic-usage.js"
   },
   "devDependencies": {
     "c8": "^10.1.3",

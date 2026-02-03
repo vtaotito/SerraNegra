@@ -17,6 +17,7 @@
     "wms-core/**/*.ts",
     "api/**/*.ts",
     "observability/**/*.ts"
-  ]
+  ],
+  "exclude": ["node_modules", "dist", "web"]
 }
 

@@ -19,5 +19,52 @@ Este workspace contém os artefatos do MVP do **WMS Orchestrator** (contratos e 
 ```bash
 npm install
 npm run typecheck
+npm run build
 ```
+
+## Configuração SAP B1
+
+### Quick Start (Windows)
+
+```powershell
+.\quick-start.ps1
+```
+
+### Quick Start (Linux/Mac)
+
+```bash
+chmod +x quick-start.sh
+./quick-start.sh
+```
+
+### Manual
+
+1. Instalar e compilar:
+   ```bash
+   npm install
+   npm run build
+   ```
+
+2. Testar conectividade SAP:
+   ```bash
+   npm run sap:test
+   ```
+
+3. Executar exemplo completo:
+   ```bash
+   npm run sap:example
+   ```
+
+### Credenciais
+
+O arquivo `.env` já está pré-configurado com o ambiente development fornecido:
+- URL: `https://REDACTED_SAP_HOST/b1s/v1`
+- Token: (ver `.env`)
+
+**Importante**: o script `sap:test` identificará automaticamente o método de autenticação correto.
+
+Ver documentação completa:
+- `INTEGRATION_SUMMARY.md` (visão geral das entregas)
+- `sap-connector/SETUP.md` (setup detalhado)
+- `sap-connector/README.md` (API do connector)
 
