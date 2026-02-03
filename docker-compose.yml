@@ -1,0 +1,105 @@
+name: wms-stack
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: wms
+      POSTGRES_USER: wms
+      POSTGRES_PASSWORD: wms
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d wms"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  core:
+    build:
+      context: .
+      dockerfile: core/Dockerfile
+    environment:
+      CORE_PORT: "8000"
+      DATABASE_URL: "postgresql+psycopg://wms:wms@postgres:5432/wms"
+      LOG_LEVEL: "INFO"
+      SERVICE_NAME: "wms-core"
+      INTERNAL_SHARED_SECRET: "dev-internal-secret"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  gateway:
+    build:
+      context: ./gateway
+    environment:
+      GATEWAY_PORT: "3000"
+      CORE_BASE_URL: "http://core:8000"
+      LOG_LEVEL: "info"
+      SERVICE_NAME: "wms-gateway"
+      INTERNAL_SHARED_SECRET: "dev-internal-secret"
+    depends_on:
+      core:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      LOG_LEVEL: "info"
+      SERVICE_NAME: "wms-worker"
+      POLL_INTERVAL_SECONDS: "30"
+      INTERNAL_SHARED_SECRET: "dev-internal-secret"
+      CORE_INTERNAL_BASE_URL: "http://core:8000"
+      GATEWAY_INTERNAL_BASE_URL: "http://gateway:3000"
+      # SAP (preencha no .env/Hostinger)
+      SAP_BASE_URL: ""
+      SAP_COMPANY_DB: ""
+      SAP_USERNAME: ""
+      SAP_PASSWORD: ""
+    depends_on:
+      core:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      gateway:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  postgres_data:
+

@@ -11,6 +11,7 @@ const GATEWAY_PORT = Number(process.env.GATEWAY_PORT ?? "3000");
 const CORE_BASE_URL = process.env.CORE_BASE_URL ?? "http://localhost:8000";
 const SERVICE_NAME = process.env.SERVICE_NAME ?? "wms-gateway";
 const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
+const INTERNAL_SHARED_SECRET = process.env.INTERNAL_SHARED_SECRET ?? "dev-internal-secret";
 
 const app = Fastify({
   logger: {
@@ -88,13 +89,14 @@ app.get(
   "/ws",
   { websocket: true },
   (conn, req) => {
-    wsClients.add(conn.socket);
+    const ws = ((conn as any).socket ?? conn) as import("ws").WebSocket;
+    wsClients.add(ws);
     const correlationId = (req as any).correlationId as string;
     req.log.info("WS conectado.");
 
-    conn.socket.send(JSON.stringify({ type: "hello", service: SERVICE_NAME, correlationId, ts: new Date().toISOString() }));
-    conn.socket.on("close", () => {
-      wsClients.delete(conn.socket);
+    ws.send(JSON.stringify({ type: "hello", service: SERVICE_NAME, correlationId, ts: new Date().toISOString() }));
+    ws.on("close", () => {
+      wsClients.delete(ws);
       req.log.info("WS desconectado.");
     });
   }
@@ -124,6 +126,18 @@ async function forwardToCore(req: any, method: string, path: string, body?: unkn
   return { statusCode: res.statusCode, body: parsed, headers: res.headers };
 }
 
+async function forwardToCoreWithQuery(req: any, method: string, path: string, query?: Record<string, unknown>) {
+  const qs = new URLSearchParams();
+  if (query) {
+    for (const [k, v] of Object.entries(query)) {
+      if (v === undefined || v === null) continue;
+      qs.set(k, String(v));
+    }
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return await forwardToCore(req, method, `${path}${suffix}`);
+}
+
 app.post("/orders", async (req, reply) => {
   const result = await forwardToCore(req, "POST", "/orders", req.body);
   reply.code(result.statusCode).send(result.body);
@@ -138,6 +152,11 @@ app.post("/orders", async (req, reply) => {
       correlationId
     });
   }
+});
+
+app.get("/orders", async (req, reply) => {
+  const result = await forwardToCoreWithQuery(req, "GET", "/orders", (req as any).query);
+  reply.code(result.statusCode).send(result.body);
 });
 
 app.get("/orders/:orderId", async (req, reply) => {
@@ -168,6 +187,21 @@ app.get("/orders/:orderId/history", async (req, reply) => {
   const { orderId } = req.params as any;
   const result = await forwardToCore(req, "GET", `/orders/${orderId}/history`);
   reply.code(result.statusCode).send(result.body);
+});
+
+// Endpoint interno para publicar eventos no stream (ex.: worker de sync SAP)
+app.post("/internal/events", async (req, reply) => {
+  const secret = req.headers["x-internal-secret"];
+  if (secret !== INTERNAL_SHARED_SECRET) {
+    reply.code(403).send({ error: "forbidden" });
+    return;
+  }
+  if (!req.body || typeof req.body !== "object") {
+    reply.code(400).send({ error: "invalid_body" });
+    return;
+  }
+  broadcast(req.body as GatewayEvent);
+  reply.code(202).send({ ok: true });
 });
 
 await app.listen({ port: GATEWAY_PORT, host: "0.0.0.0" });
