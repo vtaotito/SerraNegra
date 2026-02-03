@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Coletor WMS</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="title">
+        <h1>Coletor WMS</h1>
+        <p class="subtitle">Operacao rapida, offline e em fila</p>
+      </div>
+      <div class="status">
+        <div id="netStatus" class="pill">Offline</div>
+        <div class="pill">Fila: <span id="queueCount">0</span></div>
+        <button id="syncBtn" class="btn btn-primary">Sincronizar</button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section data-screen="tasks" class="screen active">
+        <div class="screen-header">
+          <h2>Fila de tarefas</h2>
+          <button id="seedBtn" class="btn btn-ghost">Recarregar tarefas</button>
+        </div>
+        <div id="taskList" class="task-list"></div>
+      </section>
+
+      <section data-screen="picking" class="screen">
+        <div class="screen-header">
+          <h2>Picking</h2>
+          <button class="btn btn-ghost" data-action="back">Voltar</button>
+        </div>
+        <div class="form">
+          <div class="field">
+            <label>Endereco</label>
+            <div class="scan-row">
+              <input
+                id="pickAddress"
+                class="scan-input"
+                placeholder="Bipar endereco"
+                data-next="pickSku"
+              />
+              <button class="btn btn-secondary" data-scan="pickAddress">Camera</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>SKU</label>
+            <div class="scan-row">
+              <input
+                id="pickSku"
+                class="scan-input"
+                placeholder="Bipar SKU"
+                data-next="pickQty"
+              />
+              <button class="btn btn-secondary" data-scan="pickSku">Camera</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Quantidade</label>
+            <div class="qty-row">
+              <button class="btn btn-secondary" data-qty="-1">-</button>
+              <input id="pickQty" type="number" min="0" value="1" />
+              <button class="btn btn-secondary" data-qty="1">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Falta</label>
+            <div class="toggle-row">
+              <input id="pickMissing" type="checkbox" />
+              <input id="pickMissingQty" type="number" min="0" value="0" />
+            </div>
+          </div>
+          <div class="actions">
+            <button id="pickConfirm" class="btn btn-primary">Confirmar item</button>
+            <button id="pickDone" class="btn btn-success">Concluir picking</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-screen="packing" class="screen">
+        <div class="screen-header">
+          <h2>Packing double check</h2>
+          <button class="btn btn-ghost" data-action="back">Voltar</button>
+        </div>
+        <div class="form">
+          <div class="field">
+            <label>Pedido/caixa</label>
+            <div class="scan-row">
+              <input
+                id="packOrder"
+                class="scan-input"
+                placeholder="Bipar pedido/caixa"
+                data-next="packSku"
+              />
+              <button class="btn btn-secondary" data-scan="packOrder">Camera</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>SKU</label>
+            <div class="scan-row">
+              <input
+                id="packSku"
+                class="scan-input"
+                placeholder="Bipar SKU"
+                data-next="packQty"
+              />
+              <button class="btn btn-secondary" data-scan="packSku">Camera</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Quantidade</label>
+            <input id="packQty" type="number" min="0" value="1" />
+          </div>
+          <div class="actions">
+            <button id="packConfirm" class="btn btn-primary">Confirmar item</button>
+            <button id="packDone" class="btn btn-success">Concluir packing</button>
+          </div>
+        </div>
+      </section>
+
+      <section data-screen="expedicao" class="screen">
+        <div class="screen-header">
+          <h2>Expedicao</h2>
+          <button class="btn btn-ghost" data-action="back">Voltar</button>
+        </div>
+        <div class="form">
+          <div class="field">
+            <label>Volume/Pallet</label>
+            <div class="scan-row">
+              <input id="shipVolume" class="scan-input" placeholder="Bipar volume/pallet" />
+              <button class="btn btn-secondary" data-scan="shipVolume">Camera</button>
+            </div>
+          </div>
+          <div class="actions">
+            <button id="shipConfirm" class="btn btn-primary">Confirmar volume</button>
+            <button id="shipDone" class="btn btn-success">Concluir expedicao</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="scanOverlay" class="scan-overlay hidden">
+      <div class="scan-card">
+        <div class="scan-header">
+          <h3>Scanner de camera</h3>
+          <button id="closeScan" class="btn btn-ghost">Fechar</button>
+        </div>
+        <video id="scanVideo" autoplay playsinline></video>
+        <p id="scanHint">Aponte a camera para o codigo de barras.</p>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

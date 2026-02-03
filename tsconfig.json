@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "outDir": "dist",
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": [
+    "sap-connector/**/*.ts",
+    "mappings/**/*.ts",
+    "wms-core/**/*.ts",
+    "api/**/*.ts",
+    "observability/**/*.ts"
+  ]
+}
+

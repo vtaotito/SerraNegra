@@ -1,0 +1,495 @@
+openapi: 3.0.3
+info:
+  title: WMS API
+  version: 1.0.0
+  description: API do WMS para coletor, painel web e integracoes.
+servers:
+  - url: https://api.exemplo.com/api/v1
+paths:
+  /api/v1/scans:
+    post:
+      summary: Registrar evento de scan
+      description: Endpoint usado pelo coletor.
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      x-roles: [operador, supervisor, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanEventRequest"
+      responses:
+        "201":
+          description: Evento registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanEventResponse"
+        "400":
+          description: Erro de validacao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Acesso negado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/dashboard/orders:
+    get:
+      summary: Listar pedidos do dashboard
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      x-roles: [supervisor, comercial, admin]
+      parameters:
+        - $ref: "#/components/parameters/Status"
+        - $ref: "#/components/parameters/CustomerId"
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de pedidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOrdersResponse"
+        "403":
+          description: Acesso negado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/dashboard/tasks:
+    get:
+      summary: Listar tarefas do dashboard
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      x-roles: [supervisor, admin]
+      parameters:
+        - $ref: "#/components/parameters/TaskStatus"
+        - $ref: "#/components/parameters/TaskType"
+        - $ref: "#/components/parameters/AssignedTo"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de tarefas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardTasksResponse"
+        "403":
+          description: Acesso negado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/dashboard/metrics:
+    get:
+      summary: Consultar indicadores
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      x-roles: [supervisor, comercial, admin]
+      responses:
+        "200":
+          description: Indicadores do WMS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardMetricsResponse"
+        "403":
+          description: Acesso negado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/integrations/webhooks:
+    post:
+      summary: Registrar webhook
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      x-roles: [comercial, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebhookRegistrationRequest"
+      responses:
+        "201":
+          description: Webhook registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookRegistrationResponse"
+        "400":
+          description: Erro de validacao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      summary: Listar webhooks
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      x-roles: [comercial, admin]
+      responses:
+        "200":
+          description: Lista de webhooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookRegistrationResponse"
+  /api/v1/integrations/webhooks/{webhookId}:
+    delete:
+      summary: Remover webhook
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      x-roles: [comercial, admin]
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Removido
+        "404":
+          description: Nao encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/integrations/events:
+    post:
+      summary: Enfileirar evento de integracao
+      security:
+        - UserIdHeader: []
+          UserRoleHeader: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      x-roles: [supervisor, comercial, admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationEventRequest"
+      responses:
+        "202":
+          description: Evento enfileirado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationEventResponse"
+        "400":
+          description: Erro de validacao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    UserIdHeader:
+      type: apiKey
+      in: header
+      name: x-user-id
+    UserRoleHeader:
+      type: apiKey
+      in: header
+      name: x-user-role
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+    Status:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+    CustomerId:
+      name: customerId
+      in: query
+      required: false
+      schema:
+        type: string
+    From:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    To:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+    TaskStatus:
+      name: status
+      in: query
+      required: false
+      schema:
+        type: string
+    TaskType:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: string
+    AssignedTo:
+      name: assignedTo
+      in: query
+      required: false
+      schema:
+        type: string
+  schemas:
+    ScanEventRequest:
+      type: object
+      required: [orderId, type, value]
+      properties:
+        orderId:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+          enum: [ADDRESS_SCAN, PRODUCT_SCAN, QUANTITY_SCAN]
+        value:
+          type: string
+        quantity:
+          type: number
+        occurredAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+    ScanEventResponse:
+      type: object
+      properties:
+        event:
+          $ref: "#/components/schemas/ScanEvent"
+        idempotencyKey:
+          type: string
+        requestId:
+          type: string
+    ScanEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        taskId:
+          type: string
+        type:
+          type: string
+        value:
+          type: string
+        quantity:
+          type: number
+        occurredAt:
+          type: string
+          format: date-time
+        actorId:
+          type: string
+        actorRole:
+          type: string
+        idempotencyKey:
+          type: string
+        correlationId:
+          type: string
+        requestId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    DashboardOrdersResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardOrderSummary"
+        nextCursor:
+          type: string
+    DashboardOrderSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        externalOrderId:
+          type: string
+        customerId:
+          type: string
+        status:
+          type: string
+        totalItems:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DashboardTasksResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DashboardTaskSummary"
+        nextCursor:
+          type: string
+    DashboardTaskSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        assignedTo:
+          type: string
+        progress:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DashboardMetricsResponse:
+      type: object
+      properties:
+        totalOrders:
+          type: integer
+        ordersByStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        openTasks:
+          type: integer
+        tasksByType:
+          type: object
+          additionalProperties:
+            type: integer
+        lastUpdatedAt:
+          type: string
+          format: date-time
+    WebhookRegistrationRequest:
+      type: object
+      required: [url, eventTypes]
+      properties:
+        url:
+          type: string
+          format: uri
+        eventTypes:
+          type: array
+          items:
+            type: string
+        secret:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+    WebhookRegistrationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [ACTIVE, PAUSED]
+        createdAt:
+          type: string
+          format: date-time
+    IntegrationEventRequest:
+      type: object
+      required: [eventType, resourceType, resourceId, payload]
+      properties:
+        eventType:
+          type: string
+        resourceType:
+          type: string
+        resourceId:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        occurredAt:
+          type: string
+          format: date-time
+    IntegrationEventResponse:
+      type: object
+      properties:
+        eventId:
+          type: string
+        enqueuedAt:
+          type: string
+          format: date-time
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            requestId:
+              type: string

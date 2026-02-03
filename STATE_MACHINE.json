@@ -1,0 +1,110 @@
+{
+  "name": "wms_order_state_machine",
+  "version": "1.0.0",
+  "entity": "Order",
+  "initialState": "A_SEPARAR",
+  "finalStates": ["DESPACHADO"],
+  "states": [
+    "A_SEPARAR",
+    "EM_SEPARACAO",
+    "CONFERIDO",
+    "AGUARDANDO_COTACAO",
+    "AGUARDANDO_COLETA",
+    "DESPACHADO"
+  ],
+  "events": [
+    {
+      "type": "INICIAR_SEPARACAO",
+      "description": "Inicia a separação do pedido."
+    },
+    {
+      "type": "FINALIZAR_SEPARACAO",
+      "description": "Finaliza a separação do pedido."
+    },
+    {
+      "type": "CONFERIR",
+      "description": "Registra conferência do pedido separado."
+    },
+    {
+      "type": "SOLICITAR_COTACAO",
+      "description": "Marca o pedido como aguardando cotação de frete/transportadora."
+    },
+    {
+      "type": "CONFIRMAR_COTACAO",
+      "description": "Confirma cotação (pode ser uma etapa de negócio ou apenas auditoria)."
+    },
+    {
+      "type": "AGUARDAR_COLETA",
+      "description": "Indica que o pedido está pronto e aguardando coleta."
+    },
+    {
+      "type": "DESPACHAR",
+      "description": "Despacha o pedido (final)."
+    }
+  ],
+  "invariants": [
+    {
+      "id": "INV-001",
+      "name": "audit_required",
+      "description": "Toda transição deve gerar um registro de auditoria (eventType, from, to, occurredAt, actor, idempotencyKey)."
+    },
+    {
+      "id": "INV-002",
+      "name": "immutable_items_after_picking_start",
+      "description": "Ao entrar em EM_SEPARACAO, os itens não devem ser alterados no MVP."
+    },
+    {
+      "id": "INV-003",
+      "name": "idempotent_event_processing",
+      "description": "O processamento de evento deve ser idempotente por (orderId, eventType, idempotencyKey)."
+    }
+  ],
+  "transitions": [
+    {
+      "from": "A_SEPARAR",
+      "eventType": "INICIAR_SEPARACAO",
+      "to": "EM_SEPARACAO"
+    },
+    {
+      "from": "EM_SEPARACAO",
+      "eventType": "FINALIZAR_SEPARACAO",
+      "to": "CONFERIDO"
+    },
+    {
+      "from": "CONFERIDO",
+      "eventType": "SOLICITAR_COTACAO",
+      "to": "AGUARDANDO_COTACAO"
+    },
+    {
+      "from": "AGUARDANDO_COTACAO",
+      "eventType": "CONFIRMAR_COTACAO",
+      "to": "AGUARDANDO_COLETA"
+    },
+    {
+      "from": "AGUARDANDO_COLETA",
+      "eventType": "DESPACHAR",
+      "to": "DESPACHADO"
+    }
+  ],
+  "errors": [
+    {
+      "code": "WMS-SM-001",
+      "name": "InvalidTransition",
+      "httpStatus": 409,
+      "description": "Transição inválida para o status atual."
+    },
+    {
+      "code": "WMS-SM-002",
+      "name": "UnknownEvent",
+      "httpStatus": 400,
+      "description": "Evento desconhecido."
+    },
+    {
+      "code": "WMS-SM-003",
+      "name": "FinalState",
+      "httpStatus": 409,
+      "description": "Pedido em estado final; não aceita transições."
+    }
+  ]
+}
+
