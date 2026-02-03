@@ -15,22 +15,31 @@ export function FiltersBar(props: {
 }) {
   const v = props.value;
 
+  const hasActiveFilters =
+    v.search.trim() !== "" || v.carrier !== "" || v.priority !== "" || v.sla !== "ALL";
+
   return (
     <div className="filters">
       <div className="filters-left">
-        <div className="field">
-          <div className="label">Busca</div>
+        <div className="field field-search">
+          <label className="label" htmlFor="filter-search">
+            Busca
+          </label>
           <input
+            id="filter-search"
             className="control"
-            placeholder="orderId, externalOrderId, customerId…"
+            placeholder="ID do pedido, cliente…"
             value={v.search}
             onChange={(e) => props.onChange({ ...v, search: e.target.value })}
           />
         </div>
 
         <div className="field">
-          <div className="label">SLA</div>
+          <label className="label" htmlFor="filter-sla">
+            SLA
+          </label>
           <select
+            id="filter-sla"
             className="control"
             value={v.sla}
             onChange={(e) =>
@@ -45,8 +54,11 @@ export function FiltersBar(props: {
         </div>
 
         <div className="field">
-          <div className="label">Transportadora</div>
+          <label className="label" htmlFor="filter-carrier">
+            Transportadora
+          </label>
           <select
+            id="filter-carrier"
             className="control"
             value={v.carrier}
             onChange={(e) => props.onChange({ ...v, carrier: e.target.value })}
@@ -63,29 +75,34 @@ export function FiltersBar(props: {
         </div>
 
         <div className="field">
-          <div className="label">Prioridade</div>
+          <label className="label" htmlFor="filter-priority">
+            Prioridade
+          </label>
           <select
+            id="filter-priority"
             className="control"
             value={v.priority}
             onChange={(e) => props.onChange({ ...v, priority: e.target.value as any })}
           >
             <option value="">Todas</option>
-            <option value="P1">P1</option>
-            <option value="P2">P2</option>
-            <option value="P3">P3</option>
+            <option value="P1">P1 (Alta)</option>
+            <option value="P2">P2 (Média)</option>
+            <option value="P3">P3 (Baixa)</option>
           </select>
         </div>
       </div>
 
       <div className="filters-right">
-        <button
-          className="btn"
-          onClick={() =>
-            props.onChange({ search: "", carrier: "", priority: "", sla: "ALL" })
-          }
-        >
-          Limpar filtros
-        </button>
+        {hasActiveFilters ? (
+          <button
+            className="btn btn-sm"
+            onClick={() =>
+              props.onChange({ search: "", carrier: "", priority: "", sla: "ALL" })
+            }
+          >
+            Limpar filtros
+          </button>
+        ) : null}
       </div>
     </div>
   );

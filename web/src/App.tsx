@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Toaster } from "react-hot-toast";
 import { OrdersDashboard } from "./pages/OrdersDashboard";
 import { AuthContext, type AuthState, type Role } from "./auth/auth";
 
@@ -23,18 +24,42 @@ export function App() {
 
   return (
     <AuthContext.Provider value={auth}>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            background: "#ffffff",
+            color: "#172b4d",
+            borderRadius: "8px",
+            boxShadow: "0 4px 12px rgba(9, 30, 66, 0.15)",
+            fontSize: "14px",
+            fontWeight: 500
+          },
+          success: {
+            iconTheme: {
+              primary: "#61bd4f",
+              secondary: "#ffffff"
+            }
+          },
+          error: {
+            iconTheme: {
+              primary: "#eb5a46",
+              secondary: "#ffffff"
+            }
+          }
+        }}
+      />
+
       <div className="topbar">
-        <div className="container topbar-inner">
+        <div className="topbar-inner">
           <div className="brand">
-            <h1>Painel de pedidos</h1>
-            <span className="muted">Logística + Comercial</span>
+            <h1>Painel de Pedidos</h1>
+            <span>Logística + Comercial</span>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <span className="muted" style={{ fontSize: 12 }}>
-              Perfil
-            </span>
+          <div className="topbar-right">
+            <span className="topbar-label">Perfil</span>
             <select
-              className="control"
               value={role}
               onChange={(e) => setRole(e.target.value as Role)}
               aria-label="Selecionar perfil"
@@ -49,9 +74,7 @@ export function App() {
         </div>
       </div>
 
-      <div className="container" style={{ padding: "18px 0 30px" }}>
-        <OrdersDashboard />
-      </div>
+      <OrdersDashboard />
     </AuthContext.Provider>
   );
 }
