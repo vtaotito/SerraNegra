@@ -1,0 +1,16 @@
+services:
+  web:
+    container_name: wms-web
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
