@@ -266,6 +266,18 @@ export async function mockReprocess(orderId: string) {
   return { ok: true as const };
 }
 
+export async function mockReleaseWave(orderId: string) {
+  await sleep(180);
+  const order = db.orders.find((x) => x.orderId === orderId);
+  if (!order) throw new Error("Pedido não encontrado");
+  // no mock, não muda status; apenas “carimba” updatedAt e adiciona uma pendência/resumo
+  order.updatedAt = new Date().toISOString();
+  order.pendingIssues = (order.pendingIssues ?? []).filter(
+    (x) => x.toLowerCase() !== "liberar onda"
+  );
+  return { ok: true as const };
+}
+
 export function mockCarriers() {
   const set = new Set<string>();
   for (const o of db.orders) {

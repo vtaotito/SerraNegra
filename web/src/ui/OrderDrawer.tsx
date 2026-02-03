@@ -1,6 +1,12 @@
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { getOrder, getOrderHistory, postOrderEvent, reprocessOrder } from "../api/orders";
+import {
+  getOrder,
+  getOrderHistory,
+  postOrderEvent,
+  releaseWave,
+  reprocessOrder
+} from "../api/orders";
 import type { OrderEventType, OrderStatus, UiOrder } from "../api/types";
 import { hasPermission, useAuth } from "../auth/auth";
 import { formatDateTime, formatStatusLabel } from "./format";
@@ -69,6 +75,14 @@ export function OrderDrawer(props: {
 
   const reprocessMutation = useMutation({
     mutationFn: () => reprocessOrder(orderId!),
+    onSuccess: async () => {
+      await orderQuery.refetch();
+      props.onAfterAction?.();
+    }
+  });
+
+  const releaseWaveMutation = useMutation({
+    mutationFn: () => releaseWave(orderId!),
     onSuccess: async () => {
       await orderQuery.refetch();
       props.onAfterAction?.();
@@ -171,8 +185,8 @@ export function OrderDrawer(props: {
 
                   <button
                     className="btn"
-                    disabled={!canReleaseWave}
-                    onClick={() => alert("Ação: liberar onda (demo)")}
+                    disabled={!canReleaseWave || releaseWaveMutation.isPending}
+                    onClick={() => releaseWaveMutation.mutate()}
                     title={
                       !hasPermission(user.role, "order.wave.release")
                         ? "Sem permissão"
@@ -192,7 +206,9 @@ export function OrderDrawer(props: {
                   </button>
                 </div>
 
-                {(sendEventMutation.isError || reprocessMutation.isError) ? (
+                {(sendEventMutation.isError ||
+                  reprocessMutation.isError ||
+                  releaseWaveMutation.isError) ? (
                   <div className="error-box" style={{ marginTop: 10 }}>
                     Falha ao executar ação. Verifique permissões/estado do pedido.
                   </div>

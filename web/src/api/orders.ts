@@ -13,6 +13,7 @@ import {
   mockGetOrderHistory,
   mockListOrders,
   mockPostOrderEvent,
+  mockReleaseWave,
   mockReprocess,
   type ListOrdersInput
 } from "./mock";
@@ -99,6 +100,15 @@ export async function reprocessOrder(orderId: string) {
 
   // Endpoint fora do contrato MVP. Mantemos como “best effort”.
   return api.request<{ ok: true }>(`/orders/${encodeURIComponent(orderId)}/reprocess`, {
+    method: "POST"
+  });
+}
+
+export async function releaseWave(orderId: string) {
+  if (USE_MOCK || !api) return mockReleaseWave(orderId);
+
+  // Endpoint fora do contrato MVP. Mantemos como “best effort”.
+  return api.request<{ ok: true }>(`/orders/${encodeURIComponent(orderId)}/wave/release`, {
     method: "POST"
   });
 }
