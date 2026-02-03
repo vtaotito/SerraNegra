@@ -20,14 +20,24 @@ export type OrderItem = {
   quantity: number;
 };
 
+export type Priority = "P1" | "P2" | "P3";
+
 export type Order = {
   orderId: string;
   externalOrderId: string | null;
+  sapDocEntry?: number | null;
+  sapDocNum?: number | null;
   customerId: string;
+  customerName?: string | null;
+  shipToAddress?: string | null;
   status: OrderStatus;
+  carrier?: string | null;
+  priority?: Priority | null;
+  slaDueAt?: string | null; // ISO
   items: OrderItem[];
   createdAt: string; // ISO
   updatedAt: string; // ISO
+  metadata?: Record<string, unknown> | null;
 };
 
 export type OrderEventActor = {
@@ -65,13 +75,8 @@ export type PostOrderEventResult = {
   event: OrderEvent;
 };
 
-export type Priority = "P1" | "P2" | "P3";
-
-// Extensões de UI (não estão no contrato OpenAPI atual)
+// Extensões de UI (scanHistory e pendingIssues são calculados no frontend)
 export type UiOrder = Order & {
-  carrier?: string | null;
-  priority?: Priority;
-  slaDueAt?: string | null; // ISO
   pendingIssues?: string[];
   scanHistory?: Array<{
     at: string; // ISO

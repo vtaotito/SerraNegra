@@ -175,6 +175,12 @@ export function OrderDrawer(props: {
                     <div className="v">{formatStatusLabel(order.status)}</div>
                   </div>
                   <div className="kv">
+                    <div className="k">Cliente</div>
+                    <div className="v">
+                      {order.customerName ?? order.customerId}
+                    </div>
+                  </div>
+                  <div className="kv">
                     <div className="k">Transportadora</div>
                     <div className="v">{order.carrier ?? "—"}</div>
                   </div>
@@ -188,6 +194,24 @@ export function OrderDrawer(props: {
                       {order.slaDueAt ? formatDateTime(order.slaDueAt) : "—"}
                     </div>
                   </div>
+                  {order.sapDocEntry && (
+                    <div className="kv">
+                      <div className="k">SAP DocEntry</div>
+                      <div className="v">{order.sapDocEntry}</div>
+                    </div>
+                  )}
+                  {order.sapDocNum && (
+                    <div className="kv">
+                      <div className="k">SAP DocNum</div>
+                      <div className="v">{order.sapDocNum}</div>
+                    </div>
+                  )}
+                  {order.shipToAddress && (
+                    <div className="kv" style={{ gridColumn: "1 / -1" }}>
+                      <div className="k">Endereço de Entrega</div>
+                      <div className="v">{order.shipToAddress}</div>
+                    </div>
+                  )}
                 </div>
               </div>
 
