@@ -1,4 +1,5 @@
 export * from "./errors.js";
 export * from "./types.js";
 export * from "./serviceLayerClient.js";
+export * from "./sapTypes.js";
 

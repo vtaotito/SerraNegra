@@ -2,6 +2,8 @@ import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
+import { getSapService } from "./sapService.js";
+import type { SapOrdersFilter, SapOrderStatusUpdate } from "../../sap-connector/src/sapTypes.js";
 
 type GatewayEvent =
   | { type: "order.created"; orderId: string; status: string; occurredAt: string; correlationId: string }
@@ -202,6 +204,176 @@ app.post("/internal/events", async (req, reply) => {
   }
   broadcast(req.body as GatewayEvent);
   reply.code(202).send({ ok: true });
+});
+
+// ========== ROTAS SAP ==========
+
+/**
+ * GET /api/sap/health
+ * Testa a conexão com o SAP (não expõe credenciais)
+ */
+app.get("/api/sap/health", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  req.log.info("Testando conexão SAP...");
+
+  try {
+    const sapService = getSapService(req.log);
+    const result = await sapService.healthCheck(correlationId);
+    
+    if (result.ok) {
+      reply.code(200).send({ 
+        ok: true, 
+        message: result.message,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      reply.code(503).send({ 
+        ok: false, 
+        message: result.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    req.log.error({ err, correlationId }, "Erro ao testar conexão SAP");
+    reply.code(500).send({ 
+      ok: false, 
+      message: "Erro interno ao testar conexão SAP",
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /api/sap/orders
+ * Busca pedidos do SAP com filtros
+ * Query params: status (open/closed/all), cardCode, fromDate, toDate, limit, skip
+ */
+app.get("/api/sap/orders", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  const query = (req as any).query as Record<string, any>;
+
+  const filter: SapOrdersFilter = {
+    status: query.status || "open",
+    cardCode: query.cardCode,
+    fromDate: query.fromDate,
+    toDate: query.toDate,
+    limit: query.limit ? Number(query.limit) : 100,
+    skip: query.skip ? Number(query.skip) : 0
+  };
+
+  req.log.info({ filter, correlationId }, "Buscando pedidos do SAP");
+
+  try {
+    const sapService = getSapService(req.log);
+    const orders = await sapService.getOrders(filter, correlationId);
+    
+    reply.code(200).send({ 
+      orders,
+      count: orders.length,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    req.log.error({ err, correlationId }, "Erro ao buscar pedidos do SAP");
+    reply.code(500).send({ 
+      error: "Erro ao buscar pedidos do SAP",
+      message: err instanceof Error ? err.message : String(err),
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /api/sap/orders/:docEntry
+ * Busca um pedido específico pelo DocEntry
+ */
+app.get("/api/sap/orders/:docEntry", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  const { docEntry } = req.params as any;
+  const docEntryNum = Number(docEntry);
+
+  if (isNaN(docEntryNum)) {
+    reply.code(400).send({ error: "DocEntry inválido (deve ser um número)" });
+    return;
+  }
+
+  req.log.info({ docEntry: docEntryNum, correlationId }, "Buscando pedido do SAP");
+
+  try {
+    const sapService = getSapService(req.log);
+    const order = await sapService.getOrder(docEntryNum, correlationId);
+    
+    reply.code(200).send({ 
+      order,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    req.log.error({ err, docEntry: docEntryNum, correlationId }, "Erro ao buscar pedido do SAP");
+    
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes("não encontrado") ? 404 : 500;
+    
+    reply.code(statusCode).send({ 
+      error: "Erro ao buscar pedido do SAP",
+      message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * PATCH /api/sap/orders/:docEntry/status
+ * Atualiza o status WMS de um pedido no SAP (via UDFs)
+ * Body: { status, orderId?, lastEvent?, correlationId? }
+ */
+app.patch("/api/sap/orders/:docEntry/status", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  const { docEntry } = req.params as any;
+  const docEntryNum = Number(docEntry);
+
+  if (isNaN(docEntryNum)) {
+    reply.code(400).send({ error: "DocEntry inválido (deve ser um número)" });
+    return;
+  }
+
+  const body = req.body as any;
+  if (!body || typeof body !== "object" || !body.status) {
+    reply.code(400).send({ error: "Body inválido (deve conter 'status')" });
+    return;
+  }
+
+  const update: SapOrderStatusUpdate = {
+    U_WMS_STATUS: body.status,
+    U_WMS_ORDERID: body.orderId,
+    U_WMS_LAST_EVENT: body.lastEvent,
+    U_WMS_LAST_TS: new Date().toISOString(),
+    U_WMS_CORR_ID: correlationId
+  };
+
+  req.log.info({ docEntry: docEntryNum, update, correlationId }, "Atualizando status no SAP");
+
+  try {
+    const sapService = getSapService(req.log);
+    await sapService.updateOrderStatus(docEntryNum, update, correlationId);
+    
+    reply.code(200).send({ 
+      ok: true,
+      message: "Status atualizado com sucesso",
+      docEntry: docEntryNum,
+      status: body.status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    req.log.error({ err, docEntry: docEntryNum, correlationId }, "Erro ao atualizar status no SAP");
+    
+    const message = err instanceof Error ? err.message : String(err);
+    const statusCode = message.includes("não encontrado") ? 404 : 500;
+    
+    reply.code(statusCode).send({ 
+      error: "Erro ao atualizar status no SAP",
+      message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 await app.listen({ port: GATEWAY_PORT, host: "0.0.0.0" });

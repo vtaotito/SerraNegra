@@ -12,6 +12,10 @@ export function FiltersBar(props: {
   carriers: string[];
   loadingCarriers?: boolean;
   onChange: (next: OrdersUiFilters) => void;
+  onTestSapConnection?: () => void;
+  onImportFromSap?: () => void;
+  testingSap?: boolean;
+  importingSap?: boolean;
 }) {
   const v = props.value;
 
@@ -92,8 +96,28 @@ export function FiltersBar(props: {
         </div>
       </div>
 
-      <div className="filters-right">
-        {hasActiveFilters ? (
+      <div className="filters-right" style={{ display: "flex", gap: "8px" }}>
+        {props.onTestSapConnection && (
+          <button
+            className="btn btn-sm"
+            onClick={props.onTestSapConnection}
+            disabled={props.testingSap}
+            title="Testar conexão com SAP"
+          >
+            {props.testingSap ? "Testando..." : "Testar SAP"}
+          </button>
+        )}
+        {props.onImportFromSap && (
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={props.onImportFromSap}
+            disabled={props.importingSap}
+            title="Importar pedidos abertos do SAP"
+          >
+            {props.importingSap ? "Importando..." : "Importar SAP"}
+          </button>
+        )}
+        {hasActiveFilters && (
           <button
             className="btn btn-sm"
             onClick={() =>
@@ -102,7 +126,7 @@ export function FiltersBar(props: {
           >
             Limpar filtros
           </button>
-        ) : null}
+        )}
       </div>
     </div>
   );
