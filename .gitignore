@@ -2,6 +2,7 @@ node_modules/
 dist/
 web/dist/
 .env
+.env.deploy
 deploy/.env
 *.log
 .DS_Store
