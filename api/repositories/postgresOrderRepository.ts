@@ -24,10 +24,10 @@ export class PostgresOrderRepository implements OrderRepository {
         INSERT INTO orders (
           id, external_order_id, sap_doc_entry, sap_doc_num,
           customer_id, customer_name, ship_to_address, status,
-          carrier, priority, sla_due_at, metadata,
+          carrier, priority, sla_due_at, doc_total, currency, metadata,
           created_at, updated_at, version
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT (id) DO UPDATE SET
           external_order_id = EXCLUDED.external_order_id,
           sap_doc_entry = EXCLUDED.sap_doc_entry,
@@ -39,6 +39,8 @@ export class PostgresOrderRepository implements OrderRepository {
           carrier = EXCLUDED.carrier,
           priority = EXCLUDED.priority,
           sla_due_at = EXCLUDED.sla_due_at,
+          doc_total = EXCLUDED.doc_total,
+          currency = EXCLUDED.currency,
           metadata = EXCLUDED.metadata,
           updated_at = EXCLUDED.updated_at,
           version = EXCLUDED.version
@@ -56,6 +58,8 @@ export class PostgresOrderRepository implements OrderRepository {
         order.carrier || null,
         order.priority || null,
         order.slaDueAt || null,
+        order.docTotal || null,
+        order.currency || null,
         order.metadata ? JSON.stringify(order.metadata) : null,
         order.createdAt,
         order.updatedAt,
@@ -101,7 +105,7 @@ export class PostgresOrderRepository implements OrderRepository {
       SELECT 
         id, external_order_id, sap_doc_entry, sap_doc_num,
         customer_id, customer_name, ship_to_address, status,
-        carrier, priority, sla_due_at, metadata,
+        carrier, priority, sla_due_at, doc_total, currency, metadata,
         created_at, updated_at, version
       FROM orders
       WHERE id = $1
@@ -135,6 +139,8 @@ export class PostgresOrderRepository implements OrderRepository {
       carrier: row.carrier,
       priority: row.priority,
       slaDueAt: row.sla_due_at,
+      docTotal: row.doc_total,
+      currency: row.currency,
       items: itemsResult.rows.map((item) => ({
         sku: item.sku,
         quantity: item.quantity
@@ -172,6 +178,7 @@ export class PostgresOrderRepository implements OrderRepository {
     status?: string;
     carrier?: string;
     priority?: string;
+    externalOrderId?: string;
     limit?: number;
     offset?: number;
   }): Promise<Order[]> {
@@ -192,6 +199,12 @@ export class PostgresOrderRepository implements OrderRepository {
     if (filter?.priority) {
       conditions.push(`priority = $${paramIndex++}`);
       params.push(filter.priority);
+    }
+
+    // Busca parcial por externalOrderId usando ILIKE (case-insensitive)
+    if (filter?.externalOrderId) {
+      conditions.push(`external_order_id ILIKE $${paramIndex++}`);
+      params.push(`%${filter.externalOrderId}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

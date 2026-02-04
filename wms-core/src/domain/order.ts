@@ -36,6 +36,8 @@ export type Order = {
   carrier?: string;
   priority?: Priority;
   slaDueAt?: string;
+  docTotal?: number; // Valor total do pedido (SAP)
+  currency?: string; // Moeda do pedido (SAP)
   items: OrderItem[];
   createdAt: string;
   updatedAt: string;

@@ -1,179 +1,151 @@
-# WMS Orchestrator — Artefatos (MVP)
+# WMS Orchestrator com Integração SAP B1
 
-Este workspace contém os artefatos do MVP do **WMS Orchestrator** (contratos e máquina de estados) e uma **integração completa com SAP Business One**.
+Sistema de gerenciamento de pedidos (WMS) com integração completa ao SAP Business One via Service Layer.
 
-## 🚀 Integração SAP Business One (COMPLETA)
+## 🚀 Quick Start
 
-**Status:** ✅ Implementado e testado
-
-### Funcionalidades
-- ✅ **Backend Gateway** (Node.js + TypeScript): Endpoints REST para SAP
-- ✅ **SAP Connector**: Biblioteca robusta com gestão de sessão, retry, circuit breaker, rate limiting
-- ✅ **Frontend**: Dashboard Kanban com importação de pedidos do SAP
-- ✅ **Testes**: Unitários e de integração
-- ✅ **Documentação**: Guia completo e scripts de setup
-
-### Quick Start (Integração SAP)
-
-```powershell
-# Windows
-.\setup-sap-integration.ps1
-```
+### 1. Configurar ambiente
 
 ```bash
-# Linux/Mac
-chmod +x setup-sap-integration.sh
-./setup-sap-integration.sh
+# Copiar arquivo de exemplo
+cp .env.example .env
+
+# Editar .env com suas credenciais SAP
+# IMPORTANTE: Nunca comite o .env!
 ```
 
-Leia o guia completo: **[SAP_INTEGRATION_QUICKSTART.md](./SAP_INTEGRATION_QUICKSTART.md)**
-
-## 📁 Estrutura do Projeto
-
-### Core
-- `SPEC.md`: Escopo e regras do MVP
-- `STATE_MACHINE.json`: Máquina de estados do pedido
-- `API_CONTRACTS/`: Contratos de API (OpenAPI + SAP B1)
-
-### Integração SAP
-- `sap-connector/`: Cliente SAP B1 (Service Layer) com resiliência completa
-- `gateway/`: API Node.js com endpoints REST para SAP
-- `web/`: Frontend React com dashboard Kanban
-- `mappings/`: Mapeamentos SAP → WMS (Order, Item, Inventory)
-
-### Core WMS
-- `wms-core/`: Lógica de domínio (state machine, serviços)
-- `core/`: FastAPI (opcional para regras de domínio)
-- `collector/`: PWA do operador (offline-first)
-
-### Testes
-- `tests/unit/`: Testes unitários
-- `tests/integration/`: Testes de integração
-- `tests/e2e/`: Testes end-to-end
-
-## 🛠️ Setup e Desenvolvimento
-
-### 1. Configuração Inicial
+### 2. Instalar dependências
 
 ```bash
-# Instalar dependências
 npm install
-
-# Typecheck
-npm run typecheck
-
-# Build
-npm run build
+cd gateway && npm install && cd ..
+cd web && npm install && cd ..
 ```
 
-### 2. Configurar SAP Business One
-
-#### Opção A: Setup Automático (Recomendado)
-
-```powershell
-# Windows
-.\setup-sap-integration.ps1
-```
+### 3. Testar conexão SAP
 
 ```bash
-# Linux/Mac
-chmod +x setup-sap-integration.sh
-./setup-sap-integration.sh
+cd gateway
+npm run test:sap
 ```
 
-#### Opção B: Setup Manual
+### 4. Iniciar serviços
 
-1. Copie `.env.example` para `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edite `.env` com suas credenciais SAP:
-   ```env
-   SAP_B1_BASE_URL=https://seu-servidor:50000/b1s/v1
-   SAP_B1_COMPANY_DB=SuaEmpresa
-   SAP_B1_USERNAME=usuario
-   SAP_B1_PASSWORD=senha
-   ```
-
-3. Crie os UDFs no SAP:
-   - Execute o script: `sap-connector/SQL_CREATE_UDFS.sql`
-
-4. Teste a conexão:
-   ```bash
-   tsx sap-connector/examples/quick-test.ts
-   ```
-
-### 3. Executar Aplicação
-
+Terminal 1 (Gateway):
 ```bash
-# Terminal 1: Gateway (API)
 cd gateway
 npm run dev
-
-# Terminal 2: Frontend (Dashboard)
-cd web
-npm run dev
-
-# Terminal 3 (Opcional): Core FastAPI
-cd core
-uvicorn app.main:app --reload
 ```
 
-### 4. Acessar Dashboard
+Terminal 2 (Frontend):
+```bash
+cd web
+npm run dev
+```
 
-Abra no navegador: `http://localhost:5173`
+## 📚 Documentação Completa
 
-- Clique em **"Testar SAP"** para validar conexão
-- Clique em **"Importar SAP"** para buscar pedidos abertos
-- Arraste pedidos entre as colunas do Kanban
+- **[INTEGRATION_SAP_SETUP.md](./INTEGRATION_SAP_SETUP.md)** - Guia completo de configuração e uso
+- **[API_CONTRACTS/sap-b1-integration-contract.md](./API_CONTRACTS/sap-b1-integration-contract.md)** - Contrato de integração SAP
+
+## 🏗️ Arquitetura
+
+```
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+│   Frontend  │─────▶│   Gateway   │─────▶│  SAP B1 SL  │
+│   (React)   │      │  (Node.js)  │      │ (Service    │
+│             │◀─────│             │◀─────│  Layer)     │
+└─────────────┘      └─────────────┘      └─────────────┘
+                            │
+                            ▼
+                     ┌─────────────┐
+                     │   WMS Core  │
+                     │  (FastAPI)  │
+                     └─────────────┘
+```
+
+## 📦 Componentes
+
+- **sap-connector**: Módulo reutilizável para conexão com SAP Service Layer
+  - Gerenciamento de sessão (cookies B1SESSION/ROUTEID)
+  - Retry com backoff exponencial
+  - Circuit breaker
+  - Rate limiting
+  
+- **gateway**: API Gateway (Node.js + Fastify)
+  - Endpoints REST para integração SAP
+  - WebSocket/SSE para real-time updates
+  - Correlation ID para rastreabilidade
+  
+- **web**: Frontend (React + Vite + TanStack Query)
+  - Dashboard kanban interativo
+  - Painel de integração SAP
+  - Drag & drop para atualizar status
+  
+- **worker**: Worker para sincronização assíncrona (opcional)
+
+## 🔒 Segurança
+
+- ✓ Credenciais em variáveis de ambiente (`.env` no `.gitignore`)
+- ✓ Senhas **nunca** logadas
+- ✓ HTTPS obrigatório
+- ✓ Idempotência via `Idempotency-Key`
+- ✓ Correlation ID para auditoria
+
+## 📡 Endpoints SAP
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/sap/health` | Testa conexão SAP |
+| GET | `/api/sap/orders` | Lista pedidos |
+| GET | `/api/sap/orders/:docEntry` | Busca pedido específico |
+| PATCH | `/api/sap/orders/:docEntry/status` | Atualiza status |
 
 ## 🧪 Testes
 
 ```bash
-# Todos os testes
+# Teste automatizado
+cd gateway
 npm test
 
-# Testes unitários
-npm test tests/unit/
-
-# Testes de integração (requer gateway rodando)
-SKIP_SAP_INTEGRATION=false npm test tests/integration/
-
-# Testes E2E
-npm test tests/e2e/
+# Teste manual de conexão
+npm run test:sap
 ```
 
-## 📚 Documentação
+## 🛠️ Tecnologias
 
-### Integração SAP
-- **[SAP_INTEGRATION_QUICKSTART.md](./SAP_INTEGRATION_QUICKSTART.md)**: Guia completo da integração
-- **[API_CONTRACTS/sap-b1-integration-contract.md](./API_CONTRACTS/sap-b1-integration-contract.md)**: Contrato de integração
-- **[sap-connector/README.md](./sap-connector/README.md)**: API do connector
+- **Backend**: Node.js 18+, TypeScript, Fastify
+- **Frontend**: React, Vite, TanStack Query, Tailwind CSS
+- **SAP**: Service Layer REST API, OData
+- **Resiliência**: Circuit breaker, rate limiting, retry com backoff
 
-### Projeto
-- **[SPEC.md](./SPEC.md)**: Especificação do MVP
-- **[INTEGRATION_SUMMARY.md](./INTEGRATION_SUMMARY.md)**: Visão geral das entregas
-- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)**: Arquitetura do sistema
+## 📝 Status WMS
 
-## ⚠️ Segurança
+Os pedidos seguem a state machine:
 
-**CRÍTICO:** Nunca commite credenciais!
+```
+A_SEPARAR → EM_SEPARACAO → CONFERIDO → AGUARDANDO_COTACAO → AGUARDANDO_COLETA → DESPACHADO
+```
 
-- ✅ Use variáveis de ambiente (`.env`)
-- ✅ Mantenha `.env` no `.gitignore`
-- ✅ Use placeholders em exemplos (ex: `********`)
-- ❌ NUNCA logue senhas, tokens ou cookies
-- ❌ NUNCA hardcode credenciais no código
+Status são sincronizados no SAP via UDFs:
+- `U_WMS_STATUS`: Status atual
+- `U_WMS_ORDERID`: ID interno WMS
+- `U_WMS_LAST_EVENT`: Último evento
+- `U_WMS_LAST_TS`: Timestamp do último update
+- `U_WMS_CORR_ID`: Correlation ID
 
 ## 🤝 Contribuindo
 
-1. Nunca commite credenciais
-2. Sempre teste localmente antes de commitar
-3. Mantenha logs sem informações sensíveis
-4. Documente mudanças em CHANGELOG.md
+1. Nunca comite credenciais (`.env`)
+2. Siga as convenções de código (TypeScript strict mode)
+3. Adicione testes para novas funcionalidades
+4. Atualize documentação quando necessário
 
 ## 📄 Licença
 
-Propriedade da empresa. Uso interno apenas.
+Proprietary - Uso interno
 
+---
+
+**Versão:** 0.1.0  
+**Última atualização:** 2026-02-04

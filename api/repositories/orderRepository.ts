@@ -27,6 +27,7 @@ export interface OrderRepository {
     status?: string;
     carrier?: string;
     priority?: string;
+    externalOrderId?: string;
     limit?: number;
     offset?: number;
   }): Promise<Order[]>;

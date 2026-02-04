@@ -12,9 +12,7 @@ export function FiltersBar(props: {
   carriers: string[];
   loadingCarriers?: boolean;
   onChange: (next: OrdersUiFilters) => void;
-  onTestSapConnection?: () => void;
   onImportFromSap?: () => void;
-  testingSap?: boolean;
   importingSap?: boolean;
 }) {
   const v = props.value;
@@ -97,24 +95,21 @@ export function FiltersBar(props: {
       </div>
 
       <div className="filters-right" style={{ display: "flex", gap: "8px" }}>
-        {props.onTestSapConnection && (
-          <button
-            className="btn btn-sm"
-            onClick={props.onTestSapConnection}
-            disabled={props.testingSap}
-            title="Testar conexão com SAP"
-          >
-            {props.testingSap ? "Testando..." : "Testar SAP"}
-          </button>
-        )}
         {props.onImportFromSap && (
           <button
             className="btn btn-sm btn-primary"
             onClick={props.onImportFromSap}
             disabled={props.importingSap}
-            title="Importar pedidos abertos do SAP"
+            title="Sincroniza pedidos do SAP para o WMS e atualiza a lista"
           >
-            {props.importingSap ? "Importando..." : "Importar SAP"}
+            {props.importingSap ? (
+              <>
+                <span className="spinner" style={{ marginRight: 6 }} />
+                Importando…
+              </>
+            ) : (
+              "Importar do SAP"
+            )}
           </button>
         )}
         {hasActiveFilters && (

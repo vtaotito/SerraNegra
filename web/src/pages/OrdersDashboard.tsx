@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import type { OrderStatus, Priority, UiOrder } from "../api/types";
+import type { OrderStatus, Priority } from "../api/types";
 import { isUsingMock, listCarriers, listOrders, postOrderEvent } from "../api/orders";
-import { testSapConnection, importSapOrders } from "../api/sap";
+import { syncSapOrders, isSapApiConfigured } from "../api/sap";
 import { FiltersBar, type OrdersUiFilters } from "../ui/FiltersBar";
 import { KanbanBoard } from "../ui/KanbanBoard";
 import { OrderDrawer } from "../ui/OrderDrawer";
@@ -35,7 +35,6 @@ export function OrdersDashboard() {
     sla: "ALL"
   });
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [sapOrders, setSapOrders] = useState<UiOrder[]>([]);
 
   const carriersQuery = useQuery({
     queryKey: ["carriers", isUsingMock()],
@@ -53,31 +52,6 @@ export function OrdersDashboard() {
         sla: filters.sla
       }),
     refetchInterval: 15_000
-  });
-
-  const testSapMutation = useMutation({
-    mutationFn: testSapConnection,
-    onSuccess: (data) => {
-      if (data.ok) {
-        toast.success(data.message);
-      } else {
-        toast.error(data.message);
-      }
-    },
-    onError: (err: any) => {
-      toast.error(err?.message || "Erro ao testar conexão SAP");
-    }
-  });
-
-  const importSapMutation = useMutation({
-    mutationFn: () => importSapOrders({ status: "open", limit: 100 }),
-    onSuccess: (orders) => {
-      setSapOrders(orders);
-      toast.success(`${orders.length} pedidos importados do SAP`);
-    },
-    onError: (err: any) => {
-      toast.error(err?.message || "Erro ao importar pedidos do SAP");
-    }
   });
 
   const moveOrderMutation = useMutation({
@@ -123,22 +97,32 @@ export function OrdersDashboard() {
     moveOrderMutation.mutate({ orderId, currentStatus, newStatus });
   };
 
+  const syncSapMutation = useMutation({
+    mutationFn: () => syncSapOrders(),
+    onSuccess: async (data) => {
+      toast.success(`${data.imported} pedidos importados do SAP`);
+      await ordersQuery.refetch();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Erro ao importar pedidos do SAP");
+    }
+  });
+
   const grouped = useMemo(() => {
-    const wmsItems = ordersQuery.data?.items ?? [];
-    const allItems = [...wmsItems, ...sapOrders];
-    const by: Record<OrderStatus, UiOrder[]> = Object.fromEntries(
+    const items = ordersQuery.data?.items ?? [];
+    const by: Record<OrderStatus, any[]> = Object.fromEntries(
       STATUSES.map((s) => [s, []])
     ) as any;
-    for (const o of allItems) by[o.status].push(o);
+    for (const o of items) by[o.status].push(o);
     for (const s of STATUSES) {
       by[s].sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
     }
     return by;
-  }, [ordersQuery.data, sapOrders]);
+  }, [ordersQuery.data]);
 
-  const totalOrders = (ordersQuery.data?.items.length ?? 0) + sapOrders.length;
+  const totalOrders = ordersQuery.data?.items.length ?? 0;
 
   return (
     <div>
@@ -149,10 +133,10 @@ export function OrdersDashboard() {
             carriers={carriersQuery.data ?? []}
             loadingCarriers={carriersQuery.isFetching}
             onChange={setFilters}
-            onTestSapConnection={() => testSapMutation.mutate()}
-            onImportFromSap={() => importSapMutation.mutate()}
-            testingSap={testSapMutation.isPending}
-            importingSap={importSapMutation.isPending}
+            onImportFromSap={
+              isSapApiConfigured() ? () => syncSapMutation.mutate() : undefined
+            }
+            importingSap={syncSapMutation.isPending}
           />
         </div>
       </div>
@@ -170,14 +154,9 @@ export function OrdersDashboard() {
             {ordersQuery.isFetching && !ordersQuery.data
               ? "Carregando pedidos…"
               : `${totalOrders} ${totalOrders === 1 ? "pedido" : "pedidos"}`}
-            {sapOrders.length > 0 && (
-              <span className="text-muted text-xs" style={{ marginLeft: 8 }}>
-                ({sapOrders.length} do SAP)
-              </span>
-            )}
           </span>
           <span className="text-muted text-xs">
-            Fonte: <b>{isUsingMock() ? "Mock local" : "API"}</b>
+            Fonte: <b>{isUsingMock() ? "Mock local" : "WMS Core API"}</b>
           </span>
         </div>
       </div>

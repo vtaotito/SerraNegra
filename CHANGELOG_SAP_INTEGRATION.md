@@ -1,5 +1,60 @@
 # Changelog - Integração SAP Business One
 
+## [1.1.0] - 2026-02-04
+
+### ✨ Novos Recursos
+
+#### Campos SAP Financeiros no Schema de Orders
+- **Schema OpenAPI** (`API_CONTRACTS/openapi.yaml`):
+  - Adicionados campos opcionais no tipo `Order`: `docTotal` (número) e `currency` (string)
+  - Todos os campos SAP agora expostos: `sapDocEntry`, `sapDocNum`, `customerName`, `carrier`, `priority`, `slaDueAt`, `docTotal`, `currency`
+  - Campo `metadata` documentado para campos estendidos adicionais
+
+- **Backend (wms-core)**:
+  - Tipo `Order` estendido com `docTotal?: number` e `currency?: string`
+  - Campos financeiros persistidos em PostgreSQL via migração 0004
+
+- **PostgreSQL**:
+  - Nova migração `0004_orders_sap_financial_fields.sql`
+  - Colunas `doc_total` (NUMERIC(18,2)) e `currency` (VARCHAR(10))
+  - Índices para busca parcial por `external_order_id` (BTREE + opcional GIN com pg_trgm)
+
+#### Busca Parcial por External Order ID
+- **Repository** (`api/repositories/postgresOrderRepository.ts`):
+  - Suporte a filtro `externalOrderId` com busca parcial case-insensitive (ILIKE)
+  - Query: `external_order_id ILIKE %termo%`
+  - Índice BTREE para performance
+
+- **Service** (`api/services/orderCoreService.ts`):
+  - Método `listOrders()` aceita filtro `externalOrderId`
+  - InMemoryOrderStore também implementa busca parcial (simulação de ILIKE)
+
+- **Controller** (`api/controllers/ordersController.ts`):
+  - Endpoint `GET /orders` aceita query param `externalOrderId`
+  - Documentação atualizada
+
+- **Frontend** (`web/src/api/types.ts`):
+  - Tipo `Order` estendido com `docTotal?: number | null` e `currency?: string | null`
+  - Retrocompatível (campos opcionais)
+
+### 🔧 Melhorias
+
+- **Performance**: Índices adicionados para `external_order_id` melhoram busca parcial
+- **Flexibilidade**: Campos SAP agora disponíveis para exibição no painel
+- **Compatibilidade**: Todas as mudanças são retrocompatíveis (campos opcionais)
+
+### 📝 Migração
+
+Execute a migração para adicionar os novos campos:
+
+```bash
+psql -h <host> -U <user> -d <database> -f wms-core/migrations/0004_orders_sap_financial_fields.sql
+```
+
+**Nota**: A migração é idempotente e segura para executar múltiplas vezes.
+
+---
+
 ## [1.0.0] - 2026-02-04
 
 ### 🎉 Implementação Completa da Integração SAP Business One
