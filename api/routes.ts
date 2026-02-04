@@ -1,6 +1,8 @@
 import { createDashboardController, DashboardService } from "./controllers/dashboardController.js";
 import { createIntegrationsController, IntegrationService } from "./controllers/integrationsController.js";
 import { createScansController, ScanService } from "./controllers/scansController.js";
+import { createOrdersController } from "./controllers/ordersController.js";
+import { getOrderCoreService } from "./services/orderCoreService.js";
 import { ApiHandler, ApiRole, HttpMethod } from "./http.js";
 import { createAuthenticationMiddleware } from "./middleware/authentication.js";
 import { createAuthorizationMiddleware } from "./middleware/authorization.js";
@@ -24,6 +26,7 @@ export type RouteDefinition = {
 };
 
 export type ApiDependencies = {
+  orderCoreService?: ReturnType<typeof getOrderCoreService>;
   scansService: ScanService;
   dashboardService: DashboardService;
   integrationsService: IntegrationService;
@@ -51,11 +54,59 @@ export const buildRoutes = (deps: ApiDependencies): RouteDefinition[] => {
   const scansController = createScansController(deps.scansService);
   const dashboardController = createDashboardController(deps.dashboardService);
   const integrationsController = createIntegrationsController(deps.integrationsService);
+  const ordersController = createOrdersController(deps.orderCoreService ?? getOrderCoreService());
 
   const auditSink = deps.auditSink ?? createConsoleAuditSink();
   const idempotencyStore = deps.idempotencyStore ?? createInMemoryIdempotencyStore();
 
   const routes: RouteDefinition[] = [
+    // ========== ORDERS ==========
+    {
+      method: "POST",
+      path: "/orders",
+      handler: ordersController.createOrder,
+      requiredRoles: ["supervisor", "admin"],
+      auditAction: "order.created",
+      idempotent: true
+    },
+    {
+      method: "GET",
+      path: "/orders/:orderId",
+      handler: ordersController.getOrder,
+      requiredRoles: ["operador", "supervisor", "comercial", "admin"],
+      auditAction: "order.viewed"
+    },
+    {
+      method: "GET",
+      path: "/orders",
+      handler: ordersController.listOrders,
+      requiredRoles: ["operador", "supervisor", "comercial", "admin"],
+      auditAction: "orders.listed"
+    },
+    {
+      method: "POST",
+      path: "/orders/:orderId/events",
+      handler: ordersController.applyEvent,
+      requiredRoles: ["operador", "supervisor", "admin"],
+      auditAction: "order.event.applied",
+      idempotent: true
+    },
+    {
+      method: "GET",
+      path: "/orders/:orderId/history",
+      handler: ordersController.getHistory,
+      requiredRoles: ["operador", "supervisor", "comercial", "admin"],
+      auditAction: "order.history.viewed"
+    },
+    // Endpoint interno (sem auth middleware, apenas secret)
+    {
+      method: "POST",
+      path: "/internal/sap/orders",
+      handler: ordersController.processSapBatch,
+      requiredRoles: [], // Sem auth, usa secret
+      auditAction: "sap.batch.processed"
+    },
+    // ========== SCANS ==========
     {
       method: "POST",
       path: "/api/v1/scans",
