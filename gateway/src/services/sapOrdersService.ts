@@ -91,8 +91,8 @@ function mapSapOrderToWms(sapOrder: SapOrder): WmsOrder {
     shipToAddress: sapOrder.Address || sapOrder.Address2,
     status: mapSapStatusToWms(sapOrder),
     slaDueAt: sapOrder.DocDueDate ? `${sapOrder.DocDueDate}T00:00:00Z` : undefined,
-    docTotal: sapOrder.DocTotal,
-    currency: sapOrder.DocCurrency,
+    docTotal: sapOrder.DocTotal as number | undefined,
+    currency: sapOrder.DocCurrency as string | undefined,
     items,
     createdAt: sapOrder.CreateDate
       ? `${sapOrder.CreateDate}T${sapOrder.CreateTime ?? "00:00:00"}Z`
