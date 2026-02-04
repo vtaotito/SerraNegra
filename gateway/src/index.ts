@@ -2,12 +2,9 @@ import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
-<<<<<<< Current (Your changes)
 import { getSapService } from "./sapService.js";
 import type { SapOrdersFilter, SapOrderStatusUpdate } from "../../sap-connector/src/sapTypes.js";
-=======
 import { registerSapRoutes } from "./routes/sap.js";
->>>>>>> Incoming (Background Agent changes)
 
 type GatewayEvent =
   | { type: "order.created"; orderId: string; status: string; occurredAt: string; correlationId: string }
