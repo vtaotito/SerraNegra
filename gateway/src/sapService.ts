@@ -10,8 +10,9 @@ import type {
   SapOrderStatusUpdate 
 } from "../../sap-connector/src/sapTypes.js";
 import { SapAuthError, SapHttpError } from "../../sap-connector/src/errors.js";
-import { instrumentSapClient } from "../../observability/sapInstrumentation.js";
-import { createLogger } from "../../observability/logger.js";
+// Observability imports commented out for now - will be added when observability is copied to container
+// import { instrumentSapClient } from "../../observability/sapInstrumentation.js";
+// import { createLogger } from "../../observability/logger.js";
 
 export type SapServiceOptions = {
   baseUrl: string;
@@ -25,20 +26,14 @@ export class SapService {
   private client: SapServiceLayerClient;
 
   constructor(options: SapServiceOptions) {
-    // Logger com mascaramento de segredos
-    const logger = options.logger || createLogger({ 
-      name: "sap-service",
-      redactPaths: ["credentials.password", "password", "Password", "CompanyPassword"]
-    });
-
-    const rawClient = new SapServiceLayerClient({
+    this.client = new SapServiceLayerClient({
       baseUrl: options.baseUrl,
       credentials: {
         companyDb: options.companyDb,
         username: options.username,
         password: options.password
       },
-      logger,
+      logger: options.logger,
       timeoutMs: Number(process.env.SAP_B1_TIMEOUT_MS ?? 20000),
       retry: {
         maxAttempts: Number(process.env.SAP_B1_MAX_ATTEMPTS ?? 5)
@@ -47,12 +42,6 @@ export class SapService {
         maxConcurrent: Number(process.env.SAP_B1_MAX_CONCURRENT ?? 8),
         maxRps: Number(process.env.SAP_B1_MAX_RPS ?? 10)
       }
-    });
-
-    // Instrumentar com observabilidade
-    this.client = instrumentSapClient(rawClient, {
-      logger,
-      componentName: "sap-gateway"
     });
   }
 
