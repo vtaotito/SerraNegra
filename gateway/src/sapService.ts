@@ -49,7 +49,7 @@ export class SapService {
     try {
       await this.client.login(correlationId);
       return { ok: true, message: "Conexão com SAP OK" };
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof SapAuthError) {
         return { ok: false, message: `Erro de autenticação: ${err.message}` };
       }
@@ -95,7 +95,7 @@ export class SapService {
     try {
       const response = await this.client.get<SapCollectionResponse<SapOrder>>(path, { correlationId });
       return response.data.value || [];
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof SapHttpError) {
         throw new Error(`Erro ao buscar pedidos do SAP: ${err.message} (status: ${err.status})`);
       }
@@ -114,7 +114,7 @@ export class SapService {
     try {
       const response = await this.client.get<SapOrder>(path, { correlationId });
       return response.data;
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof SapHttpError) {
         if (err.status === 404) {
           throw new Error(`Pedido ${docEntry} não encontrado no SAP`);
@@ -137,7 +137,7 @@ export class SapService {
 
     try {
       await this.client.patch(path, update, { correlationId });
-    } catch (err) {
+    } catch (err: unknown) {
       if (err instanceof SapHttpError) {
         if (err.status === 404) {
           throw new Error(`Pedido ${docEntry} não encontrado no SAP`);

@@ -4,11 +4,16 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
-COPY package.json package-lock.json* ./
+# Copiar package.json do gateway
+COPY gateway/package.json gateway/package-lock.json* ./
 RUN npm install --omit=dev
 
-COPY tsconfig.json ./
-COPY src ./src
+# Copiar código do gateway
+COPY gateway/tsconfig.json ./
+COPY gateway/src ./src
+
+# Copiar sap-connector (dependência)
+COPY sap-connector ../sap-connector
 
 RUN npm install --include=dev && npm run build && npm prune --omit=dev
 

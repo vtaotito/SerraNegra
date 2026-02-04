@@ -49,7 +49,8 @@ services:
   gateway:
     container_name: wms-gateway
     build:
-      context: ./gateway
+      context: .
+      dockerfile: gateway/Dockerfile
     environment:
       GATEWAY_PORT: "3000"
       CORE_BASE_URL: "http://core:8000"
