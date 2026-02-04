@@ -219,5 +219,127 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * POST /api/sap/sync
+   * Sincroniza pedidos do SAP para o WMS Core.
+   * Busca pedidos abertos do SAP e cria no WMS Core via POST /orders.
+   */
+  app.post("/api/sap/sync", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      const service = getSapService();
+      
+      // Buscar pedidos abertos do SAP
+      req.log.info({ correlationId }, "Iniciando sincronização de pedidos do SAP");
+      const sapOrders = await service.listOrders(
+        {
+          docStatus: "O", // Apenas pedidos abertos
+          limit: 100
+        },
+        correlationId
+      );
+
+      req.log.info({ count: sapOrders.length, correlationId }, `${sapOrders.length} pedidos encontrados no SAP`);
+
+      let imported = 0;
+      const errors: Array<{ orderId: string; error: string }> = [];
+
+      // Importar cada pedido para o WMS Core
+      for (const sapOrder of sapOrders) {
+        try {
+          // Verificar se já existe no WMS Core pelo externalOrderId
+          const checkUrl = `${process.env.CORE_BASE_URL ?? "http://localhost:8000"}/orders?externalOrderId=${sapOrder.externalOrderId}`;
+          const checkRes = await fetch(checkUrl, {
+            headers: {
+              "x-correlation-id": correlationId
+            }
+          });
+
+          if (checkRes.ok) {
+            const existingOrders = await checkRes.json();
+            if (existingOrders.items && existingOrders.items.length > 0) {
+              req.log.debug(
+                { externalOrderId: sapOrder.externalOrderId, correlationId },
+                "Pedido já existe no WMS, pulando"
+              );
+              continue; // Já existe, pular
+            }
+          }
+
+          // Criar pedido no WMS Core
+          const createUrl = `${process.env.CORE_BASE_URL ?? "http://localhost:8000"}/orders`;
+          const createRes = await fetch(createUrl, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-correlation-id": correlationId
+            },
+            body: JSON.stringify({
+              externalOrderId: sapOrder.externalOrderId,
+              customerId: sapOrder.customerId,
+              items: sapOrder.items.map((item) => ({
+                sku: item.sku,
+                quantity: item.quantity
+              })),
+              metadata: {
+                source: "SAP_B1",
+                sapDocEntry: sapOrder.sapDocEntry,
+                sapDocNum: sapOrder.sapDocNum,
+                customerName: sapOrder.customerName,
+                docTotal: sapOrder.docTotal,
+                currency: sapOrder.currency
+              }
+            })
+          });
+
+          if (!createRes.ok) {
+            const errorText = await createRes.text();
+            throw new Error(`Erro ao criar pedido (${createRes.status}): ${errorText}`);
+          }
+
+          imported++;
+          req.log.info(
+            { externalOrderId: sapOrder.externalOrderId, correlationId },
+            "Pedido importado com sucesso"
+          );
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          req.log.error(
+            { orderId: sapOrder.orderId, error: errorMessage, correlationId },
+            "Erro ao importar pedido"
+          );
+          errors.push({
+            orderId: sapOrder.orderId,
+            error: errorMessage
+          });
+        }
+      }
+
+      req.log.info({ imported, errors: errors.length, correlationId }, "Sincronização concluída");
+
+      reply.code(200).send({
+        ok: true,
+        message: `Sincronização concluída: ${imported} pedido(s) importado(s)`,
+        imported,
+        total: sapOrders.length,
+        errors: errors.length > 0 ? errors : undefined,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro na sincronização SAP");
+
+      reply.code(500).send({
+        ok: false,
+        message: "Erro ao sincronizar pedidos do SAP",
+        details: message,
+        imported: 0,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   app.log.info("Rotas SAP registradas");
 }

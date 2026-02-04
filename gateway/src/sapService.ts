@@ -5,11 +5,32 @@
 import { SapServiceLayerClient } from "../../sap-connector/src/serviceLayerClient.js";
 import type { 
   SapOrder, 
-  SapCollectionResponse, 
-  SapOrdersFilter, 
-  SapOrderStatusUpdate 
-} from "../../sap-connector/src/sapTypes.js";
+  SapOrdersCollection
+} from "../../sap-connector/src/types.js";
 import { SapAuthError, SapHttpError } from "../../sap-connector/src/errors.js";
+
+/**
+ * Parâmetros de filtro para buscar pedidos
+ */
+export type SapOrdersFilter = {
+  status?: "open" | "closed" | "all";
+  cardCode?: string;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+  skip?: number;
+};
+
+/**
+ * Payload para atualizar status do pedido (UDFs)
+ */
+export type SapOrderStatusUpdate = {
+  U_WMS_STATUS?: string;
+  U_WMS_ORDERID?: string;
+  U_WMS_LAST_EVENT?: string;
+  U_WMS_LAST_TS?: string;
+  U_WMS_CORR_ID?: string;
+};
 // Observability imports commented out for now - will be added when observability is copied to container
 // import { instrumentSapClient } from "../../observability/sapInstrumentation.js";
 // import { createLogger } from "../../observability/logger.js";
@@ -96,7 +117,7 @@ export class SapService {
     const path = `/Orders?${selectQuery}&${expandQuery}&${topQuery}&${skipQuery}${filterQuery}`;
 
     try {
-      const response = await this.client.get<SapCollectionResponse<SapOrder>>(path, { correlationId });
+      const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
       return response.data.value || [];
     } catch (err: unknown) {
       if (err instanceof SapHttpError) {

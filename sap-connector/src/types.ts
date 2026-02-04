@@ -107,6 +107,8 @@ export type SapOrder = {
   DocStatus?: string; // "O" = Open, "C" = Closed
   Cancelled?: string; // "Y" / "N"
   DocumentStatus?: string; // "bost_Open", "bost_Close", "bost_Paid"
+  DocTotal?: number;
+  DocCurrency?: string;
   UpdateDate?: string;
   UpdateTime?: string;
   CreateDate?: string;
