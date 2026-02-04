@@ -80,7 +80,7 @@ export const createOrdersController = (service: OrderCoreService): OrdersControl
   /**
    * GET /orders
    * Lista pedidos com filtros
-   * Query: status, carrier, priority, limit
+   * Query: status, carrier, priority, externalOrderId, limit
    */
   const listOrders: ApiHandler = async (req) => {
     const query = req.query || {};
@@ -88,6 +88,7 @@ export const createOrdersController = (service: OrderCoreService): OrdersControl
       status: query.status as OrderStatus | undefined,
       carrier: query.carrier,
       priority: query.priority,
+      externalOrderId: query.externalOrderId,
       limit: query.limit ? Number(query.limit) : 200
     };
 

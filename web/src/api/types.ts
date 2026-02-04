@@ -33,7 +33,9 @@ export type Order = {
   status: OrderStatus;
   carrier?: string | null;
   priority?: Priority | null;
-  slaDueAt?: string | null; // ISO
+  slaDueAt?: string | null; // ISO (DocDueDate no SAP)
+  docTotal?: number | null; // Valor total do pedido (SAP)
+  currency?: string | null; // Moeda do pedido (SAP)
   items: OrderItem[];
   createdAt: string; // ISO
   updatedAt: string; // ISO

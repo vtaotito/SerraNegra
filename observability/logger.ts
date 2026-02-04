@@ -14,6 +14,7 @@ export type LoggerOptions = {
   level?: LogLevel;
   name?: string;
   pretty?: boolean;
+  redactPaths?: string[]; // Caminhos para mascarar (ex: ["password", "credentials.password"])
 };
 
 function getEnvBool(name: string, fallback: boolean): boolean {
@@ -27,13 +28,38 @@ export function createLogger(opts: LoggerOptions = {}): StructuredLogger {
   const pretty = opts.pretty ?? getEnvBool("LOG_PRETTY", process.env.NODE_ENV !== "production");
   const name = opts.name ?? process.env.OTEL_SERVICE_NAME ?? "wms";
 
+  // Caminhos padrão para mascarar + opcionais
+  const defaultRedactPaths = [
+    "password",
+    "Password",
+    "PASSWORD",
+    "token",
+    "Token",
+    "TOKEN",
+    "secret",
+    "Secret",
+    "SECRET",
+    "apiKey",
+    "api_key",
+    "authorization",
+    "Authorization",
+    "credentials.password",
+    "credentials.Password"
+  ];
+
+  const redact = {
+    paths: [...defaultRedactPaths, ...(opts.redactPaths || [])],
+    censor: "[REDACTED]"
+  };
+
   const base: PinoLogger = pino(
     {
       level,
       name,
       base: undefined,
       messageKey: "message",
-      timestamp: pino.stdTimeFunctions.isoTime
+      timestamp: pino.stdTimeFunctions.isoTime,
+      redact
     },
     pretty
       ? pino.transport({

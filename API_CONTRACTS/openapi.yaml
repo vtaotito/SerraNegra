@@ -258,10 +258,44 @@ components:
         externalOrderId:
           type: string
           nullable: true
+        sapDocEntry:
+          type: integer
+          nullable: true
+          description: DocEntry do SAP B1
+        sapDocNum:
+          type: integer
+          nullable: true
+          description: DocNum do SAP B1
         customerId:
           type: string
+        customerName:
+          type: string
+          nullable: true
+        shipToAddress:
+          type: string
+          nullable: true
         status:
           $ref: '#/components/schemas/OrderStatus'
+        carrier:
+          type: string
+          nullable: true
+        priority:
+          type: string
+          enum: [P1, P2, P3]
+          nullable: true
+        slaDueAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data limite de entrega (DocDueDate no SAP)
+        docTotal:
+          type: number
+          nullable: true
+          description: Valor total do pedido (SAP)
+        currency:
+          type: string
+          nullable: true
+          description: Moeda do pedido (SAP)
         items:
           type: array
           items:
@@ -272,6 +306,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Metadados adicionais, incluindo campos estendidos do SAP
       required: [orderId, customerId, status, items, createdAt, updatedAt]
 
     OrderEventRequest:

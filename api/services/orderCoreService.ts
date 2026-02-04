@@ -50,6 +50,7 @@ export class InMemoryOrderStore implements OrderRepository {
     status?: string;
     carrier?: string;
     priority?: string;
+    externalOrderId?: string;
     limit?: number;
     offset?: number;
   }): Promise<Order[]> {
@@ -63,6 +64,13 @@ export class InMemoryOrderStore implements OrderRepository {
     }
     if (filter?.priority) {
       results = results.filter((o) => o.priority === filter.priority);
+    }
+    if (filter?.externalOrderId) {
+      // Busca parcial case-insensitive (simulando ILIKE)
+      const searchTerm = filter.externalOrderId.toLowerCase();
+      results = results.filter((o) => 
+        o.externalOrderId?.toLowerCase().includes(searchTerm)
+      );
     }
 
     results.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -164,6 +172,7 @@ export class OrderCoreService {
     status?: string;
     carrier?: string;
     priority?: string;
+    externalOrderId?: string;
     limit?: number;
   }): Promise<Order[]> {
     return this.repository.findAll(filter);

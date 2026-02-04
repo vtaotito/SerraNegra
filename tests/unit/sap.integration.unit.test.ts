@@ -50,6 +50,8 @@ test("sapOrderToUiOrder: converte pedido SAP para formato WMS", async () => {
     carrier: null,
     priority: null,
     slaDueAt: sapOrder.DocDueDate || null,
+    docTotal: sapOrder.DocTotal || null,
+    currency: sapOrder.DocCurrency || null,
     items: (sapOrder.DocumentLines || []).map((line) => ({
       sku: line.ItemCode,
       quantity: line.Quantity
@@ -57,8 +59,6 @@ test("sapOrderToUiOrder: converte pedido SAP para formato WMS", async () => {
     createdAt: sapOrder.CreateDate || new Date().toISOString(),
     updatedAt: sapOrder.UpdateDate || new Date().toISOString(),
     metadata: {
-      sapDocTotal: sapOrder.DocTotal,
-      sapDocCurrency: sapOrder.DocCurrency,
       sapComments: sapOrder.Comments,
       sapDocStatus: sapOrder.DocumentStatus
     }
@@ -68,6 +68,8 @@ test("sapOrderToUiOrder: converte pedido SAP para formato WMS", async () => {
   assert.equal(uiOrder.externalOrderId, "456");
   assert.equal(uiOrder.sapDocEntry, 123);
   assert.equal(uiOrder.customerId, "C001");
+  assert.equal(uiOrder.docTotal, 1500.00);
+  assert.equal(uiOrder.currency, "BRL");
   assert.equal(uiOrder.items.length, 1);
   assert.equal(uiOrder.items[0].sku, "SKU-001");
   assert.equal(uiOrder.items[0].quantity, 10);

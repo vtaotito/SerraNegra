@@ -1,11 +1,7 @@
-/**
- * API de integração com SAP Business One via Gateway
- */
 import { createApiClient, randomId } from "./client";
-import type { UiOrder, OrderItem } from "./types";
+import type { UiOrder, OrderStatus, Priority } from "./types";
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
-const USE_MOCK = (import.meta.env.VITE_USE_MOCK as string | undefined) === "true" || !BASE_URL;
 
 const api = BASE_URL
   ? createApiClient({
@@ -17,77 +13,65 @@ const api = BASE_URL
   : null;
 
 /**
- * Tipos do SAP
+ * Tipos específicos para integração SAP
  */
-export type SapDocumentLine = {
-  LineNum: number;
-  ItemCode: string;
-  ItemDescription?: string;
-  Quantity: number;
-  WarehouseCode?: string;
-  Price?: number;
-  UnitPrice?: number;
-  LineTotal?: number;
-};
-
-export type SapOrder = {
-  DocEntry: number;
-  DocNum: number;
-  CardCode: string;
-  CardName?: string;
-  DocDate?: string;
-  DocDueDate?: string;
-  DocStatus?: string;
-  DocumentStatus?: string;
-  DocTotal?: number;
-  DocCurrency?: string;
-  Comments?: string;
-  CreateDate?: string;
-  CreateTime?: string;
-  UpdateDate?: string;
-  UpdateTime?: string;
-  U_WMS_STATUS?: string;
-  U_WMS_ORDERID?: string;
-  U_WMS_LAST_EVENT?: string;
-  U_WMS_LAST_TS?: string;
-  U_WMS_CORR_ID?: string;
-  DocumentLines?: SapDocumentLine[];
-};
-
 export type SapHealthResponse = {
-  ok: boolean;
+  status: "ok" | "error";
   message: string;
   timestamp: string;
+  details?: string;
+  correlationId?: string;
 };
 
 export type SapOrdersResponse = {
-  orders: SapOrder[];
+  items: Array<{
+    orderId: string;
+    externalOrderId: string;
+    sapDocEntry: number;
+    sapDocNum: number;
+    customerId: string;
+    customerName?: string;
+    shipToAddress?: string;
+    status: OrderStatus;
+    slaDueAt?: string;
+    docTotal?: number;
+    currency?: string;
+    items: Array<{
+      sku: string;
+      quantity: number;
+      description?: string;
+      warehouse?: string;
+    }>;
+    createdAt: string;
+    updatedAt: string;
+    metadata?: Record<string, unknown>;
+  }>;
   count: number;
   timestamp: string;
 };
 
-export type SapOrderResponse = {
-  order: SapOrder;
-  timestamp: string;
+export type SapUpdateStatusRequest = {
+  status: OrderStatus;
+  event?: string;
 };
 
-export type SapOrdersFilter = {
-  status?: "open" | "closed" | "all";
-  cardCode?: string;
-  fromDate?: string;
-  toDate?: string;
-  limit?: number;
-  skip?: number;
+export type SapUpdateStatusResponse = {
+  ok: boolean;
+  message: string;
+  docEntry: number;
+  status: string;
+  timestamp: string;
+  correlationId?: string;
 };
 
 /**
- * Testa a conexão com o SAP
+ * Testa a conexão com o SAP.
  */
-export async function testSapConnection(): Promise<SapHealthResponse> {
-  if (USE_MOCK || !api) {
+export async function sapHealthCheck(): Promise<SapHealthResponse> {
+  if (!api) {
     return {
-      ok: true,
-      message: "Conexão com SAP OK (MOCK)",
+      status: "error",
+      message: "API não configurada. Configure VITE_API_BASE_URL.",
       timestamp: new Date().toISOString()
     };
   }
@@ -98,106 +82,144 @@ export async function testSapConnection(): Promise<SapHealthResponse> {
 }
 
 /**
- * Busca pedidos do SAP
+ * Lista pedidos do SAP.
+ * 
+ * @param filters - Filtros opcionais
+ * @param filters.status - Filtro por status WMS (ex: "A_SEPARAR", "EM_SEPARACAO")
+ * @param filters.limit - Limite de resultados (default: 100)
+ * @param filters.docStatus - Filtro por status SAP ("O" = Open, "C" = Closed)
  */
-export async function getSapOrders(filter: SapOrdersFilter = {}): Promise<SapOrdersResponse> {
-  if (USE_MOCK || !api) {
-    return {
-      orders: [],
-      count: 0,
-      timestamp: new Date().toISOString()
-    };
+export async function listSapOrders(filters?: {
+  status?: OrderStatus;
+  limit?: number;
+  docStatus?: string;
+}): Promise<UiOrder[]> {
+  if (!api) {
+    console.warn("API não configurada. Retornando lista vazia.");
+    return [];
   }
 
-  return api.request<SapOrdersResponse>("/api/sap/orders", {
+  const query: Record<string, string> = {};
+  if (filters?.status) query.status = filters.status;
+  if (filters?.limit) query.limit = String(filters.limit);
+  if (filters?.docStatus) query.docStatus = filters.docStatus;
+
+  const response = await api.request<SapOrdersResponse>("/api/sap/orders", {
     method: "GET",
-    query: filter as any
+    query
   });
+
+  // Converter para UiOrder
+  return response.items.map((item) => ({
+    orderId: item.orderId,
+    externalOrderId: item.externalOrderId,
+    sapDocEntry: item.sapDocEntry,
+    sapDocNum: item.sapDocNum,
+    customerId: item.customerId,
+    customerName: item.customerName,
+    shipToAddress: item.shipToAddress,
+    status: item.status,
+    carrier: null,
+    priority: null,
+    slaDueAt: item.slaDueAt || null,
+    docTotal: item.docTotal || null,
+    currency: item.currency || null,
+    items: item.items.map((i) => ({
+      sku: i.sku,
+      quantity: i.quantity
+    })),
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    metadata: item.metadata
+  }));
 }
 
 /**
- * Busca um pedido específico do SAP
+ * Busca um pedido específico do SAP pelo DocEntry.
  */
-export async function getSapOrder(docEntry: number): Promise<SapOrderResponse> {
-  if (USE_MOCK || !api) {
-    throw new Error("Pedido não encontrado (MOCK)");
+export async function getSapOrder(docEntry: number): Promise<UiOrder> {
+  if (!api) {
+    throw new Error("API não configurada");
   }
 
-  return api.request<SapOrderResponse>(`/api/sap/orders/${docEntry}`, {
-    method: "GET"
-  });
+  const response = await api.request<SapOrdersResponse["items"][0]>(
+    `/api/sap/orders/${docEntry}`,
+    {
+      method: "GET"
+    }
+  );
+
+  return {
+    orderId: response.orderId,
+    externalOrderId: response.externalOrderId,
+    sapDocEntry: response.sapDocEntry,
+    sapDocNum: response.sapDocNum,
+    customerId: response.customerId,
+    customerName: response.customerName,
+    shipToAddress: response.shipToAddress,
+    status: response.status,
+    carrier: null,
+    priority: null,
+    slaDueAt: response.slaDueAt || null,
+    docTotal: response.docTotal || null,
+    currency: response.currency || null,
+    items: response.items.map((i) => ({
+      sku: i.sku,
+      quantity: i.quantity
+    })),
+    createdAt: response.createdAt,
+    updatedAt: response.updatedAt,
+    metadata: response.metadata
+  };
 }
 
 /**
- * Atualiza o status WMS de um pedido no SAP
+ * Atualiza o status de um pedido no SAP.
  */
 export async function updateSapOrderStatus(
   docEntry: number,
-  status: string,
-  orderId?: string,
-  lastEvent?: string
-): Promise<{ ok: boolean; message: string }> {
-  if (USE_MOCK || !api) {
-    return {
-      ok: true,
-      message: "Status atualizado com sucesso (MOCK)"
-    };
+  request: SapUpdateStatusRequest
+): Promise<SapUpdateStatusResponse> {
+  if (!api) {
+    throw new Error("API não configurada");
   }
 
-  return api.request<{ ok: boolean; message: string }>(
+  return api.request<SapUpdateStatusResponse>(
     `/api/sap/orders/${docEntry}/status`,
     {
       method: "PATCH",
-      body: {
-        status,
-        orderId,
-        lastEvent
-      }
+      body: request
     }
   );
 }
 
 /**
- * Converte um pedido SAP para o formato do WMS
+ * Dispara sincronização de pedidos do SAP para o WMS.
+ * O backend importa pedidos abertos do SAP e os cria no WMS Core.
  */
-export function sapOrderToUiOrder(sapOrder: SapOrder): UiOrder {
-  const items: OrderItem[] = (sapOrder.DocumentLines || []).map((line) => ({
-    sku: line.ItemCode,
-    quantity: line.Quantity
-  }));
+export async function syncSapOrders(): Promise<{
+  ok: boolean;
+  message: string;
+  imported: number;
+  timestamp: string;
+}> {
+  if (!api) {
+    throw new Error("API não configurada");
+  }
 
-  // Status padrão: se já tem U_WMS_STATUS, usa; senão, inicia como A_SEPARAR
-  const status = sapOrder.U_WMS_STATUS || "A_SEPARAR";
-
-  return {
-    orderId: sapOrder.U_WMS_ORDERID || `SAP-${sapOrder.DocEntry}`,
-    externalOrderId: String(sapOrder.DocNum),
-    sapDocEntry: sapOrder.DocEntry,
-    sapDocNum: sapOrder.DocNum,
-    customerId: sapOrder.CardCode,
-    customerName: sapOrder.CardName,
-    shipToAddress: null,
-    status: status as any,
-    carrier: null,
-    priority: null,
-    slaDueAt: sapOrder.DocDueDate || null,
-    items,
-    createdAt: sapOrder.CreateDate || new Date().toISOString(),
-    updatedAt: sapOrder.UpdateDate || new Date().toISOString(),
-    metadata: {
-      sapDocTotal: sapOrder.DocTotal,
-      sapDocCurrency: sapOrder.DocCurrency,
-      sapComments: sapOrder.Comments,
-      sapDocStatus: sapOrder.DocumentStatus
-    }
-  };
+  return api.request<{
+    ok: boolean;
+    message: string;
+    imported: number;
+    timestamp: string;
+  }>("/api/sap/sync", {
+    method: "POST"
+  });
 }
 
 /**
- * Importa pedidos do SAP para o WMS
- * (Busca do SAP e converte para o formato WMS)
+ * Verifica se a API SAP está configurada.
  */
-export async function importSapOrders(filter: SapOrdersFilter = {}): Promise<UiOrder[]> {
-  const response = await getSapOrders(filter);
-  return response.orders.map(sapOrderToUiOrder);
+export function isSapApiConfigured(): boolean {
+  return Boolean(api && BASE_URL);
 }
