@@ -1,0 +1,124 @@
+{
+  "odata.metadata": "https://sap-server/Orders/$metadata#Orders",
+  "value": [
+    {
+      "DocEntry": 60,
+      "DocNum": 5,
+      "CardCode": "C00369",
+      "CardName": "EUTIDES JACKSON SARMENTO",
+      "DocDate": "2026-02-03T00:00:00Z",
+      "DocDueDate": "2026-02-10T00:00:00Z",
+      "DocStatus": "bost_Open",
+      "DocumentStatus": "bost_Open",
+      "DocTotal": 2850.50,
+      "DocCurrency": "R$",
+      "Comments": "Pedido urgente - cliente VIP",
+      "CreateDate": "2026-02-03",
+      "CreateTime": "0830",
+      "UpdateDate": "2026-02-03",
+      "UpdateTime": "0830",
+      "U_WMS_STATUS": null,
+      "U_WMS_ORDERID": null,
+      "DocumentLines": [
+        {
+          "LineNum": 0,
+          "ItemCode": "TP0000016",
+          "ItemDescription": "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
+          "Quantity": 100,
+          "WarehouseCode": "02.02",
+          "Price": 0.65,
+          "Currency": "R$",
+          "UnitPrice": 0.65,
+          "LineTotal": 65.00
+        },
+        {
+          "LineNum": 1,
+          "ItemCode": "GAR0001250",
+          "ItemDescription": "GARRAFA PET 1250ML CRISTAL - UNIDADE",
+          "Quantity": 2000,
+          "WarehouseCode": "01.01",
+          "Price": 1.25,
+          "Currency": "R$",
+          "UnitPrice": 1.25,
+          "LineTotal": 2500.00
+        },
+        {
+          "LineNum": 2,
+          "ItemCode": "ROT0050001",
+          "ItemDescription": "ROTULO ADESIVO 50X100MM - ROLO C/1000",
+          "Quantity": 5,
+          "WarehouseCode": "01.01",
+          "Price": 57.10,
+          "Currency": "R$",
+          "UnitPrice": 57.10,
+          "LineTotal": 285.50
+        }
+      ]
+    },
+    {
+      "DocEntry": 61,
+      "DocNum": 6,
+      "CardCode": "C00512",
+      "CardName": "DISTRIBUIDORA NORDESTE LTDA",
+      "DocDate": "2026-02-03T00:00:00Z",
+      "DocDueDate": "2026-02-05T00:00:00Z",
+      "DocStatus": "bost_Open",
+      "DocumentStatus": "bost_Open",
+      "DocTotal": 15680.00,
+      "DocCurrency": "R$",
+      "Comments": "URGENTE - Prazo curto - Cliente atacadista",
+      "CreateDate": "2026-02-03",
+      "CreateTime": "0945",
+      "UpdateDate": "2026-02-03",
+      "UpdateTime": "1120",
+      "U_WMS_STATUS": "A_SEPARAR",
+      "U_WMS_ORDERID": null,
+      "DocumentLines": [
+        {
+          "LineNum": 0,
+          "ItemCode": "GAR0002000",
+          "ItemDescription": "GARRAFA PET 2000ML CRISTAL - UNIDADE",
+          "Quantity": 5000,
+          "WarehouseCode": "01.01",
+          "Price": 1.80,
+          "Currency": "R$",
+          "UnitPrice": 1.80,
+          "LineTotal": 9000.00
+        },
+        {
+          "LineNum": 1,
+          "ItemCode": "TP0000038",
+          "ItemDescription": "TAMPA PLASTICA AZUL 38MM - PCT C/100",
+          "Quantity": 200,
+          "WarehouseCode": "01.01",
+          "Price": 0.85,
+          "Currency": "R$",
+          "UnitPrice": 0.85,
+          "LineTotal": 170.00
+        },
+        {
+          "LineNum": 2,
+          "ItemCode": "CX0048030",
+          "ItemDescription": "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
+          "Quantity": 150,
+          "WarehouseCode": "01.01",
+          "Price": 42.40,
+          "Currency": "R$",
+          "UnitPrice": 42.40,
+          "LineTotal": 6360.00
+        },
+        {
+          "LineNum": 3,
+          "ItemCode": "FIT0050001",
+          "ItemDescription": "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
+          "Quantity": 50,
+          "WarehouseCode": "01.01",
+          "Price": 3.00,
+          "Currency": "R$",
+          "UnitPrice": 3.00,
+          "LineTotal": 150.00
+        }
+      ]
+    }
+  ]
+}

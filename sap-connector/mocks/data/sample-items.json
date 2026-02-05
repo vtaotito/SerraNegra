@@ -1,0 +1,101 @@
+{
+  "odata.metadata": "https://sap-server/Items/$metadata#Items",
+  "value": [
+    {
+      "ItemCode": "TP0000016",
+      "ItemName": "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
+      "InventoryUOM": "UN",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-15",
+      "UpdateTime": "1430"
+    },
+    {
+      "ItemCode": "GAR0001250",
+      "ItemName": "GARRAFA PET 1250ML CRISTAL - UNIDADE",
+      "InventoryUOM": "UN",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-20",
+      "UpdateTime": "0945"
+    },
+    {
+      "ItemCode": "ROT0050001",
+      "ItemName": "ROTULO ADESIVO 50X100MM - ROLO C/1000",
+      "InventoryUOM": "RL",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-18",
+      "UpdateTime": "1120"
+    },
+    {
+      "ItemCode": "CX0048030",
+      "ItemName": "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
+      "InventoryUOM": "PC",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-22",
+      "UpdateTime": "1605"
+    },
+    {
+      "ItemCode": "LAC0500001",
+      "ItemName": "LACRE SEGURANÇA PLASTICO VERMELHO - PCT C/500",
+      "InventoryUOM": "PC",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-25",
+      "UpdateTime": "0830"
+    },
+    {
+      "ItemCode": "GAR0002000",
+      "ItemName": "GARRAFA PET 2000ML CRISTAL - UNIDADE",
+      "InventoryUOM": "UN",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-28",
+      "UpdateTime": "1515"
+    },
+    {
+      "ItemCode": "TP0000038",
+      "ItemName": "TAMPA PLASTICA AZUL 38MM - PCT C/100",
+      "InventoryUOM": "UN",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-01-30",
+      "UpdateTime": "1045"
+    },
+    {
+      "ItemCode": "FIT0050001",
+      "ItemName": "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
+      "InventoryUOM": "RL",
+      "InventoryItem": "tYES",
+      "SalesItem": "tYES",
+      "PurchaseItem": "tYES",
+      "Valid": "tYES",
+      "Frozen": "tNO",
+      "UpdateDate": "2026-02-01",
+      "UpdateTime": "0920"
+    }
+  ]
+}

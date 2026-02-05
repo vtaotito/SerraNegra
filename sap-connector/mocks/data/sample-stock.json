@@ -1,0 +1,32 @@
+{
+  "odata.metadata": "https://sap-server/Items('TP0000016')/ItemWarehouseInfoCollection/$metadata",
+  "value": [
+    {
+      "WarehouseCode": "01.01",
+      "InStock": 5000,
+      "Committed": 500,
+      "Ordered": 1000,
+      "Available": 4500
+    },
+    {
+      "WarehouseCode": "02.02",
+      "InStock": 3000,
+      "Committed": 200,
+      "Ordered": 0,
+      "Available": 2800
+    },
+    {
+      "WarehouseCode": "03.01",
+      "InStock": 500,
+      "Committed": 100,
+      "Ordered": 0,
+      "Available": 400
+    }
+  ],
+  "_explanation": {
+    "InStock": "Quantidade física no depósito",
+    "Committed": "Quantidade comprometida (já alocada para pedidos)",
+    "Ordered": "Quantidade em pedidos de compra (a chegar)",
+    "Available": "Disponível = InStock - Committed"
+  }
+}
