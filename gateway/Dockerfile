@@ -14,8 +14,9 @@ RUN npm install
 COPY gateway/tsconfig.json ./
 COPY gateway/src ./src
 
-# Copiar sap-connector (dependência via import relativo)
+# Copiar libs locais (sap-connector e mappings)
 COPY sap-connector ../sap-connector
+COPY mappings ../mappings
 
 ENV NODE_ENV=production
 EXPOSE 3000
