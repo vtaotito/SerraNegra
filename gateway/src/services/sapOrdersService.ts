@@ -1,4 +1,4 @@
-import type { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
+import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import type { SapOrder, SapOrdersCollection } from "../../../sap-connector/src/types.js";
 
 export type WmsOrderStatus =
