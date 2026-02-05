@@ -492,10 +492,26 @@ button {
   color: var(--success);
 }
 
+.card-customer {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light);
+}
+
 .card-mid {
   margin-bottom: 8px;
   font-size: 13px;
   color: var(--text-secondary);
+}
+
+.card-value {
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: rgba(0, 121, 191, 0.08);
+  border-radius: 6px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--primary);
 }
 
 .card-bottom {
@@ -673,6 +689,10 @@ button {
 
 .table.table-4 .tr {
   grid-template-columns: 1fr 1fr 1fr 0.6fr;
+}
+
+.table.table-items .tr {
+  grid-template-columns: 1fr 2fr 0.5fr 0.8fr 0.8fr;
 }
 
 .list {

@@ -17,7 +17,11 @@ export type OrderEventType =
 
 export type OrderItem = {
   sku: string;
+  itemDescription?: string;
   quantity: number;
+  price?: number;
+  warehouse?: string;
+  lineTotal?: number;
 };
 
 export type Priority = "P1" | "P2" | "P3";
@@ -30,12 +34,17 @@ export type Order = {
   customerId: string;
   customerName?: string | null;
   shipToAddress?: string | null;
+  shipToCity?: string | null;
+  shipToState?: string | null;
+  shipToZipCode?: string | null;
   status: OrderStatus;
   carrier?: string | null;
   priority?: Priority | null;
   slaDueAt?: string | null; // ISO (DocDueDate no SAP)
   docTotal?: number | null; // Valor total do pedido (SAP)
-  currency?: string | null; // Moeda do pedido (SAP)
+  currency?: string | null; // Moeda do pedido (SAP - ex: BRL, USD)
+  docDate?: string | null; // Data do documento (SAP)
+  comments?: string | null; // Observações do pedido (SAP)
   items: OrderItem[];
   createdAt: string; // ISO
   updatedAt: string; // ISO

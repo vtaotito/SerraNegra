@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { UiOrder } from "../api/types";
-import { formatSlaBadge, priorityBadgeClass } from "./format";
+import { formatCurrency, formatSlaBadge, priorityBadgeClass } from "./format";
 
 export function OrderCard(props: {
   order: UiOrder;
@@ -43,11 +43,30 @@ export function OrderCard(props: {
         </div>
       </div>
 
+      {o.customerName && (
+        <div className="card-customer">
+          <div className="fw-semibold text-sm" style={{ marginBottom: 2 }}>
+            {o.customerName}
+          </div>
+        </div>
+      )}
+
       <div className="card-mid">
-        <div className="text-secondary text-sm">
+        <div className="text-secondary text-xs">
           {o.externalOrderId ?? "—"} · {o.customerId}
         </div>
+        {o.shipToCity && o.shipToState && (
+          <div className="text-muted text-xs" style={{ marginTop: 2 }}>
+            📍 {o.shipToCity}/{o.shipToState}
+          </div>
+        )}
       </div>
+
+      {o.docTotal && o.docTotal > 0 && (
+        <div className="card-value">
+          <span className="fw-bold">{formatCurrency(o.docTotal, o.currency)}</span>
+        </div>
+      )}
 
       <div className="card-bottom">
         <div className="text-muted text-xs">

@@ -10,7 +10,7 @@ import {
 } from "../api/orders";
 import type { OrderEventType, OrderStatus, UiOrder } from "../api/types";
 import { hasPermission, useAuth } from "../auth/auth";
-import { formatDateTime, formatStatusLabel } from "./format";
+import { formatCurrency, formatDateTime, formatStatusLabel } from "./format";
 
 const NEXT_EVENT_BY_STATUS: Partial<Record<OrderStatus, OrderEventType>> = {
   A_SEPARAR: "INICIAR_SEPARACAO",
@@ -168,17 +168,83 @@ export function OrderDrawer(props: {
           ) : order ? (
             <>
               <div className="panel" style={{ padding: 16 }}>
-                <div className="section-title">Resumo</div>
+                <div className="section-title">Dados do Pedido (SAP)</div>
                 <div className="grid-2">
                   <div className="kv">
-                    <div className="k">Status</div>
-                    <div className="v">{formatStatusLabel(order.status)}</div>
+                    <div className="k">DocNum (SAP)</div>
+                    <div className="v">{order.sapDocNum ?? "—"}</div>
                   </div>
                   <div className="kv">
-                    <div className="k">Cliente</div>
+                    <div className="k">DocEntry (SAP)</div>
+                    <div className="v">{order.sapDocEntry ?? "—"}</div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Data do Documento</div>
                     <div className="v">
-                      {order.customerName ?? order.customerId}
+                      {order.docDate ? formatDateTime(order.docDate) : "—"}
                     </div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">SLA (Vencimento)</div>
+                    <div className="v">
+                      {order.slaDueAt ? formatDateTime(order.slaDueAt) : "—"}
+                    </div>
+                  </div>
+                </div>
+
+                {order.docTotal && order.docTotal > 0 && (
+                  <div style={{ marginTop: 12, padding: 12, background: "rgba(0, 121, 191, 0.08)", borderRadius: "8px" }}>
+                    <div className="k" style={{ marginBottom: 4 }}>Valor Total</div>
+                    <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>
+                      {formatCurrency(order.docTotal, order.currency)}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="panel" style={{ padding: 16 }}>
+                <div className="section-title">Cliente</div>
+                <div className="grid-2">
+                  <div className="kv">
+                    <div className="k">Código</div>
+                    <div className="v">{order.customerId}</div>
+                  </div>
+                  <div className="kv">
+                    <div className="k">Nome</div>
+                    <div className="v">{order.customerName ?? "—"}</div>
+                  </div>
+                </div>
+
+                {order.shipToAddress && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="k" style={{ marginBottom: 6 }}>Endereço de Entrega</div>
+                    <div style={{ padding: 10, background: "var(--bg-hover)", borderRadius: "6px", fontSize: 13 }}>
+                      <div>{order.shipToAddress}</div>
+                      {order.shipToCity && order.shipToState && (
+                        <div style={{ marginTop: 4 }}>
+                          {order.shipToCity}/{order.shipToState} - {order.shipToZipCode ?? ""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {order.comments && (
+                  <div style={{ marginTop: 12 }}>
+                    <div className="k" style={{ marginBottom: 6 }}>Observações</div>
+                    <div style={{ padding: 10, background: "var(--warn-light)", border: "1px solid rgba(242, 214, 0, 0.3)", borderRadius: "6px", fontSize: 13, color: "var(--text-primary)" }}>
+                      {order.comments}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="panel" style={{ padding: 16 }}>
+                <div className="section-title">Logística</div>
+                <div className="grid-2">
+                  <div className="kv">
+                    <div className="k">Status WMS</div>
+                    <div className="v">{formatStatusLabel(order.status)}</div>
                   </div>
                   <div className="kv">
                     <div className="k">Transportadora</div>
@@ -189,29 +255,9 @@ export function OrderDrawer(props: {
                     <div className="v">{order.priority ?? "—"}</div>
                   </div>
                   <div className="kv">
-                    <div className="k">SLA</div>
-                    <div className="v">
-                      {order.slaDueAt ? formatDateTime(order.slaDueAt) : "—"}
-                    </div>
+                    <div className="k">Criado em</div>
+                    <div className="v">{formatDateTime(order.createdAt)}</div>
                   </div>
-                  {order.sapDocEntry && (
-                    <div className="kv">
-                      <div className="k">SAP DocEntry</div>
-                      <div className="v">{order.sapDocEntry}</div>
-                    </div>
-                  )}
-                  {order.sapDocNum && (
-                    <div className="kv">
-                      <div className="k">SAP DocNum</div>
-                      <div className="v">{order.sapDocNum}</div>
-                    </div>
-                  )}
-                  {order.shipToAddress && (
-                    <div className="kv" style={{ gridColumn: "1 / -1" }}>
-                      <div className="k">Endereço de Entrega</div>
-                      <div className="v">{order.shipToAddress}</div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -285,19 +331,46 @@ export function OrderDrawer(props: {
               </div>
 
               <div className="panel" style={{ padding: 16 }}>
-                <div className="section-title">Itens</div>
-                <div className="table">
+                <div className="section-title">Itens do Pedido</div>
+                <div className="table table-items">
                   <div className="tr th">
                     <div>SKU</div>
+                    <div>Descrição</div>
                     <div style={{ textAlign: "right" }}>Qtd</div>
+                    {order.items.some(it => it.price) && (
+                      <>
+                        <div style={{ textAlign: "right" }}>Preço Unit.</div>
+                        <div style={{ textAlign: "right" }}>Total</div>
+                      </>
+                    )}
                   </div>
                   {order.items.map((it, idx) => (
                     <div key={`${it.sku}-${idx}`} className="tr">
-                      <div>{it.sku}</div>
-                      <div style={{ textAlign: "right" }}>{it.quantity}</div>
+                      <div className="fw-semibold">{it.sku}</div>
+                      <div className="text-secondary text-sm">{it.itemDescription ?? "—"}</div>
+                      <div style={{ textAlign: "right" }} className="fw-semibold">{it.quantity}</div>
+                      {it.price && (
+                        <>
+                          <div style={{ textAlign: "right" }} className="text-muted">
+                            {formatCurrency(it.price, order.currency)}
+                          </div>
+                          <div style={{ textAlign: "right" }} className="fw-bold">
+                            {formatCurrency(it.lineTotal || (it.price * it.quantity), order.currency)}
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
+
+                {order.docTotal && order.docTotal > 0 && (
+                  <div style={{ marginTop: 12, padding: 10, background: "var(--bg-active)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="fw-bold">Total do Pedido:</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: "var(--primary)" }}>
+                      {formatCurrency(order.docTotal, order.currency)}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="panel" style={{ padding: 16 }}>

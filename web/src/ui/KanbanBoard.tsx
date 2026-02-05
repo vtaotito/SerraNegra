@@ -107,6 +107,44 @@ export function KanbanBoard(props: {
   );
 }
 
+function getStatusIcon(status: OrderStatus) {
+  switch (status) {
+    case "A_SEPARAR":
+      return "📦";
+    case "EM_SEPARACAO":
+      return "🔄";
+    case "CONFERIDO":
+      return "✅";
+    case "AGUARDANDO_COTACAO":
+      return "💰";
+    case "AGUARDANDO_COLETA":
+      return "🚚";
+    case "DESPACHADO":
+      return "✈️";
+    default:
+      return "";
+  }
+}
+
+function getStatusColor(status: OrderStatus) {
+  switch (status) {
+    case "A_SEPARAR":
+      return "#8993a4"; // cinza
+    case "EM_SEPARACAO":
+      return "#0079bf"; // azul
+    case "CONFERIDO":
+      return "#61bd4f"; // verde
+    case "AGUARDANDO_COTACAO":
+      return "#f2d600"; // amarelo
+    case "AGUARDANDO_COLETA":
+      return "#ff9f1a"; // laranja
+    case "DESPACHADO":
+      return "#61bd4f"; // verde
+    default:
+      return "#8993a4";
+  }
+}
+
 function KanbanColumn(props: {
   status: OrderStatus;
   items: UiOrder[];
@@ -114,17 +152,25 @@ function KanbanColumn(props: {
   isOver?: boolean;
 }) {
   const itemIds = props.items.map((o) => o.orderId);
+  const icon = getStatusIcon(props.status);
+  const color = getStatusColor(props.status);
 
   return (
     <SortableContext id={props.status} items={itemIds} strategy={verticalListSortingStrategy}>
       <div
         className={`kanban-col ${props.isOver ? "drag-over" : ""}`}
         data-status={props.status}
+        style={{ borderTop: `3px solid ${color}` }}
       >
         <div className="kanban-col-head">
           <div className="kanban-col-title">
-            <span>{formatStatusLabel(props.status)}</span>
-            <span className="kanban-col-count">{props.items.length}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 16 }}>{icon}</span>
+              <span>{formatStatusLabel(props.status)}</span>
+            </span>
+            <span className="kanban-col-count" style={{ background: color, color: "#fff" }}>
+              {props.items.length}
+            </span>
           </div>
         </div>
         <div className={`kanban-col-body ${props.isOver ? "drop-target" : ""}`}>
