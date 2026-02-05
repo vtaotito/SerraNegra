@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
@@ -19,6 +20,29 @@ const app = Fastify({
     level: LOG_LEVEL,
     base: { service: SERVICE_NAME }
   }
+});
+
+// CORS - Gateway também precisa de CORS se o frontend fizer requisições diretas
+await app.register(cors, {
+  origin: true,
+  credentials: true,
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-User-Id",
+    "X-User-Name",
+    "X-User-Role",
+    "X-Correlation-Id",
+    "X-Request-Id",
+    "X-Internal-Secret",
+    "Idempotency-Key",
+    "Accept"
+  ],
+  exposedHeaders: [
+    "X-Correlation-Id",
+    "X-Request-Id"
+  ],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 });
 
 // Conexões SSE + WS em memória (MVP). Em produção: Redis pubsub/stream.

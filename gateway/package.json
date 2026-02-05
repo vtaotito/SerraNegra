@@ -11,6 +11,7 @@
     "test:sap": "tsx scripts/test-sap-connection.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.1.0",
     "@sinclair/typebox": "^0.34.38",
     "dotenv": "^16.4.7",
@@ -27,4 +28,3 @@
     "typescript": "^5.8.2"
   }
 }
-
