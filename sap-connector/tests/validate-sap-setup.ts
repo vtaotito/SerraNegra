@@ -103,7 +103,7 @@ async function validateSapSetup() {
   try {
     const start = Date.now();
     const response = await client.get<SapOrdersCollection>(
-      "/Orders?$select=DocEntry,DocNum,CardCode,DocStatus&$top=5",
+      "/Orders?$select=DocEntry,DocNum,CardCode,DocumentStatus&$top=5",
       { correlationId: "validate-orders" }
     );
     const duration = Date.now() - start;
@@ -129,9 +129,9 @@ async function validateSapSetup() {
   console.log("3️⃣  Verificação de UDFs");
   console.log("   " + "-".repeat(50));
   try {
-    // Tentar buscar um pedido com UDFs
+    // Tentar buscar um pedido com UDFs (usar query corrigida)
     const listResponse = await client.get<SapOrdersCollection>(
-      "/Orders?$select=DocEntry&$top=1",
+      "/Orders?$select=DocEntry,DocNum&$top=1",
       { correlationId: "validate-udf-list" }
     );
 
@@ -140,53 +140,66 @@ async function validateSapSetup() {
     } else {
       const docEntry = listResponse.data.value[0]!.DocEntry;
       
-      const udfResponse = await client.get<SapOrder>(
-        `/Orders(${docEntry})?$select=DocEntry,DocNum,${REQUIRED_UDFS.join(",")}`,
-        { correlationId: "validate-udfs" }
-      );
+      // Tentar buscar pedido com UDFs - pode falhar se UDFs não existirem
+      try {
+        const udfResponse = await client.get<SapOrder>(
+          `/Orders(${docEntry})?$select=DocEntry,DocNum,${REQUIRED_UDFS.join(",")}`,
+          { correlationId: "validate-udfs" }
+        );
 
-      if (udfResponse.data) {
-        console.log("   📋 Status dos UDFs:");
-        
-        let foundUdfs = 0;
-        for (const udf of REQUIRED_UDFS) {
-          const value = (udfResponse.data as any)[udf];
-          const exists = value !== undefined && value !== null;
+        if (udfResponse.data) {
+          console.log("   📋 Status dos UDFs:");
           
-          if (exists) {
-            console.log(`      ✅ ${udf}: ${value || "(vazio)"}`);
-            foundUdfs++;
+          let foundUdfs = 0;
+          for (const udf of REQUIRED_UDFS) {
+            const value = (udfResponse.data as any)[udf];
+            const exists = value !== undefined && value !== null;
+            
+            if (exists) {
+              console.log(`      ✅ ${udf}: ${value || "(vazio)"}`);
+              foundUdfs++;
+            } else {
+              console.log(`      ⚠️  ${udf}: (não encontrado)`);
+            }
+          }
+
+          if (foundUdfs === 0) {
+            console.log("\n   ⚠️  ATENÇÃO: Nenhum UDF encontrado!");
+            console.log("   📝 Para criar UDFs no SAP B1:");
+            console.log("      1. Abra o SAP B1 Client");
+            console.log("      2. Tools → Customization Tools → User-Defined Fields");
+            console.log("      3. Selecione tabela: Marketing Documents - Rows (RDR1/ORDR)");
+            console.log("      4. Crie os seguintes campos:");
+            REQUIRED_UDFS.forEach(udf => {
+              console.log(`         - ${udf} (tipo: Text, tamanho: 100)`);
+            });
+            console.log("");
+          } else if (foundUdfs < REQUIRED_UDFS.length) {
+            console.log(`\n   ⚠️  Apenas ${foundUdfs}/${REQUIRED_UDFS.length} UDFs encontrados\n`);
           } else {
-            console.log(`      ⚠️  ${udf}: (não encontrado)`);
+            console.log(`\n   ✅ Todos os ${REQUIRED_UDFS.length} UDFs estão configurados!\n`);
           }
         }
-
-        if (foundUdfs === 0) {
-          console.log("\n   ⚠️  ATENÇÃO: Nenhum UDF encontrado!");
-          console.log("   📝 Para criar UDFs no SAP B1:");
-          console.log("      1. Abra o SAP B1 Client");
+      } catch (innerError: any) {
+        if (innerError.message && (innerError.message.includes("invalid") || innerError.message.includes("400"))) {
+          console.log("\n   ⚠️  UDFs não estão criados no SAP!");
+          console.log("   📝 Para criar UDFs:");
+          console.log("      1. Abra SAP B1 Client");
           console.log("      2. Tools → Customization Tools → User-Defined Fields");
-          console.log("      3. Selecione tabela: Marketing Documents - Rows (RDR1/ORDR)");
+          console.log("      3. Tabela: Marketing Documents - Rows (ORDR)");
           console.log("      4. Crie os seguintes campos:");
           REQUIRED_UDFS.forEach(udf => {
-            console.log(`         - ${udf} (tipo: Text, tamanho: 100)`);
+            console.log(`         - ${udf} (Alphanumeric, 100 caracteres)`);
           });
           console.log("");
-        } else if (foundUdfs < REQUIRED_UDFS.length) {
-          console.log(`\n   ⚠️  Apenas ${foundUdfs}/${REQUIRED_UDFS.length} UDFs encontrados\n`);
         } else {
-          console.log(`\n   ✅ Todos os ${REQUIRED_UDFS.length} UDFs estão configurados!\n`);
+          throw innerError;
         }
       }
     }
   } catch (error: any) {
-    if (error.message && error.message.includes("invalid")) {
-      console.log("   ⚠️  UDFs não estão criados no SAP");
-      console.log("   📝 Consulte o manual de criação de UDFs acima\n");
-    } else {
-      console.error(`   ❌ Erro ao verificar UDFs: ${error}\n`);
-      allPassed = false;
-    }
+    console.error(`   ❌ Erro ao verificar UDFs: ${error}\n`);
+    allPassed = false;
   }
 
   // 4. Teste de Performance
@@ -195,7 +208,7 @@ async function validateSapSetup() {
   try {
     const tests = [
       { name: "Query simples", path: "/Orders?$select=DocEntry,DocNum&$top=1" },
-      { name: "Query com filtro", path: "/Orders?$select=DocEntry&$filter=DocStatus eq 'O'&$top=5" },
+      { name: "Query com filtro", path: "/Orders?$select=DocEntry&$filter=DocumentStatus eq 'bost_Open'&$top=5" },
       { name: "Query com expand", path: "/Orders?$select=DocEntry,DocNum&$expand=DocumentLines&$top=1" }
     ];
 
