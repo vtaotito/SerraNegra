@@ -84,6 +84,60 @@ app.addHook("onRequest", async (req, reply) => {
 
 app.get("/health", async () => ({ ok: true }));
 
+/**
+ * Dashboard (MVP)
+ * O frontend chama `GET /api/v1/dashboard/metrics` (via Nginx `/api/` → gateway `/`),
+ * então o gateway recebe o path como `/v1/dashboard/metrics`.
+ *
+ * Como o Core (FastAPI) do MVP expõe pedidos em `/orders`, calculamos métricas básicas
+ * a partir da listagem de pedidos. (Tasks ainda não existem no Core → retornamos 0.)
+ */
+app.get("/v1/dashboard/metrics", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  try {
+    const result = await forwardToCoreWithQuery(req, "GET", "/orders", { limit: 200 });
+    if (result.statusCode !== 200) {
+      reply.code(result.statusCode).send(result.body);
+      return;
+    }
+
+    const items = Array.isArray((result.body as any)?.items) ? (result.body as any).items : [];
+    const ordersByStatus: Record<string, number> = {
+      A_SEPARAR: 0,
+      EM_SEPARACAO: 0,
+      CONFERIDO: 0,
+      AGUARDANDO_COTACAO: 0,
+      AGUARDANDO_COLETA: 0,
+      DESPACHADO: 0
+    };
+
+    for (const o of items) {
+      const status = (o as any)?.status;
+      if (typeof status === "string" && status in ordersByStatus) {
+        ordersByStatus[status] = (ordersByStatus[status] ?? 0) + 1;
+      }
+    }
+
+    reply.code(200).send({
+      totalOrders: items.length,
+      ordersByStatus,
+      openTasks: 0,
+      tasksByType: { PICKING: 0, PACKING: 0, SHIPPING: 0 },
+      lastUpdatedAt: new Date().toISOString(),
+      correlationId
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido";
+    req.log.error({ error, correlationId }, "Erro ao calcular dashboard metrics");
+    reply.code(500).send({
+      error: "Erro ao calcular métricas do dashboard",
+      message,
+      correlationId,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Registrar rotas SAP
 await registerSapRoutes(app);
 
