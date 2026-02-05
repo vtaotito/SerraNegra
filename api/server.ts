@@ -5,48 +5,26 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { v4 as uuidv4 } from "uuid";
-import { buildRoutes } from "./routes.js";
-import type { RouteDefinition } from "./routes.js";
+import { buildRestRoutes } from "./routesRest.js";
+import type { RestRouteDefinition } from "./routesRest.js";
 import type { HttpRequest, RequestContext } from "./http.js";
 import { createLogger } from "../observability/logger.js";
-
-// Mock services para desenvolvimento (substituir por implementações reais)
-class MockScanService {
-  async recordScan() {
-    return { ok: true };
-  }
-}
-
-class MockDashboardService {
-  async listOrders() {
-    return [];
-  }
-  async listTasks() {
-    return [];
-  }
-  async getMetrics() {
-    return { orders: 0, tasks: 0 };
-  }
-}
-
-class MockIntegrationService {
-  async registerWebhook(input: any) {
-    return { id: uuidv4(), ...input };
-  }
-  async listWebhooks() {
-    return [];
-  }
-  async deleteWebhook(id: string) {
-    // noop
-  }
-  async publishEvent(input: any) {
-    return { queued: true };
-  }
-}
+import {
+  createStubCatalogService,
+  createStubCustomersService,
+  createStubDashboardService,
+  createStubIntegrationService,
+  createStubInventoryService,
+  createStubOrdersService,
+  createStubScanService,
+  createStubShipmentsService
+} from "./services/stubServices.js";
 
 const SERVICE_NAME = process.env.SERVICE_NAME ?? "wms-core-api";
 const API_PORT = Number(process.env.API_PORT ?? "8000");
 const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
+const JWT_SECRET =
+  process.env.JWT_SECRET ?? "dev-secret-dev-secret-dev-secret-dev-secret";
 
 const logger = createLogger({ name: SERVICE_NAME, level: LOG_LEVEL as any });
 
@@ -78,58 +56,55 @@ app.addHook("onRequest", async (req, reply) => {
 app.get("/health", async () => ({ ok: true, service: SERVICE_NAME }));
 
 // Build routes
-const routes = buildRoutes({
-  scansService: new MockScanService() as any,
-  dashboardService: new MockDashboardService() as any,
-  integrationsService: new MockIntegrationService() as any
+const routes = buildRestRoutes({
+  catalogService: createStubCatalogService(),
+  inventoryService: createStubInventoryService(),
+  ordersService: createStubOrdersService(),
+  shipmentsService: createStubShipmentsService(),
+  customersService: createStubCustomersService(),
+  scansService: createStubScanService(),
+  dashboardService: createStubDashboardService(),
+  integrationsService: createStubIntegrationService(),
+  jwtConfig: {
+    secret: JWT_SECRET,
+    expiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+    issuer: process.env.JWT_ISSUER ?? "wms-api",
+    audience: process.env.JWT_AUDIENCE ?? "wms-clients"
+  }
 });
 
 // Register routes
 for (const route of routes) {
   const method = route.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete";
   
-  // Convert path params from `:param` to `{param}` (Fastify style)
-  const fastifyPath = route.path.replace(/:(\w+)/g, ":$1");
+  // Fastify usa `:param`. Nossos contratos usam `{param}`.
+  const fastifyPath = route.path.replace(/\{(\w+)\}/g, ":$1");
 
   app[method](fastifyPath, async (request, reply) => {
     const correlationId = (request as any).correlationId as string;
 
     // Build HttpRequest
+    const headers = normalizeHeaders(request.headers as Record<string, unknown>, correlationId);
+    const requestId = uuidv4();
+    reply.header("X-Request-Id", requestId);
+
     const httpReq: HttpRequest = {
       method: route.method,
       path: route.path,
-      headers: request.headers as Record<string, string>,
+      headers,
       body: request.body,
       params: request.params as Record<string, string>,
       query: request.query as Record<string, string>,
-      requestId: uuidv4(),
+      requestId,
       receivedAt: new Date().toISOString(),
       ip: request.ip,
       userAgent: request.headers["user-agent"]
     };
 
-    // Build RequestContext (mock auth for MVP)
+    // Context começa vazio: middlewares (auth/audit/etc) populam.
     const ctx: RequestContext = {
-      version: "v1",
-      auth: {
-        userId: "system",
-        role: "admin",
-        displayName: "System"
-      },
-      audit: {
-        correlationId,
-        requestId: httpReq.requestId,
-        actorId: "system",
-        actorRole: "admin",
-        ip: httpReq.ip,
-        userAgent: httpReq.userAgent
-      },
-      idempotencyKey: request.headers["idempotency-key"] as string | undefined,
-      observability: {
-        requestId: httpReq.requestId,
-        correlationId,
-        logger
-      }
+      idempotencyKey: headers["idempotency-key"] ?? undefined,
+      observability: { requestId, correlationId, logger }
     };
 
     try {
@@ -172,3 +147,21 @@ const shutdown = async () => {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
+function normalizeHeaders(input: Record<string, unknown>, correlationId: string): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (Array.isArray(v)) {
+      out[k] = typeof v[0] === "string" ? v[0] : undefined;
+    } else if (typeof v === "string") {
+      out[k] = v;
+    } else if (typeof v === "number") {
+      out[k] = String(v);
+    } else {
+      out[k] = undefined;
+    }
+  }
+  // garante que o correlationId gerado no hook também seja visível pros middlewares
+  out["x-correlation-id"] = out["x-correlation-id"] ?? correlationId;
+  return out;
+}

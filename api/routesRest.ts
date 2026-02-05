@@ -15,11 +15,15 @@ import { createInMemoryIdempotencyStore, createIdempotencyMiddleware, Idempotenc
 import { createVersioningMiddleware } from "./middleware/versioning.js";
 import { composeMiddlewares } from "./http.js";
 import { JwtConfig } from "./auth/jwt.js";
+import { createApiObservabilityMiddleware } from "../observability/apiMiddleware.js";
+import { createLogger } from "../observability/logger.js";
+
+const apiLogger = createLogger({ name: process.env.OTEL_SERVICE_NAME ?? "wms-api" });
 
 export type RestRouteDefinition = {
   method: HttpMethod;
   path: string;
-  handler: ApiHandler;
+  handler: ApiHandler<any, any, any>;
   requiredRoles: ApiRole[];
   auditAction: string;
   idempotent?: boolean;
@@ -49,6 +53,7 @@ const wrapRoute = (
     ? createIdempotencyMiddleware(route.handler, idempotencyStore)
     : route.handler;
   const middlewares = [
+    createApiObservabilityMiddleware({ logger: apiLogger }),
     withErrorHandling(),
     createVersioningMiddleware(),
     createJwtAuthenticationMiddleware(jwtConfig),

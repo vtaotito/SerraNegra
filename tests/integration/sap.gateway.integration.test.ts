@@ -16,7 +16,9 @@ import assert from "node:assert/strict";
  */
 
 const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:3000";
-const SKIP_INTEGRATION = process.env.SKIP_SAP_INTEGRATION === "true";
+// Por padrão, NÃO roda em `npm test` (evita falhas quando gateway não está ativo).
+// Para habilitar, rode com: RUN_SAP_INTEGRATION=true npm test
+const SKIP_INTEGRATION = process.env.RUN_SAP_INTEGRATION !== "true";
 
 test("GET /api/sap/health - deve retornar estrutura esperada", { skip: SKIP_INTEGRATION }, async () => {
   const res = await fetch(`${GATEWAY_URL}/api/sap/health`);

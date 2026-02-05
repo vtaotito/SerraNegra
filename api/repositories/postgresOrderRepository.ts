@@ -124,8 +124,9 @@ export class PostgresOrderRepository implements OrderRepository {
       return null;
     }
 
-    const row = orderResult.rows[0];
+    const row = orderResult.rows[0] as Record<string, any>;
     const itemsResult = await this.pool.query(itemsQuery, [orderId]);
+    const itemRows = itemsResult.rows as Array<{ sku: string; quantity: number }>;
 
     const order: Order = {
       id: row.id,
@@ -141,10 +142,7 @@ export class PostgresOrderRepository implements OrderRepository {
       slaDueAt: row.sla_due_at,
       docTotal: row.doc_total,
       currency: row.currency,
-      items: itemsResult.rows.map((item) => ({
-        sku: item.sku,
-        quantity: item.quantity
-      })),
+      items: itemRows.map((item) => ({ sku: item.sku, quantity: item.quantity })),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       version: row.version,
@@ -221,10 +219,11 @@ export class PostgresOrderRepository implements OrderRepository {
     params.push(limit, offset);
 
     const result = await this.pool.query(query, params);
+    const idRows = result.rows as Array<{ id: string }>;
     
     // Carrega cada pedido completo (com items)
     const orders = await Promise.all(
-      result.rows.map((row) => this.findById(row.id))
+      idRows.map((row) => this.findById(row.id))
     );
 
     return orders.filter((o): o is Order => o !== null);
@@ -280,16 +279,17 @@ export class PostgresOrderRepository implements OrderRepository {
 
     const result = await this.pool.query(query, [orderId]);
 
-    return result.rows.map((row) => ({
-      orderId: row.order_id,
-      from: row.from_status,
-      to: row.to_status,
-      eventType: row.event_type,
-      actorId: row.actor_id,
-      actorRole: row.actor_role,
-      occurredAt: row.occurred_at,
-      idempotencyKey: row.idempotency_key,
-      reason: row.reason,
+    const rows = result.rows as Array<Record<string, any>>;
+    return rows.map((row) => ({
+      orderId: String(row.order_id),
+      from: row.from_status as OrderEventResult["transition"]["from"],
+      to: row.to_status as OrderEventResult["transition"]["to"],
+      eventType: row.event_type as OrderEventResult["transition"]["eventType"],
+      actorId: String(row.actor_id),
+      actorRole: row.actor_role as OrderEventResult["transition"]["actorRole"],
+      occurredAt: String(row.occurred_at),
+      idempotencyKey: row.idempotency_key ?? undefined,
+      reason: row.reason ?? undefined,
       metadata: row.metadata ? JSON.parse(row.metadata) : undefined
     }));
   }

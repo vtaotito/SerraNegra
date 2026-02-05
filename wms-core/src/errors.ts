@@ -7,6 +7,7 @@ export type WmsErrorCode =
   | "WMS-AUTH-001"
   | "WMS-IDEM-001"
   | "WMS-CONC-001"
+  | "WMS-DB-001"
   | "WMS-DC-001"
   | "WMS-DC-002";
 
