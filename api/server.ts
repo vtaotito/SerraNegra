@@ -35,10 +35,28 @@ const app = Fastify({
   }
 });
 
-// CORS
+// CORS - Configuração completa para aceitar requisições do frontend
 await app.register(cors, {
-  origin: true,
-  credentials: true
+  origin: true, // Em produção, especificar origens permitidas
+  credentials: true,
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-User-Id",
+    "X-User-Name",
+    "X-User-Role",
+    "X-Correlation-Id",
+    "X-Request-Id",
+    "Idempotency-Key",
+    "Accept",
+    "Accept-Version"
+  ],
+  exposedHeaders: [
+    "X-Correlation-Id",
+    "X-Request-Id",
+    "X-Api-Version"
+  ],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 });
 
 // Hook para correlationId
