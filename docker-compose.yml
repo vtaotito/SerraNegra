@@ -106,7 +106,7 @@ services:
       context: .
       dockerfile: docker/web/Dockerfile
       args:
-        VITE_API_BASE_URL: "http://gateway:3000"
+        VITE_API_BASE_URL: "/api"
         VITE_USE_MOCK: "false"
     depends_on:
       gateway:
