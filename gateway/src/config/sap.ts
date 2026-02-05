@@ -1,5 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import type { Logger } from "../../../sap-connector/src/types.js";
+import { instrumentSapClient } from "../../../observability/sapInstrumentation.js";
 
 type SapConfig = {
   baseUrl: string;
@@ -42,6 +43,7 @@ export function loadSapConfig(): SapConfig {
 
 /**
  * Cria instância do SapServiceLayerClient com a configuração do ambiente.
+ * IMPORTANTE: O cliente é instrumentado com observabilidade e mascaramento de segredos.
  */
 export function createSapClient(logger: Logger): SapServiceLayerClient {
   const config = loadSapConfig();
@@ -51,7 +53,24 @@ export function createSapClient(logger: Logger): SapServiceLayerClient {
     ? config.baseUrl
     : `${config.baseUrl.replace(/\/$/, "")}/b1s/v1`;
 
-  return new SapServiceLayerClient({
+  // Logger seguro (sem logar password em plaintext)
+  const safeLogger = {
+    debug: (msg: string, meta?: Record<string, unknown>) => {
+      logger.debug(msg, maskSecrets(meta));
+    },
+    info: (msg: string, meta?: Record<string, unknown>) => {
+      logger.info(msg, maskSecrets(meta));
+    },
+    warn: (msg: string, meta?: Record<string, unknown>) => {
+      logger.warn(msg, maskSecrets(meta));
+    },
+    error: (msg: string, meta?: Record<string, unknown>) => {
+      logger.error(msg, maskSecrets(meta));
+    }
+  };
+
+  // Criar cliente base
+  const rawClient = new SapServiceLayerClient({
     baseUrl,
     credentials: {
       companyDb: config.companyDb,
@@ -66,7 +85,56 @@ export function createSapClient(logger: Logger): SapServiceLayerClient {
       maxConcurrent: config.maxConcurrent,
       maxRps: config.maxRps
     },
-    logger,
+    logger: safeLogger,
     correlationHeaderName: "X-Correlation-Id"
   });
+
+  // Instrumentar com observabilidade (traces, métricas)
+  return instrumentSapClient(rawClient, {
+    logger: safeLogger as any,
+    componentName: "sap-gateway"
+  });
+}
+
+/**
+ * Mascara campos sensíveis nos logs.
+ */
+function maskSecrets(meta?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!meta) return meta;
+
+  const masked = { ...meta };
+  const sensitiveKeys = [
+    "password",
+    "Password",
+    "PASSWORD",
+    "token",
+    "Token",
+    "apiKey",
+    "api_key",
+    "secret",
+    "Secret",
+    "authorization",
+    "Authorization",
+    "SessionId",
+    "sessionId",
+    "CompanyPassword"
+  ];
+
+  for (const key of sensitiveKeys) {
+    if (key in masked) {
+      masked[key] = "[REDACTED]";
+    }
+  }
+
+  // Mascarar também em objetos aninhados (credentials, etc.)
+  if (masked.credentials && typeof masked.credentials === "object") {
+    const creds = masked.credentials as Record<string, unknown>;
+    masked.credentials = {
+      ...creds,
+      password: "[REDACTED]",
+      Password: "[REDACTED]"
+    };
+  }
+
+  return masked;
 }
