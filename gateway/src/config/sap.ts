@@ -53,18 +53,18 @@ export function createSapClient(logger: Logger): SapServiceLayerClient {
     : `${config.baseUrl.replace(/\/$/, "")}/b1s/v1`;
 
   // Logger seguro (sem logar password em plaintext)
-  const safeLogger = {
+  const safeLogger: Logger = {
     debug: (msg: string, meta?: Record<string, unknown>) => {
-      logger.debug(msg, maskSecrets(meta));
+      if (logger.debug) logger.debug(msg, maskSecrets(meta));
     },
     info: (msg: string, meta?: Record<string, unknown>) => {
-      logger.info(msg, maskSecrets(meta));
+      if (logger.info) logger.info(msg, maskSecrets(meta));
     },
     warn: (msg: string, meta?: Record<string, unknown>) => {
-      logger.warn(msg, maskSecrets(meta));
+      if (logger.warn) logger.warn(msg, maskSecrets(meta));
     },
     error: (msg: string, meta?: Record<string, unknown>) => {
-      logger.error(msg, maskSecrets(meta));
+      if (logger.error) logger.error(msg, maskSecrets(meta));
     }
   };
 
