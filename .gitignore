@@ -6,3 +6,11 @@ web/dist/
 deploy/.env
 *.log
 .DS_Store
+
+# Arquivos compilados TypeScript (manter apenas .ts)
+sap-connector/src/**/*.js
+sap-connector/src/**/*.d.ts
+sap-connector/src/**/*.js.map
+mappings/src/**/*.js
+mappings/src/**/*.d.ts
+mappings/src/**/*.js.map
