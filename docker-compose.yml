@@ -104,16 +104,15 @@ services:
     container_name: wms-web
     build:
       context: .
-      dockerfile: docker/web/Dockerfile
+      dockerfile: web-next/Dockerfile
       args:
-        VITE_API_BASE_URL: ""
-        VITE_USE_MOCK: "false"
+        NEXT_PUBLIC_API_BASE_URL: ""
     depends_on:
       gateway:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost/healthz"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
       interval: 10s
       timeout: 3s
       retries: 5
