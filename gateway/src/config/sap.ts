@@ -1,6 +1,5 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import type { Logger } from "../../../sap-connector/src/types.js";
-import { instrumentSapClient } from "../../../observability/sapInstrumentation.js";
 
 type SapConfig = {
   baseUrl: string;
@@ -69,8 +68,8 @@ export function createSapClient(logger: Logger): SapServiceLayerClient {
     }
   };
 
-  // Criar cliente base
-  const rawClient = new SapServiceLayerClient({
+  // Criar cliente SAP
+  return new SapServiceLayerClient({
     baseUrl,
     credentials: {
       companyDb: config.companyDb,
@@ -87,12 +86,6 @@ export function createSapClient(logger: Logger): SapServiceLayerClient {
     },
     logger: safeLogger,
     correlationHeaderName: "X-Correlation-Id"
-  });
-
-  // Instrumentar com observabilidade (traces, métricas)
-  return instrumentSapClient(rawClient, {
-    logger: safeLogger as any,
-    componentName: "sap-gateway"
   });
 }
 
