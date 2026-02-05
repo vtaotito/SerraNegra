@@ -25,7 +25,7 @@ export type JwtConfig = {
 
 export const createJwtToken = (payload: Omit<JwtPayload, "iat" | "exp">, config: JwtConfig): string => {
   const options: jwt.SignOptions = {
-    expiresIn: config.expiresIn ?? "8h",
+    expiresIn: (config.expiresIn ?? "8h") as jwt.SignOptions["expiresIn"],
     issuer: config.issuer ?? "wms-api",
     audience: config.audience ?? "wms-clients"
   };

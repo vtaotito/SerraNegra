@@ -1,7 +1,7 @@
 import { createDashboardController, DashboardService } from "./controllers/dashboardController.js";
 import { createIntegrationsController, IntegrationService } from "./controllers/integrationsController.js";
 import { createScansController, ScanService } from "./controllers/scansController.js";
-import { createOrdersController } from "./controllers/ordersController.js";
+import { createOrderCoreController } from "./controllers/orderCoreController.js";
 import { getOrderCoreService } from "./services/orderCoreService.js";
 import { ApiHandler, ApiRole, HttpMethod } from "./http.js";
 import { createAuthenticationMiddleware } from "./middleware/authentication.js";
@@ -19,7 +19,7 @@ const apiLogger = createLogger({ name: process.env.OTEL_SERVICE_NAME ?? "wms-api
 export type RouteDefinition = {
   method: HttpMethod;
   path: string;
-  handler: ApiHandler;
+  handler: ApiHandler<any, any, any>;
   requiredRoles: ApiRole[];
   auditAction: string;
   idempotent?: boolean;
@@ -54,7 +54,7 @@ export const buildRoutes = (deps: ApiDependencies): RouteDefinition[] => {
   const scansController = createScansController(deps.scansService);
   const dashboardController = createDashboardController(deps.dashboardService);
   const integrationsController = createIntegrationsController(deps.integrationsService);
-  const ordersController = createOrdersController(deps.orderCoreService ?? getOrderCoreService());
+  const ordersController = createOrderCoreController((deps.orderCoreService ?? getOrderCoreService()) as any);
 
   const auditSink = deps.auditSink ?? createConsoleAuditSink();
   const idempotencyStore = deps.idempotencyStore ?? createInMemoryIdempotencyStore();

@@ -12,12 +12,12 @@
     "sourceMap": true
   },
   "include": [
-    "sap-connector/**/*.ts",
-    "mappings/**/*.ts",
-    "wms-core/**/*.ts",
+    "sap-connector/src/**/*.ts",
+    "mappings/src/**/*.ts",
+    "wms-core/src/**/*.ts",
     "api/**/*.ts",
     "observability/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "web"]
+  "exclude": ["node_modules", "dist", "web", "gateway", "worker"]
 }
 

@@ -5,7 +5,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { v4 as uuidv4 } from "uuid";
-import { buildRoutes } from "./routes.js";
+import { buildRestRoutes } from "./routesRest.js";
 import type { HttpRequest, RequestContext } from "./http.js";
 import { createLogger } from "../observability/logger.js";
 import {
@@ -15,13 +15,24 @@ import {
   closeDatabasePool
 } from "./config/database.js";
 import { createServices } from "./config/services.js";
-import { createOrdersController } from "./controllers/ordersController.js";
+import {
+  createStubCatalogService,
+  createStubCustomersService,
+  createStubDashboardService,
+  createStubIntegrationService,
+  createStubInventoryService,
+  createStubOrdersService,
+  createStubScanService,
+  createStubShipmentsService
+} from "./services/stubServices.js";
 
 // Configurações
 const SERVICE_NAME = process.env.SERVICE_NAME ?? "wms-core-api";
 const API_PORT = Number(process.env.API_PORT ?? "8000");
 const LOG_LEVEL = process.env.LOG_LEVEL ?? "info";
 const USE_POSTGRES = process.env.USE_POSTGRES === "true";
+const JWT_SECRET =
+  process.env.JWT_SECRET ?? "dev-secret-dev-secret-dev-secret-dev-secret";
 
 const logger = createLogger({ name: SERVICE_NAME, level: LOG_LEVEL as any });
 
@@ -109,7 +120,7 @@ if (USE_POSTGRES) {
     
     logger.info("✓ PostgreSQL configurado e conectado");
   } catch (err) {
-    logger.error({ err }, "Erro ao configurar PostgreSQL");
+    logger.error("Erro ao configurar PostgreSQL", { err });
     process.exit(1);
   }
 } else {
@@ -148,59 +159,54 @@ app.get("/health", async () => {
 // ROTAS
 // ============================================================================
 
-const routes = buildRoutes({
-  orderCoreService: services.orderCoreService,
-  scansService: new MockScanService() as any,
-  dashboardService: new MockDashboardService() as any,
-  integrationsService: new MockIntegrationService() as any
+const routes = buildRestRoutes({
+  catalogService: createStubCatalogService(),
+  inventoryService: createStubInventoryService(),
+  ordersService: createStubOrdersService(),
+  shipmentsService: createStubShipmentsService(),
+  customersService: createStubCustomersService(),
+  scansService: createStubScanService(),
+  dashboardService: createStubDashboardService(),
+  integrationsService: createStubIntegrationService(),
+  jwtConfig: {
+    secret: JWT_SECRET,
+    expiresIn: process.env.JWT_EXPIRES_IN ?? "8h",
+    issuer: process.env.JWT_ISSUER ?? "wms-api",
+    audience: process.env.JWT_AUDIENCE ?? "wms-clients"
+  }
 });
 
 // Registrar rotas
 for (const route of routes) {
   const method = route.method.toLowerCase() as "get" | "post" | "put" | "patch" | "delete";
   
-  // Convert path params from `:param` to `{param}` (Fastify style)
-  const fastifyPath = route.path.replace(/:(\w+)/g, ":$1");
+  // Fastify usa `:param`. Nossos contratos usam `{param}`.
+  const fastifyPath = route.path.replace(/\{(\w+)\}/g, ":$1");
 
   app[method](fastifyPath, async (request, reply) => {
     const correlationId = (request as any).correlationId as string;
 
     // Build HttpRequest
+    const headers = normalizeHeaders(request.headers as Record<string, unknown>, correlationId);
+    const requestId = uuidv4();
+    reply.header("X-Request-Id", requestId);
+
     const httpReq: HttpRequest = {
       method: route.method,
       path: route.path,
-      headers: request.headers as Record<string, string>,
+      headers,
       body: request.body,
       params: request.params as Record<string, string>,
       query: request.query as Record<string, string>,
-      requestId: uuidv4(),
+      requestId,
       receivedAt: new Date().toISOString(),
       ip: request.ip,
       userAgent: request.headers["user-agent"]
     };
 
-    // Build RequestContext (mock auth for MVP)
     const ctx: RequestContext = {
-      version: "v1",
-      auth: {
-        userId: request.headers["x-user-id"] as string || "system",
-        role: request.headers["x-user-role"] as string || "admin",
-        displayName: request.headers["x-user-name"] as string || "System"
-      },
-      audit: {
-        correlationId,
-        requestId: httpReq.requestId,
-        actorId: request.headers["x-user-id"] as string || "system",
-        actorRole: request.headers["x-user-role"] as string || "admin",
-        ip: httpReq.ip,
-        userAgent: httpReq.userAgent
-      },
-      idempotencyKey: request.headers["idempotency-key"] as string | undefined,
-      observability: {
-        requestId: httpReq.requestId,
-        correlationId,
-        logger
-      }
+      idempotencyKey: headers["idempotency-key"] ?? undefined,
+      observability: { requestId, correlationId, logger }
     };
 
     try {
@@ -256,3 +262,20 @@ const shutdown = async () => {
 
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
+
+function normalizeHeaders(input: Record<string, unknown>, correlationId: string): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (Array.isArray(v)) {
+      out[k] = typeof v[0] === "string" ? v[0] : undefined;
+    } else if (typeof v === "string") {
+      out[k] = v;
+    } else if (typeof v === "number") {
+      out[k] = String(v);
+    } else {
+      out[k] = undefined;
+    }
+  }
+  out["x-correlation-id"] = out["x-correlation-id"] ?? correlationId;
+  return out;
+}

@@ -36,16 +36,32 @@ export const createJwtAuthenticationMiddleware = (jwtConfig: JwtConfig): Middlew
   return async (req, ctx, next) => {
     const authHeader = getHeaderValue(req.headers, "authorization");
     const token = extractBearerToken(authHeader);
-    if (!token) {
-      throw new WmsError("WMS-AUTH-001", "Token de autenticacao ausente.");
+    if (token) {
+      const payload = verifyJwtToken(token, jwtConfig);
+      ctx.auth = {
+        userId: payload.userId,
+        role: payload.role,
+        tenantId: payload.tenantId,
+        displayName: payload.displayName
+      };
+      return next(req, ctx);
     }
-    const payload = verifyJwtToken(token, jwtConfig);
-    ctx.auth = {
-      userId: payload.userId,
-      role: payload.role,
-      tenantId: payload.tenantId,
-      displayName: payload.displayName
-    };
-    return next(req, ctx);
+
+    // DEV fallback: permite autenticação via headers (X-User-Id / X-User-Role)
+    // Isso simplifica chamadas locais (curl/frontend) quando não há JWT emitido ainda.
+    const userId = getHeaderValue(req.headers, "x-user-id");
+    const roleHeader = getHeaderValue(req.headers, "x-user-role");
+    const role = parseRole(roleHeader);
+    if (userId && role) {
+      ctx.auth = {
+        userId,
+        role,
+        tenantId: getHeaderValue(req.headers, "x-tenant-id"),
+        displayName: getHeaderValue(req.headers, "x-user-name")
+      };
+      return next(req, ctx);
+    }
+
+    throw new WmsError("WMS-AUTH-001", "Token de autenticacao ausente.");
   };
 };
