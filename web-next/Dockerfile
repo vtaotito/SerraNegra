@@ -14,6 +14,9 @@ COPY web-next/ ./
 ARG NEXT_PUBLIC_API_BASE_URL=""
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
+# Garantir que public existe
+RUN mkdir -p public
+
 # Build da aplicação
 RUN npm run build
 
