@@ -341,5 +341,34 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
-  app.log.info("Rotas SAP registradas");
+  /**
+   * GET /api/sap/cache/stats
+   * Retorna estatísticas dos caches
+   */
+  app.get("/api/sap/cache/stats", async (req, reply) => {
+    const { CacheFactory } = await import("../utils/cache.js");
+    const stats = CacheFactory.getAllStats();
+
+    reply.code(200).send({
+      caches: stats,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  /**
+   * DELETE /api/sap/cache
+   * Limpa todos os caches
+   */
+  app.delete("/api/sap/cache", async (req, reply) => {
+    const { CacheFactory } = await import("../utils/cache.js");
+    CacheFactory.flushAll();
+
+    reply.code(200).send({
+      ok: true,
+      message: "Todos os caches foram limpos",
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  app.log.info("Rotas SAP registradas (com cache)");
 }

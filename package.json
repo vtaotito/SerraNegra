@@ -25,6 +25,8 @@
     "sap:mock": "tsx sap-connector/examples/test-mock-service.ts",
     "sap:mock:integration": "tsx sap-connector/examples/integration-example.ts",
     "sap:factory": "tsx sap-connector/examples/use-factory.ts",
+    "test:sap:integration": "tsx --test sap-connector/tests/integration.test.ts",
+    "sap:validate-setup": "tsx sap-connector/tests/validate-sap-setup.ts",
     "dev:core": "tsx api/server.ts",
     "dev:core:postgres": "USE_POSTGRES=true tsx api/server-postgres.ts",
     "start": "tsx api/server-postgres.ts",
@@ -44,10 +46,11 @@
     "@opentelemetry/sdk-trace-node": "^2.1.0",
     "@opentelemetry/semantic-conventions": "^1.37.0",
     "@types/jsonwebtoken": "^9.0.10",
+    "dotenv": "^17.2.4",
     "fastify": "^5.3.2",
     "jsonwebtoken": "^9.0.3",
-    "pino": "^9.9.0",
     "pg": "^8.14.1",
+    "pino": "^9.9.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
