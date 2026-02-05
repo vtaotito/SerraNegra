@@ -1,241 +1,116 @@
-/**
- * Orders Controller - Endpoints REST para pedidos
- */
 import { WmsError } from "../../wms-core/src/errors.js";
-import type { OrderEvent, OrderEventType, OrderStatus } from "../../wms-core/src/domain/order.js";
-import type { OrderCoreService } from "../services/orderCoreService.js";
-import type { ApiHandler } from "../http.js";
-import { requireString, optionalString } from "../utils/validation.js";
+import {
+  OrderCreateRequest,
+  OrderDetailResponse,
+  OrderQuery,
+  OrderResponse,
+  OrderUpdateRequest
+} from "../dtos/orders.js";
+import { ApiHandler } from "../http.js";
+import { optionalNumber, optionalString, requireString } from "../utils/validation.js";
 
-export type OrdersController = {
-  createOrder: ApiHandler;
-  getOrder: ApiHandler;
-  listOrders: ApiHandler;
-  applyEvent: ApiHandler;
-  getHistory: ApiHandler;
-  // Endpoint interno (worker)
-  processSapBatch: ApiHandler;
+export type OrdersService = {
+  listOrders: (query: OrderQuery) => Promise<{ data: OrderResponse[]; nextCursor?: string }>;
+  getOrder: (orderId: string) => Promise<OrderDetailResponse | undefined>;
+  createOrder: (input: OrderCreateRequest, actorId: string) => Promise<OrderResponse>;
+  updateOrder: (orderId: string, input: OrderUpdateRequest, actorId: string) => Promise<OrderResponse>;
+  deleteOrder: (orderId: string, actorId: string) => Promise<void>;
 };
 
-export const createOrdersController = (service: OrderCoreService): OrdersController => {
-  /**
-   * POST /orders
-   * Cria um novo pedido manualmente (raro, geralmente vem do SAP)
-   */
-  const createOrder: ApiHandler = async (req) => {
-    if (!req.body || typeof req.body !== "object") {
-      throw new WmsError("WMS-VAL-001", "Payload inválido");
-    }
-
-    const body = req.body as any;
-    const sapOrder = {
-      DocEntry: body.sapDocEntry || 0,
-      DocNum: body.sapDocNum || 0,
-      CardCode: requireString(body.customerId, "customerId"),
-      CardName: optionalString(body.customerName),
-      DocDate: optionalString(body.createdAt),
-      DocDueDate: optionalString(body.slaDueAt),
-      DocumentLines: Array.isArray(body.items)
-        ? body.items.map((item: any) => ({
-            LineNum: 0,
-            ItemCode: requireString(item.sku, "sku"),
-            Quantity: Number(item.quantity) || 0
-          }))
-        : []
+export const createOrdersController = (service: OrdersService) => {
+  const listOrders: ApiHandler = async (req) => {
+    const query: OrderQuery = {
+      customerId: optionalString(req.query?.customerId),
+      status: req.query?.status as OrderQuery["status"],
+      externalOrderId: optionalString(req.query?.externalOrderId),
+      priority: optionalString(req.query?.priority),
+      from: optionalString(req.query?.from),
+      to: optionalString(req.query?.to),
+      limit: optionalNumber(req.query?.limit),
+      cursor: optionalString(req.query?.cursor)
     };
-
-    const order = await service.createFromSap({
-      sapOrder,
-      correlationId: req.headers["x-correlation-id"]
-    });
-
+    const result = await service.listOrders(query);
     return {
-      status: 201,
-      body: {
-        orderId: order.id,
-        status: order.status,
-        createdAt: order.createdAt
-      }
+      status: 200,
+      body: result
     };
   };
 
-  /**
-   * GET /orders/:orderId
-   * Obtém detalhes de um pedido
-   */
   const getOrder: ApiHandler = async (req) => {
     const orderId = req.params?.orderId;
     if (!orderId) {
-      throw new WmsError("WMS-VAL-002", "orderId é obrigatório");
+      throw new WmsError("WMS-VAL-001", "orderId obrigatorio.");
     }
-
     const order = await service.getOrder(orderId);
-
+    if (!order) {
+      return { status: 404, body: { error: { code: "NOT_FOUND", message: "Pedido nao encontrado." } } };
+    }
     return {
       status: 200,
       body: order
     };
   };
 
-  /**
-   * GET /orders
-   * Lista pedidos com filtros
-   * Query: status, carrier, priority, externalOrderId, limit
-   */
-  const listOrders: ApiHandler = async (req) => {
-    const query = req.query || {};
-    const filter = {
-      status: query.status as OrderStatus | undefined,
-      carrier: query.carrier,
-      priority: query.priority,
-      externalOrderId: query.externalOrderId,
-      limit: query.limit ? Number(query.limit) : 200
+  const createOrder: ApiHandler<OrderCreateRequest> = async (req, ctx) => {
+    if (!req.body) {
+      throw new WmsError("WMS-VAL-001", "Payload obrigatorio.");
+    }
+    if (!ctx.auth) {
+      throw new WmsError("WMS-AUTH-001", "Autenticacao obrigatoria.");
+    }
+    const input: OrderCreateRequest = {
+      externalOrderId: optionalString(req.body.externalOrderId),
+      customerId: requireString(req.body.customerId, "customerId"),
+      shipToAddress: optionalString(req.body.shipToAddress),
+      items: req.body.items ?? [],
+      priority: req.body.priority,
+      notes: optionalString(req.body.notes)
     };
-
-    const orders = await service.listOrders(filter);
-
+    if (input.items.length === 0) {
+      throw new WmsError("WMS-VAL-001", "Pedido deve conter pelo menos um item.");
+    }
+    const order = await service.createOrder(input, ctx.auth.userId);
     return {
-      status: 200,
-      body: {
-        items: orders,
-        nextCursor: null // MVP: sem paginação
-      }
+      status: 201,
+      body: order
     };
   };
 
-  /**
-   * POST /orders/:orderId/events
-   * Aplica um evento de transição
-   */
-  const applyEvent: ApiHandler = async (req, ctx) => {
+  const updateOrder: ApiHandler<OrderUpdateRequest> = async (req, ctx) => {
     const orderId = req.params?.orderId;
     if (!orderId) {
-      throw new WmsError("WMS-VAL-002", "orderId é obrigatório");
+      throw new WmsError("WMS-VAL-001", "orderId obrigatorio.");
     }
-
-    if (!req.body || typeof req.body !== "object") {
-      throw new WmsError("WMS-VAL-001", "Payload inválido");
+    if (!req.body) {
+      throw new WmsError("WMS-VAL-001", "Payload obrigatorio.");
     }
-
-    const body = req.body as any;
-    const actorId = ctx.auth?.userId || "system";
-    const actorRole = ctx.auth?.role || "SUPERVISOR";
-
-    const event: OrderEvent = {
-      eventType: requireString(body.type, "type") as OrderEventType,
-      actorId,
-      actorRole: actorRole.toUpperCase() as any,
-      occurredAt: optionalString(body.occurredAt),
-      reason: optionalString(body.reason),
-      metadata: body.metadata
-    };
-
-    const result = await service.applyEvent({
-      orderId,
-      event,
-      idempotencyKey: ctx.idempotencyKey
-    });
-
+    if (!ctx.auth) {
+      throw new WmsError("WMS-AUTH-001", "Autenticacao obrigatoria.");
+    }
+    const order = await service.updateOrder(orderId, req.body, ctx.auth.userId);
     return {
       status: 200,
-      body: {
-        orderId: result.order.id,
-        previousStatus: result.transition.from,
-        currentStatus: result.order.status,
-        applied: true,
-        event: {
-          eventId: result.transition.orderId + "-" + Date.now(),
-          type: result.transition.eventType,
-          from: result.transition.from,
-          to: result.transition.to,
-          occurredAt: result.transition.occurredAt,
-          actor: {
-            kind: "USER",
-            id: result.transition.actorId
-          },
-          idempotencyKey: result.transition.idempotencyKey
-        }
-      }
+      body: order
     };
   };
 
-  /**
-   * GET /orders/:orderId/history
-   * Obtém histórico de transições
-   */
-  const getHistory: ApiHandler = async (req) => {
+  const deleteOrder: ApiHandler = async (req, ctx) => {
     const orderId = req.params?.orderId;
     if (!orderId) {
-      throw new WmsError("WMS-VAL-002", "orderId é obrigatório");
+      throw new WmsError("WMS-VAL-001", "orderId obrigatorio.");
     }
-
-    const transitions = await service.getHistory(orderId);
-
-    return {
-      status: 200,
-      body: {
-        orderId,
-        events: transitions.map((t, idx) => ({
-          eventId: t.orderId + "-" + idx,
-          type: t.eventType,
-          from: t.from,
-          to: t.to,
-          occurredAt: t.occurredAt,
-          actor: {
-            kind: "USER",
-            id: t.actorId
-          },
-          idempotencyKey: t.idempotencyKey
-        }))
-      }
-    };
-  };
-
-  /**
-   * POST /internal/sap/orders
-   * Endpoint interno para o Worker processar pedidos do SAP
-   * Requer X-Internal-Secret header
-   */
-  const processSapBatch: ApiHandler = async (req) => {
-    const secret = req.headers["x-internal-secret"];
-    const expectedSecret = process.env.INTERNAL_SHARED_SECRET || "dev-internal-secret";
-
-    if (secret !== expectedSecret) {
-      throw new WmsError("WMS-AUTH-001", "Unauthorized");
+    if (!ctx.auth) {
+      throw new WmsError("WMS-AUTH-001", "Autenticacao obrigatoria.");
     }
-
-    if (!req.body || typeof req.body !== "object") {
-      throw new WmsError("WMS-VAL-001", "Payload inválido");
-    }
-
-    const body = req.body as any;
-    if (!Array.isArray(body.orders)) {
-      throw new WmsError("WMS-VAL-001", "orders deve ser um array");
-    }
-
-    const result = await service.processSapOrdersBatch({
-      orders: body.orders,
-      correlationId: req.headers["x-correlation-id"]
-    });
-
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        created: result.created,
-        updated: result.updated,
-        errors: result.errors,
-        timestamp: new Date().toISOString()
-      }
-    };
+    await service.deleteOrder(orderId, ctx.auth.userId);
+    return { status: 204 };
   };
 
   return {
-    createOrder,
-    getOrder,
     listOrders,
-    applyEvent,
-    getHistory,
-    processSapBatch
+    getOrder,
+    createOrder,
+    updateOrder,
+    deleteOrder
   };
 };

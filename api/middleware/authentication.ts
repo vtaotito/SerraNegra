@@ -1,5 +1,6 @@
 import { WmsError } from "../../wms-core/src/errors.js";
 import { ApiRole, Middleware } from "../http.js";
+import { extractBearerToken, JwtConfig, verifyJwtToken } from "../auth/jwt.js";
 import { getHeaderValue } from "../utils/headers.js";
 
 const parseRole = (value: string | undefined): ApiRole | undefined => {
@@ -26,6 +27,24 @@ export const createAuthenticationMiddleware = (): Middleware => {
       role,
       tenantId: getHeaderValue(req.headers, "x-tenant-id"),
       displayName: getHeaderValue(req.headers, "x-user-name")
+    };
+    return next(req, ctx);
+  };
+};
+
+export const createJwtAuthenticationMiddleware = (jwtConfig: JwtConfig): Middleware => {
+  return async (req, ctx, next) => {
+    const authHeader = getHeaderValue(req.headers, "authorization");
+    const token = extractBearerToken(authHeader);
+    if (!token) {
+      throw new WmsError("WMS-AUTH-001", "Token de autenticacao ausente.");
+    }
+    const payload = verifyJwtToken(token, jwtConfig);
+    ctx.auth = {
+      userId: payload.userId,
+      role: payload.role,
+      tenantId: payload.tenantId,
+      displayName: payload.displayName
     };
     return next(req, ctx);
   };

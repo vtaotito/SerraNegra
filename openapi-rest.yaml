@@ -1,0 +1,1308 @@
+openapi: 3.0.3
+info:
+  title: WMS REST API
+  version: 1.0.0
+  description: |
+    API REST do WMS para coletor, painel web, catálogo, inventário, pedidos, remessas e clientes.
+    
+    ## Autenticação
+    - JWT Bearer token obrigatório
+    - Header: `Authorization: Bearer <token>`
+    
+    ## Permissões
+    - **INTERNAL**: operador, supervisor, comercial, admin
+    - **CLIENT**: acesso restrito aos próprios recursos
+
+servers:
+  - url: https://api.exemplo.com
+    description: Servidor de produção
+
+security:
+  - BearerAuth: []
+
+paths:
+  # Catalog - Items
+  /api/v1/catalog/items:
+    get:
+      summary: Listar itens do catálogo
+      tags: [Catalog]
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Active"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de itens
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CatalogItem"
+                  nextCursor:
+                    type: string
+    post:
+      summary: Criar novo item
+      tags: [Catalog]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogItemRequest"
+      responses:
+        "201":
+          description: Item criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogItem"
+
+  /api/v1/catalog/items/{itemCode}:
+    get:
+      summary: Obter item por código
+      tags: [Catalog]
+      parameters:
+        - name: itemCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalhes do item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualizar item
+      tags: [Catalog]
+      parameters:
+        - name: itemCode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CatalogItemRequest"
+      responses:
+        "200":
+          description: Item atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogItem"
+    delete:
+      summary: Remover item
+      tags: [Catalog]
+      parameters:
+        - name: itemCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Item removido
+
+  # Catalog - Warehouses
+  /api/v1/catalog/warehouses:
+    get:
+      summary: Listar armazéns
+      tags: [Catalog]
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - $ref: "#/components/parameters/Active"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [PRINCIPAL, SECUNDARIO, TERCEIROS]
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de armazéns
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Warehouse"
+                  nextCursor:
+                    type: string
+    post:
+      summary: Criar novo armazém
+      tags: [Catalog]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseRequest"
+      responses:
+        "201":
+          description: Armazém criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+
+  /api/v1/catalog/warehouses/{warehouseCode}:
+    get:
+      summary: Obter armazém por código
+      tags: [Catalog]
+      parameters:
+        - name: warehouseCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalhes do armazém
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualizar armazém
+      tags: [Catalog]
+      parameters:
+        - name: warehouseCode
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseRequest"
+      responses:
+        "200":
+          description: Armazém atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+    delete:
+      summary: Remover armazém
+      tags: [Catalog]
+      parameters:
+        - name: warehouseCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Armazém removido
+
+  # Inventory
+  /api/v1/inventory:
+    get:
+      summary: Listar registros de inventário
+      tags: [Inventory]
+      parameters:
+        - name: itemCode
+          in: query
+          schema:
+            type: string
+        - name: warehouseCode
+          in: query
+          schema:
+            type: string
+        - name: batchNumber
+          in: query
+          schema:
+            type: string
+        - name: minQuantity
+          in: query
+          schema:
+            type: number
+        - name: includeReserved
+          in: query
+          schema:
+            type: boolean
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de inventário
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/InventoryRecord"
+                  nextCursor:
+                    type: string
+
+  /api/v1/inventory/{itemCode}/{warehouseCode}:
+    get:
+      summary: Obter inventário específico
+      tags: [Inventory]
+      parameters:
+        - name: itemCode
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: warehouseCode
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Registro de inventário
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryRecord"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/inventory/adjustments:
+    post:
+      summary: Ajustar inventário
+      tags: [Inventory]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryAdjustmentRequest"
+      responses:
+        "201":
+          description: Ajuste registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryAdjustmentResponse"
+
+  /api/v1/inventory/transfers:
+    post:
+      summary: Transferir inventário entre armazéns
+      tags: [Inventory]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryTransferRequest"
+      responses:
+        "202":
+          description: Transferência iniciada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryTransferResponse"
+
+  # Orders
+  /api/v1/orders:
+    get:
+      summary: Listar pedidos
+      tags: [Orders]
+      parameters:
+        - name: customerId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: externalOrderId
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, NORMAL, HIGH, URGENT]
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de pedidos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrderResponse"
+                  nextCursor:
+                    type: string
+    post:
+      summary: Criar novo pedido
+      tags: [Orders]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderCreateRequest"
+      responses:
+        "201":
+          description: Pedido criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+
+  /api/v1/orders/{orderId}:
+    get:
+      summary: Obter pedido por ID
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalhes do pedido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderDetailResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualizar pedido
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderUpdateRequest"
+      responses:
+        "200":
+          description: Pedido atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+    delete:
+      summary: Remover pedido
+      tags: [Orders]
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Pedido removido
+
+  # Shipments
+  /api/v1/shipments:
+    get:
+      summary: Listar remessas
+      tags: [Shipments]
+      parameters:
+        - name: orderId
+          in: query
+          schema:
+            type: string
+        - name: customerId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: carrier
+          in: query
+          schema:
+            type: string
+        - name: trackingCode
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de remessas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Shipment"
+                  nextCursor:
+                    type: string
+    post:
+      summary: Criar nova remessa
+      tags: [Shipments]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShipmentCreateRequest"
+      responses:
+        "201":
+          description: Remessa criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+
+  /api/v1/shipments/{shipmentId}:
+    get:
+      summary: Obter remessa por ID
+      tags: [Shipments]
+      parameters:
+        - name: shipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalhes da remessa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualizar remessa
+      tags: [Shipments]
+      parameters:
+        - name: shipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShipmentUpdateRequest"
+      responses:
+        "200":
+          description: Remessa atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+    delete:
+      summary: Remover remessa
+      tags: [Shipments]
+      parameters:
+        - name: shipmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Remessa removida
+
+  # Customers
+  /api/v1/customers:
+    get:
+      summary: Listar clientes
+      tags: [Customers]
+      parameters:
+        - $ref: "#/components/parameters/Search"
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [RETAIL, WHOLESALE, DISTRIBUTOR, INTERNAL]
+        - $ref: "#/components/parameters/Active"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Customer"
+                  nextCursor:
+                    type: string
+    post:
+      summary: Criar novo cliente
+      tags: [Customers]
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerCreateRequest"
+      responses:
+        "201":
+          description: Cliente criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+
+  /api/v1/customers/{customerId}:
+    get:
+      summary: Obter cliente por ID
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalhes do cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualizar cliente
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerUpdateRequest"
+      responses:
+        "200":
+          description: Cliente atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+    delete:
+      summary: Remover cliente
+      tags: [Customers]
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Cliente removido
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtido via endpoint de autenticação
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Chave de idempotência para operações POST/PUT
+
+    Search:
+      name: search
+      in: query
+      schema:
+        type: string
+      description: Termo de busca
+
+    Active:
+      name: active
+      in: query
+      schema:
+        type: boolean
+
+    From:
+      name: from
+      in: query
+      schema:
+        type: string
+        format: date-time
+
+    To:
+      name: to
+      in: query
+      schema:
+        type: string
+        format: date-time
+
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+      description: Cursor de paginação
+
+  responses:
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Unauthorized:
+      description: Não autenticado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+    Forbidden:
+      description: Sem permissão
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    # Catalog
+    CatalogItem:
+      type: object
+      properties:
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        description:
+          type: string
+        barcode:
+          type: string
+        uomCode:
+          type: string
+        uomName:
+          type: string
+        weight:
+          type: number
+        volume:
+          type: number
+        categoryId:
+          type: string
+        categoryName:
+          type: string
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CatalogItemRequest:
+      type: object
+      required: [itemCode, itemName]
+      properties:
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        description:
+          type: string
+        barcode:
+          type: string
+        uomCode:
+          type: string
+        weight:
+          type: number
+        volume:
+          type: number
+        categoryId:
+          type: string
+        active:
+          type: boolean
+
+    Warehouse:
+      type: object
+      properties:
+        warehouseCode:
+          type: string
+        warehouseName:
+          type: string
+        location:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        active:
+          type: boolean
+        type:
+          type: string
+          enum: [PRINCIPAL, SECUNDARIO, TERCEIROS]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WarehouseRequest:
+      type: object
+      required: [warehouseCode, warehouseName]
+      properties:
+        warehouseCode:
+          type: string
+        warehouseName:
+          type: string
+        location:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        active:
+          type: boolean
+        type:
+          type: string
+          enum: [PRINCIPAL, SECUNDARIO, TERCEIROS]
+
+    # Inventory
+    InventoryRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        warehouseCode:
+          type: string
+        warehouseName:
+          type: string
+        quantity:
+          type: number
+        reserved:
+          type: number
+        available:
+          type: number
+        batchNumber:
+          type: string
+        expirationDate:
+          type: string
+          format: date
+        location:
+          type: string
+        lastUpdated:
+          type: string
+          format: date-time
+
+    InventoryAdjustmentRequest:
+      type: object
+      required: [itemCode, warehouseCode, quantity, adjustmentType, reason]
+      properties:
+        itemCode:
+          type: string
+        warehouseCode:
+          type: string
+        quantity:
+          type: number
+        adjustmentType:
+          type: string
+          enum: [ADD, REMOVE, SET]
+        reason:
+          type: string
+        batchNumber:
+          type: string
+        location:
+          type: string
+        notes:
+          type: string
+
+    InventoryAdjustmentResponse:
+      type: object
+      properties:
+        adjustmentId:
+          type: string
+        itemCode:
+          type: string
+        warehouseCode:
+          type: string
+        previousQuantity:
+          type: number
+        newQuantity:
+          type: number
+        adjustmentType:
+          type: string
+        adjustedAt:
+          type: string
+          format: date-time
+        actorId:
+          type: string
+
+    InventoryTransferRequest:
+      type: object
+      required: [itemCode, fromWarehouseCode, toWarehouseCode, quantity, reason]
+      properties:
+        itemCode:
+          type: string
+        fromWarehouseCode:
+          type: string
+        toWarehouseCode:
+          type: string
+        quantity:
+          type: number
+        reason:
+          type: string
+        batchNumber:
+          type: string
+        notes:
+          type: string
+
+    InventoryTransferResponse:
+      type: object
+      properties:
+        transferId:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, IN_TRANSIT, COMPLETED, CANCELLED]
+        itemCode:
+          type: string
+        fromWarehouse:
+          type: string
+        toWarehouse:
+          type: string
+        quantity:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+
+    # Orders
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        externalOrderId:
+          type: string
+        customerId:
+          type: string
+        customerName:
+          type: string
+        shipToAddress:
+          type: string
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+              quantity:
+                type: number
+        totalItems:
+          type: integer
+        totalWeight:
+          type: number
+        totalVolume:
+          type: number
+        priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, URGENT]
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+
+    OrderCreateRequest:
+      type: object
+      required: [customerId, items]
+      properties:
+        externalOrderId:
+          type: string
+        customerId:
+          type: string
+        shipToAddress:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            required: [sku, quantity]
+            properties:
+              sku:
+                type: string
+              quantity:
+                type: number
+        priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, URGENT]
+        notes:
+          type: string
+
+    OrderUpdateRequest:
+      type: object
+      properties:
+        shipToAddress:
+          type: string
+        status:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, URGENT]
+        notes:
+          type: string
+
+    OrderDetailResponse:
+      allOf:
+        - $ref: "#/components/schemas/OrderResponse"
+        - type: object
+          properties:
+            tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  type:
+                    type: string
+                  status:
+                    type: string
+                  assignedTo:
+                    type: string
+                  progress:
+                    type: number
+            timeline:
+              type: array
+              items:
+                type: object
+                properties:
+                  eventType:
+                    type: string
+                  occurredAt:
+                    type: string
+                    format: date-time
+                  actorId:
+                    type: string
+                  actorRole:
+                    type: string
+
+    # Shipments
+    Shipment:
+      type: object
+      properties:
+        id:
+          type: string
+        orderId:
+          type: string
+        externalOrderId:
+          type: string
+        customerId:
+          type: string
+        customerName:
+          type: string
+        carrier:
+          type: string
+        trackingCode:
+          type: string
+        shipToAddress:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, READY, IN_TRANSIT, DELIVERED, CANCELLED, RETURNED]
+        packageCount:
+          type: integer
+        totalWeight:
+          type: number
+        totalVolume:
+          type: number
+        shippingMethod:
+          type: string
+        estimatedDeliveryDate:
+          type: string
+          format: date
+        actualDeliveryDate:
+          type: string
+          format: date
+        shippedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ShipmentCreateRequest:
+      type: object
+      required: [orderId, packageCount]
+      properties:
+        orderId:
+          type: string
+        carrier:
+          type: string
+        trackingCode:
+          type: string
+        packageCount:
+          type: integer
+        totalWeight:
+          type: number
+        totalVolume:
+          type: number
+        shippingMethod:
+          type: string
+        estimatedDeliveryDate:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    ShipmentUpdateRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [PENDING, READY, IN_TRANSIT, DELIVERED, CANCELLED, RETURNED]
+        carrier:
+          type: string
+        trackingCode:
+          type: string
+        estimatedDeliveryDate:
+          type: string
+          format: date
+        actualDeliveryDate:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    # Customers
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+        customerCode:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        taxId:
+          type: string
+        billingAddress:
+          $ref: "#/components/schemas/Address"
+        shippingAddress:
+          $ref: "#/components/schemas/Address"
+        type:
+          type: string
+          enum: [RETAIL, WHOLESALE, DISTRIBUTOR, INTERNAL]
+        active:
+          type: boolean
+        creditLimit:
+          type: number
+        paymentTerms:
+          type: string
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Address:
+      type: object
+      required: [street, city, state, zipCode]
+      properties:
+        street:
+          type: string
+        number:
+          type: string
+        complement:
+          type: string
+        neighborhood:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zipCode:
+          type: string
+        country:
+          type: string
+
+    CustomerCreateRequest:
+      type: object
+      required: [customerCode, name, type]
+      properties:
+        customerCode:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        taxId:
+          type: string
+        billingAddress:
+          $ref: "#/components/schemas/Address"
+        shippingAddress:
+          $ref: "#/components/schemas/Address"
+        type:
+          type: string
+          enum: [RETAIL, WHOLESALE, DISTRIBUTOR, INTERNAL]
+        creditLimit:
+          type: number
+        paymentTerms:
+          type: string
+        notes:
+          type: string
+
+    CustomerUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        billingAddress:
+          $ref: "#/components/schemas/Address"
+        shippingAddress:
+          $ref: "#/components/schemas/Address"
+        active:
+          type: boolean
+        creditLimit:
+          type: number
+        paymentTerms:
+          type: string
+        notes:
+          type: string
+
+    # Error
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+            requestId:
+              type: string
