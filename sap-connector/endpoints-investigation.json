@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-02-05T08:09:59.355Z",
+  "database": "REDACTED_COMPANY_DB",
+  "serviceLayerUrl": "https://REDACTED_SAP_HOST:50000",
+  "totalEndpoints": 17,
+  "available": 13,
+  "unavailable": 4,
+  "endpoints": [
+    {
+      "endpoint": "SQLQueries",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#SQLQueries\",\"value\":[]}"
+    },
+    {
+      "endpoint": "SQLQueries (sample)",
+      "available": false,
+      "error": "404 Not Found"
+    },
+    {
+      "endpoint": "QueryService",
+      "available": false,
+      "error": "400 Bad Request (pode precisar de parâmetros)"
+    },
+    {
+      "endpoint": "Items (produtos)",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#Items\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"ItemCode\":\"EM00000004\",\"ItemName\""
+    },
+    {
+      "endpoint": "BusinessPartners (clientes)",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#BusinessPartners\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"CardCode\":\"C00363\",\"Ca"
+    },
+    {
+      "endpoint": "Warehouses (depósitos)",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#Warehouses\",\"value\":[{\"WarehouseCode\":\"01.04\",\"WarehouseName\":\"PAINTGRAF GSN\"}]}"
+    },
+    {
+      "endpoint": "InventoryGenEntries",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#InventoryGenEntries\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"DocEntry\":32,\"DocNu"
+    },
+    {
+      "endpoint": "DeliveryNotes",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#DeliveryNotes\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"DocEntry\":549,\"DocNum\":1}"
+    },
+    {
+      "endpoint": "Invoices",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#Invoices\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"DocEntry\":219,\"DocNum\":88}]}"
+    },
+    {
+      "endpoint": "PurchaseOrders",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#PurchaseOrders\",\"value\":[{\"odata.etag\":\"W/\\\"356A192B7913B04C54574D18C28D46E6395428AB\\\"\",\"DocEntry\":273,\"DocNum\":2"
+    },
+    {
+      "endpoint": "StockTransfers",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#StockTransfers\",\"value\":[{\"DocEntry\":87,\"Series\":21,\"Printed\":\"tNO\",\"DocDate\":\"2023-02-14T00:00:00Z\",\"DueDate\":\"2"
+    },
+    {
+      "endpoint": "InventoryPostings",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#InventoryPostings\",\"value\":[]}"
+    },
+    {
+      "endpoint": "SeriesService",
+      "available": false,
+      "error": "400 Bad Request (pode precisar de parâmetros)"
+    },
+    {
+      "endpoint": "UserDefaultGroups",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#UserDefaultGroups\",\"value\":[]}"
+    },
+    {
+      "endpoint": "SalesPersons",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#SalesPersons\",\"value\":[{\"SalesEmployeeCode\":-1,\"SalesEmployeeName\":\"-Nenhum vendedor-\",\"Remarks\":null,\"Commission"
+    },
+    {
+      "endpoint": "BinLocations",
+      "available": true,
+      "details": "{\"odata.metadata\":\"https://REDACTED_SAP_HOST:50000/b1s/v1/$metadata#BinLocations\",\"value\":[]}"
+    },
+    {
+      "endpoint": "ItemWarehouseInfo",
+      "available": false,
+      "error": "400 Bad Request (pode precisar de parâmetros)"
+    }
+  ]
+}
