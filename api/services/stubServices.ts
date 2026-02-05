@@ -319,10 +319,23 @@ export const createStubDashboardService = (): DashboardService => ({
   listOrders: async () => ({ data: [], nextCursor: undefined }),
   listTasks: async () => ({ data: [], nextCursor: undefined }),
   getMetrics: async () => ({
-    orders: 0,
-    tasks: 0,
-    lastUpdated: now()
-  } as any)
+    totalOrders: 0,
+    ordersByStatus: {
+      A_SEPARAR: 0,
+      EM_SEPARACAO: 0,
+      CONFERIDO: 0,
+      AGUARDANDO_COTACAO: 0,
+      AGUARDANDO_COLETA: 0,
+      DESPACHADO: 0
+    },
+    openTasks: 0,
+    tasksByType: {
+      PICKING: 0,
+      PACKING: 0,
+      SHIPPING: 0
+    },
+    lastUpdatedAt: now()
+  })
 });
 
 export const createStubIntegrationService = (): IntegrationService => ({
