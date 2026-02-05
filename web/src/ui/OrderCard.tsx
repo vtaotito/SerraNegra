@@ -48,12 +48,20 @@ export function OrderCard(props: {
           <div className="fw-semibold text-sm" style={{ marginBottom: 2 }}>
             {o.customerName}
           </div>
+          <div className="text-muted text-xs">
+            {o.customerId}
+          </div>
         </div>
       )}
 
       <div className="card-mid">
-        <div className="text-secondary text-xs">
-          {o.externalOrderId ?? "—"} · {o.customerId}
+        <div className="text-secondary text-xs" style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+          <span className="fw-semibold">DocNum:</span> {o.externalOrderId ?? o.sapDocNum ?? "—"}
+          {o.sapStatus && (
+            <span className={`badge text-xs ${o.sapStatus === "bost_Close" ? "badge-sla-ok" : ""}`} style={{ fontSize: 10, padding: "2px 6px" }}>
+              {o.sapStatus === "bost_Open" ? "SAP Aberto" : "SAP Fechado"}
+            </span>
+          )}
         </div>
         {o.shipToCity && o.shipToState && (
           <div className="text-muted text-xs" style={{ marginTop: 2 }}>

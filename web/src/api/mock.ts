@@ -100,12 +100,14 @@ function seededOrders(): Db {
       const price = 100 + Math.random() * 2900;
       const qty = 1 + ((i * 3 + idx) % 5);
       return {
-        sku: `SKU-${100 + ((i + idx) % 17)}`,
+        sku: `TP${String(16 + ((i + idx) % 50)).padStart(7, "0")}`, // Formato real SAP: TP0000016
         itemDescription: pick(PRODUCT_NAMES),
         quantity: qty,
         price: Math.round(price * 100) / 100,
-        warehouse: `CD-${(i % 3) + 1}`,
-        lineTotal: Math.round(price * qty * 100) / 100
+        warehouseCode: `0${(i % 3) + 1}.0${(i % 3) + 1}`, // Formato real SAP: 02.02, 01.01
+        measureUnit: "UN",
+        lineTotal: Math.round(price * qty * 100) / 100,
+        lineStatus: status === "DESPACHADO" ? "bost_Close" : "bost_Open"
       };
     });
 
@@ -113,29 +115,38 @@ function seededOrders(): Db {
     
     const order: UiOrder = {
       orderId,
-      externalOrderId: `ERP-${10000 + i}`,
-      sapDocEntry,
+      externalOrderId: String(sapDocNum), // DocNum do SAP (número visível)
+      sapDocEntry, // DocEntry do SAP (chave interna)
       sapDocNum,
-      customerId: `CUST-${String(210 + (i % 13)).padStart(3, "0")}`,
+      customerId: `C${String(369 + (i % 25)).padStart(5, "0")}`, // Formato real SAP: C00369
       customerName,
+      shipToCode: `END-${i % 5}`,
       shipToAddress: `Rua Exemplo, ${100 + i * 10}`,
       shipToCity: location.city,
       shipToState: location.state,
       shipToZipCode: location.zip,
       status,
+      sapStatus: status === "DESPACHADO" ? "bost_Close" : "bost_Open",
+      cancelled: false,
       carrier,
       priority,
-      slaDueAt: iso(slaDueAt),
+      docDate: iso(createdAt), // DocDate do SAP
+      docDueDate: iso(slaDueAt), // DocDueDate do SAP
+      slaDueAt: iso(slaDueAt), // SLA calculado pelo WMS (pode usar docDueDate)
       docTotal: Math.round(docTotal * 100) / 100,
-      currency: "BRL",
-      docDate: iso(createdAt),
+      currency: "R$", // SAP retorna "R$" (não "BRL")
+      discountPercent: Math.random() < 0.2 ? Math.round(Math.random() * 10) : 0,
       comments: Math.random() < 0.3 
         ? "Cliente solicitou entrega expressa" 
         : null,
       items,
       createdAt: iso(createdAt),
       updatedAt: iso(updatedAt),
-      metadata: { origin: "SAP_B1", docEntry: sapDocEntry },
+      metadata: { 
+        origin: "SAP_B1", 
+        docEntry: sapDocEntry,
+        documentStatus: status === "DESPACHADO" ? "bost_Close" : "bost_Open"
+      },
       pendingIssues:
         Math.random() < 0.28
           ? ["Endereço incompleto", "Divergência de item (SKU)"]

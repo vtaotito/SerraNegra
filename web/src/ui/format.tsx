@@ -33,9 +33,19 @@ export function formatDateTime(iso: string) {
 }
 
 export function formatCurrency(value: number, currency?: string | null) {
+  // SAP B1 retorna moedas como "R$", "US$" etc - precisamos mapear para códigos ISO
+  const currencyMap: Record<string, string> = {
+    "R$": "BRL",
+    "US$": "USD",
+    "€": "EUR",
+    "$": "USD"
+  };
+
+  const currencyCode = currency ? (currencyMap[currency] || currency) : "BRL";
+
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
-    currency: currency || "BRL"
+    currency: currencyCode
   }).format(value);
 }
 

@@ -168,61 +168,94 @@ export function OrderDrawer(props: {
           ) : order ? (
             <>
               <div className="panel" style={{ padding: 16 }}>
-                <div className="section-title">Dados do Pedido (SAP)</div>
+                <div className="section-title">Dados do Pedido (SAP B1)</div>
                 <div className="grid-2">
                   <div className="kv">
-                    <div className="k">DocNum (SAP)</div>
-                    <div className="v">{order.sapDocNum ?? "—"}</div>
+                    <div className="k">DocNum</div>
+                    <div className="v">{order.sapDocNum ?? order.externalOrderId ?? "—"}</div>
                   </div>
                   <div className="kv">
-                    <div className="k">DocEntry (SAP)</div>
+                    <div className="k">DocEntry</div>
                     <div className="v">{order.sapDocEntry ?? "—"}</div>
                   </div>
                   <div className="kv">
-                    <div className="k">Data do Documento</div>
+                    <div className="k">DocDate</div>
                     <div className="v">
                       {order.docDate ? formatDateTime(order.docDate) : "—"}
                     </div>
                   </div>
                   <div className="kv">
-                    <div className="k">SLA (Vencimento)</div>
+                    <div className="k">DocDueDate</div>
                     <div className="v">
-                      {order.slaDueAt ? formatDateTime(order.slaDueAt) : "—"}
+                      {order.docDueDate ? formatDateTime(order.docDueDate) : "—"}
                     </div>
                   </div>
+                  {order.sapStatus && (
+                    <div className="kv">
+                      <div className="k">DocumentStatus (SAP)</div>
+                      <div className="v">
+                        <span className={`badge ${order.sapStatus === "bost_Close" ? "badge-sla-ok" : "badge-sla-soon"}`}>
+                          {order.sapStatus === "bost_Open" ? "Aberto" : "Fechado"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  {order.cancelled !== null && order.cancelled !== undefined && (
+                    <div className="kv">
+                      <div className="k">Cancelado</div>
+                      <div className="v">
+                        <span className={`badge ${order.cancelled ? "badge-sla-late" : "badge-sla-ok"}`}>
+                          {order.cancelled ? "Sim" : "Não"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {order.docTotal && order.docTotal > 0 && (
                   <div style={{ marginTop: 12, padding: 12, background: "rgba(0, 121, 191, 0.08)", borderRadius: "8px" }}>
-                    <div className="k" style={{ marginBottom: 4 }}>Valor Total</div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>
-                      {formatCurrency(order.docTotal, order.currency)}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <div className="k" style={{ marginBottom: 4 }}>DocTotal</div>
+                        <div style={{ fontSize: 24, fontWeight: 700, color: "var(--primary)" }}>
+                          {formatCurrency(order.docTotal, order.currency)}
+                        </div>
+                      </div>
+                      {order.discountPercent && order.discountPercent > 0 && (
+                        <div style={{ textAlign: "right" }}>
+                          <div className="k" style={{ marginBottom: 4 }}>Desconto</div>
+                          <div className="text-secondary fw-bold">{order.discountPercent}%</div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
 
               <div className="panel" style={{ padding: 16 }}>
-                <div className="section-title">Cliente</div>
+                <div className="section-title">Cliente (CardCode/CardName)</div>
                 <div className="grid-2">
                   <div className="kv">
-                    <div className="k">Código</div>
+                    <div className="k">CardCode</div>
                     <div className="v">{order.customerId}</div>
                   </div>
                   <div className="kv">
-                    <div className="k">Nome</div>
+                    <div className="k">CardName</div>
                     <div className="v">{order.customerName ?? "—"}</div>
                   </div>
                 </div>
 
-                {order.shipToAddress && (
+                {(order.shipToAddress || order.shipToCode) && (
                   <div style={{ marginTop: 12 }}>
-                    <div className="k" style={{ marginBottom: 6 }}>Endereço de Entrega</div>
+                    <div className="k" style={{ marginBottom: 6 }}>
+                      Endereço de Entrega {order.shipToCode && `(${order.shipToCode})`}
+                    </div>
                     <div style={{ padding: 10, background: "var(--bg-hover)", borderRadius: "6px", fontSize: 13 }}>
-                      <div>{order.shipToAddress}</div>
+                      {order.shipToAddress && <div>{order.shipToAddress}</div>}
                       {order.shipToCity && order.shipToState && (
                         <div style={{ marginTop: 4 }}>
-                          {order.shipToCity}/{order.shipToState} - {order.shipToZipCode ?? ""}
+                          {order.shipToCity}/{order.shipToState} 
+                          {order.shipToZipCode && ` - CEP: ${order.shipToZipCode}`}
                         </div>
                       )}
                     </div>
@@ -231,7 +264,7 @@ export function OrderDrawer(props: {
 
                 {order.comments && (
                   <div style={{ marginTop: 12 }}>
-                    <div className="k" style={{ marginBottom: 6 }}>Observações</div>
+                    <div className="k" style={{ marginBottom: 6 }}>Comments (SAP)</div>
                     <div style={{ padding: 10, background: "var(--warn-light)", border: "1px solid rgba(242, 214, 0, 0.3)", borderRadius: "6px", fontSize: 13, color: "var(--text-primary)" }}>
                       {order.comments}
                     </div>
@@ -331,41 +364,51 @@ export function OrderDrawer(props: {
               </div>
 
               <div className="panel" style={{ padding: 16 }}>
-                <div className="section-title">Itens do Pedido</div>
-                <div className="table table-items">
-                  <div className="tr th">
-                    <div>SKU</div>
-                    <div>Descrição</div>
-                    <div style={{ textAlign: "right" }}>Qtd</div>
-                    {order.items.some(it => it.price) && (
-                      <>
-                        <div style={{ textAlign: "right" }}>Preço Unit.</div>
-                        <div style={{ textAlign: "right" }}>Total</div>
-                      </>
-                    )}
-                  </div>
-                  {order.items.map((it, idx) => (
-                    <div key={`${it.sku}-${idx}`} className="tr">
-                      <div className="fw-semibold">{it.sku}</div>
-                      <div className="text-secondary text-sm">{it.itemDescription ?? "—"}</div>
-                      <div style={{ textAlign: "right" }} className="fw-semibold">{it.quantity}</div>
-                      {it.price && (
-                        <>
-                          <div style={{ textAlign: "right" }} className="text-muted">
-                            {formatCurrency(it.price, order.currency)}
-                          </div>
-                          <div style={{ textAlign: "right" }} className="fw-bold">
-                            {formatCurrency(it.lineTotal || (it.price * it.quantity), order.currency)}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
+                <div className="section-title">Itens (DocumentLines)</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: "var(--bg-hover)", color: "var(--text-secondary)", fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        <th style={{ padding: "10px", textAlign: "left", borderBottom: "1px solid var(--border-light)" }}>ItemCode</th>
+                        <th style={{ padding: "10px", textAlign: "left", borderBottom: "1px solid var(--border-light)" }}>Description</th>
+                        <th style={{ padding: "10px", textAlign: "center", borderBottom: "1px solid var(--border-light)" }}>Qtd</th>
+                        <th style={{ padding: "10px", textAlign: "center", borderBottom: "1px solid var(--border-light)" }}>UM</th>
+                        <th style={{ padding: "10px", textAlign: "center", borderBottom: "1px solid var(--border-light)" }}>Armazém</th>
+                        {order.items.some(it => it.price) && (
+                          <>
+                            <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid var(--border-light)" }}>Preço</th>
+                            <th style={{ padding: "10px", textAlign: "right", borderBottom: "1px solid var(--border-light)" }}>Total Linha</th>
+                          </>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {order.items.map((it, idx) => (
+                        <tr key={`${it.sku}-${idx}`} style={{ borderBottom: idx < order.items.length - 1 ? "1px solid var(--border-light)" : "none" }}>
+                          <td style={{ padding: "10px" }} className="fw-semibold">{it.sku}</td>
+                          <td style={{ padding: "10px" }} className="text-secondary">{it.itemDescription ?? "—"}</td>
+                          <td style={{ padding: "10px", textAlign: "center" }} className="fw-semibold">{it.quantity}</td>
+                          <td style={{ padding: "10px", textAlign: "center" }} className="text-muted text-xs">{it.measureUnit ?? "—"}</td>
+                          <td style={{ padding: "10px", textAlign: "center" }} className="text-muted text-xs">{it.warehouseCode ?? "—"}</td>
+                          {it.price && (
+                            <>
+                              <td style={{ padding: "10px", textAlign: "right" }} className="text-muted">
+                                {formatCurrency(it.price, order.currency)}
+                              </td>
+                              <td style={{ padding: "10px", textAlign: "right" }} className="fw-bold">
+                                {formatCurrency(it.lineTotal || (it.price * it.quantity), order.currency)}
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
 
                 {order.docTotal && order.docTotal > 0 && (
                   <div style={{ marginTop: 12, padding: 10, background: "var(--bg-active)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span className="fw-bold">Total do Pedido:</span>
+                    <span className="fw-bold">DocTotal (SAP):</span>
                     <span style={{ fontSize: 18, fontWeight: 700, color: "var(--primary)" }}>
                       {formatCurrency(order.docTotal, order.currency)}
                     </span>
