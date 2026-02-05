@@ -26,6 +26,43 @@ const STATUSES: OrderStatus[] = [
   "DESPACHADO"
 ];
 
+const CUSTOMER_NAMES = [
+  "Magazine Luiza S.A.",
+  "Casas Bahia Comercial Ltda",
+  "Mercado Livre Brasil",
+  "B2W Digital",
+  "Via Varejo S.A.",
+  "Lojas Americanas",
+  "Carrefour Brasil",
+  "Grupo Pão de Açúcar",
+  "Leroy Merlin Brasil",
+  "Decathlon Brasil"
+];
+
+const CITIES = [
+  { city: "São Paulo", state: "SP", zip: "01310-100" },
+  { city: "Rio de Janeiro", state: "RJ", zip: "20040-020" },
+  { city: "Belo Horizonte", state: "MG", zip: "30130-010" },
+  { city: "Curitiba", state: "PR", zip: "80020-010" },
+  { city: "Porto Alegre", state: "RS", zip: "90010-150" },
+  { city: "Brasília", state: "DF", zip: "70040-020" },
+  { city: "Salvador", state: "BA", zip: "40020-000" },
+  { city: "Fortaleza", state: "CE", zip: "60040-230" }
+];
+
+const PRODUCT_NAMES = [
+  "Notebook Dell Inspiron 15",
+  "Smart TV Samsung 55\" 4K",
+  "iPhone 13 Pro Max 256GB",
+  "Ar Condicionado Split 12000 BTUs",
+  "Geladeira Brastemp Frost Free",
+  "Cadeira Gamer DXRacer",
+  "Mouse Logitech MX Master 3",
+  "Teclado Mecânico Keychron K8",
+  "Monitor LG 27\" UltraWide",
+  "Headset HyperX Cloud II"
+];
+
 function iso(d: Date) {
   return d.toISOString();
 }
@@ -55,6 +92,24 @@ function seededOrders(): Db {
     const priority = pick(PRIORITIES);
     const sapDocEntry = 10000 + i;
     const sapDocNum = 5000 + i;
+    const location = pick(CITIES);
+    const customerName = pick(CUSTOMER_NAMES);
+    
+    const itemCount = 1 + (i % 3);
+    const items = Array.from({ length: itemCount }, (_, idx) => {
+      const price = 100 + Math.random() * 2900;
+      const qty = 1 + ((i * 3 + idx) % 5);
+      return {
+        sku: `SKU-${100 + ((i + idx) % 17)}`,
+        itemDescription: pick(PRODUCT_NAMES),
+        quantity: qty,
+        price: Math.round(price * 100) / 100,
+        warehouse: `CD-${(i % 3) + 1}`,
+        lineTotal: Math.round(price * qty * 100) / 100
+      };
+    });
+
+    const docTotal = items.reduce((sum, item) => sum + (item.lineTotal || 0), 0);
     
     const order: UiOrder = {
       orderId,
@@ -62,16 +117,22 @@ function seededOrders(): Db {
       sapDocEntry,
       sapDocNum,
       customerId: `CUST-${String(210 + (i % 13)).padStart(3, "0")}`,
-      customerName: `Cliente ${String(210 + (i % 13)).padStart(3, "0")}`,
-      shipToAddress: `Rua ${i}, nº ${100 + i}, Bairro Centro, São Paulo - SP`,
+      customerName,
+      shipToAddress: `Rua Exemplo, ${100 + i * 10}`,
+      shipToCity: location.city,
+      shipToState: location.state,
+      shipToZipCode: location.zip,
       status,
       carrier,
       priority,
       slaDueAt: iso(slaDueAt),
-      items: [
-        { sku: `SKU-${100 + (i % 17)}`, quantity: 1 + ((i * 3) % 5) },
-        { sku: `SKU-${200 + (i % 11)}`, quantity: 1 + ((i * 7) % 4) }
-      ],
+      docTotal: Math.round(docTotal * 100) / 100,
+      currency: "BRL",
+      docDate: iso(createdAt),
+      comments: Math.random() < 0.3 
+        ? "Cliente solicitou entrega expressa" 
+        : null,
+      items,
       createdAt: iso(createdAt),
       updatedAt: iso(updatedAt),
       metadata: { origin: "SAP_B1", docEntry: sapDocEntry },
@@ -81,20 +142,12 @@ function seededOrders(): Db {
           : [],
       scanHistory:
         status === "EM_SEPARACAO" || status === "CONFERIDO"
-          ? [
-              {
-                at: iso(new Date(updatedAt.getTime() - 9 * 60 * 1000)),
-                by: "bipador-01",
-                sku: `SKU-${100 + (i % 17)}`,
-                quantity: 1
-              },
-              {
-                at: iso(new Date(updatedAt.getTime() - 4 * 60 * 1000)),
-                by: "bipador-01",
-                sku: `SKU-${200 + (i % 11)}`,
-                quantity: 1
-              }
-            ]
+          ? items.slice(0, Math.min(items.length, 2)).map((item, idx) => ({
+              at: iso(new Date(updatedAt.getTime() - (9 - idx * 5) * 60 * 1000)),
+              by: "bipador-01",
+              sku: item.sku,
+              quantity: 1
+            }))
           : []
     };
 

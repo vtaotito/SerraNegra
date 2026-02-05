@@ -32,6 +32,13 @@ export function formatDateTime(iso: string) {
   return dt.format(d);
 }
 
+export function formatCurrency(value: number, currency?: string | null) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: currency || "BRL"
+  }).format(value);
+}
+
 export function formatSlaBadge(slaDueAtIso: string) {
   const now = Date.now();
   const due = new Date(slaDueAtIso).getTime();
