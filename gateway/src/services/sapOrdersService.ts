@@ -1,5 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import type { SapOrder, SapOrdersCollection } from "../../../sap-connector/src/types.js";
+import { CacheFactory } from "../utils/cache.js";
 
 export type WmsOrderStatus =
   | "A_SEPARAR"
@@ -56,11 +57,11 @@ function mapSapStatusToWms(sapOrder: SapOrder): WmsOrderStatus {
     return sapOrder.U_WMS_STATUS as WmsOrderStatus;
   }
 
-  // Caso contrário, inferir do DocStatus
-  if (sapOrder.DocStatus === "O") {
+  // Caso contrário, inferir do DocumentStatus (usar DocumentStatus ao invés de DocStatus)
+  if (sapOrder.DocumentStatus === "bost_Open") {
     return "A_SEPARAR";
   }
-  if (sapOrder.DocStatus === "C" || sapOrder.Cancelled === "Y") {
+  if (sapOrder.DocumentStatus === "bost_Close" || sapOrder.Cancelled === "Y") {
     return "DESPACHADO"; // ou outro status apropriado
   }
 
@@ -113,6 +114,9 @@ function mapSapOrderToWms(sapOrder: SapOrder): WmsOrder {
  * Serviço para integração com pedidos SAP.
  */
 export class SapOrdersService {
+  private ordersCache = CacheFactory.getOrdersCache();
+  private itemsCache = CacheFactory.getItemsCache();
+
   constructor(private readonly client: SapServiceLayerClient) {}
 
   /**
@@ -138,43 +142,68 @@ export class SapOrdersService {
     const limit = filters.limit ?? 100;
     const docStatus = filters.docStatus ?? "O"; // Default: pedidos abertos
 
-    // Monta query OData
-    // Exemplo: $select=DocEntry,DocNum,CardCode,CardName,DocStatus,UpdateDate,UpdateTime
-    //          &$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)
-    //          &$filter=DocStatus eq 'O'
-    //          &$top=100
-    let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocStatus,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID`;
-    path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
+    // Cache key baseado nos filtros
+    const cacheKey = `list:${JSON.stringify({ docStatus, status: filters.status, limit })}`;
 
-    const filterParts: string[] = [];
-    if (docStatus) {
-      filterParts.push(`DocStatus eq '${docStatus}'`);
-    }
-    if (filters.status && filters.status !== "ALL") {
-      // Se o filtro for por status WMS, buscar pelo UDF
-      filterParts.push(`U_WMS_STATUS eq '${filters.status}'`);
-    }
+    // Tentar obter do cache
+    return this.ordersCache.getOrFetch(
+      cacheKey,
+      async () => {
+        // NOTA: Usando campos que funcionam no SAP B1 Service Layer
+        // DocStatus removido do $select pois causa erro 400
+        let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments`;
+        
+        // Adicionar UDFs se existirem (não causa erro se não existir)
+        path += `,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID`;
+        
+        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
 
-    if (filterParts.length > 0) {
-      path += `&$filter=${filterParts.join(" and ")}`;
-    }
+        const filterParts: string[] = [];
+        if (docStatus) {
+          // Usar DocumentStatus ao invés de DocStatus
+          if (docStatus === "O") {
+            filterParts.push(`DocumentStatus eq 'bost_Open'`);
+          } else if (docStatus === "C") {
+            filterParts.push(`DocumentStatus eq 'bost_Close'`);
+          }
+        }
+        if (filters.status && filters.status !== "ALL") {
+          // Se o filtro for por status WMS, buscar pelo UDF
+          filterParts.push(`U_WMS_STATUS eq '${filters.status}'`);
+        }
 
-    path += `&$top=${limit}`;
+        if (filterParts.length > 0) {
+          path += `&$filter=${filterParts.join(" and ")}`;
+        }
 
-    const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
+        path += `&$top=${limit}`;
 
-    return response.data.value.map(mapSapOrderToWms);
+        const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
+
+        return response.data.value.map(mapSapOrderToWms);
+      },
+      60 // TTL 1 minuto para lista de pedidos
+    );
   }
 
   /**
    * Busca um pedido específico pelo DocEntry.
    */
   async getOrder(docEntry: number, correlationId?: string): Promise<WmsOrder> {
-    const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocStatus,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
+    const cacheKey = `order:${docEntry}`;
 
-    const response = await this.client.get<SapOrder>(path, { correlationId });
+    return this.ordersCache.getOrFetch(
+      cacheKey,
+      async () => {
+        // NOTA: Usando campos que funcionam no SAP B1 Service Layer
+        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
 
-    return mapSapOrderToWms(response.data);
+        const response = await this.client.get<SapOrder>(path, { correlationId });
+
+        return mapSapOrderToWms(response.data);
+      },
+      300 // TTL 5 minutos para pedido individual
+    );
   }
 
   /**
@@ -200,6 +229,15 @@ export class SapOrdersService {
         // Idempotência: usar chave baseada em DocEntry + Status
         idempotencyKey: `SAP-ORDER-${docEntry}-${request.status}`
       });
+
+      // Invalidar cache do pedido após atualização
+      this.ordersCache.del(`order:${docEntry}`);
+      
+      // Invalidar cache de listas (pode conter este pedido)
+      const listKeys = this.ordersCache.keys().filter(k => k.startsWith("list:"));
+      if (listKeys.length > 0) {
+        this.ordersCache.del(listKeys);
+      }
 
       return { ok: true, message: `Status atualizado para ${request.status}` };
     } catch (error) {
