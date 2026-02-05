@@ -10,6 +10,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../sap-connector/src/**/*.ts", "../mappings/src/**/*.ts"]
 }
 
