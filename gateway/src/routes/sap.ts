@@ -462,15 +462,15 @@ export async function registerSapRoutes(app: FastifyInstance) {
         error: (msg: string, meta?: Record<string, unknown>) => app.log.error(meta, msg)
       };
 
-      const testClient = new SapServiceLayerClient(
-        {
-          baseUrl: body.baseUrl,
+      const testClient = new SapServiceLayerClient({
+        baseUrl: body.baseUrl,
+        credentials: {
           companyDb: body.companyDb,
           username: body.username,
           password: body.password
         },
         logger
-      );
+      });
 
       // Fazer login
       await testClient.login(correlationId);
