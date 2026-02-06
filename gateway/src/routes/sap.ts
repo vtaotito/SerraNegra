@@ -38,7 +38,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * GET /api/sap/health
    * Testa conexão com SAP (faz login mas não retorna segredos).
    */
-  app.get("/api/sap/health", async (req, reply) => {
+  app.get("/sap/health", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
 
     try {
@@ -80,7 +80,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    *   - limit: número máximo de resultados (default: 100)
    *   - docStatus: filtro por DocStatus SAP ("O" = Open, "C" = Closed)
    */
-  app.get("/api/sap/orders", async (req, reply) => {
+  app.get("/sap/orders", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
     const query = req.query as any;
 
@@ -117,7 +117,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * GET /api/sap/orders/:docEntry
    * Busca um pedido específico pelo DocEntry.
    */
-  app.get("/api/sap/orders/:docEntry", async (req, reply) => {
+  app.get("/sap/orders/:docEntry", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
     const { docEntry } = req.params as any;
 
@@ -157,7 +157,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * Atualiza o status do pedido no SAP (via UDF U_WMS_STATUS).
    * Body: { status: "EM_SEPARACAO" | "CONFERIDO" | etc., event?: string }
    */
-  app.patch("/api/sap/orders/:docEntry/status", async (req, reply) => {
+  app.patch("/sap/orders/:docEntry/status", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
     const { docEntry } = req.params as any;
     const body = req.body as any;
@@ -224,7 +224,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * Sincroniza pedidos do SAP para o WMS Core.
    * Busca pedidos abertos do SAP e cria no WMS Core via POST /orders.
    */
-  app.post("/api/sap/sync", async (req, reply) => {
+  app.post("/sap/sync", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
 
     try {
@@ -345,7 +345,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * GET /api/sap/cache/stats
    * Retorna estatísticas dos caches
    */
-  app.get("/api/sap/cache/stats", async (req, reply) => {
+  app.get("/sap/cache/stats", async (req, reply) => {
     const { CacheFactory } = await import("../utils/cache.js");
     const stats = CacheFactory.getAllStats();
 
@@ -359,7 +359,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
    * DELETE /api/sap/cache
    * Limpa todos os caches
    */
-  app.delete("/api/sap/cache", async (req, reply) => {
+  app.delete("/sap/cache", async (req, reply) => {
     const { CacheFactory } = await import("../utils/cache.js");
     CacheFactory.flushAll();
 
