@@ -5,43 +5,43 @@ export const API_ENDPOINTS = {
   ORDER_HISTORY: (id: string) => `/orders/${id}/history`,
   ORDER_EVENTS: (id: string) => `/orders/${id}/events`,
 
-  // Products / Catalog Items
-  CATALOG_ITEMS: "/api/v1/catalog/items",
-  CATALOG_ITEM_BY_CODE: (code: string) => `/api/v1/catalog/items/${code}`,
+  // Products / Catalog Items (sem /api pois baseURL já adiciona)
+  CATALOG_ITEMS: "/v1/catalog/items",
+  CATALOG_ITEM_BY_CODE: (code: string) => `/v1/catalog/items/${code}`,
 
   // Warehouses
-  CATALOG_WAREHOUSES: "/api/v1/catalog/warehouses",
-  CATALOG_WAREHOUSE_BY_CODE: (code: string) => `/api/v1/catalog/warehouses/${code}`,
+  CATALOG_WAREHOUSES: "/v1/catalog/warehouses",
+  CATALOG_WAREHOUSE_BY_CODE: (code: string) => `/v1/catalog/warehouses/${code}`,
 
   // Inventory
-  INVENTORY: "/api/v1/inventory",
+  INVENTORY: "/v1/inventory",
   INVENTORY_BY_ITEM_AND_WAREHOUSE: (itemCode: string, warehouseCode: string) =>
-    `/api/v1/inventory/${itemCode}/${warehouseCode}`,
+    `/v1/inventory/${itemCode}/${warehouseCode}`,
 
   // Shipments
-  SHIPMENTS: "/api/v1/shipments",
-  SHIPMENT_BY_ID: (id: string) => `/api/v1/shipments/${id}`,
+  SHIPMENTS: "/v1/shipments",
+  SHIPMENT_BY_ID: (id: string) => `/v1/shipments/${id}`,
 
   // Customers
-  CUSTOMERS: "/api/v1/customers",
-  CUSTOMER_BY_ID: (id: string) => `/api/v1/customers/${id}`,
+  CUSTOMERS: "/v1/customers",
+  CUSTOMER_BY_ID: (id: string) => `/v1/customers/${id}`,
 
   // Dashboard
-  DASHBOARD_ORDERS: "/api/v1/dashboard/orders",
-  DASHBOARD_TASKS: "/api/v1/dashboard/tasks",
-  DASHBOARD_METRICS: "/api/v1/dashboard/metrics",
+  DASHBOARD_ORDERS: "/v1/dashboard/orders",
+  DASHBOARD_TASKS: "/v1/dashboard/tasks",
+  DASHBOARD_METRICS: "/v1/dashboard/metrics",
 
   // Scans
-  SCANS: "/api/v1/scans",
+  SCANS: "/v1/scans",
 
   // Health
   HEALTH: "/health",
 
-  // SAP Integration
-  SAP_HEALTH: "/api/sap/health",
-  SAP_ORDERS: "/api/sap/orders",
-  SAP_SYNC: "/api/sap/sync",
-  SAP_SYNC_STATUS: "/api/sap/sync/status",
-  SAP_CONFIG: "/api/sap/config",
-  SAP_CONFIG_TEST: "/api/sap/config/test",
+  // SAP Integration (sem /api pois baseURL já adiciona)
+  SAP_HEALTH: "/sap/health",
+  SAP_ORDERS: "/sap/orders",
+  SAP_SYNC: "/sap/sync",
+  SAP_SYNC_STATUS: "/sap/sync/status",
+  SAP_CONFIG: "/sap/config",
+  SAP_CONFIG_TEST: "/sap/config/test",
 } as const;
