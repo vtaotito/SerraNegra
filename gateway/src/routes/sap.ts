@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
+import { sapConfigStore } from "../config/sapConfigStore.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -23,8 +24,17 @@ export async function registerSapRoutes(app: FastifyInstance) {
       };
 
       try {
-        const client = createSapClient(logger);
-        sapService = new SapOrdersService(client);
+        // Tentar usar configuração do store primeiro
+        const storedClient = sapConfigStore.getClient(logger);
+        if (storedClient) {
+          sapService = new SapOrdersService(storedClient);
+          app.log.info("Cliente SAP criado a partir de configuração armazenada");
+        } else {
+          // Fallback para variáveis de ambiente
+          const client = createSapClient(logger);
+          sapService = new SapOrdersService(client);
+          app.log.info("Cliente SAP criado a partir de variáveis de ambiente");
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao criar cliente SAP";
         app.log.error({ error }, "Falha ao criar cliente SAP");
@@ -390,45 +400,84 @@ export async function registerSapRoutes(app: FastifyInstance) {
   });
 
   /**
-   * GET /api/sap/config
+   * GET /sap/config
    * Retorna configuração atual do SAP (sem senha)
    */
   app.get("/sap/config", async (req, reply) => {
+    // Tentar obter do store primeiro
+    const storedConfig = sapConfigStore.get();
+    
+    if (storedConfig) {
+      reply.code(200).send({
+        baseUrl: storedConfig.baseUrl,
+        companyDb: storedConfig.companyDb,
+        username: storedConfig.username,
+        source: "stored",
+        savedAt: storedConfig.savedAt,
+      });
+      return;
+    }
+
+    // Fallback para variáveis de ambiente
     reply.code(200).send({
-      baseUrl: process.env.SAP_BASE_URL || "https://",
-      companyDb: process.env.SAP_COMPANY_DB || "",
-      username: process.env.SAP_USERNAME || "",
-      // password nunca é retornado
+      baseUrl: process.env.SAP_B1_BASE_URL || "https://",
+      companyDb: process.env.SAP_B1_COMPANY_DB || "",
+      username: process.env.SAP_B1_USERNAME || "",
+      source: "env",
     });
   });
 
   /**
-   * PUT /api/sap/config
-   * Atualiza configuração do SAP (em produção, deve salvar em .env ou DB)
+   * PUT /sap/config
+   * Atualiza e persiste configuração do SAP em memória
    */
   app.put("/sap/config", async (req, reply) => {
     const body = req.body as any;
 
     // Validação básica
-    if (!body?.baseUrl || !body?.companyDb || !body?.username) {
+    if (!body?.baseUrl || !body?.companyDb || !body?.username || !body?.password) {
       reply.code(400).send({
-        error: "Campos obrigatórios: baseUrl, companyDb, username",
+        error: "Campos obrigatórios: baseUrl, companyDb, username, password",
         timestamp: new Date().toISOString()
       });
       return;
     }
 
-    // ⚠️ MVP: Apenas valida, não persiste (em produção, salvar em DB/config)
-    req.log.warn(
-      { baseUrl: body.baseUrl, companyDb: body.companyDb, username: body.username },
-      "⚠️ Configuração SAP recebida mas NÃO PERSISTIDA (implementar persistência em produção)"
-    );
+    try {
+      // Salvar configuração no store
+      sapConfigStore.save({
+        baseUrl: body.baseUrl,
+        companyDb: body.companyDb,
+        username: body.username,
+        password: body.password,
+        timeoutMs: body.timeoutMs || 60000,
+        maxAttempts: body.maxAttempts || 3,
+      });
 
-    reply.code(200).send({
-      success: true,
-      message: "Configuração recebida (não persistida - MVP). Reinicie o serviço para aplicar.",
-      timestamp: new Date().toISOString()
-    });
+      // Invalidar serviço existente para usar nova configuração
+      sapService = null;
+
+      req.log.info(
+        { baseUrl: body.baseUrl, companyDb: body.companyDb, username: body.username },
+        "Configuração SAP salva em memória com sucesso"
+      );
+
+      reply.code(200).send({
+        success: true,
+        message: "Configuração salva com sucesso. Sessão SAP ativa para toda a aplicação.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error }, "Erro ao salvar configuração SAP");
+
+      reply.code(500).send({
+        success: false,
+        error: "Erro ao salvar configuração",
+        message,
+        timestamp: new Date().toISOString()
+      });
+    }
   });
 
   /**

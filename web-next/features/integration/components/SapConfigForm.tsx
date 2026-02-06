@@ -65,6 +65,16 @@ export function SapConfigForm({ initialConfig }: SapConfigFormProps) {
         toast.success("Conexão testada com sucesso!", {
           description: `Tempo de resposta: ${result.connection_time_ms}ms`,
         });
+        
+        // Auto-salvar após teste bem-sucedido
+        try {
+          await saveMutation.mutateAsync(values as SapConfig);
+          toast.success("Credenciais salvas automaticamente!", {
+            description: "Configuração aplicada e sessão ativada.",
+          });
+        } catch (saveError: any) {
+          console.error("Erro ao auto-salvar:", saveError);
+        }
       } else {
         toast.error("Falha ao testar conexão", {
           description: result.error || result.message,
@@ -254,10 +264,10 @@ export function SapConfigForm({ initialConfig }: SapConfigFormProps) {
 
           {/* Info */}
           <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-blue-900">
-            <p className="font-medium mb-1">💡 Dica</p>
+            <p className="font-medium mb-1">💡 Automático</p>
             <p>
-              Teste a conexão antes de salvar para garantir que as credenciais estão corretas.
-              A configuração é armazenada de forma segura no servidor.
+              Ao testar a conexão com sucesso, as credenciais são automaticamente salvas 
+              e a sessão SAP fica ativa para toda a aplicação.
             </p>
           </div>
         </form>
