@@ -149,12 +149,10 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // NOTA: Usando campos que funcionam no SAP B1 Service Layer
-        // DocStatus removido do $select pois causa erro 400
-        // Query sem UDFs para compatibilidade com ambientes de teste
-        let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments`;
+        // Query mínima para máxima compatibilidade com ambientes de teste
+        let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Comments`;
         
-        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
+        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price)`;
 
         const filterParts: string[] = [];
         if (docStatus) {
@@ -191,8 +189,8 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // Query sem UDFs para compatibilidade com ambientes de teste
-        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
+        // Query mínima para máxima compatibilidade
+        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Comments&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price)`;
 
         const response = await this.client.get<SapOrder>(path, { correlationId });
 
