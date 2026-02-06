@@ -199,6 +199,17 @@ export class SapServiceLayerClient {
     opts?: SapRequestOptions
   ): Promise<SapResponse<T>> {
     const res = await this.requestRaw(method, path, body, opts);
+    
+    // Status 204 (No Content) é sucesso sem corpo - comum em PATCH/DELETE
+    if (res.status === 204) {
+      return { 
+        status: res.status, 
+        headers: res.headers, 
+        data: {} as T, 
+        requestId: res.headers.get("x-request-id") ?? undefined 
+      };
+    }
+    
     if (!isJsonContentType(res.headers)) {
       const text = await safeReadText(res);
       throw new SapHttpError({
