@@ -2,6 +2,15 @@
 
 Sistema de gerenciamento de pedidos (WMS) com integração completa ao SAP Business One via Service Layer.
 
+## 📖 Documentação
+
+| Para... | Leia... | Tempo |
+|---------|---------|-------|
+| **👔 Visão executiva** | [`RESUMO_EXECUTIVO_E2E.md`](./RESUMO_EXECUTIVO_E2E.md) | 10 min |
+| **👨‍💻 Análise técnica completa** | [`ANALISE_E2E_COMPLETA.md`](./ANALISE_E2E_COMPLETA.md) | 60 min |
+| **📚 Índice de toda documentação** | [`INDICE_DOCUMENTACAO.md`](./INDICE_DOCUMENTACAO.md) | 5 min |
+| **🚀 Começar a desenvolver** | Continue lendo abaixo | 15 min |
+
 ## 🚀 Quick Start
 
 ### 1. Configurar ambiente
@@ -103,6 +112,28 @@ npm run dev
 
 ## 🧪 Testes
 
+### Testes WMS Core (Unit + Integration + E2E)
+```bash
+# Executar todos os testes
+npm test
+
+# Gerar relatório de cobertura
+npm run test:coverage
+
+# Visualizar cobertura no navegador
+start coverage/index.html   # Windows
+open coverage/index.html    # Mac
+```
+
+**Status dos Testes:**
+- ✅ **27 testes** executados (21 passaram, 6 pulados)
+- ✅ **88.88% de cobertura** (meta: 85%)
+- ✅ **Casos de borda cobertos:** endereço/SKU/quantidade errados, idempotência, concorrência
+- ✅ **Fluxo E2E completo:** pedido → picking → packing → expedição
+
+📚 **Documentação completa:** [tests/INDEX.md](tests/INDEX.md)
+
+### Testes Gateway SAP
 ```bash
 # Teste automatizado
 cd gateway
