@@ -1,6 +1,9 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 
-const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// Base URL da API
+// Desenvolvimento: http://localhost:8000 (Core direto)
+// Produção: /api (path relativo via Nginx → Gateway)
+const baseURL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 const timeout = parseInt(process.env.NEXT_PUBLIC_API_TIMEOUT || "30000", 10);
 
 // Criar instância do axios

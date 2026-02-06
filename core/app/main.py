@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -36,6 +37,18 @@ INTERNAL_SHARED_SECRET = os.getenv("INTERNAL_SHARED_SECRET", "dev-internal-secre
 log = logging.getLogger(SERVICE_NAME)
 
 app = FastAPI(title="WMS Core", version="0.1.0")
+
+# CORS - Permitir requisições do frontend via Nginx
+# Em produção, o Nginx faz proxy então o Origin pode variar
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS if "*" not in ALLOWED_ORIGINS else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Correlation-Id", "X-Request-Id"],
+)
 
 
 def now_utc() -> datetime:

@@ -11,7 +11,7 @@ RUN npm ci
 COPY web-next/ ./
 
 # Variáveis de ambiente para build
-ARG NEXT_PUBLIC_API_BASE_URL=""
+ARG NEXT_PUBLIC_API_BASE_URL="/api"
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 
 # Garantir que public existe
