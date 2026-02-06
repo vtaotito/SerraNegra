@@ -1,8 +1,21 @@
 /**
- * SAP B1 Mock Data - Dados Realistas para Testes
- * 
- * Baseado em dados reais da REDACTED_COMPANY_DB
- * Contém pedidos, clientes, produtos e estoque simulados
+ * SAP B1 Mock Data — SOMENTE DADOS REAIS da REDACTED_COMPANY_DB
+ *
+ * IMPORTANTE: Este arquivo contém EXCLUSIVAMENTE dados capturados do SAP real.
+ * Nenhum nome, descrição, preço ou quantidade foi inventado.
+ *
+ * Fontes:
+ *   [A] Orders-structure.json     → Pedido completo DocEntry 60 (resposta real da API)
+ *   [B] CONFERENCIA_RESULTADO.md  → 20 cabeçalhos reais (DocEntry + DocNum + CardCode)
+ *   [C] endpoints-investigation.json → Warehouse 01.04, Item EM00000004, BP C00363
+ *   [D] VALIDACAO_UDF_COMPLETA.md → UDFs validados com escrita/leitura real
+ *
+ * Contexto:
+ *   Service Layer: https://REDACTED_SAP_HOST:50000
+ *   Database:      REDACTED_COMPANY_DB
+ *   SAP B1:        10.0 (1000190)
+ *   Empresa:       IRMAOS NAVES EIRELI (CNPJ 19.669.290/0001-99)
+ *   Usuário:       REDACTED_USER
  */
 
 import type {
@@ -10,726 +23,367 @@ import type {
   SapItem,
   SapWarehouse,
   SapDocumentLine,
-  SapItemWarehouseInfo
+  SapItemWarehouseInfo,
+  SapBusinessPartner,
 } from "../src/sapTypes.js";
 
 // ============================================================================
 // CLIENTES (Business Partners)
+//
+// [A] C00369 — Dados completos extraídos de Orders-structure.json
+// [C] C00363 — Código real visto no endpoint /BusinessPartners
+// [B] Demais códigos aparecem na CONFERENCIA, mas NÃO temos os nomes.
+//     São incluídos com CardName refletindo o código para rastreio.
 // ============================================================================
 
-export const mockBusinessPartners = [
+export const mockBusinessPartners: SapBusinessPartner[] = [
+  // ── DADOS COMPLETOS (fonte: Orders-structure.json) ──
   {
     CardCode: "C00369",
-    CardName: "EUTIDES JACKSON SARMENTO",
+    CardName: "EUTIDES JACKSON SARMENTO", // [A] campo CardName real
     CardType: "cCustomer",
-    Phone1: "(85) 98765-4321",
-    EmailAddress: "eutides.sarmento@example.com",
-    Address: "Rua das Flores, 123 - Centro",
-    City: "Fortaleza",
-    State: "CE",
-    ZipCode: "60000-000",
-    Country: "BR",
-    U_CRM_Segment: "VAREJO",
+    Address: "AvenidaAmazonas,3715\rCASA\r30431025-Belo Horizonte-MG\rBRASIL", // [A] campo Address real
+    City: "Belo Horizonte",       // [A] AddressExtension.ShipToCity
+    State: "MG",                  // [A] AddressExtension.ShipToState
+    ZipCode: "30431-025",         // [A] AddressExtension.ShipToZipCode (formatado)
+    Country: "BR",                // [A] AddressExtension.ShipToCountry
+    FederalTaxID: "677.855.576-91", // [A] TaxExtension.TaxId4 (CPF)
     Valid: "tYES",
-    Frozen: "tNO"
+    Frozen: "tNO",
   },
+  // ── CÓDIGO REAL, sem dados adicionais (fonte: endpoints-investigation.json) ──
   {
-    CardCode: "C00512",
-    CardName: "DISTRIBUIDORA NORDESTE LTDA",
+    CardCode: "C00363",
+    CardName: "C00363", // Nome real não capturado
     CardType: "cCustomer",
-    Phone1: "(85) 3456-7890",
-    EmailAddress: "contato@distrnordeste.com.br",
-    Address: "Av. Bezerra de Menezes, 4500",
-    City: "Fortaleza",
-    State: "CE",
-    ZipCode: "60540-000",
-    Country: "BR",
-    U_CRM_Segment: "ATACADO",
     Valid: "tYES",
-    Frozen: "tNO"
+    Frozen: "tNO",
   },
-  {
-    CardCode: "C00789",
-    CardName: "MARIA APARECIDA COMERCIO",
-    CardType: "cCustomer",
-    Phone1: "(85) 99123-4567",
-    EmailAddress: "maria.comercio@gmail.com",
-    Address: "Rua Barão de Studart, 890",
-    City: "Fortaleza",
-    State: "CE",
-    ZipCode: "60120-000",
-    Country: "BR",
-    U_CRM_Segment: "VAREJO",
-    Valid: "tYES",
-    Frozen: "tNO"
-  },
-  {
-    CardCode: "C01024",
-    CardName: "SUPERMERCADO BOM PREÇO",
-    CardType: "cCustomer",
-    Phone1: "(85) 3234-5678",
-    EmailAddress: "compras@bompreco.com.br",
-    Address: "Av. Washington Soares, 2300",
-    City: "Fortaleza",
-    State: "CE",
-    ZipCode: "60810-000",
-    Country: "BR",
-    U_CRM_Segment: "ATACADO",
-    Valid: "tYES",
-    Frozen: "tNO"
-  },
-  {
-    CardCode: "C01156",
-    CardName: "JOSÉ ROBERTO SILVA - ME",
-    CardType: "cCustomer",
-    Phone1: "(85) 98888-7777",
-    EmailAddress: "jrsilva.vendas@hotmail.com",
-    Address: "Rua Coronel Jucá, 234",
-    City: "Fortaleza",
-    State: "CE",
-    ZipCode: "60170-000",
-    Country: "BR",
-    U_CRM_Segment: "VAREJO",
-    Valid: "tYES",
-    Frozen: "tNO"
-  }
+  // ── CÓDIGOS REAIS da CONFERENCIA (fonte B) — sem nomes capturados ──
+  { CardCode: "C00033", CardName: "C00033", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C00037", CardName: "C00037", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C00173", CardName: "C00173", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C00391", CardName: "C00391", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C00534", CardName: "C00534", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C01153", CardName: "C01153", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C01161", CardName: "C01161", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C01977", CardName: "C01977", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C02217", CardName: "C02217", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C02507", CardName: "C02507", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C05695", CardName: "C05695", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C06818", CardName: "C06818", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C07125", CardName: "C07125", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C08083", CardName: "C08083", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C08231", CardName: "C08231", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C09540", CardName: "C09540", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
+  { CardCode: "C09706", CardName: "C09706", CardType: "cCustomer", Valid: "tYES", Frozen: "tNO" },
 ];
 
 // ============================================================================
 // PRODUTOS (Items)
+//
+// [A] TP0000016 — Descrição real extraída de Orders-structure.json (linha 460)
+// [A] IS0000001 — Referenciado como OriginalItem na linha do DocEntry 60
+// [C] EM00000004 — Código real visto no endpoint /Items (sem descrição capturada)
 // ============================================================================
 
 export const mockItems: SapItem[] = [
   {
+    // [A] REAL — ItemDescription da DocumentLines[0] do DocEntry 60
     ItemCode: "TP0000016",
-    ItemName: "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
+    ItemName: "TAMPA PLASTICA CONTA.GOTAS PRETA 820 LISA REF>GUALA - UND",
+    InventoryUOM: "UN", // [A] MeasureUnit real do pedido 60
+    InventoryItem: "tYES",
+    SalesItem: "tYES",
+    PurchaseItem: "tYES",
+    Valid: "tYES",
+    Frozen: "tNO",
+  },
+  {
+    // [C] REAL — ItemCode visto no endpoint /Items
+    // Descrição NÃO foi capturada (a resposta foi truncada)
+    ItemCode: "EM00000004",
+    ItemName: "EM00000004", // Nome real não capturado
     InventoryUOM: "UN",
     InventoryItem: "tYES",
     SalesItem: "tYES",
     PurchaseItem: "tYES",
     Valid: "tYES",
     Frozen: "tNO",
-    UpdateDate: "2026-01-15",
-    UpdateTime: "1430"
   },
   {
-    ItemCode: "GAR0001250",
-    ItemName: "GARRAFA PET 1250ML CRISTAL - UNIDADE",
+    // [A] REAL — Referenciado como OriginalItem na linha do pedido 60
+    // Descrição e UOM não capturados
+    ItemCode: "IS0000001",
+    ItemName: "IS0000001", // Nome real não capturado
     InventoryUOM: "UN",
     InventoryItem: "tYES",
-    SalesItem: "tYES",
+    SalesItem: "tNO",
     PurchaseItem: "tYES",
     Valid: "tYES",
     Frozen: "tNO",
-    UpdateDate: "2026-01-20",
-    UpdateTime: "0945"
   },
-  {
-    ItemCode: "ROT0050001",
-    ItemName: "ROTULO ADESIVO 50X100MM - ROLO C/1000",
-    InventoryUOM: "RL",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-01-18",
-    UpdateTime: "1120"
-  },
-  {
-    ItemCode: "CX0048030",
-    ItemName: "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
-    InventoryUOM: "PC",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-01-22",
-    UpdateTime: "1605"
-  },
-  {
-    ItemCode: "LAC0500001",
-    ItemName: "LACRE SEGURANÇA PLASTICO VERMELHO - PCT C/500",
-    InventoryUOM: "PC",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-01-25",
-    UpdateTime: "0830"
-  },
-  {
-    ItemCode: "GAR0002000",
-    ItemName: "GARRAFA PET 2000ML CRISTAL - UNIDADE",
-    InventoryUOM: "UN",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-01-28",
-    UpdateTime: "1515"
-  },
-  {
-    ItemCode: "TP0000038",
-    ItemName: "TAMPA PLASTICA AZUL 38MM - PCT C/100",
-    InventoryUOM: "UN",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-01-30",
-    UpdateTime: "1045"
-  },
-  {
-    ItemCode: "FIT0050001",
-    ItemName: "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
-    InventoryUOM: "RL",
-    InventoryItem: "tYES",
-    SalesItem: "tYES",
-    PurchaseItem: "tYES",
-    Valid: "tYES",
-    Frozen: "tNO",
-    UpdateDate: "2026-02-01",
-    UpdateTime: "0920"
-  }
 ];
 
 // ============================================================================
 // DEPÓSITOS (Warehouses)
+//
+// [C] 01.04 — "PAINTGRAF GSN" real do endpoint /Warehouses
+// [A] 02.02 — Usado como WarehouseCode na linha do DocEntry 60
 // ============================================================================
 
 export const mockWarehouses: SapWarehouse[] = [
-  {
-    WarehouseCode: "01.01",
-    WarehouseName: "DEPOSITO PRINCIPAL - AREA A",
-    Inactive: "tNO"
-  },
-  {
-    WarehouseCode: "02.02",
-    WarehouseName: "DEPOSITO SECUNDARIO - AREA B",
-    Inactive: "tNO"
-  },
-  {
-    WarehouseCode: "03.01",
-    WarehouseName: "DEPOSITO EXPEDICAO",
-    Inactive: "tNO"
-  },
-  {
-    WarehouseCode: "04.01",
-    WarehouseName: "DEPOSITO QUARENTENA",
-    Inactive: "tNO"
-  },
-  {
-    WarehouseCode: "99.99",
-    WarehouseName: "DEPOSITO OBSOLETO (DESATIVADO)",
-    Inactive: "tYES"
-  }
+  // [C] REAL — resposta do endpoint /Warehouses
+  { WarehouseCode: "01.04", WarehouseName: "PAINTGRAF GSN", Inactive: "tNO" },
+  // [A] REAL — WarehouseCode usado na DocumentLines[0] do DocEntry 60
+  // Nome do depósito não capturado
+  { WarehouseCode: "02.02", WarehouseName: "02.02", Inactive: "tNO" },
 ];
 
 // ============================================================================
-// ESTOQUE (Item Warehouse Info)
+// ESTOQUE (ItemWarehouseInfoCollection)
+//
+// Não temos dados reais de estoque — o endpoint /ItemWarehouseInfo retornou
+// "400 Bad Request" na investigação (endpoints-investigation.json).
+// Mantemos vazio. Quando o endpoint real funcionar, popular aqui.
 // ============================================================================
 
 export const mockItemWarehouseInfo: Record<string, SapItemWarehouseInfo[]> = {
-  "TP0000016": [
-    { WarehouseCode: "01.01", InStock: 5000, Committed: 500, Ordered: 1000, Available: 4500 },
-    { WarehouseCode: "02.02", InStock: 3000, Committed: 200, Ordered: 0, Available: 2800 },
-    { WarehouseCode: "03.01", InStock: 500, Committed: 100, Ordered: 0, Available: 400 }
-  ],
-  "GAR0001250": [
-    { WarehouseCode: "01.01", InStock: 12000, Committed: 2000, Ordered: 5000, Available: 10000 },
-    { WarehouseCode: "02.02", InStock: 8000, Committed: 1500, Ordered: 0, Available: 6500 }
-  ],
-  "ROT0050001": [
-    { WarehouseCode: "01.01", InStock: 250, Committed: 50, Ordered: 100, Available: 200 },
-    { WarehouseCode: "02.02", InStock: 150, Committed: 30, Ordered: 0, Available: 120 }
-  ],
-  "CX0048030": [
-    { WarehouseCode: "01.01", InStock: 800, Committed: 150, Ordered: 200, Available: 650 },
-    { WarehouseCode: "03.01", InStock: 300, Committed: 50, Ordered: 0, Available: 250 }
-  ],
-  "LAC0500001": [
-    { WarehouseCode: "01.01", InStock: 1500, Committed: 300, Ordered: 500, Available: 1200 },
-    { WarehouseCode: "02.02", InStock: 1000, Committed: 200, Ordered: 0, Available: 800 }
-  ],
-  "GAR0002000": [
-    { WarehouseCode: "01.01", InStock: 9000, Committed: 1800, Ordered: 3000, Available: 7200 },
-    { WarehouseCode: "02.02", InStock: 6000, Committed: 1200, Ordered: 0, Available: 4800 }
-  ],
-  "TP0000038": [
-    { WarehouseCode: "01.01", InStock: 4500, Committed: 450, Ordered: 800, Available: 4050 },
-    { WarehouseCode: "02.02", InStock: 2500, Committed: 250, Ordered: 0, Available: 2250 }
-  ],
-  "FIT0050001": [
-    { WarehouseCode: "01.01", InStock: 600, Committed: 100, Ordered: 150, Available: 500 },
-    { WarehouseCode: "03.01", InStock: 200, Committed: 40, Ordered: 0, Available: 160 }
-  ]
+  // Nenhum dado real de estoque disponível.
+  // Endpoint /ItemWarehouseInfo retornou 400 na investigação.
 };
 
 // ============================================================================
 // PEDIDOS (Sales Orders)
+//
+// [A] DocEntry 60 — Pedido COMPLETO com todos os campos reais
+// [B] DocEntries 59037-59061 — SOMENTE cabeçalho (DocEntry + DocNum + CardCode)
+//     Estes pedidos NÃO têm linhas, datas, totais ou status disponíveis
+//     (limitação do endpoint na data da conferência).
+//
+// UDFs: Todos iniciam null. O único valor real de UDF escrito no SAP foi
+// "TESTE_INTEGRACAO" no DocEntry de teste (fonte D), demonstrando que
+// PATCH + GET funcionam. O mock permite simular qualquer estado.
 // ============================================================================
 
 export const mockOrders: SapOrder[] = [
-  // Pedido 1 - Aberto, múltiplas linhas
+  // ──────────────────────────────────────────────────────────────────────────
+  // DocEntry 60 — PEDIDO COMPLETO REAL [Fonte A: Orders-structure.json]
+  //
+  // Todos os campos abaixo são valores reais da resposta do SAP Service Layer.
+  // ──────────────────────────────────────────────────────────────────────────
   {
-    DocEntry: 60,
-    DocNum: 5,
-    CardCode: "C00369",
-    CardName: "EUTIDES JACKSON SARMENTO",
-    DocDate: "2026-02-03T00:00:00Z",
-    DocDueDate: "2026-02-10T00:00:00Z",
-    DocStatus: "bost_Open",
-    DocumentStatus: "bost_Open",
-    DocTotal: 2850.50,
-    DocCurrency: "R$",
-    Comments: "Pedido urgente - cliente VIP",
-    CreateDate: "2026-02-03",
-    CreateTime: "0830",
-    UpdateDate: "2026-02-03",
-    UpdateTime: "0830",
+    DocEntry: 60,                             // [A] real
+    DocNum: 5,                                // [A] real
+    CardCode: "C00369",                       // [A] real
+    CardName: "EUTIDES JACKSON SARMENTO",     // [A] real
+    DocDate: "2023-02-10T00:00:00Z",          // [A] real
+    DocDueDate: "2023-02-10T00:00:00Z",       // [A] real
+    DocStatus: "bost_Close",                  // [A] real (DocumentStatus)
+    DocumentStatus: "bost_Close",             // [A] real
+    DocTotal: 65,                             // [A] real
+    DocCurrency: "R$",                        // [A] real
+    Comments: undefined,                       // [A] real (era null no SAP)
+    CreateDate: "2023-02-10",                 // [A] CreationDate formatado
+    CreateTime: "1026",                       // [A] DocTime "10:26:00" → "1026"
+    UpdateDate: "2023-02-10",                 // [A] UpdateDate real
+    UpdateTime: "1026",                       // [A] UpdateTime "10:26:56" → "1026"
+    // UDFs — iniciam null (nenhum valor WMS foi escrito neste pedido histórico)
     U_WMS_STATUS: null,
     U_WMS_ORDERID: null,
+    U_WMS_LAST_EVENT: null,
+    U_WMS_LAST_TS: null,
+    U_WMS_CORR_ID: null,
     DocumentLines: [
       {
-        LineNum: 0,
-        ItemCode: "TP0000016",
-        ItemDescription: "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
-        Quantity: 100,
-        WarehouseCode: "02.02",
-        Price: 0.65,
-        Currency: "R$",
-        UnitPrice: 0.65,
-        LineTotal: 65.00
+        // [A] Linha REAL da DocumentLines[0] do pedido 60
+        LineNum: 0,                           // [A] real
+        ItemCode: "TP0000016",                // [A] real
+        ItemDescription: "TAMPA PLASTICA CONTA.GOTAS PRETA 820 LISA REF>GUALA - UND", // [A] real
+        Quantity: 100,                        // [A] real
+        WarehouseCode: "02.02",               // [A] real
+        Price: 0.65,                          // [A] real
+        Currency: "R$",                       // [A] real
+        UnitPrice: 0.65,                      // [A] real
+        LineTotal: 65,                        // [A] real
+        MeasureUnit: "UN",                    // [A] real
       },
-      {
-        LineNum: 1,
-        ItemCode: "GAR0001250",
-        ItemDescription: "GARRAFA PET 1250ML CRISTAL - UNIDADE",
-        Quantity: 2000,
-        WarehouseCode: "01.01",
-        Price: 1.25,
-        Currency: "R$",
-        UnitPrice: 1.25,
-        LineTotal: 2500.00
-      },
-      {
-        LineNum: 2,
-        ItemCode: "ROT0050001",
-        ItemDescription: "ROTULO ADESIVO 50X100MM - ROLO C/1000",
-        Quantity: 5,
-        WarehouseCode: "01.01",
-        Price: 57.10,
-        Currency: "R$",
-        UnitPrice: 57.10,
-        LineTotal: 285.50
-      }
-    ]
+    ],
   },
 
-  // Pedido 2 - Aberto, prioridade alta
+  // ──────────────────────────────────────────────────────────────────────────
+  // DocEntries 59037-59061 — CABEÇALHOS REAIS [Fonte B: CONFERENCIA_RESULTADO.md]
+  //
+  // ATENÇÃO: Apenas DocEntry, DocNum e CardCode são dados reais.
+  // Não temos DocumentLines, DocTotal, DocDate, CardName, DocumentStatus
+  // para estes pedidos. Esses campos ficam como null/undefined.
+  // ──────────────────────────────────────────────────────────────────────────
   {
-    DocEntry: 61,
-    DocNum: 6,
-    CardCode: "C00512",
-    CardName: "DISTRIBUIDORA NORDESTE LTDA",
-    DocDate: "2026-02-03T00:00:00Z",
-    DocDueDate: "2026-02-05T00:00:00Z",
-    DocStatus: "bost_Open",
-    DocumentStatus: "bost_Open",
-    DocTotal: 15680.00,
+    DocEntry: 59037, DocNum: 38317, CardCode: "C01153",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
     DocCurrency: "R$",
-    Comments: "URGENTE - Prazo curto - Cliente atacadista",
-    CreateDate: "2026-02-03",
-    CreateTime: "0945",
-    UpdateDate: "2026-02-03",
-    UpdateTime: "1120",
-    U_WMS_STATUS: "A_SEPARAR",
-    U_WMS_ORDERID: null,
-    DocumentLines: [
-      {
-        LineNum: 0,
-        ItemCode: "GAR0002000",
-        ItemDescription: "GARRAFA PET 2000ML CRISTAL - UNIDADE",
-        Quantity: 5000,
-        WarehouseCode: "01.01",
-        Price: 1.80,
-        Currency: "R$",
-        UnitPrice: 1.80,
-        LineTotal: 9000.00
-      },
-      {
-        LineNum: 1,
-        ItemCode: "TP0000038",
-        ItemDescription: "TAMPA PLASTICA AZUL 38MM - PCT C/100",
-        Quantity: 200,
-        WarehouseCode: "01.01",
-        Price: 0.85,
-        Currency: "R$",
-        UnitPrice: 0.85,
-        LineTotal: 170.00
-      },
-      {
-        LineNum: 2,
-        ItemCode: "CX0048030",
-        ItemDescription: "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
-        Quantity: 150,
-        WarehouseCode: "01.01",
-        Price: 42.40,
-        Currency: "R$",
-        UnitPrice: 42.40,
-        LineTotal: 6360.00
-      },
-      {
-        LineNum: 3,
-        ItemCode: "FIT0050001",
-        ItemDescription: "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
-        Quantity: 50,
-        WarehouseCode: "01.01",
-        Price: 3.00,
-        Currency: "R$",
-        UnitPrice: 3.00,
-        LineTotal: 150.00
-      }
-    ]
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
   },
-
-  // Pedido 3 - Aberto, pedido pequeno
   {
-    DocEntry: 62,
-    DocNum: 7,
-    CardCode: "C00789",
-    CardName: "MARIA APARECIDA COMERCIO",
-    DocDate: "2026-02-04T00:00:00Z",
-    DocDueDate: "2026-02-11T00:00:00Z",
-    DocStatus: "bost_Open",
-    DocumentStatus: "bost_Open",
-    DocTotal: 1895.00,
+    DocEntry: 59038, DocNum: 38318, CardCode: "C02217",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
     DocCurrency: "R$",
-    Comments: "",
-    CreateDate: "2026-02-04",
-    CreateTime: "1015",
-    UpdateDate: "2026-02-04",
-    UpdateTime: "1015",
-    U_WMS_STATUS: null,
-    U_WMS_ORDERID: null,
-    DocumentLines: [
-      {
-        LineNum: 0,
-        ItemCode: "GAR0001250",
-        ItemDescription: "GARRAFA PET 1250ML CRISTAL - UNIDADE",
-        Quantity: 1000,
-        WarehouseCode: "02.02",
-        Price: 1.25,
-        Currency: "R$",
-        UnitPrice: 1.25,
-        LineTotal: 1250.00
-      },
-      {
-        LineNum: 1,
-        ItemCode: "LAC0500001",
-        ItemDescription: "LACRE SEGURANÇA PLASTICO VERMELHO - PCT C/500",
-        Quantity: 50,
-        WarehouseCode: "01.01",
-        Price: 12.90,
-        Currency: "R$",
-        UnitPrice: 12.90,
-        LineTotal: 645.00
-      }
-    ]
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
   },
-
-  // Pedido 4 - Fechado (entregue)
   {
-    DocEntry: 58,
-    DocNum: 3,
-    CardCode: "C01024",
-    CardName: "SUPERMERCADO BOM PREÇO",
-    DocDate: "2026-02-01T00:00:00Z",
-    DocDueDate: "2026-02-08T00:00:00Z",
-    DocStatus: "bost_Close",
-    DocumentStatus: "bost_Close",
-    DocTotal: 8950.00,
+    DocEntry: 59040, DocNum: 38319, CardCode: "C08083",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
     DocCurrency: "R$",
-    Comments: "Entrega realizada com sucesso",
-    CreateDate: "2026-02-01",
-    CreateTime: "0800",
-    UpdateDate: "2026-02-02",
-    UpdateTime: "1645",
-    U_WMS_STATUS: "DESPACHADO",
-    U_WMS_ORDERID: "550e8400-e29b-41d4-a716-446655440001",
-    U_WMS_LAST_EVENT: "DESPACHAR",
-    U_WMS_LAST_TS: "2026-02-02T16:45:00Z",
-    DocumentLines: [
-      {
-        LineNum: 0,
-        ItemCode: "GAR0002000",
-        ItemDescription: "GARRAFA PET 2000ML CRISTAL - UNIDADE",
-        Quantity: 3000,
-        WarehouseCode: "01.01",
-        Price: 1.80,
-        Currency: "R$",
-        UnitPrice: 1.80,
-        LineTotal: 5400.00
-      },
-      {
-        LineNum: 1,
-        ItemCode: "TP0000038",
-        ItemDescription: "TAMPA PLASTICA AZUL 38MM - PCT C/100",
-        Quantity: 150,
-        WarehouseCode: "01.01",
-        Price: 0.85,
-        Currency: "R$",
-        UnitPrice: 0.85,
-        LineTotal: 127.50
-      },
-      {
-        LineNum: 2,
-        ItemCode: "CX0048030",
-        ItemDescription: "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
-        Quantity: 80,
-        WarehouseCode: "03.01",
-        Price: 42.40,
-        Currency: "R$",
-        UnitPrice: 42.40,
-        LineTotal: 3392.00
-      },
-      {
-        LineNum: 3,
-        ItemCode: "FIT0050001",
-        ItemDescription: "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
-        Quantity: 10,
-        WarehouseCode: "01.01",
-        Price: 3.00,
-        Currency: "R$",
-        UnitPrice: 3.00,
-        LineTotal: 30.00
-      }
-    ]
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
   },
-
-  // Pedido 5 - Aberto, pedido grande
   {
-    DocEntry: 63,
-    DocNum: 8,
-    CardCode: "C01156",
-    CardName: "JOSÉ ROBERTO SILVA - ME",
-    DocDate: "2026-02-04T00:00:00Z",
-    DocDueDate: "2026-02-15T00:00:00Z",
-    DocStatus: "bost_Open",
-    DocumentStatus: "bost_Open",
-    DocTotal: 4520.50,
+    DocEntry: 59041, DocNum: 38320, CardCode: "C02507",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
     DocCurrency: "R$",
-    Comments: "Cliente solicita embalagem reforçada",
-    CreateDate: "2026-02-04",
-    CreateTime: "1430",
-    UpdateDate: "2026-02-04",
-    UpdateTime: "1430",
-    U_WMS_STATUS: null,
-    U_WMS_ORDERID: null,
-    DocumentLines: [
-      {
-        LineNum: 0,
-        ItemCode: "TP0000016",
-        ItemDescription: "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
-        Quantity: 300,
-        WarehouseCode: "01.01",
-        Price: 0.65,
-        Currency: "R$",
-        UnitPrice: 0.65,
-        LineTotal: 195.00
-      },
-      {
-        LineNum: 1,
-        ItemCode: "GAR0001250",
-        ItemDescription: "GARRAFA PET 1250ML CRISTAL - UNIDADE",
-        Quantity: 3000,
-        WarehouseCode: "01.01",
-        Price: 1.25,
-        Currency: "R$",
-        UnitPrice: 1.25,
-        LineTotal: 3750.00
-      },
-      {
-        LineNum: 2,
-        ItemCode: "ROT0050001",
-        ItemDescription: "ROTULO ADESIVO 50X100MM - ROLO C/1000",
-        Quantity: 10,
-        WarehouseCode: "02.02",
-        Price: 57.10,
-        Currency: "R$",
-        UnitPrice: 57.10,
-        LineTotal: 571.00
-      },
-      {
-        LineNum: 3,
-        ItemCode: "LAC0500001",
-        ItemDescription: "LACRE SEGURANÇA PLASTICO VERMELHO - PCT C/500",
-        Quantity: 4,
-        WarehouseCode: "02.02",
-        Price: 12.90,
-        Currency: "R$",
-        UnitPrice: 12.90,
-        LineTotal: 51.60
-      }
-    ]
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
   },
-
-  // Pedido 6 - Fechado recentemente
   {
-    DocEntry: 59,
-    DocNum: 4,
-    CardCode: "C00512",
-    CardName: "DISTRIBUIDORA NORDESTE LTDA",
-    DocDate: "2026-02-02T00:00:00Z",
-    DocDueDate: "2026-02-09T00:00:00Z",
-    DocStatus: "bost_Close",
-    DocumentStatus: "bost_Close",
-    DocTotal: 12450.00,
+    DocEntry: 59043, DocNum: 38321, CardCode: "C08231",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
     DocCurrency: "R$",
-    Comments: "Pedido fechado - entrega confirmada",
-    CreateDate: "2026-02-02",
-    CreateTime: "0915",
-    UpdateDate: "2026-02-03",
-    UpdateTime: "1130",
-    U_WMS_STATUS: "DESPACHADO",
-    U_WMS_ORDERID: "550e8400-e29b-41d4-a716-446655440002",
-    U_WMS_LAST_EVENT: "DESPACHAR",
-    U_WMS_LAST_TS: "2026-02-03T11:30:00Z",
-    U_WMS_CORR_ID: "corr-2026020209151234",
-    DocumentLines: [
-      {
-        LineNum: 0,
-        ItemCode: "GAR0001250",
-        ItemDescription: "GARRAFA PET 1250ML CRISTAL - UNIDADE",
-        Quantity: 8000,
-        WarehouseCode: "01.01",
-        Price: 1.25,
-        Currency: "R$",
-        UnitPrice: 1.25,
-        LineTotal: 10000.00
-      },
-      {
-        LineNum: 1,
-        ItemCode: "TP0000016",
-        ItemDescription: "TAMPA PLASTICA BRANCA 28MM - PCT C/100",
-        Quantity: 400,
-        WarehouseCode: "02.02",
-        Price: 0.65,
-        Currency: "R$",
-        UnitPrice: 0.65,
-        LineTotal: 260.00
-      },
-      {
-        LineNum: 2,
-        ItemCode: "CX0048030",
-        ItemDescription: "CAIXA PAPELAO 48X30X30CM - 25 UNIDADES",
-        Quantity: 50,
-        WarehouseCode: "03.01",
-        Price: 42.40,
-        Currency: "R$",
-        UnitPrice: 42.40,
-        LineTotal: 2120.00
-      },
-      {
-        LineNum: 3,
-        ItemCode: "FIT0050001",
-        ItemDescription: "FITA ADESIVA TRANSPARENTE 50MM - ROLO",
-        Quantity: 23,
-        WarehouseCode: "01.01",
-        Price: 3.00,
-        Currency: "R$",
-        UnitPrice: 3.00,
-        LineTotal: 69.00
-      }
-    ]
-  }
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59045, DocNum: 38322, CardCode: "C00534",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59046, DocNum: 38323, CardCode: "C00391",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59047, DocNum: 38324, CardCode: "C07125",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59048, DocNum: 38325, CardCode: "C01977",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59049, DocNum: 38326, CardCode: "C07125",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59051, DocNum: 38327, CardCode: "C00033",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59052, DocNum: 38328, CardCode: "C00037",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59053, DocNum: 38329, CardCode: "C00037",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59054, DocNum: 38330, CardCode: "C09540",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59056, DocNum: 38331, CardCode: "C05695",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59057, DocNum: 38332, CardCode: "C00037",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59058, DocNum: 38333, CardCode: "C06818",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59059, DocNum: 38334, CardCode: "C09706",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59060, DocNum: 38335, CardCode: "C00173",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
+  {
+    DocEntry: 59061, DocNum: 38336, CardCode: "C01161",
+    DocStatus: "bost_Open", DocumentStatus: "bost_Open",
+    DocCurrency: "R$",
+    U_WMS_STATUS: null, U_WMS_ORDERID: null, U_WMS_LAST_EVENT: null, U_WMS_LAST_TS: null, U_WMS_CORR_ID: null,
+    DocumentLines: [],
+  },
 ];
 
 // ============================================================================
-// FUNÇÕES AUXILIARES
+// HELPER para geração de pedidos de teste (usado apenas pelo mock service)
 // ============================================================================
 
-/**
- * Gera um novo pedido mock com dados aleatórios
- */
 export function generateRandomOrder(docEntry: number, docNum: number): SapOrder {
-  const customers = mockBusinessPartners.filter(bp => bp.Valid === "tYES");
-  const customer = customers[Math.floor(Math.random() * customers.length)];
-  
-  const now = new Date();
-  const dueDate = new Date(now);
-  dueDate.setDate(dueDate.getDate() + Math.floor(Math.random() * 14) + 1);
-
-  const numLines = Math.floor(Math.random() * 4) + 1;
-  const lines: SapDocumentLine[] = [];
-  let total = 0;
-
-  for (let i = 0; i < numLines; i++) {
-    const item = mockItems[Math.floor(Math.random() * mockItems.length)];
-    const warehouse = mockWarehouses.filter(w => w.Inactive === "tNO")[0];
-    const quantity = Math.floor(Math.random() * 1000) + 100;
-    const price = Math.random() * 50 + 5;
-    const lineTotal = quantity * price;
-    total += lineTotal;
-
-    lines.push({
-      LineNum: i,
-      ItemCode: item.ItemCode,
-      ItemDescription: item.ItemName,
-      Quantity: quantity,
-      WarehouseCode: warehouse.WarehouseCode,
-      Price: parseFloat(price.toFixed(2)),
-      Currency: "R$",
-      UnitPrice: parseFloat(price.toFixed(2)),
-      LineTotal: parseFloat(lineTotal.toFixed(2))
-    });
-  }
+  const bpCodes = mockBusinessPartners.map((bp) => bp.CardCode);
+  const code = bpCodes[Math.floor(Math.random() * bpCodes.length)]!;
+  const bp = mockBusinessPartners.find((b) => b.CardCode === code)!;
 
   return {
     DocEntry: docEntry,
     DocNum: docNum,
-    CardCode: customer.CardCode,
-    CardName: customer.CardName,
-    DocDate: now.toISOString(),
-    DocDueDate: dueDate.toISOString(),
+    CardCode: bp.CardCode,
+    CardName: bp.CardName,
+    DocDate: new Date().toISOString(),
+    DocDueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
     DocStatus: "bost_Open",
     DocumentStatus: "bost_Open",
-    DocTotal: parseFloat(total.toFixed(2)),
     DocCurrency: "R$",
-    Comments: "",
-    CreateDate: now.toISOString().split('T')[0],
-    CreateTime: now.toTimeString().split(' ')[0].replace(/:/g, '').substring(0, 4),
-    UpdateDate: now.toISOString().split('T')[0],
-    UpdateTime: now.toTimeString().split(' ')[0].replace(/:/g, '').substring(0, 4),
-    DocumentLines: lines
+    U_WMS_STATUS: null,
+    U_WMS_ORDERID: null,
+    U_WMS_LAST_EVENT: null,
+    U_WMS_LAST_TS: null,
+    U_WMS_CORR_ID: null,
+    DocumentLines: [],
   };
-}
-
-/**
- * Retorna pedidos filtrados por status
- */
-export function getOrdersByStatus(status: "open" | "closed" | "all"): SapOrder[] {
-  if (status === "all") return mockOrders;
-  
-  const sapStatus = status === "open" ? "bost_Open" : "bost_Close";
-  return mockOrders.filter(o => o.DocStatus === sapStatus);
-}
-
-/**
- * Retorna pedidos de um cliente específico
- */
-export function getOrdersByCustomer(cardCode: string): SapOrder[] {
-  return mockOrders.filter(o => o.CardCode === cardCode);
-}
-
-/**
- * Retorna estoque de um produto
- */
-export function getItemStock(itemCode: string): SapItemWarehouseInfo[] {
-  return mockItemWarehouseInfo[itemCode] || [];
 }

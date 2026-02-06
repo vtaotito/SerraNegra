@@ -3,9 +3,36 @@
  * Baseado no contrato de integração (API_CONTRACTS/sap-b1-integration-contract.md)
  */
 
+// ============================================================================
+// Enums / Literais
+// ============================================================================
+
+/** Status do documento no SAP */
+export type SapDocStatus =
+  | "bost_Open"
+  | "bost_Close"
+  | "bost_Paid"
+  | "bost_Delivered";
+
 /**
- * Linha de documento (item do pedido)
+ * Valores válidos para o UDF U_WMS_STATUS no SAP.
+ * Representam o ciclo de vida do pedido dentro do WMS.
  */
+export type WmsUdfStatus =
+  | "IMPORTADO"
+  | "A_SEPARAR"
+  | "EM_SEPARACAO"
+  | "SEPARADO"
+  | "EM_CONFERENCIA"
+  | "CONFERIDO"
+  | "EM_EXPEDICAO"
+  | "DESPACHADO"
+  | "ERRO";
+
+// ============================================================================
+// Linha de documento
+// ============================================================================
+
 export type SapDocumentLine = {
   LineNum: number;
   ItemCode: string;
@@ -17,16 +44,13 @@ export type SapDocumentLine = {
   TaxCode?: string;
   UnitPrice?: number;
   LineTotal?: number;
+  MeasureUnit?: string;
 };
 
-/**
- * Status do documento no SAP
- */
-export type SapDocStatus = "bost_Open" | "bost_Close" | "bost_Paid" | "bost_Delivered";
+// ============================================================================
+// Pedido (Sales Order)
+// ============================================================================
 
-/**
- * Pedido (Sales Order) do SAP
- */
 export type SapOrder = {
   DocEntry: number;
   DocNum: number;
@@ -39,35 +63,48 @@ export type SapOrder = {
   DocTotal?: number;
   DocCurrency?: string;
   Comments?: string;
-  
-  // Campos de auditoria
+
+  // Auditoria SAP
   CreateDate?: string;
   CreateTime?: string;
   UpdateDate?: string;
   UpdateTime?: string;
-  
+
   // UDFs customizados do WMS
-  U_WMS_STATUS?: string;
-  U_WMS_ORDERID?: string;
-  U_WMS_LAST_EVENT?: string;
-  U_WMS_LAST_TS?: string;
-  U_WMS_CORR_ID?: string;
-  
+  U_WMS_STATUS?: WmsUdfStatus | string | null;
+  U_WMS_ORDERID?: string | null;
+  U_WMS_LAST_EVENT?: string | null;
+  U_WMS_LAST_TS?: string | null;
+  U_WMS_CORR_ID?: string | null;
+
   // Linhas do pedido
   DocumentLines?: SapDocumentLine[];
 };
 
-/**
- * Resposta de coleção do SAP (OData)
- */
-export type SapCollectionResponse<T> = {
-  "odata.metadata"?: string;
-  value: T[];
+// ============================================================================
+// Business Partner (Cliente / Fornecedor)
+// ============================================================================
+
+export type SapBusinessPartner = {
+  CardCode: string;
+  CardName: string;
+  CardType?: "cCustomer" | "cSupplier" | "cLead";
+  Phone1?: string;
+  EmailAddress?: string;
+  Address?: string;
+  City?: string;
+  State?: string;
+  ZipCode?: string;
+  Country?: string;
+  FederalTaxID?: string;   // CNPJ/CPF
+  Valid?: "tYES" | "tNO";
+  Frozen?: "tYES" | "tNO";
 };
 
-/**
- * Item do catálogo
- */
+// ============================================================================
+// Item (Produto)
+// ============================================================================
+
 export type SapItem = {
   ItemCode: string;
   ItemName: string;
@@ -77,22 +114,25 @@ export type SapItem = {
   PurchaseItem?: "tYES" | "tNO";
   Valid?: "tYES" | "tNO";
   Frozen?: "tYES" | "tNO";
+  QuantityOnStock?: number;
   UpdateDate?: string;
   UpdateTime?: string;
 };
 
-/**
- * Depósito (Warehouse)
- */
+// ============================================================================
+// Warehouse (Depósito)
+// ============================================================================
+
 export type SapWarehouse = {
   WarehouseCode: string;
   WarehouseName: string;
   Inactive?: "tYES" | "tNO";
 };
 
-/**
- * Informação de estoque por depósito
- */
+// ============================================================================
+// Estoque por depósito
+// ============================================================================
+
 export type SapItemWarehouseInfo = {
   WarehouseCode: string;
   InStock?: number;
@@ -101,9 +141,19 @@ export type SapItemWarehouseInfo = {
   Available?: number;
 };
 
-/**
- * Parâmetros de filtro para buscar pedidos
- */
+// ============================================================================
+// Resposta OData
+// ============================================================================
+
+export type SapCollectionResponse<T> = {
+  "odata.metadata"?: string;
+  value: T[];
+};
+
+// ============================================================================
+// Filtros
+// ============================================================================
+
 export type SapOrdersFilter = {
   status?: "open" | "closed" | "all";
   cardCode?: string;
@@ -113,11 +163,12 @@ export type SapOrdersFilter = {
   skip?: number;
 };
 
-/**
- * Payload para atualizar status do pedido (UDFs)
- */
+// ============================================================================
+// Payload para atualizar UDFs do pedido
+// ============================================================================
+
 export type SapOrderStatusUpdate = {
-  U_WMS_STATUS?: string;
+  U_WMS_STATUS?: WmsUdfStatus | string;
   U_WMS_ORDERID?: string;
   U_WMS_LAST_EVENT?: string;
   U_WMS_LAST_TS?: string;

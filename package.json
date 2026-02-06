@@ -23,6 +23,7 @@
     "sap:investigar-endpoints": "npm run sap:build && node dist/sap-connector/examples/investigar-endpoints.js",
     "sap:testar-sqlqueries": "npm run sap:build && node dist/sap-connector/examples/testar-sqlqueries.js",
     "sap:mock": "tsx sap-connector/examples/test-mock-service.ts",
+    "sap:mock:udfs": "tsx sap-connector/examples/test-mock-with-udfs.ts",
     "sap:mock:integration": "tsx sap-connector/examples/integration-example.ts",
     "sap:factory": "tsx sap-connector/examples/use-factory.ts",
     "test:sap:integration": "tsx --test sap-connector/tests/integration.test.ts",
