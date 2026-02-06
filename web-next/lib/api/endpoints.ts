@@ -36,4 +36,12 @@ export const API_ENDPOINTS = {
 
   // Health
   HEALTH: "/health",
+
+  // SAP Integration
+  SAP_HEALTH: "/api/sap/health",
+  SAP_ORDERS: "/api/sap/orders",
+  SAP_SYNC: "/api/sap/sync",
+  SAP_SYNC_STATUS: "/api/sap/sync/status",
+  SAP_CONFIG: "/api/sap/config",
+  SAP_CONFIG_TEST: "/api/sap/config/test",
 } as const;
