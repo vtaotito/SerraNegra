@@ -9,12 +9,13 @@ import { SapSyncHistory } from "@/features/integration/components/SapSyncHistory
 import { useSapConfig } from "@/features/integration/hooks/useSapIntegration";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Settings, Activity, Database } from "lucide-react";
+import type { SapSyncHistoryItem } from "@/features/integration/types";
 
 export default function IntegracaoPage() {
   const { data: currentConfig, isLoading: isLoadingConfig } = useSapConfig();
 
   // Mock history (substituir por query real quando endpoint estiver disponível)
-  const mockHistory = [];
+  const mockHistory: SapSyncHistoryItem[] = [];
 
   return (
     <AppLayout>
