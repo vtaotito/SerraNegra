@@ -21,8 +21,12 @@ export function SapStatusCard() {
         description: `${result.synced_count} pedido(s) sincronizado(s) em ${result.duration_ms}ms`,
       });
     } catch (error: any) {
+      const errorMessage = typeof error === 'string'
+        ? error
+        : error?.message || error?.error || "Falha ao sincronizar com SAP";
+      
       toast.error("Erro na sincronização", {
-        description: error.message || "Falha ao sincronizar com SAP",
+        description: String(errorMessage),
       });
     }
   };
