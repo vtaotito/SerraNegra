@@ -151,10 +151,8 @@ export class SapOrdersService {
       async () => {
         // NOTA: Usando campos que funcionam no SAP B1 Service Layer
         // DocStatus removido do $select pois causa erro 400
+        // Query sem UDFs para compatibilidade com ambientes de teste
         let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments`;
-        
-        // Adicionar UDFs se existirem (não causa erro se não existir)
-        path += `,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID`;
         
         path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
 
@@ -167,10 +165,8 @@ export class SapOrdersService {
             filterParts.push(`DocumentStatus eq 'bost_Close'`);
           }
         }
-        if (filters.status && filters.status !== "ALL") {
-          // Se o filtro for por status WMS, buscar pelo UDF
-          filterParts.push(`U_WMS_STATUS eq '${filters.status}'`);
-        }
+        // Nota: Filtro por status WMS (U_WMS_STATUS) desabilitado para compatibilidade
+        // Em produção, habilite após criar os UDFs no SAP B1
 
         if (filterParts.length > 0) {
           path += `&$filter=${filterParts.join(" and ")}`;
@@ -195,8 +191,8 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // NOTA: Usando campos que funcionam no SAP B1 Service Layer
-        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
+        // Query sem UDFs para compatibilidade com ambientes de teste
+        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,Cancelled,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Address,Address2,Comments&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,UoMCode,Price,Currency)`;
 
         const response = await this.client.get<SapOrder>(path, { correlationId });
 
