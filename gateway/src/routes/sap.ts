@@ -453,7 +453,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
     try {
       // Criar cliente temporário com as credenciais fornecidas
-      const { SapB1Client } = await import("../services/sapB1Client.js");
+      const { ServiceLayerClient } = await import("../../../sap-connector/src/serviceLayerClient.js");
       
       const logger = {
         debug: (msg: string, meta?: Record<string, unknown>) => app.log.debug(meta, msg),
@@ -462,7 +462,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
         error: (msg: string, meta?: Record<string, unknown>) => app.log.error(meta, msg)
       };
 
-      const testClient = new SapB1Client(
+      const testClient = new ServiceLayerClient(
         {
           baseUrl: body.baseUrl,
           companyDb: body.companyDb,
