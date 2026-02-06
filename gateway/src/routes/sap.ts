@@ -576,5 +576,72 @@ export async function registerSapRoutes(app: FastifyInstance) {
     });
   });
 
-  app.log.info("Rotas SAP registradas (com cache)");
+  /**
+   * DELETE /sap/config
+   * Revoga acesso SAP (limpa configuração e sessão)
+   */
+  app.delete("/sap/config", async (req, reply) => {
+    try {
+      sapConfigStore.clear();
+      sapService = null;
+
+      req.log.info("Configuração SAP revogada e sessão limpa");
+
+      reply.code(200).send({
+        success: true,
+        message: "Acesso SAP revogado com sucesso. Configuração e sessão removidas.",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error }, "Erro ao revogar acesso SAP");
+
+      reply.code(500).send({
+        success: false,
+        error: "Erro ao revogar acesso",
+        message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * POST /sap/session/refresh
+   * Força refresh da sessão SAP (re-login)
+   */
+  app.post("/sap/session/refresh", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      const service = getSapService();
+      const client = (service as any).client as any;
+      
+      // Forçar novo login
+      if (client && typeof client.login === 'function') {
+        await client.login(correlationId);
+        
+        req.log.info({ correlationId }, "Sessão SAP renovada com sucesso");
+
+        reply.code(200).send({
+          success: true,
+          message: "Sessão SAP renovada com sucesso",
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        throw new Error("Cliente SAP não disponível");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao renovar sessão SAP");
+
+      reply.code(500).send({
+        success: false,
+        error: "Erro ao renovar sessão",
+        message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store e session management)");
 }
