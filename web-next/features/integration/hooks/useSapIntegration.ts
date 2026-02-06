@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { get, post, put } from "@/lib/api/client";
+import { get, post, put, del } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
 import type {
   SapConfig,
@@ -85,6 +85,39 @@ export function useSyncSap() {
       queryClient.invalidateQueries({ queryKey: ["sap", "sync"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+/**
+ * Hook para revogar acesso SAP
+ */
+export function useRevokeSapAccess() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ success: boolean; message: string }, Error>({
+    mutationFn: () =>
+      del<{ success: boolean; message: string }>(API_ENDPOINTS.SAP_CONFIG),
+    onSuccess: () => {
+      // Invalidar todas as queries SAP
+      queryClient.invalidateQueries({ queryKey: ["sap"] });
+      queryClient.resetQueries({ queryKey: ["sap"] });
+    },
+  });
+}
+
+/**
+ * Hook para renovar sessão SAP
+ */
+export function useRefreshSapSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ success: boolean; message: string }, Error>({
+    mutationFn: () =>
+      post<{ success: boolean; message: string }>("/sap/session/refresh", {}),
+    onSuccess: () => {
+      // Atualizar health após refresh
+      queryClient.invalidateQueries({ queryKey: ["sap", "health"] });
     },
   });
 }

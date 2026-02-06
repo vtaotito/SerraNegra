@@ -1,10 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle, Loader2 } from "lucide-react";
-import { useSapHealth, useSapSyncStatus, useSyncSap } from "../hooks/useSapIntegration";
+import { AlertCircle, CheckCircle2, Clock, RefreshCw, XCircle, Loader2, Shield, ShieldOff } from "lucide-react";
+import { useSapHealth, useSapSyncStatus, useSyncSap, useRevokeSapAccess, useRefreshSapSession } from "../hooks/useSapIntegration";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -13,6 +14,24 @@ export function SapStatusCard() {
   const { data: health, isLoading: isLoadingHealth } = useSapHealth();
   const { data: syncStatus, isLoading: isLoadingSyncStatus } = useSapSyncStatus();
   const syncMutation = useSyncSap();
+  const revokeMutation = useRevokeSapAccess();
+  const refreshMutation = useRefreshSapSession();
+
+  // Auto-refresh sessão SAP a cada 25 minutos (sessão expira em 30)
+  useEffect(() => {
+    if (!health?.sap_connected) return;
+
+    const interval = setInterval(async () => {
+      try {
+        await refreshMutation.mutateAsync();
+        console.log("Sessão SAP renovada automaticamente");
+      } catch (error) {
+        console.error("Erro ao renovar sessão SAP:", error);
+      }
+    }, 25 * 60 * 1000); // 25 minutos
+
+    return () => clearInterval(interval);
+  }, [health?.sap_connected]);
 
   const handleSync = async () => {
     try {
@@ -26,6 +45,27 @@ export function SapStatusCard() {
         : error?.message || error?.error || "Falha ao sincronizar com SAP";
       
       toast.error("Erro na sincronização", {
+        description: String(errorMessage),
+      });
+    }
+  };
+
+  const handleRevoke = async () => {
+    if (!confirm("Tem certeza que deseja revogar o acesso ao SAP? Você precisará configurar novamente.")) {
+      return;
+    }
+
+    try {
+      await revokeMutation.mutateAsync();
+      toast.success("Acesso revogado!", {
+        description: "Configuração SAP removida com sucesso.",
+      });
+    } catch (error: any) {
+      const errorMessage = typeof error === 'string'
+        ? error
+        : error?.message || error?.error || "Erro ao revogar acesso";
+      
+      toast.error("Erro ao revogar acesso", {
         description: String(errorMessage),
       });
     }
@@ -53,28 +93,58 @@ export function SapStatusCard() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Status da Integração SAP</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              Status da Integração SAP
+              {health?.sap_connected && (
+                <Badge variant="outline" className="gap-1">
+                  <Shield className="h-3 w-3" />
+                  Sessão Ativa
+                </Badge>
+              )}
+            </CardTitle>
             <CardDescription>
               Status da conexão e sincronização com SAP Business One
             </CardDescription>
           </div>
-          <Button
-            onClick={handleSync}
-            disabled={syncMutation.isPending || !health?.sap_connected}
-            size="sm"
-          >
-            {syncMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sincronizando...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sincronizar Agora
-              </>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSync}
+              disabled={syncMutation.isPending || !health?.sap_connected}
+              size="sm"
+            >
+              {syncMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sincronizar Agora
+                </>
+              )}
+            </Button>
+            {health?.sap_connected && (
+              <Button
+                onClick={handleRevoke}
+                disabled={revokeMutation.isPending}
+                variant="destructive"
+                size="sm"
+              >
+                {revokeMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Revogando...
+                  </>
+                ) : (
+                  <>
+                    <ShieldOff className="mr-2 h-4 w-4" />
+                    Revogar Acesso
+                  </>
+                )}
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -192,13 +262,28 @@ export function SapStatusCard() {
           )}
         </div>
 
-        {/* Info sobre Worker */}
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-900">
-          <p className="font-medium mb-1">ℹ️ Sincronização Automática</p>
-          <p>
-            O Worker sincroniza pedidos automaticamente a cada 30 segundos. Use o botão
-            "Sincronizar Agora" para forçar uma sincronização manual imediata.
-          </p>
+        {/* Info sobre Worker e Sessão */}
+        <div className="space-y-2">
+          <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-900">
+            <p className="font-medium mb-1">ℹ️ Sincronização Automática</p>
+            <p>
+              O Worker sincroniza pedidos automaticamente a cada 30 segundos. Use o botão
+              "Sincronizar Agora" para forçar uma sincronização manual imediata.
+            </p>
+          </div>
+          
+          {health?.sap_connected && (
+            <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-900">
+              <p className="font-medium mb-1 flex items-center gap-1">
+                <Shield className="h-4 w-4" />
+                Sessão Ativa e Protegida
+              </p>
+              <p>
+                A sessão SAP é renovada automaticamente a cada 25 minutos e permanece 
+                ativa até você revogar o acesso. As credenciais estão salvas de forma segura.
+              </p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
