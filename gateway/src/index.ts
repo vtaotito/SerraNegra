@@ -143,30 +143,37 @@ app.get("/v1/dashboard/metrics", async (req, reply) => {
 await registerSapRoutes(app);
 
 // Proxy genérico para API Core - todas as rotas /v1/*
-app.all("/v1/*", async (req, reply) => {
-  try {
-    const path = req.url; // já inclui /v1/... e query params
-    const result = await forwardToCore(req, req.method, path, req.body);
-    
-    // Copiar headers relevantes
-    if (result.headers["content-type"]) {
-      reply.header("content-type", result.headers["content-type"] as string);
+// Usar ALL com wildcard parameter
+for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
+  app.route({
+    method: method as any,
+    url: "/v1/*",
+    handler: async (req, reply) => {
+      try {
+        const path = req.url; // já inclui /v1/... e query params
+        const result = await forwardToCore(req, req.method, path, req.body);
+        
+        // Copiar headers relevantes
+        if (result.headers["content-type"]) {
+          reply.header("content-type", result.headers["content-type"] as string);
+        }
+        
+        reply.code(result.statusCode).send(result.body);
+      } catch (error) {
+        const correlationId = (req as any).correlationId as string;
+        const message = error instanceof Error ? error.message : "Erro desconhecido";
+        req.log.error({ error, correlationId, path: req.url }, "Erro ao fazer proxy para Core");
+        
+        reply.code(500).send({
+          error: "Erro ao comunicar com API Core",
+          message,
+          correlationId,
+          timestamp: new Date().toISOString()
+        });
+      }
     }
-    
-    reply.code(result.statusCode).send(result.body);
-  } catch (error) {
-    const correlationId = (req as any).correlationId as string;
-    const message = error instanceof Error ? error.message : "Erro desconhecido";
-    req.log.error({ error, correlationId, path: req.url }, "Erro ao fazer proxy para Core");
-    
-    reply.code(500).send({
-      error: "Erro ao comunicar com API Core",
-      message,
-      correlationId,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
+  });
+}
 
 // SSE: /events (dashboard)
 app.get("/events", async (req, reply) => {
