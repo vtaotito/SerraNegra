@@ -10,15 +10,16 @@ import type { RestRouteDefinition } from "./routesRest.js";
 import type { HttpRequest, RequestContext } from "./http.js";
 import { createLogger } from "../observability/logger.js";
 import {
-  createStubCatalogService,
   createStubCustomersService,
   createStubDashboardService,
   createStubIntegrationService,
-  createStubInventoryService,
   createStubOrdersService,
   createStubScanService,
   createStubShipmentsService
 } from "./services/stubServices.js";
+// Serviços completos implementados
+import { CatalogStore, createCatalogService } from "./services/catalogService.js";
+import { InventoryStore, createInventoryService } from "./services/inventoryService.js";
 
 const SERVICE_NAME = process.env.SERVICE_NAME ?? "wms-core-api";
 const API_PORT = Number(process.env.API_PORT ?? "8000");
@@ -73,10 +74,18 @@ app.addHook("onRequest", async (req, reply) => {
 // Health check
 app.get("/health", async () => ({ ok: true, service: SERVICE_NAME }));
 
+// Inicializar stores in-memory para serviços completos
+const catalogStore = new CatalogStore();
+const inventoryStore = new InventoryStore();
+
+logger.info("Stores inicializadas com dados de exemplo");
+logger.info(`- Catálogo: ${catalogStore.getAllItems().length} itens, ${catalogStore.getAllWarehouses().length} armazéns`);
+logger.info(`- Inventário: ${inventoryStore.getAllInventory().length} registros de estoque`);
+
 // Build routes
 const routes = buildRestRoutes({
-  catalogService: createStubCatalogService(),
-  inventoryService: createStubInventoryService(),
+  catalogService: createCatalogService(catalogStore),
+  inventoryService: createInventoryService(inventoryStore),
   ordersService: createStubOrdersService(),
   shipmentsService: createStubShipmentsService(),
   customersService: createStubCustomersService(),
