@@ -104,6 +104,70 @@ def health():
     return {"ok": True, "service": SERVICE_NAME}
 
 
+@app.get("/v1/catalog/items")
+def list_catalog_items(limit: int = 50, offset: int = 0):
+    """
+    Endpoint stub para listagem de itens do catálogo.
+    Por enquanto retorna lista vazia até implementação completa.
+    """
+    return {
+        "items": [],
+        "total": 0,
+        "limit": limit,
+        "offset": offset,
+        "nextCursor": None
+    }
+
+
+@app.get("/v1/inventory")
+def list_inventory(limit: int = 50, offset: int = 0):
+    """
+    Endpoint stub para consulta de estoque.
+    Por enquanto retorna lista vazia até implementação completa.
+    """
+    return {
+        "items": [],
+        "total": 0,
+        "limit": limit,
+        "offset": offset,
+        "nextCursor": None
+    }
+
+
+@app.get("/v1/orders")
+def list_orders_v1(
+    request: Request,
+    db: Session = Depends(get_session),
+    status: str | None = None,
+    externalOrderId: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Endpoint v1 para listagem de pedidos (compatível com a interface).
+    Redireciona para o endpoint /orders existente.
+    """
+    q = select(DbOrder).options(selectinload(DbOrder.items)).order_by(DbOrder.updated_at.desc())
+    if status:
+        q = q.where(DbOrder.status == status)
+    if externalOrderId:
+        q = q.where(DbOrder.external_order_id.ilike(f"%{externalOrderId}%"))
+    
+    # Aplicar offset e limit
+    q = q.offset(offset).limit(min(max(limit, 1), 200))
+
+    rows = db.execute(q).scalars().all()
+    total = db.execute(select(DbOrder)).scalars().all()
+    
+    return {
+        "items": [db_order_to_schema(o) for o in rows],
+        "total": len(total),
+        "limit": limit,
+        "offset": offset,
+        "nextCursor": None
+    }
+
+
 def db_order_to_schema(o: DbOrder) -> Order:
     return Order(
         orderId=o.order_id,
