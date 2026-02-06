@@ -28,18 +28,31 @@ apiClient.interceptors.request.use((config) => {
 // Interceptor para tratamento de erros
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  (error: AxiosError<any>) => {
     // Log do erro (desenvolvimento)
     if (process.env.NODE_ENV === "development") {
       console.error("API Error:", error.response?.data || error.message);
     }
 
-    // Retornar erro formatado
-    return Promise.reject({
-      status: error.response?.status,
-      message: error.response?.data || error.message,
-      originalError: error,
-    });
+    // Extrair mensagem de erro
+    let errorMessage = "Erro desconhecido";
+    
+    if (error.response?.data) {
+      const data = error.response.data;
+      // Se data é string, usar diretamente
+      if (typeof data === "string") {
+        errorMessage = data;
+      }
+      // Se data é objeto com message, error, ou details
+      else if (typeof data === "object") {
+        errorMessage = data.message || data.error || data.details || data.detail || errorMessage;
+      }
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+
+    // Retornar erro formatado sempre como string
+    return Promise.reject(new Error(errorMessage));
   }
 );
 

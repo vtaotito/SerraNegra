@@ -71,12 +71,16 @@ export function SapConfigForm({ initialConfig }: SapConfigFormProps) {
         });
       }
     } catch (error: any) {
+      const errorMessage = typeof error === 'string' 
+        ? error 
+        : error?.message || error?.error || "Erro ao testar conexão";
+      
       setTestResult({
         success: false,
-        message: error.message || "Erro ao testar conexão",
+        message: String(errorMessage),
       });
       toast.error("Erro ao testar conexão", {
-        description: error.message,
+        description: String(errorMessage),
       });
     }
   };
@@ -89,8 +93,12 @@ export function SapConfigForm({ initialConfig }: SapConfigFormProps) {
       });
       setTestResult(null);
     } catch (error: any) {
+      const errorMessage = typeof error === 'string'
+        ? error
+        : error?.message || error?.error || "Erro ao salvar configuração";
+      
       toast.error("Erro ao salvar configuração", {
-        description: error.message,
+        description: String(errorMessage),
       });
     }
   };
