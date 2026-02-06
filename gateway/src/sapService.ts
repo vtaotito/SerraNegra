@@ -109,7 +109,8 @@ export class SapService {
     }
 
     const filterQuery = filters.length > 0 ? `&$filter=${filters.join(" and ")}` : "";
-    const selectQuery = "$select=DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocStatus,DocumentStatus,DocTotal,DocCurrency,Comments,CreateDate,CreateTime,UpdateDate,UpdateTime,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID";
+    // Query sem UDFs para compatibilidade com ambiente teste
+    const selectQuery = "$select=DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocStatus,DocumentStatus,DocTotal,DocCurrency,Comments,CreateDate,CreateTime,UpdateDate,UpdateTime";
     const expandQuery = "$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price,UnitPrice,LineTotal)";
     const topQuery = `$top=${limit}`;
     const skipQuery = `$skip=${skip}`;
@@ -131,7 +132,8 @@ export class SapService {
    * Busca um pedido específico pelo DocEntry
    */
   async getOrder(docEntry: number, correlationId?: string): Promise<SapOrder> {
-    const selectQuery = "$select=DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocStatus,DocumentStatus,DocTotal,DocCurrency,Comments,CreateDate,CreateTime,UpdateDate,UpdateTime,U_WMS_STATUS,U_WMS_ORDERID,U_WMS_LAST_EVENT,U_WMS_LAST_TS,U_WMS_CORR_ID";
+    // Query sem UDFs para compatibilidade com ambiente teste
+    const selectQuery = "$select=DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocStatus,DocumentStatus,DocTotal,DocCurrency,Comments,CreateDate,CreateTime,UpdateDate,UpdateTime";
     const expandQuery = "$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price,UnitPrice,LineTotal)";
     const path = `/Orders(${docEntry})?${selectQuery}&${expandQuery}`;
 
