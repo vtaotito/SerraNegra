@@ -342,6 +342,163 @@ export async function registerSapRoutes(app: FastifyInstance) {
   });
 
   /**
+   * GET /api/sap/sync/status
+   * Retorna status da última sincronização e informações gerais
+   */
+  app.get("/sap/sync/status", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      // Buscar status do Core (se disponível)
+      const coreUrl = `${process.env.CORE_BASE_URL ?? "http://localhost:8000"}/orders`;
+      const coreRes = await fetch(`${coreUrl}?limit=1&sort=-createdAt`, {
+        headers: { "x-correlation-id": correlationId }
+      });
+
+      const lastSync = coreRes.ok ? await coreRes.json() : null;
+      const lastSyncDate = lastSync?.items?.[0]?.createdAt || null;
+
+      // Tentar contar pedidos abertos no SAP
+      let sapOpenOrders = 0;
+      try {
+        const service = getSapService();
+        const orders = await service.listOrders({ docStatus: "O", limit: 1000 }, correlationId);
+        sapOpenOrders = orders.length;
+      } catch (error) {
+        req.log.warn({ error, correlationId }, "Erro ao contar pedidos abertos no SAP");
+      }
+
+      reply.code(200).send({
+        last_sync_date: lastSyncDate,
+        last_sync_count: lastSync?.total || 0,
+        last_sync_status: lastSyncDate ? "SUCCESS" : null,
+        sap_open_orders: sapOpenOrders,
+        next_sync_estimate: "30 segundos (automático via Worker)",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao buscar status de sincronização");
+
+      reply.code(500).send({
+        error: "Erro ao buscar status",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/config
+   * Retorna configuração atual do SAP (sem senha)
+   */
+  app.get("/sap/config", async (req, reply) => {
+    reply.code(200).send({
+      baseUrl: process.env.SAP_BASE_URL || "https://",
+      companyDb: process.env.SAP_COMPANY_DB || "",
+      username: process.env.SAP_USERNAME || "",
+      // password nunca é retornado
+    });
+  });
+
+  /**
+   * PUT /api/sap/config
+   * Atualiza configuração do SAP (em produção, deve salvar em .env ou DB)
+   */
+  app.put("/sap/config", async (req, reply) => {
+    const body = req.body as any;
+
+    // Validação básica
+    if (!body?.baseUrl || !body?.companyDb || !body?.username) {
+      reply.code(400).send({
+        error: "Campos obrigatórios: baseUrl, companyDb, username",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    // ⚠️ MVP: Apenas valida, não persiste (em produção, salvar em DB/config)
+    req.log.warn(
+      { baseUrl: body.baseUrl, companyDb: body.companyDb, username: body.username },
+      "⚠️ Configuração SAP recebida mas NÃO PERSISTIDA (implementar persistência em produção)"
+    );
+
+    reply.code(200).send({
+      success: true,
+      message: "Configuração recebida (não persistida - MVP). Reinicie o serviço para aplicar.",
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  /**
+   * POST /api/sap/config/test
+   * Testa configuração SAP fornecida (não salva)
+   */
+  app.post("/sap/config/test", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const body = req.body as any;
+
+    // Validação
+    if (!body?.baseUrl || !body?.companyDb || !body?.username || !body?.password) {
+      reply.code(400).send({
+        success: false,
+        message: "Campos obrigatórios: baseUrl, companyDb, username, password",
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+
+    const startTime = Date.now();
+
+    try {
+      // Criar cliente temporário com as credenciais fornecidas
+      const { SapB1Client } = await import("../services/sapB1Client.js");
+      
+      const logger = {
+        debug: (msg: string, meta?: Record<string, unknown>) => app.log.debug(meta, msg),
+        info: (msg: string, meta?: Record<string, unknown>) => app.log.info(meta, msg),
+        warn: (msg: string, meta?: Record<string, unknown>) => app.log.warn(meta, msg),
+        error: (msg: string, meta?: Record<string, unknown>) => app.log.error(meta, msg)
+      };
+
+      const testClient = new SapB1Client(
+        {
+          baseUrl: body.baseUrl,
+          companyDb: body.companyDb,
+          username: body.username,
+          password: body.password
+        },
+        logger
+      );
+
+      // Fazer login
+      await testClient.login(correlationId);
+      const connectionTime = Date.now() - startTime;
+
+      reply.code(200).send({
+        success: true,
+        message: "Conexão bem-sucedida! Credenciais válidas.",
+        connection_time_ms: connectionTime,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const connectionTime = Date.now() - startTime;
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      
+      req.log.error({ error, correlationId }, "Erro ao testar configuração SAP");
+
+      reply.code(200).send({
+        success: false,
+        message: "Falha na conexão. Verifique as credenciais.",
+        error: message,
+        connection_time_ms: connectionTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
    * GET /api/sap/cache/stats
    * Retorna estatísticas dos caches
    */
