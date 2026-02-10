@@ -778,13 +778,24 @@ export async function registerSapRoutes(app: FastifyInstance) {
         headers: { "content-type": "application/json", "x-correlation-id": correlationId },
         body: JSON.stringify({ items: productsBulk }),
       });
-      const bulkResult = bulkRes.ok ? await bulkRes.json() : null;
-      results.products = {
-        ok: bulkRes.ok,
-        imported: bulkResult?.upserted ?? 0,
-        errors: 0,
-        message: `${bulkResult?.created ?? 0} criados, ${bulkResult?.updated ?? 0} atualizados`,
-      };
+      if (bulkRes.ok) {
+        const bulkResult = await bulkRes.json();
+        results.products = {
+          ok: true,
+          imported: bulkResult?.upserted ?? 0,
+          errors: 0,
+          message: `${bulkResult?.created ?? 0} criados, ${bulkResult?.updated ?? 0} atualizados`,
+        };
+      } else {
+        const errText = await bulkRes.text();
+        req.log.error({ status: bulkRes.status, body: errText.substring(0, 500), correlationId }, "Erro no bulk products");
+        results.products = {
+          ok: false,
+          imported: 0,
+          errors: 0,
+          message: `Core retornou ${bulkRes.status}: ${errText.substring(0, 200)}`,
+        };
+      }
     } catch (error) {
       results.products = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
     }
@@ -895,15 +906,25 @@ export async function registerSapRoutes(app: FastifyInstance) {
         headers: { "content-type": "application/json", "x-correlation-id": correlationId },
         body: JSON.stringify({ items: productsBulk }),
       });
-      const bulkResult = bulkRes.ok ? await bulkRes.json() : null;
 
-      reply.code(200).send({
-        ok: bulkRes.ok,
-        message: `${bulkResult?.upserted ?? 0} produtos sincronizados (${bulkResult?.created ?? 0} novos, ${bulkResult?.updated ?? 0} atualizados)`,
-        total_sap: sapItems.length,
-        ...bulkResult,
-        timestamp: new Date().toISOString(),
-      });
+      if (bulkRes.ok) {
+        const bulkResult = await bulkRes.json();
+        reply.code(200).send({
+          ok: true,
+          message: `${bulkResult?.upserted ?? 0} produtos sincronizados (${bulkResult?.created ?? 0} novos, ${bulkResult?.updated ?? 0} atualizados)`,
+          total_sap: sapItems.length,
+          ...bulkResult,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        const errText = await bulkRes.text();
+        reply.code(200).send({
+          ok: false,
+          message: `Core retornou ${bulkRes.status}: ${errText.substring(0, 200)}`,
+          total_sap: sapItems.length,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
       reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
