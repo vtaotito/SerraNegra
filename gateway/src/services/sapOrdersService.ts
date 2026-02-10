@@ -167,6 +167,9 @@ export class SapOrdersService {
         ];
 
         const minimalSelect = ["DocEntry", "DocNum"];
+        // Alguns ambientes do Service Layer expõem /Orders como entity type "Document"
+        // sem navegação "DocumentLines" (retorna 400). Por padrão, não expandimos linhas.
+        const allowExpandLines = process.env.SAP_B1_ENABLE_LINES_EXPAND === "true";
         const baseExpand =
           `DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
@@ -198,24 +201,7 @@ export class SapOrdersService {
         }
 
         const candidates: string[] = [];
-        // Preferido: query completa + filtros
-        if (docStatusFilter) {
-          candidates.push(
-            buildPath({ select: baseSelect, top: limit, expandLines: true, filter: docStatusFilter })
-          );
-        }
-        if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
-          candidates.push(
-            buildPath({
-              select: baseSelect,
-              top: limit,
-              expandLines: true,
-              filter: documentStatusFilter
-            })
-          );
-        }
-
-        // Fallbacks: remover expand
+        // Preferido: sem expand (mais compatível) + filtros
         if (docStatusFilter) {
           candidates.push(
             buildPath({ select: baseSelect, top: limit, expandLines: false, filter: docStatusFilter })
@@ -230,6 +216,25 @@ export class SapOrdersService {
               filter: documentStatusFilter
             })
           );
+        }
+
+        // Opcional: tentar expand se explicitamente habilitado
+        if (allowExpandLines) {
+          if (docStatusFilter) {
+            candidates.push(
+              buildPath({ select: baseSelect, top: limit, expandLines: true, filter: docStatusFilter })
+            );
+          }
+          if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
+            candidates.push(
+              buildPath({
+                select: baseSelect,
+                top: limit,
+                expandLines: true,
+                filter: documentStatusFilter
+              })
+            );
+          }
         }
 
         // Fallbacks: sem filtro (alguns ambientes rejeitam filtro em certos campos)
@@ -280,14 +285,17 @@ export class SapOrdersService {
           "Comments"
         ].join(",");
 
+        const allowExpandLines = process.env.SAP_B1_ENABLE_LINES_EXPAND === "true";
         const expand =
           `DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
         const candidates = [
-          `/Orders(${docEntry})?$select=${select}&$expand=${expand}`,
           `/Orders(${docEntry})?$select=${select}`,
           `/Orders(${docEntry})?$select=DocEntry,DocNum`
         ];
+        if (allowExpandLines) {
+          candidates.unshift(`/Orders(${docEntry})?$select=${select}&$expand=${expand}`);
+        }
 
         let lastError: unknown;
         for (const path of candidates) {
