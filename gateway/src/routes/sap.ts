@@ -46,36 +46,49 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
   /**
    * GET /api/sap/health
-   * Testa conexão com SAP (faz login mas não retorna segredos).
+   * Testa conexão com SAP e retorna status completo para o frontend.
    */
   app.get("/sap/health", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
+    const startTime = Date.now();
 
     try {
       const service = getSapService();
       const result = await service.healthCheck(correlationId);
+      const responseTime = Date.now() - startTime;
 
       if (result.ok) {
         reply.code(200).send({
           status: "ok",
+          sap_connected: true,
+          session_valid: true,
+          response_time_ms: responseTime,
           message: result.message,
           timestamp: new Date().toISOString()
         });
       } else {
-        reply.code(503).send({
+        reply.code(200).send({
           status: "error",
+          sap_connected: false,
+          session_valid: false,
+          response_time_ms: responseTime,
           message: result.message,
+          error: result.message,
           timestamp: new Date().toISOString()
         });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro desconhecido";
+      const responseTime = Date.now() - startTime;
       req.log.error({ error, correlationId }, "Erro no health check SAP");
 
-      reply.code(503).send({
+      reply.code(200).send({
         status: "error",
+        sap_connected: false,
+        session_valid: false,
+        response_time_ms: responseTime,
         message: "Erro ao conectar com SAP",
-        details: message,
+        error: message,
         correlationId,
         timestamp: new Date().toISOString()
       });
