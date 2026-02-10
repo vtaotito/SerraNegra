@@ -166,12 +166,26 @@ export class SapOrdersService {
           "Comments"
         ];
 
-        const minimalSelect = ["DocEntry", "DocNum"];
-        // Alguns ambientes do Service Layer expõem /Orders como entity type "Document"
-        // sem navegação "DocumentLines" (retorna 400). Por padrão, não expandimos linhas.
-        const allowExpandLines = process.env.SAP_B1_ENABLE_LINES_EXPAND === "true";
+        // Select essencial para sincronização (CardCode é obrigatório para customerId)
+        const essentialSelect = [
+          "DocEntry",
+          "DocNum",
+          "CardCode",
+          "CardName",
+          "DocDate",
+          "DocDueDate",
+          "DocStatus",
+          "DocumentStatus",
+          "DocTotal",
+          "DocCurrency"
+        ];
+
+        const minimalSelect = ["DocEntry", "DocNum", "CardCode", "CardName"];
+        const bareMinSelect = ["DocEntry", "DocNum"];
+
         const baseExpand =
           `DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
+        const simpleExpand = `DocumentLines($select=ItemCode,Quantity)`;
 
         const docStatusFilter =
           docStatus === "O"
@@ -190,64 +204,64 @@ export class SapOrdersService {
         function buildPath(args: {
           select: string[];
           top: number;
-          expandLines: boolean;
+          expand?: string;
           filter?: string;
         }): string {
           const selectQuery = `$select=${args.select.join(",")}`;
-          const expandQuery = args.expandLines ? `&$expand=${baseExpand}` : "";
+          const expandQuery = args.expand ? `&$expand=${args.expand}` : "";
           const filterQuery = args.filter ? `&$filter=${args.filter}` : "";
           const topQuery = `&$top=${args.top}`;
           return `/Orders?${selectQuery}${expandQuery}${filterQuery}${topQuery}`;
         }
 
         const candidates: string[] = [];
-        // Preferido: sem expand (mais compatível) + filtros
+
+        // 1. Ideal: select completo + expand detalhado + filtro DocStatus
         if (docStatusFilter) {
-          candidates.push(
-            buildPath({ select: baseSelect, top: limit, expandLines: false, filter: docStatusFilter })
-          );
+          candidates.push(buildPath({ select: baseSelect, top: limit, expand: baseExpand, filter: docStatusFilter }));
         }
-        if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
-          candidates.push(
-            buildPath({
-              select: baseSelect,
-              top: limit,
-              expandLines: false,
-              filter: documentStatusFilter
-            })
-          );
+        // 2. select completo + expand detalhado + filtro DocumentStatus
+        if (documentStatusFilter) {
+          candidates.push(buildPath({ select: baseSelect, top: limit, expand: baseExpand, filter: documentStatusFilter }));
         }
-
-        // Opcional: tentar expand se explicitamente habilitado
-        if (allowExpandLines) {
-          if (docStatusFilter) {
-            candidates.push(
-              buildPath({ select: baseSelect, top: limit, expandLines: true, filter: docStatusFilter })
-            );
-          }
-          if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
-            candidates.push(
-              buildPath({
-                select: baseSelect,
-                top: limit,
-                expandLines: true,
-                filter: documentStatusFilter
-              })
-            );
-          }
+        // 3. select completo + expand simples + filtro
+        if (docStatusFilter) {
+          candidates.push(buildPath({ select: baseSelect, top: limit, expand: simpleExpand, filter: docStatusFilter }));
         }
-
-        // Fallbacks: sem filtro (alguns ambientes rejeitam filtro em certos campos)
-        candidates.push(buildPath({ select: baseSelect, top: limit, expandLines: false }));
-        candidates.push(buildPath({ select: minimalSelect, top: limit, expandLines: false }));
+        // 4. select completo sem expand + filtro DocStatus
+        if (docStatusFilter) {
+          candidates.push(buildPath({ select: baseSelect, top: limit, filter: docStatusFilter }));
+        }
+        // 5. select completo sem expand + filtro DocumentStatus
+        if (documentStatusFilter) {
+          candidates.push(buildPath({ select: baseSelect, top: limit, filter: documentStatusFilter }));
+        }
+        // 6. select essencial + expand + sem filtro
+        candidates.push(buildPath({ select: essentialSelect, top: limit, expand: baseExpand }));
+        // 7. select essencial sem expand, sem filtro
+        candidates.push(buildPath({ select: essentialSelect, top: limit }));
+        // 8. select mínimo com CardCode + sem filtro
+        candidates.push(buildPath({ select: minimalSelect, top: limit }));
+        // 9. Último recurso: bare minimum
+        candidates.push(buildPath({ select: bareMinSelect, top: limit }));
 
         let lastError: unknown;
-        for (const path of candidates) {
+        for (let i = 0; i < candidates.length; i++) {
+          const path = candidates[i];
           try {
             const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
-            return response.data.value.map(mapSapOrderToWms);
+            const orders = response.data.value || [];
+            console.log(`[listOrders] Candidato #${i + 1}/${candidates.length} OK - ${orders.length} pedidos. Path: ${path.substring(0, 120)}`);
+            const mapped = orders.map(mapSapOrderToWms);
+            // Verificar se os dados são ricos o suficiente
+            const hasCustomerId = mapped.some(o => o.customerId && o.customerId !== "");
+            const hasItems = mapped.some(o => o.items.length > 0);
+            console.log(`[listOrders] Dados: hasCustomerId=${hasCustomerId}, hasItems=${hasItems}`);
+            return mapped;
           } catch (err: unknown) {
             lastError = err;
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.log(`[listOrders] Candidato #${i + 1}/${candidates.length} FALHOU (${err instanceof SapHttpError ? err.status : 'unknown'}): ${errMsg.substring(0, 200)}`);
             // Em 400, tentamos a próxima variação (compatibilidade entre SLs)
             if (err instanceof SapHttpError && err.status === 400) continue;
             throw err;

@@ -33,8 +33,9 @@ class OrderItem(BaseModel):
 
 class CreateOrderRequest(BaseModel):
     externalOrderId: str | None = None
-    customerId: str
-    items: list[OrderItem]
+    customerId: str = "SEM_CLIENTE"
+    items: list[OrderItem] = []
+    metadata: dict | None = None
 
 
 class Order(BaseModel):

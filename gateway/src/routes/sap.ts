@@ -271,7 +271,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
     try {
       const service = getSapService();
       
-      // Buscar pedidos abertos do SAP
+      // Buscar pedidos abertos do SAP (já mapeados para WmsOrder)
       req.log.info({ correlationId }, "Iniciando sincronização de pedidos do SAP");
       const sapOrders = await service.listOrders(
         {
@@ -308,6 +308,12 @@ export async function registerSapRoutes(app: FastifyInstance) {
             }
           }
 
+          // Preparar dados com defaults para campos faltantes
+          const customerId = sapOrder.customerId || `SAP_CUSTOMER_${sapOrder.sapDocEntry}`;
+          const items = sapOrder.items.length > 0
+            ? sapOrder.items.map((item) => ({ sku: item.sku, quantity: item.quantity }))
+            : [{ sku: "PEDIDO_SAP", quantity: 1 }]; // Fallback se DocumentLines não expandiu
+
           // Criar pedido no WMS Core
           const createUrl = `${process.env.CORE_BASE_URL ?? "http://localhost:8000"}/orders`;
           const createRes = await fetch(createUrl, {
@@ -318,11 +324,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
             },
             body: JSON.stringify({
               externalOrderId: sapOrder.externalOrderId,
-              customerId: sapOrder.customerId,
-              items: sapOrder.items.map((item) => ({
-                sku: item.sku,
-                quantity: item.quantity
-              })),
+              customerId,
+              items,
               metadata: {
                 source: "SAP_B1",
                 sapDocEntry: sapOrder.sapDocEntry,
@@ -403,7 +406,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
       let sapOpenOrders = 0;
       try {
         const service = getSapService();
-        const orders = await service.listOrders({ docStatus: "O", limit: 1000 }, correlationId);
+        const orders = await service.getOrders({ status: "open", limit: 1000 }, correlationId);
         sapOpenOrders = orders.length;
       } catch (error) {
         req.log.warn({ error, correlationId }, "Erro ao contar pedidos abertos no SAP");
