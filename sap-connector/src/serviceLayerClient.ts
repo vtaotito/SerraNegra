@@ -317,6 +317,12 @@ export class SapServiceLayerClient {
       } catch (err) {
         clearTimeout(timer);
 
+        // SapHttpError (HTTP não-OK) já foi tratado no fluxo do try (inclui shouldRetry e circuit).
+        // Se caiu aqui, não é erro de rede/timeout e não deve entrar no retry de "network/timeout".
+        if (err instanceof SapHttpError) {
+          throw err;
+        }
+
         // abort/timeouts e erros de rede: retry
         lastErr = err;
         const isLast = attempt === this.retry.maxAttempts;
