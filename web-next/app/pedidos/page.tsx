@@ -26,7 +26,7 @@ export default function PedidosPage() {
       order.order_number.toLowerCase().includes(term) ||
       order.customer_id.toLowerCase().includes(term) ||
       order.customer_name.toLowerCase().includes(term) ||
-      (order.externalOrderId ?? "").toLowerCase().includes(term)
+      order.id.toLowerCase().includes(term)
     );
   });
 
