@@ -40,8 +40,15 @@ export const API_ENDPOINTS = {
   // SAP Integration (sem /api pois baseURL já adiciona)
   SAP_HEALTH: "/sap/health",
   SAP_ORDERS: "/sap/orders",
+  SAP_ORDER_BY_DOC_ENTRY: (docEntry: number | string) =>
+    `/sap/orders/${docEntry}`,
+  SAP_ORDER_STATUS: (docEntry: number | string) =>
+    `/sap/orders/${docEntry}/status`,
   SAP_SYNC: "/sap/sync",
   SAP_SYNC_STATUS: "/sap/sync/status",
   SAP_CONFIG: "/sap/config",
   SAP_CONFIG_TEST: "/sap/config/test",
+  SAP_SESSION_REFRESH: "/sap/session/refresh",
+  SAP_CACHE_STATS: "/sap/cache/stats",
+  SAP_CACHE: "/sap/cache",
 } as const;

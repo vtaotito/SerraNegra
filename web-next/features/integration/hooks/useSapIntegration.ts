@@ -114,7 +114,7 @@ export function useRefreshSapSession() {
 
   return useMutation<{ success: boolean; message: string }, Error>({
     mutationFn: () =>
-      post<{ success: boolean; message: string }>("/sap/session/refresh", {}),
+      post<{ success: boolean; message: string }>(API_ENDPOINTS.SAP_SESSION_REFRESH, {}),
     onSuccess: () => {
       // Atualizar health após refresh
       queryClient.invalidateQueries({ queryKey: ["sap", "health"] });

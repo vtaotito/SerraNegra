@@ -7,55 +7,70 @@ import {
   OrdersListResponse,
   OrderEvent,
 } from "../types";
+import {
+  adaptApiOrder,
+  adaptApiOrdersList,
+  ApiOrder,
+  ApiOrdersListResponse,
+} from "@/lib/api/adapters";
 
 export function useOrders(params?: OrdersListParams) {
   return useQuery<OrdersListResponse>({
     queryKey: ["orders", params],
-    queryFn: () => {
+    queryFn: async () => {
       const searchParams = new URLSearchParams();
       if (params?.customerId) searchParams.append("customerId", params.customerId);
       if (params?.status) searchParams.append("status", params.status);
-      if (params?.priority) searchParams.append("priority", params.priority.toString());
-      if (params?.from) searchParams.append("from", params.from);
-      if (params?.to) searchParams.append("to", params.to);
+      if (params?.externalOrderId) searchParams.append("externalOrderId", params.externalOrderId);
       if (params?.limit) searchParams.append("limit", params.limit.toString());
       if (params?.cursor) searchParams.append("cursor", params.cursor);
 
       const url = `${API_ENDPOINTS.ORDERS}?${searchParams.toString()}`;
-      return get<OrdersListResponse>(url);
+      const raw = await get<ApiOrdersListResponse>(url);
+      return adaptApiOrdersList(raw);
     },
-    staleTime: 1000 * 60, // 1 minuto
+    staleTime: 1000 * 30, // 30 segundos
   });
 }
 
 export function useOrder(orderId: string) {
   return useQuery<Order>({
     queryKey: ["orders", orderId],
-    queryFn: () => get<Order>(API_ENDPOINTS.ORDER_BY_ID(orderId)),
+    queryFn: async () => {
+      const raw = await get<ApiOrder>(API_ENDPOINTS.ORDER_BY_ID(orderId));
+      return adaptApiOrder(raw);
+    },
     enabled: !!orderId,
-    staleTime: 1000 * 30, // 30 segundos
+    staleTime: 1000 * 30,
   });
 }
 
 export function useOrderHistory(orderId: string) {
   return useQuery<OrderEvent[]>({
     queryKey: ["orders", orderId, "history"],
-    queryFn: () => get<OrderEvent[]>(API_ENDPOINTS.ORDER_HISTORY(orderId)),
-    enabled: !!orderId,
-    staleTime: 1000 * 30, // 30 segundos
-  });
-}
-
-export function useUpdateOrder() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ orderId, data }: { orderId: string; data: Partial<Order> }) =>
-      put<Order>(API_ENDPOINTS.ORDER_BY_ID(orderId), data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      queryClient.invalidateQueries({ queryKey: ["orders", variables.orderId] });
+    queryFn: async () => {
+      try {
+        const raw = await get<any>(API_ENDPOINTS.ORDER_HISTORY(orderId));
+        // API retorna { orderId, events: [...] }
+        const events = raw?.events || raw || [];
+        return Array.isArray(events)
+          ? events.map((e: any) => ({
+              event_id: e.eventId || e.event_id || "",
+              order_id: orderId,
+              type: e.type || "",
+              from_status: e.from || e.from_status || "",
+              to_status: e.to || e.to_status || "",
+              occurred_at: e.occurredAt || e.occurred_at || "",
+              actor_kind: e.actor?.kind || e.actor_kind || "SYSTEM",
+              actor_id: e.actor?.id || e.actor_id || "",
+            }))
+          : [];
+      } catch {
+        return [];
+      }
     },
+    enabled: !!orderId,
+    staleTime: 1000 * 30,
   });
 }
 
@@ -66,11 +81,16 @@ export function useApplyOrderEvent() {
     mutationFn: ({
       orderId,
       eventType,
+      actorId,
     }: {
       orderId: string;
       eventType: string;
+      actorId?: string;
     }) =>
-      post(API_ENDPOINTS.ORDER_EVENTS(orderId), { type: eventType }),
+      post(API_ENDPOINTS.ORDER_EVENTS(orderId), {
+        type: eventType,
+        actor: { kind: "USER", id: actorId || "web-user" },
+      }),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["orders", variables.orderId] });

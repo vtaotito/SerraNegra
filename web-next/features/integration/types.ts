@@ -58,10 +58,22 @@ export interface SapOrder {
   slaDueAt?: string;
   docTotal?: number;
   currency?: string;
-  items: { sku: string; quantity: number; description?: string; warehouse?: string }[];
+  items: SapOrderItem[];
   createdAt: string;
   updatedAt: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface SapOrderItem {
+  sku: string;
+  quantity: number;
+  description?: string;
+  warehouse?: string;
+  price?: number;
+  lineTotal?: number;
+  measureUnit?: string;
+  lineStatus?: string;
+  lineNum?: number;
 }
 
 /**
@@ -84,4 +96,31 @@ export interface SapSyncResponse {
   synced_count: number;
   errors: string[];
   duration_ms: number;
+}
+
+/**
+ * Cache stats do gateway
+ */
+export interface SapCacheStats {
+  orders_cache_size?: number;
+  items_cache_size?: number;
+  hit_rate?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * Controle de sincronização (sync_control table)
+ * Nota: não há endpoint REST para isso ainda, usando dados derivados
+ */
+export interface SyncEntityStatus {
+  entityType: "ORDERS" | "PRODUCTS" | "CUSTOMERS" | "STOCK";
+  label: string;
+  icon: string;
+  syncIntervalMinutes: number;
+  isEnabled: boolean;
+  lastSyncAt?: string;
+  lastSyncStatus?: "SUCCESS" | "FAILED" | "PENDING" | null;
+  totalSynced: number;
+  errorCount: number;
+  description: string;
 }
