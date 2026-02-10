@@ -124,7 +124,7 @@ git commit -m "fix: corrigir docker-compose para usar Next.js (web-next)
 - Healthcheck corrigido
 - Removidas referências ao Vite obsoleto
 
-Frontend correto: Next.js 16 em http://REDACTED_VPS_IP:8080
+Frontend correto: Next.js 16 em http://YOUR_VPS_IP:8080
 
 Refs: ANALISE_E2E_ATUALIZADA.md"
 
@@ -138,7 +138,7 @@ git push origin main
 
 ```bash
 # Conectar ao servidor
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Ir para diretório do projeto
 cd /opt/wms/current
@@ -191,7 +191,7 @@ curl http://localhost:8080/api/health
 
 **No navegador** (seu PC):
 ```
-1. Abrir: http://REDACTED_VPS_IP:8080
+1. Abrir: http://YOUR_VPS_IP:8080
 2. Verificar:
    ✅ Título: "WMS/OMS - Sistema de Gestão de Pedidos"
    ✅ Layout: Sidebar + Topbar
@@ -326,13 +326,13 @@ git push origin main
 
 ### Funcionalidade
 
-- [ ] http://REDACTED_VPS_IP:8080 carrega corretamente
+- [ ] http://YOUR_VPS_IP:8080 carrega corretamente
 - [ ] Título: "WMS/OMS - Sistema de Gestão de Pedidos"
 - [ ] Layout: Sidebar visível (desktop)
 - [ ] Dashboard mostra métricas
 - [ ] Navegação funciona (Dashboard, Pedidos, Produtos, Estoque, Integração)
 - [ ] Header mostra backend URL
-- [ ] API funciona: http://REDACTED_VPS_IP:8080/api/health
+- [ ] API funciona: http://YOUR_VPS_IP:8080/api/health
 
 ### Limpeza (Opcional)
 

@@ -86,16 +86,16 @@ docker compose -f deploy/docker-compose.yml down
 
 | Serviço | URL | Descrição |
 |---------|-----|-----------|
-| **Frontend (Kanban)** | http://REDACTED_VPS_IP:8080 | Dashboard principal |
-| **API Gateway** | http://REDACTED_VPS_IP:8080/api | API pública |
-| **Health Check** | http://REDACTED_VPS_IP:8080/health | Status do gateway |
-| **SAP Health** | http://REDACTED_VPS_IP:8080/api/sap/health | Status integração SAP |
+| **Frontend (Kanban)** | http://YOUR_VPS_IP:8080 | Dashboard principal |
+| **API Gateway** | http://YOUR_VPS_IP:8080/api | API pública |
+| **Health Check** | http://YOUR_VPS_IP:8080/health | Status do gateway |
+| **SAP Health** | http://YOUR_VPS_IP:8080/api/sap/health | Status integração SAP |
 
 ### Acesso SSH ao Servidor
 
 ```bash
 # Conectar via SSH
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Ver status dos serviços
 cd /opt/wms/current
@@ -127,7 +127,7 @@ docker compose up -d
 
 #### **Produção** (Recomendado):
 1. Abrir navegador
-2. Ir para: **http://REDACTED_VPS_IP:8080**
+2. Ir para: **http://YOUR_VPS_IP:8080**
 3. Verificar indicador no canto inferior: deve mostrar **"Fonte: API"** (não "Mock local")
 
 #### **Localhost** (Desenvolvimento):
@@ -158,14 +158,14 @@ docker compose up -d
 ```bash
 # 1. Verificar que frontend está rodando
 curl -I http://localhost:5173  # Localhost
-curl -I http://REDACTED_VPS_IP:8080  # Produção
+curl -I http://YOUR_VPS_IP:8080  # Produção
 
 # 2. Verificar API está respondendo
 curl http://localhost:3000/api/orders?limit=5  # Localhost
-curl http://REDACTED_VPS_IP:8080/api/orders?limit=5  # Produção
+curl http://YOUR_VPS_IP:8080/api/orders?limit=5  # Produção
 
 # 3. Verificar integração SAP
-curl http://REDACTED_VPS_IP:8080/api/sap/health
+curl http://YOUR_VPS_IP:8080/api/sap/health
 ```
 
 ---
@@ -191,7 +191,7 @@ npm run dev
 
 **Produção**:
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 
 # Ver logs do container web
@@ -223,7 +223,7 @@ npm run build
 **Verificar**:
 1. Backend SAP está configurado?
    ```bash
-   curl http://REDACTED_VPS_IP:8080/api/sap/health
+   curl http://YOUR_VPS_IP:8080/api/sap/health
    ```
 
 2. Worker está rodando?
@@ -323,7 +323,7 @@ wms-restart web
 | Ambiente | Frontend | API | Docs |
 |----------|----------|-----|------|
 | **Localhost** | http://localhost:5173 | http://localhost:3000 | http://localhost:8000/docs |
-| **Produção** | http://REDACTED_VPS_IP:8080 | http://REDACTED_VPS_IP:8080/api | - |
+| **Produção** | http://YOUR_VPS_IP:8080 | http://YOUR_VPS_IP:8080/api | - |
 
 ### Portas Padrão
 
@@ -354,8 +354,8 @@ docker compose down       # Parar
 
 # TESTES
 curl http://localhost:3000/health           # Localhost
-curl http://REDACTED_VPS_IP:8080/health      # Produção
-curl http://REDACTED_VPS_IP:8080/api/orders  # API
+curl http://YOUR_VPS_IP:8080/health      # Produção
+curl http://YOUR_VPS_IP:8080/api/orders  # API
 ```
 
 ---
@@ -375,7 +375,7 @@ curl http://REDACTED_VPS_IP:8080/api/orders  # API
 |----------|----------------|
 | Frontend em branco | Ver console do browser (F12) |
 | API não responde | Verificar logs: `docker compose logs gateway` |
-| SAP não conecta | Verificar: `curl http://REDACTED_VPS_IP:8080/api/sap/health` |
+| SAP não conecta | Verificar: `curl http://YOUR_VPS_IP:8080/api/sap/health` |
 | Worker não sincroniza | Ver logs: `docker compose logs worker` |
 
 ---
@@ -383,7 +383,7 @@ curl http://REDACTED_VPS_IP:8080/api/orders  # API
 ## 🎨 Screenshots de Referência
 
 ### Kanban Dashboard (Produção)
-**URL**: http://REDACTED_VPS_IP:8080
+**URL**: http://YOUR_VPS_IP:8080
 
 **Deve mostrar**:
 - 6 colunas de status
@@ -393,7 +393,7 @@ curl http://REDACTED_VPS_IP:8080/api/orders  # API
 - Indicador **"Fonte: API"** (canto inferior) ✅
 
 ### Health Check
-**URL**: http://REDACTED_VPS_IP:8080/health
+**URL**: http://YOUR_VPS_IP:8080/health
 
 **Resposta esperada**:
 ```json
@@ -406,7 +406,7 @@ curl http://REDACTED_VPS_IP:8080/api/orders  # API
 ```
 
 ### SAP Health
-**URL**: http://REDACTED_VPS_IP:8080/api/sap/health
+**URL**: http://YOUR_VPS_IP:8080/api/sap/health
 
 **Resposta esperada**:
 ```json

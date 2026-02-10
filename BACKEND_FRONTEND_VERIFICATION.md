@@ -104,7 +104,7 @@ const safeLogger = {
   "level": "info",
   "message": "SAP login OK",
   "credentials": {
-    "username": "REDACTED_USER",
+    "username": "your_username",
     "password": "[REDACTED]",
     "companyDb": "REDACTED_COMPANY_DB"
   }

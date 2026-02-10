@@ -277,7 +277,7 @@ bash TEST-CORS.sh
 2. Execute: `.\package-for-vps.ps1` (Windows)
 3. Execute: `bash fix-frontend-vps.sh` (VPS)
 4. Valide: `.\test-vps-urls.ps1` (Windows)
-5. Teste: Navegador → `http://REDACTED_VPS_IP:8080/produtos`
+5. Teste: Navegador → `http://YOUR_VPS_IP:8080/produtos`
 
 **Pronto!** 🎉
 

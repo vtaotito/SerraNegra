@@ -1,11 +1,39 @@
 node_modules/
 dist/
 web/dist/
+web-next/.next/
+
+# Arquivos de ambiente com credenciais - NUNCA versionar!
 .env
+.env.local
+.env.production
+.env.staging
 .env.deploy
+gateway/.env
+gateway/.env.local
+worker/.env
+worker/.env.local
+web/.env
+web/.env.local
+web-next/.env
+web-next/.env.local
 deploy/.env
+deploy/.env.local
+*/.env
+*/.env.local
+
+# Manter apenas os .example como referência
+!.env.example
+!.env.postgres.example
+!gateway/.env.example
+
+# Logs
 *.log
+npm-debug.log*
+
+# OS
 .DS_Store
+Thumbs.db
 
 # Arquivos compilados TypeScript (manter apenas .ts)
 sap-connector/src/**/*.js
@@ -14,3 +42,7 @@ sap-connector/src/**/*.js.map
 mappings/src/**/*.js
 mappings/src/**/*.d.ts
 mappings/src/**/*.js.map
+
+# IDE
+.vscode/settings.json
+.idea/

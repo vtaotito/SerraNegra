@@ -311,7 +311,7 @@ SAP B1 MOCK SERVICE - EXEMPLO DE USO
 
 1️⃣  LOGIN NO SAP
 ----------------------------------------------------------------------
-[SAP Mock] Login realizado: REDACTED_USER@REDACTED_COMPANY_DB
+[SAP Mock] Login realizado: your_username@REDACTED_COMPANY_DB
 ✓ Login realizado
   SessionId: mock-session-1738611234-abc123
 
@@ -441,7 +441,7 @@ SAP B1 MOCK SERVICE - EXEMPLO DE USO
 
 1️⃣  LOGIN NO SAP
 ----------------------------------------------------------------------
-[SAP Mock] Login realizado: REDACTED_USER@REDACTED_COMPANY_DB
+[SAP Mock] Login realizado: your_username@REDACTED_COMPANY_DB
 ✓ Login realizado
   SessionId: mock-session-1738611234-abc123
 

@@ -69,7 +69,7 @@ docker logs wms-gateway --tail 20
 
 #### 1. Frontend Acessível
 ```bash
-curl -I http://REDACTED_VPS_IP:8080/integracao
+curl -I http://YOUR_VPS_IP:8080/integracao
 ```
 - [ ] ⏳ HTTP 200 OK
 - [ ] ⏳ Página carrega no navegador
@@ -77,9 +77,9 @@ curl -I http://REDACTED_VPS_IP:8080/integracao
 
 #### 2. Endpoints Respondendo
 ```bash
-curl http://REDACTED_VPS_IP:8080/api/sap/config
-curl http://REDACTED_VPS_IP:8080/api/sap/sync/status
-curl http://REDACTED_VPS_IP:8080/api/sap/health
+curl http://YOUR_VPS_IP:8080/api/sap/config
+curl http://YOUR_VPS_IP:8080/api/sap/sync/status
+curl http://YOUR_VPS_IP:8080/api/sap/health
 ```
 - [ ] ⏳ `/config` retorna JSON
 - [ ] ⏳ `/sync/status` retorna JSON
@@ -209,7 +209,7 @@ docker logs wms-core --tail 50 | grep CORS
 ### ❌ Teste de conexão falha
 ```bash
 # Verificar
-curl -k https://REDACTED_SAP_HOST:50000/b1s/v1/Login
+curl -k https://your-sap-server:50000/b1s/v1/Login
 
 # Solução
 # Verificar credenciais SAP
@@ -222,7 +222,7 @@ curl -k https://REDACTED_SAP_HOST:50000/b1s/v1/Login
 ## 📊 Critérios de Sucesso
 
 ### Essenciais (obrigatório)
-- [ ] ✅ Frontend acessível em http://REDACTED_VPS_IP:8080/integracao
+- [ ] ✅ Frontend acessível em http://YOUR_VPS_IP:8080/integracao
 - [ ] ✅ 3 abas carregam sem erros
 - [ ] ✅ Formulário de configuração funcional
 - [ ] ✅ Teste de conexão retorna resposta
@@ -250,7 +250,7 @@ curl -k https://REDACTED_SAP_HOST:50000/b1s/v1/Login
 - **Hora**: _______________________
 - **Responsável**: _______________________
 - **Ambiente**: Produção (VPS)
-- **URL**: http://REDACTED_VPS_IP:8080/integracao
+- **URL**: http://YOUR_VPS_IP:8080/integracao
 
 ### Tempo de Deploy
 - **Planejado**: 10 minutos

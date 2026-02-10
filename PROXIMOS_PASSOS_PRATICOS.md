@@ -115,7 +115,7 @@ await fetch(`${CORE_URL}/internal/sap/orders`, {
 
 ```bash
 # 1. Adicionar env var
-echo "ALLOWED_ORIGINS=http://REDACTED_VPS_IP:8080,https://wms.seudominio.com" >> /opt/wms/shared/.env
+echo "ALLOWED_ORIGINS=http://YOUR_VPS_IP:8080,https://wms.seudominio.com" >> /opt/wms/shared/.env
 
 # 2. Atualizar gateway
 # Arquivo: gateway/src/index.ts
@@ -256,7 +256,7 @@ Refs: ANALISE_E2E_COMPLETA.md"
 git push origin main
 
 # 2. No servidor VPS
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 cd /opt/wms/current
 git pull origin main
@@ -300,7 +300,7 @@ ls -lh /opt/wms/backups/
 # Deve haver pelo menos 1 backup
 
 # 6. Frontend
-# Browser: http://REDACTED_VPS_IP:8080/
+# Browser: http://YOUR_VPS_IP:8080/
 # - Verificar "Fonte: API"
 # - Clicar "Importar do SAP"
 # - Verificar loading + toast

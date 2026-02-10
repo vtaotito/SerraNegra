@@ -138,7 +138,7 @@ export function SapConfigForm({ initialConfig }: SapConfigFormProps) {
               <p className="text-sm text-red-500">{errors.baseUrl.message}</p>
             )}
             <p className="text-xs text-muted-foreground">
-              Ex: https://REDACTED_SAP_HOST:50000
+              Ex: https://your-sap-server:50000
             </p>
           </div>
 

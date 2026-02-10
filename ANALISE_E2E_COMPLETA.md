@@ -1003,7 +1003,7 @@ CREATE TABLE scan_events (
 #### **Sprint 1: Correções Críticas**
 1. ✅ **Fix: Frontend usando Mock** (CONCLUÍDO)
    - Deploy no servidor VPS
-   - Validar `http://REDACTED_VPS_IP:8080/` → "Fonte: API"
+   - Validar `http://YOUR_VPS_IP:8080/` → "Fonte: API"
 
 2. **Fix: Botão "Importar do SAP"** (2h)
    - Mudar para `POST /api/sap/sync`

@@ -46,7 +46,7 @@ INTERNAL_SHARED_SECRET=your-secret-here
 CORE_BASE_URL=http://localhost:8000
 
 # SAP Business One
-SAP_B1_BASE_URL=https://REDACTED_SAP_HOST:50000
+SAP_B1_BASE_URL=https://your-sap-server:50000
 SAP_B1_COMPANY_DB=SuaEmpresaDB
 SAP_B1_USERNAME=manager
 SAP_B1_PASSWORD=sua-senha-aqui
@@ -158,7 +158,7 @@ Se tudo funcionar, você verá algo como:
 === Teste de Conexão SAP B1 ===
 
 ✓ Variáveis de ambiente configuradas
-  Base URL: https://REDACTED_SAP_HOST:50000
+  Base URL: https://your-sap-server:50000
   Company DB: SuaEmpresaDB
   Username: manager
   Password: ********

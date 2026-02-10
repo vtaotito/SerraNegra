@@ -57,7 +57,7 @@ git push origin main
 ### Passo 2: No servidor VPS
 ```bash
 # Conectar via SSH
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Ir para o diretório do projeto
 cd /opt/wms/current
@@ -71,10 +71,10 @@ cat /opt/wms/shared/.env | grep SAP_B1_
 # Se estiver faltando, adicionar:
 nano /opt/wms/shared/.env
 # Adicionar:
-# SAP_B1_BASE_URL=https://REDACTED_SAP_HOST:50000
-# SAP_B1_COMPANY_DB=REDACTED_COMPANY_DB
-# SAP_B1_USERNAME=REDACTED_USER
-# SAP_B1_PASSWORD=REDACTED_PASSWORD
+# SAP_B1_BASE_URL=https://your-sap-server:50000
+# SAP_B1_COMPANY_DB=YOUR_COMPANY_DB
+# SAP_B1_USERNAME=your_username
+# SAP_B1_PASSWORD=your_password
 
 # Rodar script de redeploy
 bash deploy/redeploy-fix-sap.sh
@@ -99,7 +99,7 @@ docker compose -f /opt/wms/current/deploy/docker-compose.yml \
 ```
 
 **No navegador**:
-- Abrir: `http://REDACTED_VPS_IP:8080/`
+- Abrir: `http://YOUR_VPS_IP:8080/`
 - Verificar no canto inferior: **"Fonte: API"** (não mais "Mock local")
 - Ver pedidos no Kanban
 
@@ -165,5 +165,5 @@ git pull && bash deploy/redeploy-fix-sap.sh
 ```
 
 **Validação**:
-- `http://REDACTED_VPS_IP:8080/` → deve mostrar **"Fonte: API"**
+- `http://YOUR_VPS_IP:8080/` → deve mostrar **"Fonte: API"**
 - `curl http://localhost:8080/api/sap/health` → `{"status": "ok"}`

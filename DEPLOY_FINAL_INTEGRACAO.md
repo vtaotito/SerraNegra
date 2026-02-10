@@ -15,7 +15,7 @@
 ## 🚀 Deploy Completo (Um Comando)
 
 ```bash
-# No servidor VPS (SSH: root@REDACTED_VPS_IP)
+# No servidor VPS (SSH: root@YOUR_VPS_IP)
 cd /root/wms && \
 git pull origin main && \
 docker-compose -f deploy/docker-compose.yml down web gateway && \
@@ -33,10 +33,10 @@ docker logs wms-web --tail 20
 
 ```bash
 # Windows (PowerShell)
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Linux/Mac
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 ```
 
 ### 2. Atualizar Código
@@ -158,7 +158,7 @@ curl http://localhost:3000/api/sap/config
 
 ### 3. Testar no Navegador
 
-1. **Acessar**: `http://REDACTED_VPS_IP:8080/integracao`
+1. **Acessar**: `http://YOUR_VPS_IP:8080/integracao`
 2. **Verificar**:
    - [ ] ✅ Página carrega completamente
    - [ ] ✅ Sem "Application error"
@@ -175,10 +175,10 @@ curl http://localhost:3000/api/sap/config
 #### Aba: Configuração
 1. Preencher formulário:
    ```
-   URL: https://REDACTED_SAP_HOST:50000
-   Database: REDACTED_COMPANY_DB
-   Usuário: REDACTED_USER
-   Senha: REDACTED_PASSWORD
+   URL: https://your-sap-server:50000
+   Database: YOUR_COMPANY_DB
+   Usuário: your_username
+   Senha: your_password
    ```
 2. Clicar **"Testar Conexão"**
 3. Verificar:
@@ -341,7 +341,7 @@ Se tudo correu bem, você deve ver:
 
 ---
 
-**🌐 Acessar**: `http://REDACTED_VPS_IP:8080/integracao`
+**🌐 Acessar**: `http://YOUR_VPS_IP:8080/integracao`
 
 **⏱️ Tempo total de deploy**: 10-15 minutos  
 **📊 Arquivos modificados**: 8  

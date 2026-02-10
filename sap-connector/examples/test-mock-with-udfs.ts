@@ -38,8 +38,8 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   console.log("1️⃣  Login");
   const session = await sapMockService.login(
-    "REDACTED_USER",
-    "***",
+    "mock_user",
+    "mock_pass",
     "REDACTED_COMPANY_DB",
   );
   assert(!!session.SessionId, "Login retorna SessionId");

@@ -2,7 +2,7 @@
 # Verifica se as requisições estão corretas após correção
 
 param(
-    [string]$VpsIp = "REDACTED_VPS_IP",
+    [string]$VpsIp = "YOUR_VPS_IP",
     [int]$FrontendPort = 8080,
     [int]$ApiPort = 8000
 )

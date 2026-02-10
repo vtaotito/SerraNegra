@@ -41,7 +41,7 @@ cd ..
 API_PORT=8000
 LOG_LEVEL=info
 JWT_SECRET=dev-secret-dev-secret-dev-secret-dev-secret
-CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://REDACTED_VPS_IP:8080
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://YOUR_VPS_IP:8080
 ```
 
 #### `gateway/.env`

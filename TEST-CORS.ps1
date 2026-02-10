@@ -1,7 +1,7 @@
 # Script PowerShell para testar CORS na API WMS
 
 $API_URL = if ($env:API_URL) { $env:API_URL } else { "http://localhost:8000" }
-$ORIGIN = if ($env:ORIGIN) { $env:ORIGIN } else { "http://REDACTED_VPS_IP:8080" }
+$ORIGIN = if ($env:ORIGIN) { $env:ORIGIN } else { "http://YOUR_VPS_IP:8080" }
 
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "Teste de CORS - WMS API" -ForegroundColor Cyan

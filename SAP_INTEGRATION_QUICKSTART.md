@@ -36,7 +36,7 @@ Edite `.env` com suas credenciais SAP (NÃO commitar):
 
 ```env
 # SAP Business One Service Layer
-SAP_B1_BASE_URL=https://REDACTED_SAP_HOST:50000/b1s/v1
+SAP_B1_BASE_URL=https://your-sap-server:50000/b1s/v1
 SAP_B1_COMPANY_DB=SuaEmpresaDB
 SAP_B1_USERNAME=seu_usuario
 SAP_B1_PASSWORD=sua_senha_segura

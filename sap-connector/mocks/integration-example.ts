@@ -20,7 +20,7 @@ async function integrationExample() {
   console.log("1️⃣  LOGIN NO SAP MOCK");
   console.log("-".repeat(70));
   
-  await sapMockService.login("REDACTED_USER", "REDACTED_PASSWORD", "REDACTED_COMPANY_DB");
+  await sapMockService.login("mock_user", "mock_pass", "MOCK_COMPANY_DB");
   console.log("✓ Autenticado no SAP");
   console.log();
 

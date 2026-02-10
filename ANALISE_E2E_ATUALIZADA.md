@@ -15,7 +15,7 @@
 - Frontend Next.js (web-next/) como "em desenvolvimento (20%)"
 
 **✅ ATUALIZAÇÃO (Situação Real)**:
-- **Frontend Next.js (web-next/)**: ✅ **EM PRODUÇÃO** em http://REDACTED_VPS_IP:8080
+- **Frontend Next.js (web-next/)**: ✅ **EM PRODUÇÃO** em http://YOUR_VPS_IP:8080
 - **Frontend Vite (web/)**: ❌ **OBSOLETO** - deve ser removido
 
 ---
@@ -88,7 +88,7 @@
 
 ### 2.1 Status Real
 
-**URL Produção**: http://REDACTED_VPS_IP:8080  
+**URL Produção**: http://YOUR_VPS_IP:8080  
 **Framework**: Next.js 16 (App Router)  
 **React**: 19.2.4  
 **Status**: ✅ **70% completo e funcional**
@@ -238,7 +238,7 @@ location / {
 **Fase 1: Validação** (1h)
 ```bash
 # Confirmar que web-next está 100% em produção
-curl http://REDACTED_VPS_IP:8080 | grep "Next.js"
+curl http://YOUR_VPS_IP:8080 | grep "Next.js"
 
 # Verificar que nenhum serviço depende de web/
 grep -r "web/" deploy/ gateway/ core/ worker/
@@ -543,7 +543,7 @@ git commit -m "fix: migrar para web-next e remover web vite obsoleto
 git push origin main
 
 # No servidor
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 git pull origin main
 

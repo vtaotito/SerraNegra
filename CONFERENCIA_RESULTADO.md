@@ -1,7 +1,7 @@
 # Resultado da Conferência SAP B1
 
 **Data**: 2026-02-03  
-**Base de dados**: REDACTED_COMPANY_DB  
+**Base de dados**: YOUR_COMPANY_DB  
 **Status**: ✅ SUCESSO
 
 ---
@@ -9,10 +9,10 @@
 ## ✅ Confirmações
 
 ### Conexão
-- **URL**: `https://REDACTED_SAP_HOST:50000`
-- **Database**: `REDACTED_COMPANY_DB` ✅
+- **URL**: `https://your-sap-server:50000`
+- **Database**: `YOUR_COMPANY_DB` ✅
 - **Versão SAP B1**: 1000190 (Service Layer 10.0)
-- **Usuário**: `REDACTED_USER`
+- **Usuário**: `your_username`
 - **Login**: ✅ Bem-sucedido
 
 ### Dados Encontrados
@@ -51,7 +51,7 @@
 ## 🎯 Conclusões
 
 ### ✅ Confirmado
-1. **Base de dados correta**: Os pedidos são da base `REDACTED_COMPANY_DB`
+1. **Base de dados correta**: Os pedidos são da base `YOUR_COMPANY_DB`
 2. **Dados acessíveis**: DocEntry, DocNum e CardCode funcionam
 3. **Connector funcional**: Login, consulta e logout funcionando corretamente
 

@@ -5,7 +5,7 @@
 ### 1. Build e Deploy do Frontend
 
 ```bash
-# No servidor VPS (REDACTED_VPS_IP)
+# No servidor VPS (YOUR_VPS_IP)
 cd /root/wms
 
 # 1. Parar os serviços
@@ -42,7 +42,7 @@ curl http://localhost:3000/api/sap/health
 
 ### 3. Acessar Aplicação
 
-🌐 **URL**: http://REDACTED_VPS_IP:8080/integracao
+🌐 **URL**: http://YOUR_VPS_IP:8080/integracao
 
 ## 📋 Checklist de Deployment
 
@@ -69,21 +69,21 @@ curl http://localhost:3000/api/sap/health
 ### 1. Teste de Acesso
 ```bash
 # Frontend
-curl -I http://REDACTED_VPS_IP:8080/integracao
+curl -I http://YOUR_VPS_IP:8080/integracao
 # Esperado: HTTP/1.1 200 OK
 
 # API Gateway
-curl http://REDACTED_VPS_IP:8080/api/sap/config
+curl http://YOUR_VPS_IP:8080/api/sap/config
 # Esperado: JSON com configuração (sem senha)
 ```
 
 ### 2. Teste de Configuração SAP
 
 **Via Navegador:**
-1. Acesse http://REDACTED_VPS_IP:8080/integracao
+1. Acesse http://YOUR_VPS_IP:8080/integracao
 2. Aba "Configuração"
 3. Preencha:
-   - URL: `https://REDACTED_SAP_HOST:50000`
+   - URL: `https://your-sap-server:50000`
    - Database: `SBO_GARRAFARIASNEGRA`
    - Usuário: `<seu_usuario>`
    - Senha: `<sua_senha>`
@@ -93,10 +93,10 @@ curl http://REDACTED_VPS_IP:8080/api/sap/config
 
 **Via cURL:**
 ```bash
-curl -X POST http://REDACTED_VPS_IP:8080/api/sap/config/test \
+curl -X POST http://YOUR_VPS_IP:8080/api/sap/config/test \
   -H "Content-Type: application/json" \
   -d '{
-    "baseUrl": "https://REDACTED_SAP_HOST:50000",
+    "baseUrl": "https://your-sap-server:50000",
     "companyDb": "SBO_GARRAFARIASNEGRA",
     "username": "usuario",
     "password": "senha"
@@ -113,7 +113,7 @@ curl -X POST http://REDACTED_VPS_IP:8080/api/sap/config/test \
 
 **Via cURL:**
 ```bash
-curl -X POST http://REDACTED_VPS_IP:8080/api/sap/sync \
+curl -X POST http://YOUR_VPS_IP:8080/api/sap/sync \
   -H "X-Correlation-Id: test-$(date +%s)"
 ```
 
@@ -126,7 +126,7 @@ curl -X POST http://REDACTED_VPS_IP:8080/api/sap/sync \
 
 **Via cURL:**
 ```bash
-curl "http://REDACTED_VPS_IP:8080/api/sap/orders?limit=10"
+curl "http://YOUR_VPS_IP:8080/api/sap/orders?limit=10"
 ```
 
 ## 🐛 Troubleshooting
@@ -185,7 +185,7 @@ curl http://localhost:3000/api/sap/health
 **Solução:**
 ```bash
 # 1. Testar conectividade com SAP
-curl -k https://REDACTED_SAP_HOST:50000/b1s/v1/Login
+curl -k https://your-sap-server:50000/b1s/v1/Login
 
 # 2. Verificar variáveis de ambiente
 docker exec wms-gateway printenv | grep SAP
@@ -194,7 +194,7 @@ docker exec wms-gateway printenv | grep SAP
 docker logs wms-core --tail 50 | grep CORS
 
 # 4. Verificar certificado SSL
-openssl s_client -connect REDACTED_SAP_HOST:50000
+openssl s_client -connect your-sap-server:50000
 ```
 
 ### Problema: Sincronização não funciona
@@ -271,7 +271,7 @@ docker-compose -f deploy/docker-compose.yml up -d web gateway
 
 Deploy considerado bem-sucedido quando:
 
-1. ✅ Frontend acessível em http://REDACTED_VPS_IP:8080/integracao
+1. ✅ Frontend acessível em http://YOUR_VPS_IP:8080/integracao
 2. ✅ Página carrega sem erros no console
 3. ✅ Todas as 3 abas (Status, Configuração, Pedidos SAP) funcionam
 4. ✅ Teste de conexão SAP retorna resposta (sucesso ou erro claro)

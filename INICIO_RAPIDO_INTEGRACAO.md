@@ -4,7 +4,7 @@
 
 Frontend completo para gerenciar a integração com SAP Business One.
 
-**URL**: `http://REDACTED_VPS_IP:8080/integracao`
+**URL**: `http://YOUR_VPS_IP:8080/integracao`
 
 ---
 
@@ -24,7 +24,7 @@ docker logs -f wms-web
 # Ctrl+C para sair
 
 # 3. Acessar
-# http://REDACTED_VPS_IP:8080/integracao
+# http://YOUR_VPS_IP:8080/integracao
 ```
 
 ---
@@ -33,11 +33,11 @@ docker logs -f wms-web
 
 ### 1️⃣ Primeira Vez (Configurar SAP)
 
-1. Acesse: `http://REDACTED_VPS_IP:8080/integracao`
+1. Acesse: `http://YOUR_VPS_IP:8080/integracao`
 2. Clique na aba **"Configuração"**
 3. Preencha:
    ```
-   Service Layer URL: https://REDACTED_SAP_HOST:50000
+   Service Layer URL: https://your-sap-server:50000
    Company Database: SBO_GARRAFARIASNEGRA
    Usuário: <seu_usuario_sap>
    Senha: <sua_senha_sap>
@@ -146,7 +146,7 @@ docker logs -f wms-web
 ## 🧪 Testar Antes de Usar
 
 ### Via navegador:
-1. Acesse `http://REDACTED_VPS_IP:8080/integracao`
+1. Acesse `http://YOUR_VPS_IP:8080/integracao`
 2. Veja se a página carrega sem erros
 3. Abra o console do navegador (F12)
 4. Verifique se não há erros
@@ -154,13 +154,13 @@ docker logs -f wms-web
 ### Via cURL:
 ```bash
 # Health check
-curl http://REDACTED_VPS_IP:8080/api/sap/health
+curl http://YOUR_VPS_IP:8080/api/sap/health
 
 # Configuração
-curl http://REDACTED_VPS_IP:8080/api/sap/config
+curl http://YOUR_VPS_IP:8080/api/sap/config
 
 # Status de sincronização
-curl http://REDACTED_VPS_IP:8080/api/sap/sync/status
+curl http://YOUR_VPS_IP:8080/api/sap/sync/status
 ```
 
 ---
@@ -188,7 +188,7 @@ docker logs wms-gateway | grep "SAP"
 ### ❌ Teste de conexão falha
 ```bash
 # Testar conectividade com SAP
-curl -k https://REDACTED_SAP_HOST:50000/b1s/v1/Login
+curl -k https://your-sap-server:50000/b1s/v1/Login
 
 # Verificar variáveis de ambiente
 docker exec wms-gateway printenv | grep SAP

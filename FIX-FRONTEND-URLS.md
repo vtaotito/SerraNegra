@@ -2,9 +2,9 @@
 
 ## 🎯 Problema Identificado
 
-O frontend em `http://REDACTED_VPS_IP:8080/` estava fazendo requisições para:
+O frontend em `http://YOUR_VPS_IP:8080/` estava fazendo requisições para:
 ```
-http://REDACTED_VPS_IP:8080/api/api/v1/catalog/items  ❌
+http://YOUR_VPS_IP:8080/api/api/v1/catalog/items  ❌
 ```
 
 ### Problemas:
@@ -88,7 +88,7 @@ npm run dev
 
 ### Cenário 2: Frontend no VPS, API no VPS (Produção)
 
-**Situação**: Ambos rodando no mesmo VPS (REDACTED_VPS_IP)
+**Situação**: Ambos rodando no mesmo VPS (YOUR_VPS_IP)
 
 **Configuração**: `web-next/.env.production`
 ```bash
@@ -98,7 +98,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 **Fluxo**:
 ```
-VPS (REDACTED_VPS_IP)
+VPS (YOUR_VPS_IP)
 ├── Frontend Next.js (porta 8080)
 │    ↓ http://localhost:8000
 └── API Core (porta 8000)
@@ -133,7 +133,7 @@ NEXT_PUBLIC_API_BASE_URL=https://api.seudominio.com
 
 **Fluxo**:
 ```
-Frontend VPS (REDACTED_VPS_IP:8080)
+Frontend VPS (YOUR_VPS_IP:8080)
   ↓ HTTPS
 API VPS (outro-ip) via Nginx + SSL
 ```
@@ -151,7 +151,7 @@ API VPS (outro-ip) via Nginx + SSL
 #### Opção A: Túnel SSH (Temporário)
 ```bash
 # No seu computador Windows
-ssh -R 8000:localhost:8000 wms@REDACTED_VPS_IP
+ssh -R 8000:localhost:8000 wms@YOUR_VPS_IP
 ```
 
 Isso expõe seu `localhost:8000` no VPS.
@@ -179,13 +179,13 @@ bash deploy-vps.sh
 
 ## 🚀 Solução Recomendada para Seu Caso
 
-Como seu frontend está em `http://REDACTED_VPS_IP:8080/`, você tem 2 opções:
+Como seu frontend está em `http://YOUR_VPS_IP:8080/`, você tem 2 opções:
 
 ### Opção A: Deploy Completo no VPS (Recomendado)
 
 ```bash
 # 1. SSH no VPS
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # 2. Setup (se ainda não fez)
 bash setup-vps.sh
@@ -193,10 +193,10 @@ bash setup-vps.sh
 # 3. Transferir código
 # No Windows:
 .\package-for-vps.ps1
-scp wms-deploy-*.tar.gz root@REDACTED_VPS_IP:/home/wms/
+scp wms-deploy-*.tar.gz root@YOUR_VPS_IP:/home/wms/
 
 # 4. Deploy no VPS
-ssh wms@REDACTED_VPS_IP
+ssh wms@YOUR_VPS_IP
 cd /home/wms
 tar -xzf wms-deploy-*.tar.gz
 cd wms
@@ -217,7 +217,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ```powershell
 # No Windows, criar túnel SSH reverso
-ssh -R 8000:localhost:8000 wms@REDACTED_VPS_IP
+ssh -R 8000:localhost:8000 wms@YOUR_VPS_IP
 
 # Manter este terminal aberto
 ```
@@ -238,7 +238,7 @@ pm2 restart web-next
 - [ ] Decidir onde rodar API (Windows local ou VPS)
 - [ ] Configurar `.env.production` no frontend
 - [ ] Reiniciar frontend: `pm2 restart web-next` (se no VPS)
-- [ ] Testar: acessar `http://REDACTED_VPS_IP:8080/produtos`
+- [ ] Testar: acessar `http://YOUR_VPS_IP:8080/produtos`
 - [ ] Verificar DevTools > Network para confirmar URLs corretas
 
 ---
@@ -262,7 +262,7 @@ curl -H "X-User-Id: dev-user" \
 
 ### No Navegador
 
-1. Abrir: `http://REDACTED_VPS_IP:8080/produtos`
+1. Abrir: `http://YOUR_VPS_IP:8080/produtos`
 2. Abrir DevTools (F12) > Network
 3. Ver requisições para `/api/v1/catalog/items`
 4. Verificar:
@@ -288,7 +288,7 @@ Deve ser:
 
 Não deve ser:
 ```
-❌ http://REDACTED_VPS_IP:8080/api/api/v1/catalog/items
+❌ http://YOUR_VPS_IP:8080/api/api/v1/catalog/items
 ❌ http://localhost:8000/api/api/v1/catalog/items
 ```
 

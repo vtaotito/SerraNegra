@@ -8,12 +8,12 @@
 
 ## 🔍 Diagnóstico
 
-Você reportou erro ao acessar `http://REDACTED_VPS_IP:8080/`:
+Você reportou erro ao acessar `http://YOUR_VPS_IP:8080/`:
 
 ```bash
 # Requisições estavam assim:
-❌ http://REDACTED_VPS_IP:8080/api/api/v1/catalog/items
-❌ http://REDACTED_VPS_IP:8080/api/api/v1/inventory
+❌ http://YOUR_VPS_IP:8080/api/api/v1/catalog/items
+❌ http://YOUR_VPS_IP:8080/api/api/v1/inventory
 ```
 
 ### Causa Raiz
@@ -103,17 +103,17 @@ Script bash que faz tudo automaticamente no VPS:
 # 1. No Windows
 cd "c:\Users\Vitor A. Tito\Documents\GPTO\GSN\2026\wms"
 .\package-for-vps.ps1
-scp wms-deploy-*.tar.gz root@REDACTED_VPS_IP:/home/wms/
+scp wms-deploy-*.tar.gz root@YOUR_VPS_IP:/home/wms/
 
 # 2. No VPS
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 su - wms
 cd /home/wms && tar -xzf wms-deploy-*.tar.gz
 cd wms
 bash fix-frontend-vps.sh  # ⭐ FAZ TUDO AUTOMATICAMENTE
 
 # 3. Testar
-# Navegador: http://REDACTED_VPS_IP:8080/produtos
+# Navegador: http://YOUR_VPS_IP:8080/produtos
 ```
 
 ### Opção B: Manual (Se preferir controle)
@@ -165,7 +165,7 @@ curl -H "X-User-Id: dev-user" \
 ### Teste 2: Frontend Carregando
 
 ```
-Navegador: http://REDACTED_VPS_IP:8080/produtos
+Navegador: http://YOUR_VPS_IP:8080/produtos
 
 DevTools (F12) > Network:
 ✅ Requisição: http://localhost:8000/api/v1/catalog/items?limit=50
@@ -178,10 +178,10 @@ DevTools (F12) > Network:
 
 ### Teste 3: Todas as Páginas
 
-- ✅ Dashboard: `http://REDACTED_VPS_IP:8080/`
-- ✅ Pedidos: `http://REDACTED_VPS_IP:8080/pedidos`
-- ✅ Produtos: `http://REDACTED_VPS_IP:8080/produtos`
-- ✅ Estoque: `http://REDACTED_VPS_IP:8080/estoque`
+- ✅ Dashboard: `http://YOUR_VPS_IP:8080/`
+- ✅ Pedidos: `http://YOUR_VPS_IP:8080/pedidos`
+- ✅ Produtos: `http://YOUR_VPS_IP:8080/produtos`
+- ✅ Estoque: `http://YOUR_VPS_IP:8080/estoque`
 
 ---
 
@@ -190,7 +190,7 @@ DevTools (F12) > Network:
 ### ANTES (❌ Errado)
 
 ```
-Navegador: http://REDACTED_VPS_IP:8080/produtos
+Navegador: http://YOUR_VPS_IP:8080/produtos
   ↓
 Frontend Next.js (porta 8080)
   ↓ axios requisição
@@ -206,7 +206,7 @@ API: 404 Not Found (rota não existe)
 ### DEPOIS (✅ Correto)
 
 ```
-Navegador: http://REDACTED_VPS_IP:8080/produtos
+Navegador: http://YOUR_VPS_IP:8080/produtos
   ↓
 Frontend Next.js (porta 8080)
   ↓ axios requisição
@@ -225,7 +225,7 @@ API Core: 200 OK + dados
 
 ```
 ┌─────────────────────────────────────────┐
-│  VPS (REDACTED_VPS_IP)                    │
+│  VPS (YOUR_VPS_IP)                    │
 │                                         │
 │  ┌──────────────────┐                  │
 │  │ Next.js Frontend │ :8080            │
@@ -243,7 +243,7 @@ API Core: 200 OK + dados
 └─────────────────────────────────────────┘
 
 Fluxo:
-1. Usuário acessa: http://REDACTED_VPS_IP:8080/produtos
+1. Usuário acessa: http://YOUR_VPS_IP:8080/produtos
 2. Frontend renderiza página
 3. useProducts hook faz requisição
 4. axios usa BASE_URL + path: http://localhost:8000/api/v1/catalog/items
@@ -384,7 +384,7 @@ Após correção:
 ## 🎉 Resultado Esperado
 
 ```
-✅ http://REDACTED_VPS_IP:8080/ → Dashboard carrega
+✅ http://YOUR_VPS_IP:8080/ → Dashboard carrega
 ✅ /produtos → Lista de produtos
 ✅ /pedidos → Lista de pedidos
 ✅ /estoque → Inventário

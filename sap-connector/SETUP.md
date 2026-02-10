@@ -1,91 +1,75 @@
 # Setup — Integração SAP B1 (Ambiente Development)
 
-## Informações fornecidas
+## Informações necessárias
 
-- **URL Base**: `https://REDACTED_SAP_HOST`
+- **URL Base**: Obtenha com o administrador SAP (ex: `https://your-sap-server:50000`)
 - **Service Layer**: `/b1s/v1`
-- **Token/Credencial**: `REDACTED_TOKEN`
+- **Credenciais**: Usuário e senha do SAP B1
 
 ## Identificação do tipo de autenticação
 
-O token fornecido parece ser:
+O SAP B1 Service Layer suporta:
 
-1. **Token de sessão pré-gerado** (B1SESSION), ou
-2. **Credencial codificada em hex** (possível formato: `base64(CompanyDB:Username:Password)` ou formato proprietário Autosky/SAP BTP)
+1. **Autenticação por sessão** (Login → Cookie B1SESSION) — **Método recomendado**
+2. **Token pré-gerado** (B1SESSION cookie direto)
 
-### Testes recomendados
+### Configuração
 
-#### Opção 1: Token como B1SESSION (cookie direto)
-Se o token for uma sessão válida pré-gerada:
+#### Opção 1: Autenticação por sessão (recomendado)
 
 ```typescript
 const client = new SapServiceLayerClient({
-  baseUrl: "https://REDACTED_SAP_HOST/b1s/v1",
+  baseUrl: "https://your-sap-server:50000/b1s/v1",
   credentials: {
-    companyDb: "", // não usado se sessão existente
+    companyDb: "YOUR_COMPANY_DB",
+    username: "your_username",
+    password: "your_password"
+  }
+});
+```
+
+#### Opção 2: Token pré-gerado
+
+```typescript
+const client = new SapServiceLayerClient({
+  baseUrl: "https://your-sap-server:50000/b1s/v1",
+  credentials: {
+    companyDb: "",
     username: "",
     password: ""
   }
 });
-
-// Sobrescrever cookie manualmente (antes de qualquer request):
+// Sobrescrever cookie manualmente:
 // @ts-ignore acesso interno
-client.cookieHeader = "B1SESSION=REDACTED_TOKEN";
+client.cookieHeader = "B1SESSION=YOUR_SESSION_TOKEN";
 ```
 
-#### Opção 2: Decode do token
-Se o token for hex-encoded, decodifique primeiro:
+## Passos para validar a conexão
 
-```bash
-# No Node.js REPL ou script:
-Buffer.from('REDACTED_TOKEN', 'hex').toString('utf8')
-```
-
-Resultado pode revelar: `CompanyDB:Username:...` ou outro formato.
-
-#### Opção 3: Bearer token (se API Gateway / SAP BTP)
-Alguns ambientes Autosky usam autenticação via header `Authorization: Bearer <token>`:
-
-```typescript
-await client.get("/Orders?$top=1", {
-  headers: {
-    "Authorization": "Bearer REDACTED_TOKEN"
-  }
-});
-```
-
-## Passos para descobrir o método correto
-
-1. **Testar endpoint de health/metadata** (sem auth):
+1. **Testar endpoint de metadata** (sem auth):
    ```bash
-   curl https://REDACTED_SAP_HOST/b1s/v1/$metadata
+   curl https://your-sap-server:50000/b1s/v1/$metadata
    ```
 
-2. **Testar com token como Bearer**:
+2. **Testar com credenciais**:
    ```bash
-   curl -H "Authorization: Bearer REDACTED_TOKEN" \
-     https://REDACTED_SAP_HOST/b1s/v1/Orders?\$top=1
+   curl -X POST https://your-sap-server:50000/b1s/v1/Login \
+     -H "Content-Type: application/json" \
+     -d '{"CompanyDB":"YOUR_COMPANY_DB","UserName":"your_user","Password":"your_pass"}'
    ```
-
-3. **Testar com cookie B1SESSION**:
-   ```bash
-   curl -H "Cookie: B1SESSION=REDACTED_TOKEN" \
-     https://REDACTED_SAP_HOST/b1s/v1/Orders?\$top=1
-   ```
-
-4. **Contatar suporte Autosky/SAP** se nenhum método funcionar.
 
 ## Atualização do .env
 
-Após identificar o método, atualize `.env`:
+Configure as variáveis de ambiente no arquivo `.env`:
 
 ```bash
-SAP_B1_BASE_URL=https://REDACTED_SAP_HOST/b1s/v1
-SAP_B1_COMPANY_DB=<obtido do decode ou suporte>
-SAP_B1_USERNAME=<obtido do decode ou suporte>
-SAP_B1_PASSWORD=<obtido do decode ou suporte>
-SAP_B1_TOKEN=REDACTED_TOKEN
+SAP_B1_BASE_URL=https://your-sap-server:50000/b1s/v1
+SAP_B1_COMPANY_DB=YOUR_COMPANY_DB
+SAP_B1_USERNAME=your_username
+SAP_B1_PASSWORD=your_password
 ```
+
+> **IMPORTANTE**: Nunca commite o arquivo `.env` com credenciais reais.
 
 ## Próximos passos
 

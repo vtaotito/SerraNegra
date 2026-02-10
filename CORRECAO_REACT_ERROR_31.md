@@ -168,7 +168,7 @@ docker logs wms-web --tail 50 | grep -i error
 curl -I http://localhost:3000/
 
 # Testar no navegador
-# http://REDACTED_VPS_IP:8080/integracao
+# http://YOUR_VPS_IP:8080/integracao
 # F12 → Console → Sem erros
 ```
 
@@ -177,7 +177,7 @@ curl -I http://localhost:3000/
 Após deploy, testar:
 
 ### 1. Página Carrega
-- [ ] ✅ `http://REDACTED_VPS_IP:8080/integracao` acessível
+- [ ] ✅ `http://YOUR_VPS_IP:8080/integracao` acessível
 - [ ] ✅ Sem "Application error"
 - [ ] ✅ Sem "React error #31"
 - [ ] ✅ Console sem erros

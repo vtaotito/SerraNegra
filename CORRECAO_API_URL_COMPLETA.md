@@ -117,7 +117,7 @@ app.add_middleware(
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     USUÁRIO (Browser)                        │
-│                 http://REDACTED_VPS_IP:8080                    │
+│                 http://YOUR_VPS_IP:8080                    │
 └───────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
@@ -209,7 +209,7 @@ git push origin main
 
 ```bash
 # Conectar ao servidor
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Ir para diretório do projeto
 cd /opt/wms/current
@@ -270,7 +270,7 @@ curl -i http://localhost:8080/api/v1/dashboard/metrics \
 # 3. Testar CORS preflight
 curl -i http://localhost:8080/api/v1/catalog/items?limit=50 \
   -X OPTIONS \
-  -H "Origin: http://REDACTED_VPS_IP:8080" \
+  -H "Origin: http://YOUR_VPS_IP:8080" \
   -H "Access-Control-Request-Method: GET" \
   -H "Access-Control-Request-Headers: x-user-id,x-user-role"
 # Esperado: 200 OK + headers CORS
@@ -283,7 +283,7 @@ docker compose logs -f web
 #### No Browser (Seu PC)
 
 ```
-1. Abrir: http://REDACTED_VPS_IP:8080
+1. Abrir: http://YOUR_VPS_IP:8080
 2. Abrir DevTools (F12) → Network
 3. Filtrar por "fetch" ou "XHR"
 4. Verificar requisições:
@@ -340,7 +340,7 @@ docker compose exec core python -c "from app.main import app; print(app.user_mid
 
 # 2. Testar CORS diretamente no Core
 docker compose exec core curl -i http://localhost:8000/health \
-  -H "Origin: http://REDACTED_VPS_IP:8080"
+  -H "Origin: http://YOUR_VPS_IP:8080"
 # Response deve ter: Access-Control-Allow-Origin: *
 
 # 3. Se não tiver, verificar código
@@ -371,7 +371,7 @@ docker compose exec nginx cat /etc/nginx/nginx.conf | grep -A 5 "location /api"
 # Deve ter: proxy_pass http://gateway_upstream/;
 
 # 3. Testar rota do Nginx
-curl http://REDACTED_VPS_IP:8080/api/v1/dashboard/metrics \
+curl http://YOUR_VPS_IP:8080/api/v1/dashboard/metrics \
   -H "X-User-Id: dev-user"
 # Deve retornar JSON
 ```
@@ -415,7 +415,7 @@ curl http://REDACTED_VPS_IP:8080/api/v1/dashboard/metrics \
 
 ### Frontend
 
-- [ ] http://REDACTED_VPS_IP:8080 carrega
+- [ ] http://YOUR_VPS_IP:8080 carrega
 - [ ] DevTools Network: requisições para `/api/v1/*` (não `localhost:8000`)
 - [ ] Requisições retornam 200 OK
 - [ ] Console sem erros CORS

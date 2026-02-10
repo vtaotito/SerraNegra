@@ -228,7 +228,7 @@ Abra o pedido no SAP B1 e verifique:
 
 **Testar:**
 ```bash
-curl https://REDACTED_SAP_HOST:50000/b1s/v1/
+curl https://your-sap-server:50000/b1s/v1/
 ```
 
 ### ❌ Teste de conexão falha com "401 Unauthorized"

@@ -6,8 +6,8 @@
  * npm run build && node dist/sap-connector/examples/test-connection.js
  */
 
-const SAP_URL = "https://REDACTED_SAP_HOST/b1s/v1";
-const SAP_TOKEN = "REDACTED_TOKEN";
+const SAP_URL = process.env.SAP_B1_BASE_URL ?? "https://your-sap-server:50000/b1s/v1";
+const SAP_TOKEN = process.env.SAP_B1_TOKEN ?? "";
 
 async function testMethod(name: string, headers: Record<string, string>) {
   console.log(`\n🧪 Testando: ${name}`);

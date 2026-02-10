@@ -45,9 +45,9 @@ import { sapMockService } from './sap-connector/mocks/sapMockService';
 ```typescript
 // 1. Login
 const session = await sapMockService.login(
-  "REDACTED_USER",
-  "REDACTED_PASSWORD",
-  "REDACTED_COMPANY_DB"
+  "mock_user",
+  "mock_pass",
+  "MOCK_COMPANY_DB"
 );
 
 // 2. Listar pedidos abertos

@@ -132,7 +132,7 @@ git push origin main
 
 **No servidor**:
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 git pull origin main
 docker compose build --no-cache web core
@@ -141,7 +141,7 @@ docker compose up -d web core
 
 **Validação** (browser):
 ```
-http://REDACTED_VPS_IP:8080
+http://YOUR_VPS_IP:8080
 → F12 → Network
 → Requisições para /api/v1/* → 200 OK ✅
 → Dashboard mostra dados ✅

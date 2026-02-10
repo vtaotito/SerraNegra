@@ -22,12 +22,12 @@ Web (React) - Dashboard Kanban
 **Teste manual (fora do sistema)**:
 ```bash
 # Login
-curl -X POST https://REDACTED_SAP_HOST:50000/b1s/v1/Login \
+curl -X POST https://your-sap-server:50000/b1s/v1/Login \
   -H "Content-Type: application/json" \
   -d '{
-    "CompanyDB": "REDACTED_COMPANY_DB",
-    "UserName": "REDACTED_USER",
-    "Password": "REDACTED_PASSWORD"
+    "CompanyDB": "YOUR_COMPANY_DB",
+    "UserName": "your_username",
+    "Password": "your_password"
   }'
 ```
 
@@ -35,7 +35,7 @@ Espera: `200 OK` + cookies (SessionId).
 
 **Listar pedidos**:
 ```bash
-curl -X GET "https://REDACTED_SAP_HOST:50000/b1s/v1/Orders?\$top=5&\$select=DocEntry,DocNum,CardCode" \
+curl -X GET "https://your-sap-server:50000/b1s/v1/Orders?\$top=5&\$select=DocEntry,DocNum,CardCode" \
   -H "Cookie: B1SESSION=<session_id>" \
   -H "X-Correlation-Id: test-manual-$(date +%s)"
 ```
@@ -110,13 +110,13 @@ Espera:
 **Do servidor ou do seu PC**:
 ```bash
 # Health do nginx
-curl -i http://REDACTED_VPS_IP:8080/health
+curl -i http://YOUR_VPS_IP:8080/health
 
 # API via nginx (rota /api)
-curl -i "http://REDACTED_VPS_IP:8080/api/orders?limit=5"
+curl -i "http://YOUR_VPS_IP:8080/api/orders?limit=5"
 
 # Frontend via nginx (rota /)
-curl -i http://REDACTED_VPS_IP:8080/
+curl -i http://YOUR_VPS_IP:8080/
 ```
 
 Espera:
@@ -128,7 +128,7 @@ Espera:
 
 ### 6. Web (React - Dashboard Kanban)
 **No navegador**:
-- Abra `http://REDACTED_VPS_IP:8080/`
+- Abra `http://YOUR_VPS_IP:8080/`
 - Veja no canto inferior: `Fonte: API` (não mais "Mock local")
 - Veja pedidos no Kanban
 
@@ -165,11 +165,11 @@ Espera:
    - Todos devem estar `Up (healthy)`.
 2. **Trigger sync manual** (do seu PC ou servidor):
    ```bash
-   curl -X POST http://REDACTED_VPS_IP:8080/api/sap/sync \
+   curl -X POST http://YOUR_VPS_IP:8080/api/sap/sync \
      -H "Content-Type: application/json" \
      -H "X-Correlation-Id: manual-sync-$(date +%s)"
    ```
-3. **Abrir painel**: `http://REDACTED_VPS_IP:8080/`
+3. **Abrir painel**: `http://YOUR_VPS_IP:8080/`
 4. **Verificar "Fonte: API"** e pedidos no Kanban.
 
 ---

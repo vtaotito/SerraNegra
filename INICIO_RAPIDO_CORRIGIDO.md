@@ -10,7 +10,7 @@
 ### ✅ Produção (Frontend Next.js)
 
 ```
-http://REDACTED_VPS_IP:8080
+http://YOUR_VPS_IP:8080
 ```
 
 **O que você verá**:
@@ -68,7 +68,7 @@ git push origin main
 ### Passo 2: Deploy (Servidor)
 
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 git pull origin main
 docker compose build --no-cache web
@@ -94,7 +94,7 @@ curl http://localhost:8080/ | grep "Next.js"
 
 ## 🗺️ Navegação do Sistema
 
-### Produção: http://REDACTED_VPS_IP:8080
+### Produção: http://YOUR_VPS_IP:8080
 
 ```
 ┌─────────────────────────────────────┐
@@ -116,7 +116,7 @@ curl http://localhost:8080/ | grep "Next.js"
 
 ```bash
 # Ver logs
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 docker compose logs web
 
 # Restart
@@ -126,7 +126,7 @@ docker compose restart web
 ### API não responde?
 
 ```bash
-curl http://REDACTED_VPS_IP:8080/api/health
+curl http://YOUR_VPS_IP:8080/api/health
 # Deve retornar: {"status":"ok"}
 ```
 
@@ -158,7 +158,7 @@ npm run dev
 
 ## ✅ Checklist de Validação
 
-- [ ] http://REDACTED_VPS_IP:8080 carrega
+- [ ] http://YOUR_VPS_IP:8080 carrega
 - [ ] Dashboard mostra métricas
 - [ ] Sidebar visível (desktop)
 - [ ] Navegação funciona (5 páginas)

@@ -4,7 +4,7 @@
 
 ```
 Application error: a client-side exception has occurred 
-while loading REDACTED_VPS_IP (see the browser console for more information).
+while loading YOUR_VPS_IP (see the browser console for more information).
 ```
 
 ## 🔍 Causas Possíveis
@@ -58,7 +58,7 @@ git commit -m "feat: adiciona página de integração SAP"
 git push origin main
 
 # 5. No servidor, fazer pull
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /root/wms
 git pull origin main
 
@@ -79,10 +79,10 @@ cd "c:\Users\Vitor A. Tito\Documents\GPTO\GSN\2026\wms"
 tar -czf web-next-update.tar.gz web-next/
 
 # 2. Enviar para servidor
-scp web-next-update.tar.gz root@REDACTED_VPS_IP:/root/
+scp web-next-update.tar.gz root@YOUR_VPS_IP:/root/
 
 # 3. No servidor, extrair e rebuild
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /root/wms
 tar -xzf ../web-next-update.tar.gz
 docker-compose -f deploy/docker-compose.yml down web
@@ -141,7 +141,7 @@ docker exec -it wms-web ls -la .next/static/
 
 ### 4. Verificar Console do Navegador
 
-1. Abra `http://REDACTED_VPS_IP:8080/integracao`
+1. Abra `http://YOUR_VPS_IP:8080/integracao`
 2. Pressione **F12** (DevTools)
 3. Aba **Console**
 4. Veja a mensagem de erro completa
@@ -311,7 +311,7 @@ curl -I http://localhost:3000/
 
 echo ""
 echo "✅ Deploy concluído!"
-echo "🌐 Acesse: http://REDACTED_VPS_IP:8080/integracao"
+echo "🌐 Acesse: http://YOUR_VPS_IP:8080/integracao"
 ```
 
 Salve como `fix-deploy.sh` e execute:

@@ -84,7 +84,7 @@ JWT_ISSUER=wms-api
 JWT_AUDIENCE=wms-clients
 
 # CORS - Permitir frontend local
-CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://REDACTED_VPS_IP:8080
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080,http://YOUR_VPS_IP:8080
 ```
 
 #### `gateway/.env`

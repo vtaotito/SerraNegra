@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 API_URL="${API_URL:-http://localhost:8000}"
-ORIGIN="${ORIGIN:-http://REDACTED_VPS_IP:8080}"
+ORIGIN="${ORIGIN:-http://YOUR_VPS_IP:8080}"
 
 echo "========================================="
 echo "Teste de CORS - WMS API"

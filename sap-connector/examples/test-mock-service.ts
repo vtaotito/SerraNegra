@@ -20,9 +20,9 @@ async function main() {
   console.log("-".repeat(70));
   
   const session = await sapMockService.login(
-    "REDACTED_USER",
-    "REDACTED_PASSWORD",
-    "REDACTED_COMPANY_DB"
+    "mock_user",
+    "mock_pass",
+    "MOCK_COMPANY_DB"
   );
   
   console.log("✓ Login realizado");

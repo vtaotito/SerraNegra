@@ -2,9 +2,9 @@
 
 ## ⚡ Problema
 
-Frontend em `http://REDACTED_VPS_IP:8080/` fazendo requisições erradas:
+Frontend em `http://YOUR_VPS_IP:8080/` fazendo requisições erradas:
 ```
-❌ http://REDACTED_VPS_IP:8080/api/api/v1/catalog/items
+❌ http://YOUR_VPS_IP:8080/api/api/v1/catalog/items
 ```
 
 ---
@@ -18,14 +18,14 @@ Frontend em `http://REDACTED_VPS_IP:8080/` fazendo requisições erradas:
 .\package-for-vps.ps1
 
 # 2. Enviar para VPS
-scp wms-deploy-*.tar.gz root@REDACTED_VPS_IP:/home/wms/
+scp wms-deploy-*.tar.gz root@YOUR_VPS_IP:/home/wms/
 ```
 
 ### No VPS
 
 ```bash
 # 1. SSH no servidor
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # 2. Extrair código atualizado
 su - wms
@@ -66,7 +66,7 @@ Deve retornar lista de produtos.
 
 ### Teste 3: Frontend no navegador
 
-1. Acessar: `http://REDACTED_VPS_IP:8080/produtos`
+1. Acessar: `http://YOUR_VPS_IP:8080/produtos`
 2. Abrir DevTools (F12) > Network
 3. Verificar requisições:
    - URL deve ser: `http://localhost:8000/api/v1/catalog/items`

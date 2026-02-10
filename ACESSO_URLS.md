@@ -4,7 +4,7 @@
 
 ### ✅ PRODUÇÃO (Use este!)
 ```
-http://REDACTED_VPS_IP:8080
+http://YOUR_VPS_IP:8080
 ```
 **Frontend**: Next.js 16 + React 19 + shadcn/ui  
 **Features**: Dashboard, Pedidos, Produtos, Estoque, Integração
@@ -21,10 +21,10 @@ http://localhost:3002
 
 | Endpoint | Localhost | Produção |
 |----------|-----------|----------|
-| **Health Check** | http://localhost:3000/health | http://REDACTED_VPS_IP:8080/health |
-| **Listar Pedidos** | http://localhost:3000/api/orders | http://REDACTED_VPS_IP:8080/api/orders |
-| **SAP Health** | http://localhost:3000/api/sap/health | http://REDACTED_VPS_IP:8080/api/sap/health |
-| **SAP Sync** | POST http://localhost:3000/api/sap/sync | POST http://REDACTED_VPS_IP:8080/api/sap/sync |
+| **Health Check** | http://localhost:3000/health | http://YOUR_VPS_IP:8080/health |
+| **Listar Pedidos** | http://localhost:3000/api/orders | http://YOUR_VPS_IP:8080/api/orders |
+| **SAP Health** | http://localhost:3000/api/sap/health | http://YOUR_VPS_IP:8080/api/sap/health |
+| **SAP Sync** | POST http://localhost:3000/api/sap/sync | POST http://YOUR_VPS_IP:8080/api/sap/sync |
 
 ---
 
@@ -32,12 +32,12 @@ http://localhost:3002
 
 ### Ver Kanban em Produção
 1. Abrir navegador
-2. Ir para: **http://REDACTED_VPS_IP:8080**
+2. Ir para: **http://YOUR_VPS_IP:8080**
 3. ✅ Verificar: deve mostrar **"Fonte: API"**
 
 ### Acessar Servidor SSH
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 docker compose logs -f
 ```
@@ -65,9 +65,9 @@ cd web && npm run dev
 
 Salvar no navegador:
 
-1. **Kanban Produção**: http://REDACTED_VPS_IP:8080
-2. **API Health**: http://REDACTED_VPS_IP:8080/health
-3. **SAP Status**: http://REDACTED_VPS_IP:8080/api/sap/health
+1. **Kanban Produção**: http://YOUR_VPS_IP:8080
+2. **API Health**: http://YOUR_VPS_IP:8080/health
+3. **SAP Status**: http://YOUR_VPS_IP:8080/api/sap/health
 4. **Kanban Local**: http://localhost:5173
 
 ---
@@ -76,7 +76,7 @@ Salvar no navegador:
 
 **Kanban não carrega?**
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 docker compose ps
 docker compose logs web
 ```
@@ -89,7 +89,7 @@ docker compose restart web
 
 **API não responde?**
 ```bash
-curl http://REDACTED_VPS_IP:8080/health
+curl http://YOUR_VPS_IP:8080/health
 docker compose logs gateway
 ```
 

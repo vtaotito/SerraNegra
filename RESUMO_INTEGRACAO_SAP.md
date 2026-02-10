@@ -4,7 +4,7 @@
 
 Frontend completo e funcional para gerenciar a integração com SAP Business One, disponível em:
 
-**🌐 URL**: `http://REDACTED_VPS_IP:8080/integracao`
+**🌐 URL**: `http://YOUR_VPS_IP:8080/integracao`
 
 ---
 
@@ -89,7 +89,7 @@ Frontend completo e funcional para gerenciar a integração com SAP Business One
 ## 🚀 Como Usar (Rápido)
 
 ### 1️⃣ Configurar (primeira vez)
-1. Acesse `http://REDACTED_VPS_IP:8080/integracao`
+1. Acesse `http://YOUR_VPS_IP:8080/integracao`
 2. Aba **"Configuração"**
 3. Preencha credenciais SAP
 4. Clique **"Testar Conexão"**

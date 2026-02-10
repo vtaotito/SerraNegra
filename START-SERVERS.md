@@ -84,7 +84,7 @@ chmod +x TEST-CORS.sh
 curl -X OPTIONS "http://localhost:8000/orders?limit=50" \
   -H "Access-Control-Request-Method: GET" \
   -H "Access-Control-Request-Headers: x-user-id,x-user-role,x-user-name" \
-  -H "Origin: http://REDACTED_VPS_IP:8080" \
+  -H "Origin: http://YOUR_VPS_IP:8080" \
   -v
 
 # Teste GET com headers customizados
@@ -92,7 +92,7 @@ curl "http://localhost:8000/orders?limit=50" \
   -H "X-User-Id: dev-user" \
   -H "X-User-Role: SUPERVISOR" \
   -H "X-User-Name: Usuário Dev" \
-  -H "Origin: http://REDACTED_VPS_IP:8080" \
+  -H "Origin: http://YOUR_VPS_IP:8080" \
   -v
 ```
 

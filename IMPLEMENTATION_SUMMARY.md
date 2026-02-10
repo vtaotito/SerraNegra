@@ -130,7 +130,7 @@ Integração completa com SAP Business One via Service Layer, expondo funcionali
 
 - ✅ **.env.example**: Template de configuração
   - Placeholders para credenciais (`********`)
-  - URL base correta: `https://REDACTED_SAP_HOST:50000`
+  - URL base correta: `https://your-sap-server:50000`
   - Configurações de resiliência documentadas
   
 - ✅ **.gitignore**: Atualizado (`.env` já estava incluído)
@@ -179,7 +179,7 @@ Integração completa com SAP Business One via Service Layer, expondo funcionali
 
 ## 🎯 Alvos da Integração (Conforme Solicitado)
 
-- ✅ Service Layer: `https://REDACTED_SAP_HOST:50000`
+- ✅ Service Layer: `https://your-sap-server:50000`
 - ✅ App monta URL final: `{SAP_BASE_URL}/b1s/v1`
 - ✅ Credenciais via env vars: `SAP_B1_COMPANY_DB`, `SAP_B1_USERNAME`, `SAP_B1_PASSWORD`
 

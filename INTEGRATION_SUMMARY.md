@@ -48,9 +48,9 @@ Documento definitivo cobrindo:
 
 ## 🔐 Credenciais fornecidas (ambiente Development)
 
-- **URL**: `https://REDACTED_SAP_HOST`
+- **URL**: `(configurar via .env)`
 - **Service Layer**: `/b1s/v1`
-- **Token/Credencial**: `REDACTED_TOKEN`
+- **Token/Credencial**: `(removido - configurar via .env)`
 
 ### ⚠️ Identificar tipo de autenticação
 

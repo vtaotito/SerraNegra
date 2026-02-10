@@ -105,7 +105,7 @@ Avaliar a arquitetura de integração com SAP Business One Service Layer e propo
                          ▼
 ┌─────────────────────────────────────────────────────────────┐
 │           SAP B1 Service Layer (External)                    │
-│  https://REDACTED_SAP_HOST:50000/b1s/v1 │
+│  https://your-sap-server:50000/b1s/v1 │
 └─────────────────────────────────────────────────────────────┘
 ```
 

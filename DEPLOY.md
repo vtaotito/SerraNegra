@@ -47,7 +47,7 @@ SAP_B1_MAX_RPS=10
 Acesse o VPS via SSH e crie o arquivo:
 
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /docker/serranegra/
 nano .env
 ```
@@ -84,9 +84,9 @@ O `docker-compose.yaml` contém todos os serviços:
 
 Após o deploy, o sistema estará disponível em:
 
-- **Frontend**: `http://REDACTED_VPS_IP:8080/`
-- **API Gateway**: `http://REDACTED_VPS_IP:8080/api/`
-- **Health Check**: `http://REDACTED_VPS_IP:8080/health`
+- **Frontend**: `http://YOUR_VPS_IP:8080/`
+- **API Gateway**: `http://YOUR_VPS_IP:8080/api/`
+- **Health Check**: `http://YOUR_VPS_IP:8080/health`
 
 ## 🔒 Segurança
 
@@ -101,7 +101,7 @@ Após o deploy, o sistema estará disponível em:
 
 Após o deploy, você pode testar a conexão SAP através do dashboard:
 
-1. Acesse `http://REDACTED_VPS_IP:8080/`
+1. Acesse `http://YOUR_VPS_IP:8080/`
 2. Clique em "Testar Conexão SAP"
 3. Se bem-sucedido, clique em "Importar do SAP"
 
@@ -112,7 +112,7 @@ Os pedidos do SAP B1 aparecerão no dashboard!
 ### Verificar logs dos containers
 
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /docker/serranegra/
 docker-compose logs -f gateway
 docker-compose logs -f core

@@ -27,7 +27,7 @@ Deve mostrar ✓ em todos os testes.
 
 ### 3. Acessar do Frontend
 
-Seu frontend em `http://REDACTED_VPS_IP:8080` já pode fazer requisições:
+Seu frontend em `http://YOUR_VPS_IP:8080` já pode fazer requisições:
 
 ```javascript
 // Exemplo no frontend
@@ -150,7 +150,7 @@ Criar arquivo `.env` na pasta `api/`:
 API_PORT=8000
 LOG_LEVEL=info
 JWT_SECRET=seu-secret-seguro-aqui
-CORS_ORIGINS=http://localhost:3000,http://REDACTED_VPS_IP:8080
+CORS_ORIGINS=http://localhost:3000,http://YOUR_VPS_IP:8080
 ```
 
 ### Produção

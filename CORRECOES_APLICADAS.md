@@ -4,7 +4,7 @@
 
 ```
 Application error: a client-side exception has occurred 
-while loading REDACTED_VPS_IP
+while loading YOUR_VPS_IP
 ```
 
 ## 🔍 Causa Raiz Identificada
@@ -146,7 +146,7 @@ curl http://localhost:3000/integracao
 - [ ] ✅ Sem mensagem de erro
 
 ### 5. Browser
-1. Acesse: `http://REDACTED_VPS_IP:8080/integracao`
+1. Acesse: `http://YOUR_VPS_IP:8080/integracao`
 2. Pressione F12 (DevTools)
 3. Verifique Console:
    - [ ] ✅ Sem erros vermelhos

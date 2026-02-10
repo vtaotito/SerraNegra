@@ -2,7 +2,7 @@
 
 ## 📋 Visão Geral
 
-Frontend completo para configuração e monitoramento da integração com SAP Business One, disponível em `http://REDACTED_VPS_IP:8080/integracao`.
+Frontend completo para configuração e monitoramento da integração com SAP Business One, disponível em `http://YOUR_VPS_IP:8080/integracao`.
 
 ## ✨ Funcionalidades Implementadas
 
@@ -106,11 +106,11 @@ gateway/src/routes/
 
 ### 1. Configurar Credenciais SAP
 
-1. Acesse `http://REDACTED_VPS_IP:8080/integracao`
+1. Acesse `http://YOUR_VPS_IP:8080/integracao`
 2. Clique na aba **"Configuração"**
 3. Preencha os campos:
    ```
-   Service Layer URL: https://REDACTED_SAP_HOST:50000
+   Service Layer URL: https://your-sap-server:50000
    Company Database: SBO_GARRAFARIASNEGRA
    Usuário: seu_usuario
    Senha: sua_senha
@@ -176,7 +176,7 @@ gateway/src/routes/
 ### Variáveis de Ambiente (Gateway)
 ```bash
 # .env no gateway/
-SAP_BASE_URL=https://REDACTED_SAP_HOST:50000
+SAP_BASE_URL=https://your-sap-server:50000
 SAP_COMPANY_DB=SBO_GARRAFARIASNEGRA
 SAP_USERNAME=usuario_sap
 SAP_PASSWORD=senha_sap
@@ -265,7 +265,7 @@ docker logs -f wms-worker
 ### Teste em Produção
 ```bash
 # 1. Acessar
-http://REDACTED_VPS_IP:8080/integracao
+http://YOUR_VPS_IP:8080/integracao
 
 # 2. Configurar credenciais de produção
 

@@ -2,7 +2,7 @@
 
 ## Problema Identificado
 
-As requisições do frontend (`http://REDACTED_VPS_IP:8080`) para a API (`http://localhost:8000`) estavam falhando devido a:
+As requisições do frontend (`http://YOUR_VPS_IP:8080`) para a API (`http://localhost:8000`) estavam falhando devido a:
 
 1. **Headers customizados não permitidos**: `X-User-Id`, `X-User-Role`, `X-User-Name`
 2. **Configuração CORS incompleta** nos servidores
@@ -106,14 +106,14 @@ curl 'http://localhost:8000/orders?limit=50' \
   -H 'Accept: */*' \
   -H 'Access-Control-Request-Headers: x-user-id,x-user-name,x-user-role' \
   -H 'Access-Control-Request-Method: GET' \
-  -H 'Origin: http://REDACTED_VPS_IP:8080' \
+  -H 'Origin: http://YOUR_VPS_IP:8080' \
   -v
 ```
 
 **Resposta esperada:**
 ```
 < HTTP/1.1 204 No Content
-< access-control-allow-origin: http://REDACTED_VPS_IP:8080
+< access-control-allow-origin: http://YOUR_VPS_IP:8080
 < access-control-allow-credentials: true
 < access-control-allow-headers: Content-Type,Authorization,X-User-Id,X-User-Name,X-User-Role,...
 < access-control-allow-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
@@ -126,14 +126,14 @@ curl 'http://localhost:8000/orders?limit=50' \
   -H 'X-User-Id: dev-user' \
   -H 'X-User-Role: SUPERVISOR' \
   -H 'X-User-Name: Usuário Dev' \
-  -H 'Origin: http://REDACTED_VPS_IP:8080' \
+  -H 'Origin: http://YOUR_VPS_IP:8080' \
   -v
 ```
 
 **Resposta esperada:**
 ```
 < HTTP/1.1 200 OK
-< access-control-allow-origin: http://REDACTED_VPS_IP:8080
+< access-control-allow-origin: http://YOUR_VPS_IP:8080
 < access-control-allow-credentials: true
 < x-correlation-id: <uuid>
 < x-request-id: <uuid>

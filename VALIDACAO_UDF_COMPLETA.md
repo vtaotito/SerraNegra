@@ -162,7 +162,7 @@ Teste completo de ciclo de vida:
 6. ✅ Commit das melhorias
 
 ### 🔄 Em Andamento
-- 🔄 Deploy para produção (VPS REDACTED_VPS_IP)
+- 🔄 Deploy para produção (VPS YOUR_VPS_IP)
 
 ### 📋 Pendente
 - Validar integração end-to-end no ambiente de produção

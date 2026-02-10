@@ -11,10 +11,10 @@ import { mapOrderFromSapB1 } from "../../mappings/src/order.js";
 
 // Carregar configuração do .env
 const config = {
-  baseUrl: process.env.SAP_B1_BASE_URL ?? "https://REDACTED_SAP_HOST:50000",
-  companyDb: process.env.SAP_B1_COMPANY_DB ?? "REDACTED_COMPANY_DB",
-  username: process.env.SAP_B1_USERNAME ?? "REDACTED_USER",
-  password: process.env.SAP_B1_PASSWORD ?? "REDACTED_PASSWORD",
+  baseUrl: process.env.SAP_B1_BASE_URL ?? "",
+  companyDb: process.env.SAP_B1_COMPANY_DB ?? "",
+  username: process.env.SAP_B1_USERNAME ?? "",
+  password: process.env.SAP_B1_PASSWORD ?? "",
   timeoutMs: parseInt(process.env.SAP_B1_TIMEOUT_MS ?? "20000", 10),
   maxAttempts: parseInt(process.env.SAP_B1_MAX_ATTEMPTS ?? "5", 10)
 };

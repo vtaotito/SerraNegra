@@ -15,7 +15,7 @@
 - Ignorava frontend Next.js (`web-next/`)
 
 **✅ Situação real**:
-- **Frontend Next.js** está em **PRODUÇÃO** em http://REDACTED_VPS_IP:8080
+- **Frontend Next.js** está em **PRODUÇÃO** em http://YOUR_VPS_IP:8080
 - **Frontend Vite** é obsoleto (deve ser removido)
 
 ---
@@ -72,7 +72,7 @@ git push origin main
 ### Passo 2: Deploy VPS (10 min)
 
 ```bash
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 cd /opt/wms/current
 git pull origin main
@@ -87,7 +87,7 @@ docker compose logs -f web core
 ### Passo 3: Testar (3 min)
 
 ```
-1. Browser: http://REDACTED_VPS_IP:8080
+1. Browser: http://YOUR_VPS_IP:8080
 2. F12 → Network tab
 3. Verificar:
    ✅ Requisições para /api/v1/* (não localhost:8000)

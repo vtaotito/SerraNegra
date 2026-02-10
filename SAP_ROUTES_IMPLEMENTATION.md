@@ -321,7 +321,7 @@ INFO: SAP request OK.
     path: "/Orders"
   }
   credentials: {
-    username: "REDACTED_USER",
+    username: "your_username",
     password: "[REDACTED]"
   }
   status: 200

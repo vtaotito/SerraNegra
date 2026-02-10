@@ -10,7 +10,7 @@
 
 **Problema**: Frontend fazendo requisições com path duplicado:
 ```
-❌ http://REDACTED_VPS_IP:8080/api/api/v1/catalog/items
+❌ http://YOUR_VPS_IP:8080/api/api/v1/catalog/items
 ```
 
 **Correção**: Removido rewrite desnecessário no `next.config.ts`
@@ -31,14 +31,14 @@ cd "c:\Users\Vitor A. Tito\Documents\GPTO\GSN\2026\wms"
 .\package-for-vps.ps1
 
 # Transferir para VPS
-scp wms-deploy-*.tar.gz root@REDACTED_VPS_IP:/home/wms/
+scp wms-deploy-*.tar.gz root@YOUR_VPS_IP:/home/wms/
 ```
 
 ### 2️⃣ No VPS (7 min)
 
 ```bash
 # Conectar ao VPS
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 
 # Trocar para usuário wms
 su - wms
@@ -62,7 +62,7 @@ bash fix-frontend-vps.sh
 ### 3️⃣ Testar no Navegador (2 min)
 
 ```
-1. Abrir: http://REDACTED_VPS_IP:8080/produtos
+1. Abrir: http://YOUR_VPS_IP:8080/produtos
 2. F12 → Network tab
 3. Verificar:
    ✅ Requisições para: localhost:8000/api/v1/catalog/items
@@ -82,7 +82,7 @@ bash fix-frontend-vps.sh
 - [ ] `fix-frontend-vps.sh` executado com sucesso
 - [ ] API rodando (porta 8000)
 - [ ] Frontend rodando (porta 8080)
-- [ ] http://REDACTED_VPS_IP:8080/produtos carrega
+- [ ] http://YOUR_VPS_IP:8080/produtos carrega
 - [ ] DevTools mostra URLs corretas (sem duplicação)
 - [ ] Produtos/Estoque/Pedidos carregam
 
@@ -172,7 +172,7 @@ Deve retornar dados JSON.
 
 ### Teste 2: Frontend
 
-Navegador: `http://REDACTED_VPS_IP:8080/produtos`
+Navegador: `http://YOUR_VPS_IP:8080/produtos`
 
 - Abrir DevTools (F12)
 - Aba Network

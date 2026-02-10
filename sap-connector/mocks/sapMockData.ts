@@ -1,5 +1,5 @@
 /**
- * SAP B1 Mock Data — SOMENTE DADOS REAIS da REDACTED_COMPANY_DB
+ * SAP B1 Mock Data — SOMENTE DADOS REAIS da YOUR_COMPANY_DB
  *
  * IMPORTANTE: Este arquivo contém EXCLUSIVAMENTE dados capturados do SAP real.
  * Nenhum nome, descrição, preço ou quantidade foi inventado.
@@ -11,11 +11,11 @@
  *   [D] VALIDACAO_UDF_COMPLETA.md → UDFs validados com escrita/leitura real
  *
  * Contexto:
- *   Service Layer: https://REDACTED_SAP_HOST:50000
- *   Database:      REDACTED_COMPANY_DB
+ *   Service Layer: https://your-sap-server:50000
+ *   Database:      YOUR_COMPANY_DB
  *   SAP B1:        10.0 (1000190)
  *   Empresa:       IRMAOS NAVES EIRELI (CNPJ 19.669.290/0001-99)
- *   Usuário:       REDACTED_USER
+ *   Usuário:       (configurar via .env)
  */
 
 import type {

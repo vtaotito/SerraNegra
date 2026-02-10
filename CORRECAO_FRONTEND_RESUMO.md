@@ -13,7 +13,7 @@
 **❌ Análise anterior estava INCORRETA**:
 - Considerava frontend Vite (`web/`) como principal (90% completo)
 - Considerava frontend Next.js (`web-next/`) como "em desenvolvimento" (20%)
-- **REALIDADE**: Next.js **JÁ ESTÁ EM PRODUÇÃO** em http://REDACTED_VPS_IP:8080
+- **REALIDADE**: Next.js **JÁ ESTÁ EM PRODUÇÃO** em http://YOUR_VPS_IP:8080
 
 ### Situação Real
 
@@ -183,7 +183,7 @@ git commit -m "fix: corrigir docker-compose para usar Next.js (web-next)
 - Healthcheck ajustado para porta 3000
 - Documentação atualizada
 
-Frontend correto: Next.js 16 em http://REDACTED_VPS_IP:8080
+Frontend correto: Next.js 16 em http://YOUR_VPS_IP:8080
 
 Refs: ANALISE_E2E_ATUALIZADA.md, MIGRACAO_FRONTEND_NEXTJS.md"
 
@@ -194,7 +194,7 @@ git push origin main
 
 ```bash
 # No servidor VPS
-ssh root@REDACTED_VPS_IP
+ssh root@YOUR_VPS_IP
 cd /opt/wms/current
 
 # Pull mudanças
@@ -215,13 +215,13 @@ docker compose logs web --tail=50
 # Validação completa
 
 # 1. Browser
-# http://REDACTED_VPS_IP:8080
+# http://YOUR_VPS_IP:8080
 # ✅ Dashboard carrega
 # ✅ Sidebar visível
 # ✅ Navegação funciona
 
 # 2. API
-curl http://REDACTED_VPS_IP:8080/api/health
+curl http://YOUR_VPS_IP:8080/api/health
 # ✅ {"status":"ok"}
 
 # 3. Logs
@@ -311,7 +311,7 @@ git push origin main
 **Problemas no deploy?**
 - Ver seção "Troubleshooting" em `MIGRACAO_FRONTEND_NEXTJS.md`
 - Logs: `docker compose logs web`
-- Health: `curl http://REDACTED_VPS_IP:8080/health`
+- Health: `curl http://YOUR_VPS_IP:8080/health`
 
 ---
 
