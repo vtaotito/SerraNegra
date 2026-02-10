@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import { registerSapRoutes } from "../src/routes/sap.js";
 
 /**
- * Teste básico do endpoint /api/sap/health
+ * Teste básico do endpoint /sap/health
  * 
  * NOTA: Este teste requer credenciais SAP válidas no .env para funcionar.
  * Se as credenciais não estiverem configuradas, o teste verificará se o erro é tratado corretamente.
@@ -43,7 +43,7 @@ describe("SAP Health Check", () => {
   it("deve retornar status 200 ou 503 no health check", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/sap/health"
+      url: "/sap/health"
     });
 
     // Aceitar tanto 200 (sucesso) quanto 503 (falha de conexão)
@@ -69,7 +69,7 @@ describe("SAP Health Check", () => {
   it("deve incluir X-Correlation-Id no response", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/sap/health",
+      url: "/sap/health",
       headers: {
         "x-correlation-id": "test-123"
       }

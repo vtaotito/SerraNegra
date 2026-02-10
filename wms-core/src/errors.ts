@@ -1,6 +1,7 @@
 export type WmsErrorCode =
   | "WMS-VAL-001"
   | "WMS-VAL-002"
+  | "WMS-VAL-003"
   | "WMS-SM-001"
   | "WMS-SM-002"
   | "WMS-SM-003"
@@ -8,6 +9,7 @@ export type WmsErrorCode =
   | "WMS-IDEM-001"
   | "WMS-CONC-001"
   | "WMS-DB-001"
+  | "WMS-NOT-FOUND"
   | "WMS-DC-001"
   | "WMS-DC-002";
 

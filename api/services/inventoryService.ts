@@ -24,6 +24,8 @@ interface StockRecord extends InventoryRecord {
   // Campos adicionais para controle interno
   lastMovementId?: string;
   lastMovementAt?: string;
+  // Observação: o contrato REST expõe apenas {quantity,reserved,available}.
+  // Qualquer noção de "em trânsito" deve ficar fora do modelo público (ou em metadata no futuro).
 }
 
 /**
@@ -73,73 +75,79 @@ export class InventoryStore {
     // Estoque inicial para produtos de exemplo
     const sampleInventory: StockRecord[] = [
       {
+        id: uuidv4(),
         itemCode: "PROD-001",
         itemName: "Notebook Dell Inspiron 15",
         warehouseCode: "WH-PRINCIPAL",
         warehouseName: "Armazém Principal",
-        quantityAvailable: 50,
-        quantityReserved: 5,
-        quantityInTransit: 10,
+        available: 50,
+        reserved: 5,
+        quantity: 55,
         batchNumber: "BATCH-2026-001",
         location: "A-01-01",
         lastUpdated: now
       },
       {
+        id: uuidv4(),
         itemCode: "PROD-001",
         itemName: "Notebook Dell Inspiron 15",
         warehouseCode: "WH-SEC-01",
         warehouseName: "Armazém Secundário - Centro",
-        quantityAvailable: 20,
-        quantityReserved: 2,
-        quantityInTransit: 0,
+        available: 20,
+        reserved: 2,
+        quantity: 22,
         batchNumber: "BATCH-2026-001",
         location: "B-02-05",
         lastUpdated: now
       },
       {
+        id: uuidv4(),
         itemCode: "PROD-002",
         itemName: "Mouse Logitech MX Master 3",
         warehouseCode: "WH-PRINCIPAL",
         warehouseName: "Armazém Principal",
-        quantityAvailable: 150,
-        quantityReserved: 10,
-        quantityInTransit: 30,
+        available: 150,
+        reserved: 10,
+        quantity: 160,
         batchNumber: "BATCH-2026-002",
         location: "A-01-02",
         lastUpdated: now
       },
       {
+        id: uuidv4(),
         itemCode: "PROD-003",
         itemName: "Teclado Mecânico Keychron K2",
         warehouseCode: "WH-PRINCIPAL",
         warehouseName: "Armazém Principal",
-        quantityAvailable: 80,
-        quantityReserved: 8,
-        quantityInTransit: 0,
+        available: 80,
+        reserved: 8,
+        quantity: 88,
         batchNumber: "BATCH-2026-003",
         location: "A-01-03",
         lastUpdated: now
       },
       {
+        id: uuidv4(),
         itemCode: "PROD-004",
         itemName: "Monitor LG UltraWide 29\"",
         warehouseCode: "WH-PRINCIPAL",
         warehouseName: "Armazém Principal",
-        quantityAvailable: 30,
-        quantityReserved: 3,
-        quantityInTransit: 15,
+        available: 30,
+        reserved: 3,
+        quantity: 33,
         batchNumber: "BATCH-2026-004",
         location: "A-02-01",
         lastUpdated: now
       },
       {
+        id: uuidv4(),
         itemCode: "PROD-005",
         itemName: "Webcam Logitech C920",
         warehouseCode: "WH-PRINCIPAL",
         warehouseName: "Armazém Principal",
-        quantityAvailable: 100,
-        quantityReserved: 5,
-        quantityInTransit: 20,
+        available: 100,
+        reserved: 5,
+        quantity: 105,
         batchNumber: "BATCH-2026-005",
         location: "A-01-04",
         lastUpdated: now
@@ -231,8 +239,8 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
         const minQty = query.minQuantity;
         inventory = inventory.filter(inv => {
           const totalQty = query.includeReserved 
-            ? inv.quantityAvailable + inv.quantityReserved
-            : inv.quantityAvailable;
+            ? inv.available + inv.reserved
+            : inv.available;
           return totalQty >= minQty;
         });
       }
@@ -301,7 +309,7 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
 
       // Buscar estoque atual
       let existing = store.getInventory(input.itemCode, input.warehouseCode);
-      const previousQuantity = existing?.quantityAvailable || 0;
+      const previousQuantity = existing?.available || 0;
       let newQuantity: number;
 
       // Calcular nova quantidade baseado no tipo de ajuste
@@ -344,13 +352,14 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
       if (!existing) {
         // Criar novo registro
         existing = {
+          id: uuidv4(),
           itemCode: input.itemCode,
           itemName: `Item ${input.itemCode}`, // Nome seria buscado do catálogo
           warehouseCode: input.warehouseCode,
           warehouseName: `Armazém ${input.warehouseCode}`, // Nome seria buscado do catálogo
-          quantityAvailable: newQuantity,
-          quantityReserved: 0,
-          quantityInTransit: 0,
+          available: newQuantity,
+          reserved: 0,
+          quantity: newQuantity,
           batchNumber: input.batchNumber,
           location: input.location,
           lastUpdated: timestamp,
@@ -361,7 +370,8 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
         // Atualizar registro existente
         existing = {
           ...existing,
-          quantityAvailable: newQuantity,
+          available: newQuantity,
+          quantity: newQuantity + (existing.reserved ?? 0),
           batchNumber: input.batchNumber || existing.batchNumber,
           location: input.location || existing.location,
           lastUpdated: timestamp,
@@ -445,27 +455,26 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
         );
       }
 
-      if (fromInventory.quantityAvailable < input.quantity) {
+      if (fromInventory.available < input.quantity) {
         throw new WmsError(
           "WMS-VAL-003",
-          `Quantidade insuficiente. Disponível: ${fromInventory.quantityAvailable}, Necessário: ${input.quantity}`
+          `Quantidade insuficiente. Disponível: ${fromInventory.available}, Necessário: ${input.quantity}`
         );
       }
 
       // Criar transferência
       const transferId = uuidv4();
       const timestamp = now();
-      const batchNumber = input.batchNumber || `TRF-${transferId.substring(0, 8)}`;
 
       // Movimento de saída (origem)
       const outMovementId = uuidv4();
-      const fromPreviousQty = fromInventory.quantityAvailable;
+      const fromPreviousQty = fromInventory.available;
       const fromNewQty = fromPreviousQty - input.quantity;
 
       const updatedFromInventory: StockRecord = {
         ...fromInventory,
-        quantityAvailable: fromNewQty,
-        quantityInTransit: fromInventory.quantityInTransit + input.quantity,
+        available: fromNewQty,
+        quantity: fromNewQty + (fromInventory.reserved ?? 0),
         lastUpdated: timestamp,
         lastMovementId: outMovementId,
         lastMovementAt: timestamp
@@ -484,7 +493,6 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
         reason: input.reason,
         toWarehouse: input.toWarehouseCode,
         transferId,
-        batchNumber,
         notes: input.notes,
         actorId,
         createdAt: timestamp
@@ -492,41 +500,64 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
 
       store.addMovement(outMovement);
 
-      // Preparar destino (mas não adicionar quantidade ainda - status PENDING)
+      // Destino: adiciona quantidade imediatamente (simplificado)
       let toInventory = store.getInventory(input.itemCode, input.toWarehouseCode);
       
       if (!toInventory) {
         toInventory = {
+          id: uuidv4(),
           itemCode: input.itemCode,
           itemName: fromInventory.itemName,
           warehouseCode: input.toWarehouseCode,
           warehouseName: `Armazém ${input.toWarehouseCode}`,
-          quantityAvailable: 0,
-          quantityReserved: 0,
-          quantityInTransit: input.quantity,
-          batchNumber,
+          available: 0,
+          reserved: 0,
+          quantity: 0,
+          batchNumber: input.batchNumber,
           lastUpdated: timestamp
         };
-        store.setInventory(toInventory);
-      } else {
-        toInventory = {
-          ...toInventory,
-          quantityInTransit: toInventory.quantityInTransit + input.quantity,
-          lastUpdated: timestamp
-        };
-        store.setInventory(toInventory);
       }
+
+      const inMovementId = uuidv4();
+      const toPreviousQty = toInventory.available;
+      const toNewQty = toPreviousQty + input.quantity;
+      const updatedToInventory: StockRecord = {
+        ...toInventory,
+        available: toNewQty,
+        quantity: toNewQty + (toInventory.reserved ?? 0),
+        lastUpdated: timestamp,
+        lastMovementId: inMovementId,
+        lastMovementAt: timestamp
+      };
+      store.setInventory(updatedToInventory);
+
+      const inMovement: MovementRecord = {
+        id: inMovementId,
+        itemCode: input.itemCode,
+        warehouseCode: input.toWarehouseCode,
+        type: "TRANSFER_IN",
+        quantity: input.quantity,
+        previousQuantity: toPreviousQty,
+        newQuantity: toNewQty,
+        reason: input.reason,
+        fromWarehouse: input.fromWarehouseCode,
+        transferId,
+        notes: input.notes,
+        actorId,
+        createdAt: timestamp
+      };
+      store.addMovement(inMovement);
 
       // Criar registro de transferência
       const transfer: InventoryTransferResponse = {
         transferId,
-        status: "PENDING",
+        status: "COMPLETED",
         itemCode: input.itemCode,
         fromWarehouse: input.fromWarehouseCode,
         toWarehouse: input.toWarehouseCode,
         quantity: input.quantity,
-        batchNumber,
-        createdAt: timestamp
+        createdAt: timestamp,
+        completedAt: timestamp
       };
 
       store.addTransfer(transfer);
@@ -536,80 +567,4 @@ export const createInventoryService = (store: InventoryStore): InventoryService 
   };
 };
 
-/**
- * Função auxiliar para completar uma transferência
- * (Seria exposta em um endpoint separado ou automática após confirmaç ão)
- */
-export const completeTransfer = (
-  store: InventoryStore,
-  transferId: string,
-  actorId: string
-): InventoryTransferResponse | undefined => {
-  const transfer = store.getTransfer(transferId);
-  
-  if (!transfer) {
-    throw new WmsError("WMS-NOT-FOUND", `Transferência '${transferId}' não encontrada.`);
-  }
-
-  if (transfer.status !== "PENDING" && transfer.status !== "IN_TRANSIT") {
-    throw new WmsError("WMS-VAL-001", `Transferência já está em status '${transfer.status}'.`);
-  }
-
-  const timestamp = new Date().toISOString();
-
-  // Atualizar estoque de origem (remover de em trânsito)
-  const fromInventory = store.getInventory(transfer.itemCode, transfer.fromWarehouse);
-  if (fromInventory) {
-    const updated: StockRecord = {
-      ...fromInventory,
-      quantityInTransit: fromInventory.quantityInTransit - transfer.quantity,
-      lastUpdated: timestamp
-    };
-    store.setInventory(updated);
-  }
-
-  // Atualizar estoque de destino (adicionar quantidade, remover de em trânsito)
-  const toInventory = store.getInventory(transfer.itemCode, transfer.toWarehouse);
-  if (toInventory) {
-    const inMovementId = uuidv4();
-    const toPreviousQty = toInventory.quantityAvailable;
-    const toNewQty = toPreviousQty + transfer.quantity;
-
-    const updated: StockRecord = {
-      ...toInventory,
-      quantityAvailable: toNewQty,
-      quantityInTransit: toInventory.quantityInTransit - transfer.quantity,
-      lastUpdated: timestamp,
-      lastMovementId: inMovementId,
-      lastMovementAt: timestamp
-    };
-    store.setInventory(updated);
-
-    // Registrar movimento de entrada
-    const inMovement: MovementRecord = {
-      id: inMovementId,
-      itemCode: transfer.itemCode,
-      warehouseCode: transfer.toWarehouse,
-      type: "TRANSFER_IN",
-      quantity: transfer.quantity,
-      previousQuantity: toPreviousQty,
-      newQuantity: toNewQty,
-      reason: `Recebimento de transferência ${transferId}`,
-      fromWarehouse: transfer.fromWarehouse,
-      transferId,
-      batchNumber: transfer.batchNumber,
-      actorId,
-      createdAt: timestamp
-    };
-
-    store.addMovement(inMovement);
-  }
-
-  // Atualizar status da transferência
-  store.updateTransferStatus(transferId, "COMPLETED");
-
-  return {
-    ...transfer,
-    status: "COMPLETED"
-  };
-};
+// Nota: a implementação acima completa a transferência imediatamente.

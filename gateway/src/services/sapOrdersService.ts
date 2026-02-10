@@ -149,18 +149,35 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // Query mínima para máxima compatibilidade com ambientes de teste
-        let path = `/Orders?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Comments`;
-        
-        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price)`;
+        // Query mínima para máxima compatibilidade (evita campos que alguns SLs rejeitam com 400)
+        let path =
+          `/Orders?$select=` +
+          [
+            "DocEntry",
+            "DocNum",
+            "CardCode",
+            "CardName",
+            "DocDate",
+            "DocDueDate",
+            "DocStatus",
+            "DocumentStatus",
+            "DocTotal",
+            "DocCurrency",
+            "CreateDate",
+            "UpdateDate",
+            "Comments"
+          ].join(",");
+
+        // Expand mínimo (campos “seguros”)
+        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
         const filterParts: string[] = [];
         if (docStatus) {
-          // Usar DocumentStatus ao invés de DocStatus
           if (docStatus === "O") {
-            filterParts.push(`DocumentStatus eq 'bost_Open'`);
+            // Mais compatível que DocumentStatus em alguns ambientes
+            filterParts.push(`DocStatus eq 'O'`);
           } else if (docStatus === "C") {
-            filterParts.push(`DocumentStatus eq 'bost_Close'`);
+            filterParts.push(`DocStatus eq 'C'`);
           }
         }
         // Nota: Filtro por status WMS (U_WMS_STATUS) desabilitado para compatibilidade
@@ -190,7 +207,24 @@ export class SapOrdersService {
       cacheKey,
       async () => {
         // Query mínima para máxima compatibilidade
-        const path = `/Orders(${docEntry})?$select=DocEntry,DocNum,CardCode,CardName,DocumentStatus,DocDate,DocDueDate,DocTotal,DocCurrency,CreateDate,CreateTime,UpdateDate,UpdateTime,Comments&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode,Price)`;
+        const path =
+          `/Orders(${docEntry})?$select=` +
+          [
+            "DocEntry",
+            "DocNum",
+            "CardCode",
+            "CardName",
+            "DocDate",
+            "DocDueDate",
+            "DocStatus",
+            "DocumentStatus",
+            "DocTotal",
+            "DocCurrency",
+            "CreateDate",
+            "UpdateDate",
+            "Comments"
+          ].join(",") +
+          `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
         const response = await this.client.get<SapOrder>(path, { correlationId });
 

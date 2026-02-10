@@ -96,11 +96,29 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
     try {
       const service = getSapService();
+      // Suporte a OData-style params (frontend às vezes manda $top/$filter)
+      const topRaw = query?.["$top"];
+      const filterRaw = query?.["$filter"];
+
+      const limit =
+        query.limit !== undefined
+          ? Number(query.limit)
+          : topRaw !== undefined
+            ? Number(topRaw)
+            : undefined;
+
+      let docStatus = query.docStatus as string | undefined;
+      if (!docStatus && typeof filterRaw === "string") {
+        // Ex.: DocumentStatus eq 'bost_Open'
+        if (filterRaw.includes("bost_Open")) docStatus = "O";
+        else if (filterRaw.includes("bost_Close")) docStatus = "C";
+      }
+
       const orders = await service.listOrders(
         {
           status: query.status,
-          limit: query.limit ? Number(query.limit) : undefined,
-          docStatus: query.docStatus
+          limit: Number.isFinite(limit as number) ? limit : undefined,
+          docStatus
         },
         correlationId
       );
