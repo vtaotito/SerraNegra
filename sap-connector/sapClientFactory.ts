@@ -12,6 +12,7 @@
  */
 
 import { sapMockService, SapMockService } from "./mocks/sapMockService.js";
+import { SapServiceLayerClient } from "./src/serviceLayerClient.js";
 import type {
   SapOrder,
   SapOrdersFilter,
@@ -69,15 +70,19 @@ function getSapConfig(): SapConfig {
   const useMock =
     process.env.USE_SAP_MOCK === "true" || process.env.NODE_ENV === "test";
 
+  // Suporta tanto SAP_HOST quanto SAP_B1_BASE_URL
+  const host = process.env.SAP_HOST || process.env.SAP_B1_BASE_URL || "localhost";
+  const port = parseInt(process.env.SAP_PORT || "50000");
+
   return {
     useMock,
     mockDelay: parseInt(process.env.SAP_MOCK_DELAY || "300"),
     realSapConfig: {
-      host: process.env.SAP_HOST || "localhost",
-      port: parseInt(process.env.SAP_PORT || "50000"),
-      companyDB: process.env.SAP_COMPANY_DB || "SBODEMO",
-      username: process.env.SAP_USERNAME || "",
-      password: process.env.SAP_PASSWORD || "",
+      host,
+      port,
+      companyDB: process.env.SAP_COMPANY_DB || process.env.SAP_B1_COMPANY_DB || "SBODEMO",
+      username: process.env.SAP_USERNAME || process.env.SAP_B1_USERNAME || "",
+      password: process.env.SAP_PASSWORD || process.env.SAP_B1_PASSWORD || "",
     },
   };
 }
@@ -126,45 +131,140 @@ class MockSapClientAdapter implements ISapClient {
 }
 
 // ============================================================================
-// Cliente SAP Real (placeholder)
+// Cliente SAP Real (Service Layer)
 // ============================================================================
 
 class RealSapClient implements ISapClient {
-  private config: SapConfig["realSapConfig"];
+  private readonly client: SapServiceLayerClient;
+  private readonly config: NonNullable<SapConfig["realSapConfig"]>;
 
-  constructor(config: SapConfig["realSapConfig"]) {
+  constructor(config: NonNullable<SapConfig["realSapConfig"]>) {
     this.config = config;
+
+    // Montar baseUrl: se host já inclui porta ou /b1s/v1, não duplicar
+    let baseUrl: string;
+    if (config.host.includes("/b1s/v1")) {
+      baseUrl = config.host;
+    } else {
+      const hostClean = config.host.replace(/\/$/, "");
+      // Se o host já tem porta (ex: :50000), não adicionar novamente
+      const hasPort = /:\d+$/.test(hostClean);
+      baseUrl = hasPort
+        ? `${hostClean}/b1s/v1`
+        : `${hostClean}:${config.port}/b1s/v1`;
+    }
+
+    this.client = new SapServiceLayerClient({
+      baseUrl,
+      credentials: {
+        companyDb: config.companyDB,
+        username: config.username,
+        password: config.password,
+      },
+      timeoutMs: 60_000,
+      retry: { maxAttempts: 3, baseDelayMs: 1_000, maxDelayMs: 10_000, jitterRatio: 0.2 },
+      circuitBreaker: { failureThreshold: 10, successThreshold: 2, openStateTimeoutMs: 60_000 },
+    });
   }
 
   async login(_u: string, _p: string): Promise<{ SessionId: string }> {
-    throw new Error("Real SAP Client not implemented. Set USE_SAP_MOCK=true");
+    await this.client.login();
+    return { SessionId: "real-session" };
   }
+
   async logout(): Promise<{ success: boolean }> {
-    throw new Error("Real SAP Client not implemented");
+    await this.client.logout();
+    return { success: true };
   }
-  async getOrders(_f?: SapOrdersFilter) {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  // ── Pedidos ──
+
+  async getOrders(filter?: SapOrdersFilter): Promise<SapCollectionResponse<SapOrder>> {
+    const parts: string[] = [];
+
+    // Nota: SAP B1 Service Layer não suporta $select + $expand na mesma query.
+    // Sem $select, o SAP retorna todos os campos incluindo DocumentLines.
+
+    // Filtros OData
+    const filters: string[] = [];
+    if (filter?.status === "open") filters.push("DocumentStatus eq 'bost_Open'");
+    else if (filter?.status === "closed") filters.push("DocumentStatus eq 'bost_Close'");
+    if (filter?.cardCode) filters.push(`CardCode eq '${filter.cardCode}'`);
+    if (filter?.fromDate) filters.push(`DocDate ge '${filter.fromDate}'`);
+    if (filter?.toDate) filters.push(`DocDate le '${filter.toDate}'`);
+
+    if (filters.length > 0) parts.push(`$filter=${filters.join(" and ")}`);
+
+    // Ordenação e paginação
+    parts.push("$orderby=DocEntry desc");
+    if (filter?.limit) parts.push(`$top=${filter.limit}`);
+    if (filter?.skip) parts.push(`$skip=${filter.skip}`);
+
+    const query = `/Orders?${parts.join("&")}`;
+    const res = await this.client.get<SapCollectionResponse<SapOrder>>(query);
+    return res.data;
   }
-  async getOrderByDocEntry(_d: number) {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  async getOrderByDocEntry(docEntry: number): Promise<SapOrder | null> {
+    try {
+      const res = await this.client.get<SapOrder>(`/Orders(${docEntry})`);
+      return res.data;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("404")) return null;
+      throw err;
+    }
   }
-  async updateOrderStatus(_d: number, _data: SapOrderStatusUpdate) {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  async updateOrderStatus(docEntry: number, data: SapOrderStatusUpdate): Promise<SapOrder | null> {
+    await this.client.patch(`/Orders(${docEntry})`, data);
+    // PATCH retorna 204 No Content; relê o pedido para retornar atualizado
+    return this.getOrderByDocEntry(docEntry);
   }
-  async getItems() {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  // ── Itens ──
+
+  async getItems(): Promise<SapCollectionResponse<SapItem>> {
+    const select = "ItemCode,ItemName,InventoryUOM,InventoryItem,SalesItem,PurchaseItem,Valid,Frozen,QuantityOnStock,UpdateDate,UpdateTime";
+    const res = await this.client.get<SapCollectionResponse<SapItem>>(
+      `/Items?$select=${select}&$filter=Valid eq 'tYES'&$top=500`,
+    );
+    return res.data;
   }
-  async getItemByCode(_c: string) {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  async getItemByCode(itemCode: string): Promise<SapItem | null> {
+    try {
+      const res = await this.client.get<SapItem>(`/Items('${itemCode}')`);
+      return res.data;
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("404")) return null;
+      throw err;
+    }
   }
-  async getItemWarehouseInfo(_c: string) {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  async getItemWarehouseInfo(itemCode: string): Promise<SapCollectionResponse<SapItemWarehouseInfo>> {
+    const res = await this.client.get<SapCollectionResponse<SapItemWarehouseInfo>>(
+      `/Items('${itemCode}')/ItemWarehouseInfoCollection`,
+    );
+    return res.data;
   }
-  async getWarehouses() {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  // ── Depósitos ──
+
+  async getWarehouses(): Promise<SapCollectionResponse<SapWarehouse>> {
+    const res = await this.client.get<SapCollectionResponse<SapWarehouse>>(
+      `/Warehouses?$select=WarehouseCode,WarehouseName,Inactive&$filter=Inactive eq 'tNO'`,
+    );
+    return res.data;
   }
-  async getBusinessPartners() {
-    throw new Error("Real SAP Client not implemented") as never;
+
+  // ── Parceiros ──
+
+  async getBusinessPartners(): Promise<SapCollectionResponse<SapBusinessPartner>> {
+    const select = "CardCode,CardName,CardType,Phone1,EmailAddress,Address,City,State,ZipCode,Country,FederalTaxID,Valid,Frozen";
+    const res = await this.client.get<SapCollectionResponse<SapBusinessPartner>>(
+      `/BusinessPartners?$select=${select}&$filter=CardType eq 'cCustomer' and Valid eq 'tYES'&$top=500`,
+    );
+    return res.data;
   }
 }
 

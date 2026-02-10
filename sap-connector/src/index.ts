@@ -2,5 +2,8 @@ export * from "./errors.js";
 export * from "./types.js";
 export * from "./serviceLayerClient.js";
 export * from "./sqlQueries.js";
-// Note: sapTypes.js has duplicate exports with types.js, so only types.js is exported
+export * from "./syncService.js";
+export * from "./syncScheduler.js";
+export * from "./sapTypes.js";
+// Note: sapTypes.js re-exports types also available in types.js
 
