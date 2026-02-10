@@ -139,6 +139,64 @@ app.get("/v1/dashboard/metrics", async (req, reply) => {
   }
 });
 
+/**
+ * Dashboard – Pedidos recentes (MVP).
+ * O Core expõe /v1/orders (com campos camelCase); este handler traduz para o
+ * formato snake_case esperado pelo frontend (Order type do web-next).
+ */
+app.get("/v1/dashboard/orders", async (req, reply) => {
+  const correlationId = (req as any).correlationId as string;
+  try {
+    const query = req.query as any;
+    const limit = query?.limit ? Number(query.limit) : 10;
+    const status = query?.status as string | undefined;
+
+    const params: Record<string, unknown> = { limit };
+    if (status) params.status = status;
+
+    const result = await forwardToCoreWithQuery(req, "GET", "/v1/orders", params);
+    if (result.statusCode !== 200) {
+      reply.code(result.statusCode).send(result.body);
+      return;
+    }
+
+    const body = result.body as any;
+    const raw = Array.isArray(body?.items) ? body.items : [];
+
+    // Mapear camelCase (Core) → snake_case (frontend Order type)
+    const data = raw.map((o: any) => ({
+      id: o.orderId ?? o.order_id ?? "",
+      order_number: o.externalOrderId ?? o.orderId ?? "",
+      customer_id: o.customerId ?? "",
+      customer_name: o.customerId ?? "",
+      status: o.status ?? "A_SEPARAR",
+      order_date: o.createdAt ?? o.created_at ?? new Date().toISOString(),
+      total_amount: o.docTotal ?? null,
+      currency: o.currency ?? "BRL",
+      priority: 3,
+      sap_doc_entry: o.sapDocEntry ?? null,
+      sap_doc_num: o.sapDocNum ?? null,
+      created_at: o.createdAt ?? o.created_at ?? new Date().toISOString(),
+      updated_at: o.updatedAt ?? o.updated_at ?? new Date().toISOString()
+    }));
+
+    reply.code(200).send({
+      data,
+      total: body?.total ?? data.length,
+      correlationId
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido";
+    req.log.error({ error, correlationId }, "Erro ao buscar dashboard orders");
+    reply.code(500).send({
+      error: "Erro ao buscar pedidos do dashboard",
+      message,
+      correlationId,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Registrar rotas SAP
 await registerSapRoutes(app);
 

@@ -8,38 +8,40 @@ import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { get } from "@/lib/api/client";
 import { API_ENDPOINTS } from "@/lib/api/endpoints";
-import type { SapOrder } from "../types";
-import { format } from "date-fns";
+import type { SapOrdersResponse } from "../types";
 
-interface SapOrdersResponse {
-  data: SapOrder[];
-  total: number;
-}
+const STATUS_COLORS: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  DESPACHADO: "default",
+  EM_SEPARACAO: "outline",
+  CONFERIDO: "outline",
+  AGUARDANDO_COTACAO: "secondary",
+  AGUARDANDO_COLETA: "secondary",
+  A_SEPARAR: "secondary",
+};
 
 export function SapOrdersPreview() {
   const [limit] = useState(10);
 
-  const { data, isLoading, refetch, isFetching } = useQuery<SapOrdersResponse>({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<SapOrdersResponse>({
     queryKey: ["sap", "orders", "preview", limit],
     queryFn: () =>
-      get<SapOrdersResponse>(`${API_ENDPOINTS.SAP_ORDERS}?$top=${limit}&$filter=DocumentStatus eq 'bost_Open'`),
+      get<SapOrdersResponse>(
+        `${API_ENDPOINTS.SAP_ORDERS}?$top=${limit}&$filter=DocumentStatus eq 'bost_Open'`
+      ),
     enabled: true,
     retry: 1,
   });
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | undefined) => {
+    if (value == null) return "—";
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(value);
   };
 
-  const getWmsStatusColor = (status: string | undefined) => {
-    if (!status) return "secondary";
-    if (status === "DISPATCHED") return "default";
-    if (status === "IN_PROGRESS") return "outline";
-    return "secondary";
-  };
+  const items = data?.items;
+  const hasItems = Array.isArray(items) && items.length > 0;
 
   return (
     <Card>
@@ -48,7 +50,7 @@ export function SapOrdersPreview() {
           <div>
             <CardTitle>Pedidos Abertos no SAP</CardTitle>
             <CardDescription>
-              Últimos {limit} pedidos com status "Open" no SAP B1
+              Últimos {limit} pedidos com status &quot;Open&quot; no SAP B1
             </CardDescription>
           </div>
           <Button
@@ -70,7 +72,14 @@ export function SapOrdersPreview() {
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-        ) : data && data.data.length > 0 ? (
+        ) : isError ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <p className="text-red-500">Erro ao carregar pedidos do SAP</p>
+            <p className="text-sm mt-1">
+              Verifique se a conexão SAP está ativa e tente novamente.
+            </p>
+          </div>
+        ) : hasItems ? (
           <div className="space-y-2">
             {/* Header */}
             <div className="grid grid-cols-6 gap-2 text-xs font-medium text-muted-foreground pb-2 border-b">
@@ -82,24 +91,24 @@ export function SapOrdersPreview() {
             </div>
 
             {/* Rows */}
-            {data.data.map((order) => (
+            {items.map((order) => (
               <div
-                key={order.DocEntry}
+                key={order.sapDocEntry ?? order.orderId}
                 className="grid grid-cols-6 gap-2 text-sm py-2 border-b last:border-0 hover:bg-accent rounded transition-colors"
               >
-                <div className="font-mono text-blue-600">{order.DocEntry}</div>
-                <div className="font-medium">{order.DocNum}</div>
-                <div className="col-span-2 truncate" title={order.CardName}>
+                <div className="font-mono text-blue-600">{order.sapDocEntry}</div>
+                <div className="font-medium">{order.sapDocNum}</div>
+                <div className="col-span-2 truncate" title={order.customerName ?? ""}>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {order.CardCode}
+                    {order.customerId}
                   </span>
                   <br />
-                  <span className="text-sm">{order.CardName}</span>
+                  <span className="text-sm">{order.customerName ?? "—"}</span>
                 </div>
-                <div className="font-medium">{formatCurrency(order.DocTotal)}</div>
+                <div className="font-medium">{formatCurrency(order.docTotal)}</div>
                 <div>
-                  <Badge variant={getWmsStatusColor(order.U_WMS_STATUS)}>
-                    {order.U_WMS_STATUS || "Novo"}
+                  <Badge variant={STATUS_COLORS[order.status] ?? "secondary"}>
+                    {order.status ?? "Novo"}
                   </Badge>
                 </div>
               </div>
@@ -108,7 +117,7 @@ export function SapOrdersPreview() {
             {/* Footer */}
             <div className="pt-4 flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                Total: {data.total} pedido(s) aberto(s) no SAP
+                Total: {data?.count ?? items.length} pedido(s) aberto(s) no SAP
               </span>
               <Button variant="link" size="sm" asChild>
                 <a href="/pedidos" className="flex items-center gap-1">
@@ -122,7 +131,7 @@ export function SapOrdersPreview() {
           <div className="text-center py-8 text-muted-foreground">
             <p>Nenhum pedido aberto encontrado no SAP</p>
             <p className="text-sm mt-1">
-              Verifique se a conexão SAP está ativa ou se há pedidos com status "Open"
+              Verifique se a conexão SAP está ativa ou se há pedidos com status &quot;Open&quot;
             </p>
           </div>
         )}

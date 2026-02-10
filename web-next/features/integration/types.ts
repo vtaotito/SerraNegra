@@ -42,17 +42,35 @@ export interface SapConfigTestResponse {
   error?: string;
 }
 
+/**
+ * Pedido SAP mapeado pelo gateway (formato WmsOrder).
+ * O gateway retorna os campos já traduzidos para o WMS.
+ */
 export interface SapOrder {
-  DocEntry: number;
-  DocNum: number;
-  CardCode: string;
-  CardName: string;
-  DocDate: string;
-  DocDueDate: string;
-  DocTotal: number;
-  DocumentStatus: string;
-  U_WMS_STATUS?: string;
-  U_WMS_ORDER_ID?: string;
+  orderId: string;
+  externalOrderId: string;
+  sapDocEntry: number;
+  sapDocNum: number;
+  customerId: string;
+  customerName?: string;
+  shipToAddress?: string;
+  status: string;
+  slaDueAt?: string;
+  docTotal?: number;
+  currency?: string;
+  items: { sku: string; quantity: number; description?: string; warehouse?: string }[];
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Resposta da API GET /sap/orders
+ */
+export interface SapOrdersResponse {
+  items: SapOrder[];
+  count: number;
+  timestamp: string;
 }
 
 export interface SapSyncRequest {
