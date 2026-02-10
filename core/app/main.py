@@ -99,7 +99,8 @@ async def correlation_middleware(request: Request, call_next):
         log.exception("Erro inesperado.", extra={"correlationId": correlation_id})
         payload = ErrorResponse(
             errorCode="WMS-ERR-500",
-            message=f"Erro interno: {type(exc).__name__}: {exc}",
+            message=f"Erro interno: {type(exc).__name__}",
+            details={"error": str(exc)[:200]} if str(exc) else None,
             correlationId=correlation_id,
         )
         return JSONResponse(status_code=500, content=payload.model_dump(by_alias=True))
@@ -316,7 +317,7 @@ def bulk_upsert_products(
             created += 1
 
     db.commit()
-    log.info("Bulk products sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    log.info("Bulk products sync.", extra={"correlationId": correlation_id, "items_created": created, "items_updated": updated})
     return {"upserted": created + updated, "created": created, "updated": updated}
 
 
@@ -374,7 +375,7 @@ def bulk_upsert_inventory(
             created += 1
 
     db.commit()
-    log.info("Bulk inventory sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    log.info("Bulk inventory sync.", extra={"correlationId": correlation_id, "items_created": created, "items_updated": updated})
     return {"upserted": created + updated, "created": created, "updated": updated}
 
 
@@ -442,7 +443,7 @@ def bulk_upsert_customers(
             created += 1
 
     db.commit()
-    log.info("Bulk customers sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    log.info("Bulk customers sync.", extra={"correlationId": correlation_id, "items_created": created, "items_updated": updated})
     return {"upserted": created + updated, "created": created, "updated": updated}
 
 
