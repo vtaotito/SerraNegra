@@ -406,7 +406,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
       let sapOpenOrders = 0;
       try {
         const service = getSapService();
-        const orders = await service.getOrders({ status: "open", limit: 1000 }, correlationId);
+        const orders = await service.listOrders({ docStatus: "O", limit: 1000 }, correlationId);
         sapOpenOrders = orders.length;
       } catch (error) {
         req.log.warn({ error, correlationId }, "Erro ao contar pedidos abertos no SAP");
