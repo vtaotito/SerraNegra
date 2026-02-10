@@ -1,5 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import type { SapOrder, SapOrdersCollection } from "../../../sap-connector/src/types.js";
+import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { CacheFactory } from "../utils/cache.js";
 
 export type WmsOrderStatus =
@@ -149,49 +150,106 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // Query mínima para máxima compatibilidade (evita campos que alguns SLs rejeitam com 400)
-        let path =
-          `/Orders?$select=` +
-          [
-            "DocEntry",
-            "DocNum",
-            "CardCode",
-            "CardName",
-            "DocDate",
-            "DocDueDate",
-            "DocStatus",
-            "DocumentStatus",
-            "DocTotal",
-            "DocCurrency",
-            "CreateDate",
-            "UpdateDate",
-            "Comments"
-          ].join(",");
+        const baseSelect = [
+          "DocEntry",
+          "DocNum",
+          "CardCode",
+          "CardName",
+          "DocDate",
+          "DocDueDate",
+          "DocStatus",
+          "DocumentStatus",
+          "DocTotal",
+          "DocCurrency",
+          "CreateDate",
+          "UpdateDate",
+          "Comments"
+        ];
 
-        // Expand mínimo (campos “seguros”)
-        path += `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
+        const minimalSelect = ["DocEntry", "DocNum"];
+        const baseExpand =
+          `DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
-        const filterParts: string[] = [];
-        if (docStatus) {
-          if (docStatus === "O") {
-            // Mais compatível que DocumentStatus em alguns ambientes
-            filterParts.push(`DocStatus eq 'O'`);
-          } else if (docStatus === "C") {
-            filterParts.push(`DocStatus eq 'C'`);
+        const docStatusFilter =
+          docStatus === "O"
+            ? `DocStatus eq 'O'`
+            : docStatus === "C"
+              ? `DocStatus eq 'C'`
+              : undefined;
+
+        const documentStatusFilter =
+          docStatus === "O"
+            ? `DocumentStatus eq 'bost_Open'`
+            : docStatus === "C"
+              ? `DocumentStatus eq 'bost_Close'`
+              : undefined;
+
+        function buildPath(args: {
+          select: string[];
+          top: number;
+          expandLines: boolean;
+          filter?: string;
+        }): string {
+          const selectQuery = `$select=${args.select.join(",")}`;
+          const expandQuery = args.expandLines ? `&$expand=${baseExpand}` : "";
+          const filterQuery = args.filter ? `&$filter=${args.filter}` : "";
+          const topQuery = `&$top=${args.top}`;
+          return `/Orders?${selectQuery}${expandQuery}${filterQuery}${topQuery}`;
+        }
+
+        const candidates: string[] = [];
+        // Preferido: query completa + filtros
+        if (docStatusFilter) {
+          candidates.push(
+            buildPath({ select: baseSelect, top: limit, expandLines: true, filter: docStatusFilter })
+          );
+        }
+        if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
+          candidates.push(
+            buildPath({
+              select: baseSelect,
+              top: limit,
+              expandLines: true,
+              filter: documentStatusFilter
+            })
+          );
+        }
+
+        // Fallbacks: remover expand
+        if (docStatusFilter) {
+          candidates.push(
+            buildPath({ select: baseSelect, top: limit, expandLines: false, filter: docStatusFilter })
+          );
+        }
+        if (documentStatusFilter && documentStatusFilter !== docStatusFilter) {
+          candidates.push(
+            buildPath({
+              select: baseSelect,
+              top: limit,
+              expandLines: false,
+              filter: documentStatusFilter
+            })
+          );
+        }
+
+        // Fallbacks: sem filtro (alguns ambientes rejeitam filtro em certos campos)
+        candidates.push(buildPath({ select: baseSelect, top: limit, expandLines: false }));
+        candidates.push(buildPath({ select: minimalSelect, top: limit, expandLines: false }));
+
+        let lastError: unknown;
+        for (const path of candidates) {
+          try {
+            const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
+            return response.data.value.map(mapSapOrderToWms);
+          } catch (err: unknown) {
+            lastError = err;
+            // Em 400, tentamos a próxima variação (compatibilidade entre SLs)
+            if (err instanceof SapHttpError && err.status === 400) continue;
+            throw err;
           }
         }
-        // Nota: Filtro por status WMS (U_WMS_STATUS) desabilitado para compatibilidade
-        // Em produção, habilite após criar os UDFs no SAP B1
 
-        if (filterParts.length > 0) {
-          path += `&$filter=${filterParts.join(" and ")}`;
-        }
-
-        path += `&$top=${limit}`;
-
-        const response = await this.client.get<SapOrdersCollection>(path, { correlationId });
-
-        return response.data.value.map(mapSapOrderToWms);
+        throw lastError instanceof Error ? lastError : new Error("Erro ao listar pedidos no SAP.");
       },
       60 // TTL 1 minuto para lista de pedidos
     );
@@ -206,29 +264,44 @@ export class SapOrdersService {
     return this.ordersCache.getOrFetch(
       cacheKey,
       async () => {
-        // Query mínima para máxima compatibilidade
-        const path =
-          `/Orders(${docEntry})?$select=` +
-          [
-            "DocEntry",
-            "DocNum",
-            "CardCode",
-            "CardName",
-            "DocDate",
-            "DocDueDate",
-            "DocStatus",
-            "DocumentStatus",
-            "DocTotal",
-            "DocCurrency",
-            "CreateDate",
-            "UpdateDate",
-            "Comments"
-          ].join(",") +
-          `&$expand=DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
+        const select = [
+          "DocEntry",
+          "DocNum",
+          "CardCode",
+          "CardName",
+          "DocDate",
+          "DocDueDate",
+          "DocStatus",
+          "DocumentStatus",
+          "DocTotal",
+          "DocCurrency",
+          "CreateDate",
+          "UpdateDate",
+          "Comments"
+        ].join(",");
 
-        const response = await this.client.get<SapOrder>(path, { correlationId });
+        const expand =
+          `DocumentLines($select=LineNum,ItemCode,ItemDescription,Quantity,WarehouseCode)`;
 
-        return mapSapOrderToWms(response.data);
+        const candidates = [
+          `/Orders(${docEntry})?$select=${select}&$expand=${expand}`,
+          `/Orders(${docEntry})?$select=${select}`,
+          `/Orders(${docEntry})?$select=DocEntry,DocNum`
+        ];
+
+        let lastError: unknown;
+        for (const path of candidates) {
+          try {
+            const response = await this.client.get<SapOrder>(path, { correlationId });
+            return mapSapOrderToWms(response.data);
+          } catch (err: unknown) {
+            lastError = err;
+            if (err instanceof SapHttpError && err.status === 400) continue;
+            throw err;
+          }
+        }
+
+        throw lastError instanceof Error ? lastError : new Error("Erro ao buscar pedido no SAP.");
       },
       300 // TTL 5 minutos para pedido individual
     );
