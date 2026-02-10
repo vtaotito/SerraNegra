@@ -99,7 +99,7 @@ async def correlation_middleware(request: Request, call_next):
         log.exception("Erro inesperado.", extra={"correlationId": correlation_id})
         payload = ErrorResponse(
             errorCode="WMS-ERR-500",
-            message="Erro interno.",
+            message=f"Erro interno: {type(exc).__name__}: {exc}",
             correlationId=correlation_id,
         )
         return JSONResponse(status_code=500, content=payload.model_dump(by_alias=True))
