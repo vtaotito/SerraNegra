@@ -11,12 +11,21 @@ from typing import Any
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from .db import Base, engine, get_session
 from .logging_json import configure_logging
-from .models import IdempotencyKey, Order as DbOrder, OrderEvent as DbOrderEvent, OrderItem as DbOrderItem
+from .models import (
+    IdempotencyKey,
+    Order as DbOrder,
+    OrderEvent as DbOrderEvent,
+    OrderItem as DbOrderItem,
+    Product as DbProduct,
+    InventoryStock as DbInventoryStock,
+    Customer as DbCustomer,
+)
 from .schemas import (
     CreateOrderRequest,
     ErrorResponse,
@@ -105,33 +114,336 @@ def health():
 
 
 @app.get("/v1/catalog/items")
-def list_catalog_items(limit: int = 50, offset: int = 0):
-    """
-    Endpoint stub para listagem de itens do catálogo.
-    Por enquanto retorna lista vazia até implementação completa.
-    """
+def list_catalog_items(
+    db: Session = Depends(get_session),
+    search: str | None = None,
+    active: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Listagem de produtos do catálogo."""
+    q = select(DbProduct).order_by(DbProduct.sku.asc())
+    if search:
+        q = q.where(
+            DbProduct.sku.ilike(f"%{search}%")
+            | DbProduct.description.ilike(f"%{search}%")
+        )
+    if active is not None:
+        q = q.where(DbProduct.is_active == active)
+
+    total_q = select(DbProduct)
+    if search:
+        total_q = total_q.where(
+            DbProduct.sku.ilike(f"%{search}%")
+            | DbProduct.description.ilike(f"%{search}%")
+        )
+    total = len(db.execute(total_q).scalars().all())
+
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
     return {
-        "items": [],
-        "total": 0,
+        "data": [
+            {
+                "id": p.id,
+                "sku": p.sku,
+                "description": p.description,
+                "ean": p.ean,
+                "category": p.category,
+                "unit_of_measure": p.unit_of_measure,
+                "is_active": p.is_active,
+                "is_inventory_item": p.is_inventory_item,
+                "is_sales_item": p.is_sales_item,
+                "sap_item_code": p.sap_item_code,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            }
+            for p in rows
+        ],
+        "total": total,
         "limit": limit,
         "offset": offset,
-        "nextCursor": None
     }
 
 
 @app.get("/v1/inventory")
-def list_inventory(limit: int = 50, offset: int = 0):
-    """
-    Endpoint stub para consulta de estoque.
-    Por enquanto retorna lista vazia até implementação completa.
-    """
+def list_inventory(
+    db: Session = Depends(get_session),
+    sku: str | None = None,
+    warehouseCode: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Listagem de estoque por depósito."""
+    q = select(DbInventoryStock).order_by(DbInventoryStock.sku.asc())
+    if sku:
+        q = q.where(DbInventoryStock.sku.ilike(f"%{sku}%"))
+    if warehouseCode:
+        q = q.where(DbInventoryStock.warehouse_code == warehouseCode)
+
+    total = len(db.execute(select(DbInventoryStock)).scalars().all())
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
+
     return {
-        "items": [],
-        "total": 0,
+        "data": [
+            {
+                "id": s.id,
+                "product_id": s.sku,
+                "warehouse_id": s.warehouse_code,
+                "quantity_available": float(s.on_hand),
+                "quantity_reserved": float(s.committed),
+                "quantity_free": max(float(s.on_hand) - float(s.committed), 0),
+                "quantity_on_order": float(s.ordered),
+                "sap_update_date": s.sap_update_date,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+            }
+            for s in rows
+        ],
+        "total": total,
         "limit": limit,
         "offset": offset,
-        "nextCursor": None
     }
+
+
+@app.get("/v1/customers")
+def list_customers(
+    db: Session = Depends(get_session),
+    search: str | None = None,
+    active: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Listagem de clientes."""
+    q = select(DbCustomer).order_by(DbCustomer.card_name.asc())
+    if search:
+        q = q.where(
+            DbCustomer.card_code.ilike(f"%{search}%")
+            | DbCustomer.card_name.ilike(f"%{search}%")
+        )
+    if active is not None:
+        q = q.where(DbCustomer.is_active == active)
+
+    total = len(db.execute(select(DbCustomer)).scalars().all())
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
+
+    return {
+        "data": [
+            {
+                "id": c.id,
+                "card_code": c.card_code,
+                "card_name": c.card_name,
+                "card_type": c.card_type,
+                "phone": c.phone,
+                "email": c.email,
+                "address": c.address,
+                "city": c.city,
+                "state": c.state,
+                "is_active": c.is_active,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+                "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+            }
+            for c in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# ========================================
+# Bulk Sync Endpoints (chamados pelo Gateway)
+# ========================================
+
+class BulkProductItem(BaseModel):
+    sku: str
+    description: str = ""
+    ean: str | None = None
+    category: str | None = None
+    unit_of_measure: str = "UN"
+    is_active: bool = True
+    is_inventory_item: bool = True
+    is_sales_item: bool = True
+    sap_item_code: str | None = None
+    sap_update_date: str | None = None
+
+
+class BulkProductsRequest(BaseModel):
+    items: list[BulkProductItem]
+
+
+@app.post("/v1/catalog/items/bulk")
+def bulk_upsert_products(
+    req: BulkProductsRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Bulk upsert de produtos vindos do SAP."""
+    correlation_id = request.state.correlation_id
+    created = 0
+    updated = 0
+
+    for item in req.items:
+        existing = db.execute(
+            select(DbProduct).where(DbProduct.sku == item.sku)
+        ).scalar_one_or_none()
+
+        now = now_utc()
+        if existing:
+            existing.description = item.description
+            existing.ean = item.ean
+            existing.category = item.category
+            existing.unit_of_measure = item.unit_of_measure
+            existing.is_active = item.is_active
+            existing.is_inventory_item = item.is_inventory_item
+            existing.is_sales_item = item.is_sales_item
+            existing.sap_item_code = item.sap_item_code
+            existing.sap_update_date = item.sap_update_date
+            existing.updated_at = now
+            updated += 1
+        else:
+            db.add(DbProduct(
+                sku=item.sku,
+                description=item.description,
+                ean=item.ean,
+                category=item.category,
+                unit_of_measure=item.unit_of_measure,
+                is_active=item.is_active,
+                is_inventory_item=item.is_inventory_item,
+                is_sales_item=item.is_sales_item,
+                sap_item_code=item.sap_item_code,
+                sap_update_date=item.sap_update_date,
+                created_at=now,
+                updated_at=now,
+            ))
+            created += 1
+
+    db.commit()
+    log.info("Bulk products sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    return {"upserted": created + updated, "created": created, "updated": updated}
+
+
+class BulkInventoryItem(BaseModel):
+    sku: str
+    warehouse_code: str
+    on_hand: float = 0
+    committed: float = 0
+    ordered: float = 0
+    sap_update_date: str | None = None
+
+
+class BulkInventoryRequest(BaseModel):
+    items: list[BulkInventoryItem]
+
+
+@app.post("/v1/inventory/bulk")
+def bulk_upsert_inventory(
+    req: BulkInventoryRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Bulk upsert de estoque vindo do SAP."""
+    correlation_id = request.state.correlation_id
+    created = 0
+    updated = 0
+
+    for item in req.items:
+        existing = db.execute(
+            select(DbInventoryStock).where(
+                DbInventoryStock.sku == item.sku,
+                DbInventoryStock.warehouse_code == item.warehouse_code,
+            )
+        ).scalar_one_or_none()
+
+        now = now_utc()
+        if existing:
+            existing.on_hand = item.on_hand
+            existing.committed = item.committed
+            existing.ordered = item.ordered
+            existing.sap_update_date = item.sap_update_date
+            existing.updated_at = now
+            updated += 1
+        else:
+            db.add(DbInventoryStock(
+                sku=item.sku,
+                warehouse_code=item.warehouse_code,
+                on_hand=item.on_hand,
+                committed=item.committed,
+                ordered=item.ordered,
+                sap_update_date=item.sap_update_date,
+                created_at=now,
+                updated_at=now,
+            ))
+            created += 1
+
+    db.commit()
+    log.info("Bulk inventory sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    return {"upserted": created + updated, "created": created, "updated": updated}
+
+
+class BulkCustomerItem(BaseModel):
+    card_code: str
+    card_name: str = ""
+    card_type: str = "C"
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    is_active: bool = True
+    sap_update_date: str | None = None
+
+
+class BulkCustomersRequest(BaseModel):
+    items: list[BulkCustomerItem]
+
+
+@app.post("/v1/customers/bulk")
+def bulk_upsert_customers(
+    req: BulkCustomersRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Bulk upsert de clientes vindos do SAP."""
+    correlation_id = request.state.correlation_id
+    created = 0
+    updated = 0
+
+    for item in req.items:
+        existing = db.execute(
+            select(DbCustomer).where(DbCustomer.card_code == item.card_code)
+        ).scalar_one_or_none()
+
+        now = now_utc()
+        if existing:
+            existing.card_name = item.card_name
+            existing.card_type = item.card_type
+            existing.phone = item.phone
+            existing.email = item.email
+            existing.address = item.address
+            existing.city = item.city
+            existing.state = item.state
+            existing.is_active = item.is_active
+            existing.sap_update_date = item.sap_update_date
+            existing.updated_at = now
+            updated += 1
+        else:
+            db.add(DbCustomer(
+                card_code=item.card_code,
+                card_name=item.card_name,
+                card_type=item.card_type,
+                phone=item.phone,
+                email=item.email,
+                address=item.address,
+                city=item.city,
+                state=item.state,
+                is_active=item.is_active,
+                sap_update_date=item.sap_update_date,
+                created_at=now,
+                updated_at=now,
+            ))
+            created += 1
+
+    db.commit()
+    log.info("Bulk customers sync.", extra={"correlationId": correlation_id, "created": created, "updated": updated})
+    return {"upserted": created + updated, "created": created, "updated": updated}
 
 
 @app.get("/v1/orders")

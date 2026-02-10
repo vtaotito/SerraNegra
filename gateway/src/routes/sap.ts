@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
+import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 
 /**
@@ -9,32 +10,37 @@ import { sapConfigStore } from "../config/sapConfigStore.js";
 export async function registerSapRoutes(app: FastifyInstance) {
   // Lazy initialization do cliente SAP (só cria quando necessário)
   let sapService: SapOrdersService | null = null;
+  let entitiesService: SapEntitiesService | null = null;
+
+  function getSapClient() {
+    const logger = {
+      debug: (msg: string, meta?: Record<string, unknown>) =>
+        app.log.debug(meta, msg),
+      info: (msg: string, meta?: Record<string, unknown>) =>
+        app.log.info(meta, msg),
+      warn: (msg: string, meta?: Record<string, unknown>) =>
+        app.log.warn(meta, msg),
+      error: (msg: string, meta?: Record<string, unknown>) =>
+        app.log.error(meta, msg)
+    };
+
+    // Tentar usar configuração do store primeiro
+    const storedClient = sapConfigStore.getClient(logger);
+    if (storedClient) {
+      app.log.info("Cliente SAP criado a partir de configuração armazenada");
+      return storedClient;
+    }
+    // Fallback para variáveis de ambiente
+    const client = createSapClient(logger);
+    app.log.info("Cliente SAP criado a partir de variáveis de ambiente");
+    return client;
+  }
 
   function getSapService() {
     if (!sapService) {
-      const logger = {
-        debug: (msg: string, meta?: Record<string, unknown>) =>
-          app.log.debug(meta, msg),
-        info: (msg: string, meta?: Record<string, unknown>) =>
-          app.log.info(meta, msg),
-        warn: (msg: string, meta?: Record<string, unknown>) =>
-          app.log.warn(meta, msg),
-        error: (msg: string, meta?: Record<string, unknown>) =>
-          app.log.error(meta, msg)
-      };
-
       try {
-        // Tentar usar configuração do store primeiro
-        const storedClient = sapConfigStore.getClient(logger);
-        if (storedClient) {
-          sapService = new SapOrdersService(storedClient);
-          app.log.info("Cliente SAP criado a partir de configuração armazenada");
-        } else {
-          // Fallback para variáveis de ambiente
-          const client = createSapClient(logger);
-          sapService = new SapOrdersService(client);
-          app.log.info("Cliente SAP criado a partir de variáveis de ambiente");
-        }
+        const client = getSapClient();
+        sapService = new SapOrdersService(client);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro ao criar cliente SAP";
         app.log.error({ error }, "Falha ao criar cliente SAP");
@@ -42,6 +48,20 @@ export async function registerSapRoutes(app: FastifyInstance) {
       }
     }
     return sapService;
+  }
+
+  function getEntitiesService() {
+    if (!entitiesService) {
+      try {
+        const client = getSapClient();
+        entitiesService = new SapEntitiesService(client);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao criar cliente SAP entities";
+        app.log.error({ error }, "Falha ao criar entities service");
+        throw new Error(message);
+      }
+    }
+    return entitiesService;
   }
 
   /**
@@ -488,8 +508,9 @@ export async function registerSapRoutes(app: FastifyInstance) {
         maxAttempts: body.maxAttempts || 3,
       });
 
-      // Invalidar serviço existente para usar nova configuração
+      // Invalidar serviços existentes para usar nova configuração
       sapService = null;
+      entitiesService = null;
 
       req.log.info(
         { baseUrl: body.baseUrl, companyDb: body.companyDb, username: body.username },
@@ -618,6 +639,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
     try {
       sapConfigStore.clear();
       sapService = null;
+      entitiesService = null;
 
       req.log.info("Configuração SAP revogada e sessão limpa");
 
@@ -677,5 +699,311 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
-  app.log.info("Rotas SAP registradas (com cache, store e session management)");
+  // ========================================
+  // SYNC COMPLETO: Todas as entidades
+  // ========================================
+
+  /**
+   * POST /api/sap/sync/all
+   * Sincroniza TODAS as entidades: Pedidos + Produtos + Estoque + Clientes.
+   */
+  app.post("/sap/sync/all", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+    const results: Record<string, { ok: boolean; imported: number; errors: number; message: string }> = {};
+
+    // 1. Sync Pedidos (reutiliza lógica existente)
+    try {
+      const service = getSapService();
+      const sapOrders = await service.listOrders({ docStatus: "O", limit: 100 }, correlationId);
+      let imported = 0;
+      for (const sapOrder of sapOrders) {
+        try {
+          const checkRes = await fetch(`${coreUrl}/orders?externalOrderId=${sapOrder.externalOrderId}`, {
+            headers: { "x-correlation-id": correlationId }
+          });
+          if (checkRes.ok) {
+            const existing = await checkRes.json();
+            if (existing.items?.length > 0) continue;
+          }
+          const customerId = sapOrder.customerId || `SAP_CUSTOMER_${sapOrder.sapDocEntry}`;
+          const items = sapOrder.items.length > 0
+            ? sapOrder.items.map((item) => ({ sku: item.sku, quantity: item.quantity }))
+            : [{ sku: "PEDIDO_SAP", quantity: 1 }];
+
+          const createRes = await fetch(`${coreUrl}/orders`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+            body: JSON.stringify({
+              externalOrderId: sapOrder.externalOrderId,
+              customerId,
+              items,
+              metadata: {
+                source: "SAP_B1",
+                sapDocEntry: sapOrder.sapDocEntry,
+                sapDocNum: sapOrder.sapDocNum,
+                customerName: sapOrder.customerName,
+                docTotal: sapOrder.docTotal,
+                currency: sapOrder.currency,
+              }
+            })
+          });
+          if (createRes.ok) imported++;
+        } catch { /* skip individual errors */ }
+      }
+      results.orders = { ok: true, imported, errors: sapOrders.length - imported, message: `${imported}/${sapOrders.length} pedidos` };
+    } catch (error) {
+      results.orders = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 2. Sync Produtos (Items)
+    try {
+      const entSvc = getEntitiesService();
+      const sapItems = await entSvc.listItems({ limit: 500 }, correlationId);
+      const productsBulk = sapItems.map((item) => ({
+        sku: item.ItemCode,
+        description: item.ItemName || item.ItemCode,
+        ean: item.BarCode || null,
+        category: item.ItemsGroupCode ? `Grupo ${item.ItemsGroupCode}` : null,
+        unit_of_measure: item.InventoryUOM || "UN",
+        is_active: item.Valid === "tYES" && item.Frozen !== "tYES",
+        is_inventory_item: item.InventoryItem === "tYES",
+        is_sales_item: item.SalesItem === "tYES",
+        sap_item_code: item.ItemCode,
+        sap_update_date: item.UpdateDate || null,
+      }));
+
+      const bulkRes = await fetch(`${coreUrl}/v1/catalog/items/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: productsBulk }),
+      });
+      const bulkResult = bulkRes.ok ? await bulkRes.json() : null;
+      results.products = {
+        ok: bulkRes.ok,
+        imported: bulkResult?.upserted ?? 0,
+        errors: 0,
+        message: `${bulkResult?.created ?? 0} criados, ${bulkResult?.updated ?? 0} atualizados`,
+      };
+    } catch (error) {
+      results.products = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 3. Sync Estoque (Inventory)
+    try {
+      const entSvc = getEntitiesService();
+      const sapInventory = await entSvc.listInventory({ limit: 1000 }, correlationId);
+      if (sapInventory.length > 0) {
+        const inventoryBulk = sapInventory.map((row) => ({
+          sku: row.ItemCode,
+          warehouse_code: row.WarehouseCode,
+          on_hand: row.InStock,
+          committed: row.Committed,
+          ordered: row.Ordered,
+        }));
+
+        const invRes = await fetch(`${coreUrl}/v1/inventory/bulk`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+          body: JSON.stringify({ items: inventoryBulk }),
+        });
+        const invResult = invRes.ok ? await invRes.json() : null;
+        results.inventory = {
+          ok: invRes.ok,
+          imported: invResult?.upserted ?? 0,
+          errors: 0,
+          message: `${invResult?.created ?? 0} criados, ${invResult?.updated ?? 0} atualizados`,
+        };
+      } else {
+        results.inventory = { ok: true, imported: 0, errors: 0, message: "Sem dados de estoque via Service Layer" };
+      }
+    } catch (error) {
+      results.inventory = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 4. Sync Clientes (BusinessPartners)
+    try {
+      const entSvc = getEntitiesService();
+      const sapBPs = await entSvc.listBusinessPartners({ limit: 500 }, correlationId);
+      const customersBulk = sapBPs.map((bp) => ({
+        card_code: bp.CardCode,
+        card_name: bp.CardName || bp.CardCode,
+        card_type: bp.CardType === "cSupplier" ? "S" : "C",
+        phone: bp.Phone1 || null,
+        email: bp.EmailAddress || null,
+        address: bp.Address || null,
+        city: bp.City || null,
+        state: bp.State || null,
+        is_active: bp.Valid !== "tNO" && bp.Frozen !== "tYES",
+        sap_update_date: bp.UpdateDate || null,
+      }));
+
+      const custRes = await fetch(`${coreUrl}/v1/customers/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: customersBulk }),
+      });
+      const custResult = custRes.ok ? await custRes.json() : null;
+      results.customers = {
+        ok: custRes.ok,
+        imported: custResult?.upserted ?? 0,
+        errors: 0,
+        message: `${custResult?.created ?? 0} criados, ${custResult?.updated ?? 0} atualizados`,
+      };
+    } catch (error) {
+      results.customers = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    const allOk = Object.values(results).every((r) => r.ok);
+    const totalImported = Object.values(results).reduce((acc, r) => acc + r.imported, 0);
+
+    reply.code(200).send({
+      ok: allOk,
+      message: `Sincronizacao completa: ${totalImported} registros importados/atualizados`,
+      results,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  /**
+   * POST /api/sap/sync/products
+   * Sincroniza apenas Produtos do SAP.
+   */
+  app.post("/sap/sync/products", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+
+    try {
+      const entSvc = getEntitiesService();
+      const sapItems = await entSvc.listItems({ limit: 500 }, correlationId);
+
+      const productsBulk = sapItems.map((item) => ({
+        sku: item.ItemCode,
+        description: item.ItemName || item.ItemCode,
+        ean: item.BarCode || null,
+        category: item.ItemsGroupCode ? `Grupo ${item.ItemsGroupCode}` : null,
+        unit_of_measure: item.InventoryUOM || "UN",
+        is_active: item.Valid === "tYES" && item.Frozen !== "tYES",
+        is_inventory_item: item.InventoryItem === "tYES",
+        is_sales_item: item.SalesItem === "tYES",
+        sap_item_code: item.ItemCode,
+        sap_update_date: item.UpdateDate || null,
+      }));
+
+      const bulkRes = await fetch(`${coreUrl}/v1/catalog/items/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: productsBulk }),
+      });
+      const bulkResult = bulkRes.ok ? await bulkRes.json() : null;
+
+      reply.code(200).send({
+        ok: bulkRes.ok,
+        message: `${bulkResult?.upserted ?? 0} produtos sincronizados (${bulkResult?.created ?? 0} novos, ${bulkResult?.updated ?? 0} atualizados)`,
+        total_sap: sapItems.length,
+        ...bulkResult,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/inventory
+   * Sincroniza Estoque do SAP.
+   */
+  app.post("/sap/sync/inventory", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+
+    try {
+      const entSvc = getEntitiesService();
+      const sapInv = await entSvc.listInventory({ limit: 1000 }, correlationId);
+
+      if (sapInv.length === 0) {
+        reply.code(200).send({
+          ok: true,
+          message: "Nenhum dado de estoque disponivel via Service Layer (expand nao suportado ou sem estoque)",
+          upserted: 0,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const inventoryBulk = sapInv.map((row) => ({
+        sku: row.ItemCode,
+        warehouse_code: row.WarehouseCode,
+        on_hand: row.InStock,
+        committed: row.Committed,
+        ordered: row.Ordered,
+      }));
+
+      const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: inventoryBulk }),
+      });
+      const result = res.ok ? await res.json() : null;
+
+      reply.code(200).send({
+        ok: res.ok,
+        message: `${result?.upserted ?? 0} registros de estoque sincronizados`,
+        total_sap: sapInv.length,
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/customers
+   * Sincroniza Clientes (BusinessPartners) do SAP.
+   */
+  app.post("/sap/sync/customers", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+
+    try {
+      const entSvc = getEntitiesService();
+      const sapBPs = await entSvc.listBusinessPartners({ limit: 500 }, correlationId);
+
+      const customersBulk = sapBPs.map((bp) => ({
+        card_code: bp.CardCode,
+        card_name: bp.CardName || bp.CardCode,
+        card_type: bp.CardType === "cSupplier" ? "S" : "C",
+        phone: bp.Phone1 || null,
+        email: bp.EmailAddress || null,
+        address: bp.Address || null,
+        city: bp.City || null,
+        state: bp.State || null,
+        is_active: bp.Valid !== "tNO" && bp.Frozen !== "tYES",
+        sap_update_date: bp.UpdateDate || null,
+      }));
+
+      const res = await fetch(`${coreUrl}/v1/customers/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: customersBulk }),
+      });
+      const result = res.ok ? await res.json() : null;
+
+      reply.code(200).send({
+        ok: res.ok,
+        message: `${result?.upserted ?? 0} clientes sincronizados (${result?.created ?? 0} novos, ${result?.updated ?? 0} atualizados)`,
+        total_sap: sapBPs.length,
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store, session management e sync de entidades)");
 }

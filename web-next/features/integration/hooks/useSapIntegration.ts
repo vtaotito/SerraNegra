@@ -11,31 +11,31 @@ import type {
 } from "../types";
 
 /**
- * Hook para buscar status de saúde do SAP
+ * Hook para buscar status de saude do SAP
  */
 export function useSapHealth() {
   return useQuery<SapHealthResponse>({
     queryKey: ["sap", "health"],
     queryFn: () => get<SapHealthResponse>(API_ENDPOINTS.SAP_HEALTH),
-    refetchInterval: 30000, // Atualizar a cada 30s
+    refetchInterval: 30000,
     retry: 1,
   });
 }
 
 /**
- * Hook para buscar status de sincronização
+ * Hook para buscar status de sincronizacao
  */
 export function useSapSyncStatus() {
   return useQuery<SapSyncStatus>({
     queryKey: ["sap", "sync", "status"],
     queryFn: () => get<SapSyncStatus>(API_ENDPOINTS.SAP_SYNC_STATUS),
-    refetchInterval: 10000, // Atualizar a cada 10s
+    refetchInterval: 10000,
     retry: 1,
   });
 }
 
 /**
- * Hook para buscar configuração atual do SAP
+ * Hook para buscar configuracao atual do SAP
  */
 export function useSapConfig() {
   return useQuery<SapConfig>({
@@ -46,7 +46,7 @@ export function useSapConfig() {
 }
 
 /**
- * Hook para testar configuração SAP
+ * Hook para testar configuracao SAP
  */
 export function useTestSapConfig() {
   return useMutation<SapConfigTestResponse, Error, SapConfig>({
@@ -56,7 +56,7 @@ export function useTestSapConfig() {
 }
 
 /**
- * Hook para salvar configuração SAP
+ * Hook para salvar configuracao SAP
  */
 export function useSaveSapConfig() {
   const queryClient = useQueryClient();
@@ -72,7 +72,7 @@ export function useSaveSapConfig() {
 }
 
 /**
- * Hook para disparar sincronização manual
+ * Hook para sincronizacao de pedidos (orders only)
  */
 export function useSyncSap() {
   const queryClient = useQueryClient();
@@ -81,10 +81,78 @@ export function useSyncSap() {
     mutationFn: (request?: SapSyncRequest) =>
       post<SapSyncResponse>(API_ENDPOINTS.SAP_SYNC, request || {}),
     onSuccess: () => {
-      // Invalidar queries relacionadas
       queryClient.invalidateQueries({ queryKey: ["sap", "sync"] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+/**
+ * Hook para sincronizacao COMPLETA (todas as entidades)
+ */
+export function useSyncAll() {
+  const queryClient = useQueryClient();
+
+  return useMutation<SyncAllResponse, Error>({
+    mutationFn: () =>
+      post<SyncAllResponse>(API_ENDPOINTS.SAP_SYNC_ALL, {}),
+    onSuccess: () => {
+      // Invalidar tudo
+      queryClient.invalidateQueries({ queryKey: ["sap"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+  });
+}
+
+/**
+ * Hook para sincronizar apenas Produtos
+ */
+export function useSyncProducts() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BulkSyncResult, Error>({
+    mutationFn: () =>
+      post<BulkSyncResult>(API_ENDPOINTS.SAP_SYNC_PRODUCTS, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["sap", "sync"] });
+    },
+  });
+}
+
+/**
+ * Hook para sincronizar apenas Estoque
+ */
+export function useSyncInventory() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BulkSyncResult, Error>({
+    mutationFn: () =>
+      post<BulkSyncResult>(API_ENDPOINTS.SAP_SYNC_INVENTORY, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["sap", "sync"] });
+    },
+  });
+}
+
+/**
+ * Hook para sincronizar apenas Clientes
+ */
+export function useSyncCustomers() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BulkSyncResult, Error>({
+    mutationFn: () =>
+      post<BulkSyncResult>(API_ENDPOINTS.SAP_SYNC_CUSTOMERS, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      queryClient.invalidateQueries({ queryKey: ["sap", "sync"] });
     },
   });
 }
@@ -99,7 +167,6 @@ export function useRevokeSapAccess() {
     mutationFn: () =>
       del<{ success: boolean; message: string }>(API_ENDPOINTS.SAP_CONFIG),
     onSuccess: () => {
-      // Invalidar todas as queries SAP
       queryClient.invalidateQueries({ queryKey: ["sap"] });
       queryClient.resetQueries({ queryKey: ["sap"] });
     },
@@ -107,7 +174,7 @@ export function useRevokeSapAccess() {
 }
 
 /**
- * Hook para renovar sessão SAP
+ * Hook para renovar sessao SAP
  */
 export function useRefreshSapSession() {
   const queryClient = useQueryClient();
@@ -116,8 +183,29 @@ export function useRefreshSapSession() {
     mutationFn: () =>
       post<{ success: boolean; message: string }>(API_ENDPOINTS.SAP_SESSION_REFRESH, {}),
     onSuccess: () => {
-      // Atualizar health após refresh
       queryClient.invalidateQueries({ queryKey: ["sap", "health"] });
     },
   });
 }
+
+// ---- Tipos ----
+
+export type SyncAllResponse = {
+  ok: boolean;
+  message: string;
+  results: Record<
+    string,
+    { ok: boolean; imported: number; errors: number; message: string }
+  >;
+  timestamp: string;
+};
+
+export type BulkSyncResult = {
+  ok: boolean;
+  message: string;
+  upserted?: number;
+  created?: number;
+  updated?: number;
+  total_sap?: number;
+  timestamp: string;
+};

@@ -5,7 +5,7 @@ export const API_ENDPOINTS = {
   ORDER_HISTORY: (id: string) => `/orders/${id}/history`,
   ORDER_EVENTS: (id: string) => `/orders/${id}/events`,
 
-  // Products / Catalog Items (sem /api pois baseURL já adiciona)
+  // Products / Catalog Items
   CATALOG_ITEMS: "/v1/catalog/items",
   CATALOG_ITEM_BY_CODE: (code: string) => `/v1/catalog/items/${code}`,
 
@@ -18,26 +18,14 @@ export const API_ENDPOINTS = {
   INVENTORY_BY_ITEM_AND_WAREHOUSE: (itemCode: string, warehouseCode: string) =>
     `/v1/inventory/${itemCode}/${warehouseCode}`,
 
-  // Shipments
-  SHIPMENTS: "/v1/shipments",
-  SHIPMENT_BY_ID: (id: string) => `/v1/shipments/${id}`,
-
   // Customers
   CUSTOMERS: "/v1/customers",
   CUSTOMER_BY_ID: (id: string) => `/v1/customers/${id}`,
 
-  // Dashboard
-  DASHBOARD_ORDERS: "/v1/dashboard/orders",
-  DASHBOARD_TASKS: "/v1/dashboard/tasks",
-  DASHBOARD_METRICS: "/v1/dashboard/metrics",
-
-  // Scans
-  SCANS: "/v1/scans",
-
   // Health
   HEALTH: "/health",
 
-  // SAP Integration (sem /api pois baseURL já adiciona)
+  // SAP Integration
   SAP_HEALTH: "/sap/health",
   SAP_ORDERS: "/sap/orders",
   SAP_ORDER_BY_DOC_ENTRY: (docEntry: number | string) =>
@@ -45,6 +33,10 @@ export const API_ENDPOINTS = {
   SAP_ORDER_STATUS: (docEntry: number | string) =>
     `/sap/orders/${docEntry}/status`,
   SAP_SYNC: "/sap/sync",
+  SAP_SYNC_ALL: "/sap/sync/all",
+  SAP_SYNC_PRODUCTS: "/sap/sync/products",
+  SAP_SYNC_INVENTORY: "/sap/sync/inventory",
+  SAP_SYNC_CUSTOMERS: "/sap/sync/customers",
   SAP_SYNC_STATUS: "/sap/sync/status",
   SAP_CONFIG: "/sap/config",
   SAP_CONFIG_TEST: "/sap/config/test",
