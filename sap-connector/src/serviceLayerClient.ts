@@ -330,7 +330,16 @@ export class SapServiceLayerClient {
           maxDelayMs: this.retry.maxDelayMs,
           jitterRatio: this.retry.jitterRatio
         });
-        this.logger.warn?.("Retry SAP (network/timeout).", { attempt, delayMs: delay, path });
+        const errInfo =
+          err instanceof Error
+            ? { name: err.name, message: err.message }
+            : { name: typeof err, message: String(err) };
+        this.logger.warn?.("Retry SAP (network/timeout).", {
+          attempt,
+          delayMs: delay,
+          path,
+          error: errInfo
+        });
         await sleep(delay);
         continue;
       } finally {
