@@ -300,7 +300,11 @@ export class SapServiceLayerClient {
         });
 
         if (!shouldRetry(res.status) || attempt === this.retry.maxAttempts) {
-          this.circuit.onFailure();
+          // 400 Bad Request = erro de query/sintaxe OData, não falha de conectividade.
+          // Não deve abrir o circuit breaker.
+          if (res.status !== 400) {
+            this.circuit.onFailure();
+          }
           throw httpErr;
         }
 
