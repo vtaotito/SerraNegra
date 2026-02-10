@@ -73,16 +73,16 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sku: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    ean: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    category: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    unit_of_measure: Mapped[str] = mapped_column(String(16), nullable=False, default="UN")
+    sku: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    description: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    ean: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    unit_of_measure: Mapped[str] = mapped_column(String(64), nullable=False, default="UN")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_inventory_item: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_sales_item: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    sap_item_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    sap_update_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sap_item_code: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    sap_update_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -96,12 +96,12 @@ class InventoryStock(Base):
     __table_args__ = (UniqueConstraint("sku", "warehouse_code", name="uq_stock_sku_wh"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sku: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    warehouse_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    sku: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    warehouse_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     on_hand: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
     committed: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
     ordered: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
-    sap_update_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sap_update_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -114,16 +114,16 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    card_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
-    card_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    card_type: Mapped[str] = mapped_column(String(16), nullable=False, default="C")  # C=Customer, S=Supplier
-    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    address: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    state: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    card_code: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    card_name: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    card_type: Mapped[str] = mapped_column(String(32), nullable=False, default="C")  # C=Customer, S=Supplier
+    phone: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(128), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    sap_update_date: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sap_update_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
