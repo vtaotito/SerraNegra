@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Warehouse,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +38,12 @@ const menuItems = [
     label: "Estoque",
     icon: Warehouse,
     description: "Inventario",
+  },
+  {
+    href: "/clientes",
+    label: "Clientes",
+    icon: Users,
+    description: "Business Partners",
   },
   {
     href: "/integracao",
