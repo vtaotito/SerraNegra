@@ -41,7 +41,7 @@ export function SapSyncHistory({ history, isLoading }: SapSyncHistoryProps) {
             <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p>Nenhuma sincronização realizada ainda</p>
             <p className="text-sm mt-1">
-              Use o botão "Sincronizar Agora" para iniciar a primeira sincronização
+              Use o botão &quot;Sincronizar Agora&quot; para iniciar a primeira sincronização
             </p>
           </div>
         ) : (
