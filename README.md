@@ -8,6 +8,7 @@ Sistema de gerenciamento de pedidos (WMS) com integração completa ao SAP Busin
 |---------|---------|-------|
 | **👔 Visão executiva** | [`RESUMO_EXECUTIVO_E2E.md`](./RESUMO_EXECUTIVO_E2E.md) | 10 min |
 | **👨‍💻 Análise técnica completa** | [`ANALISE_E2E_COMPLETA.md`](./ANALISE_E2E_COMPLETA.md) | 60 min |
+| **🧩 Estrutura modular do portal B2B** | [`PROJECT_MODULE_STRUCTURE.md`](./PROJECT_MODULE_STRUCTURE.md) | 12 min |
 | **📚 Índice de toda documentação** | [`INDICE_DOCUMENTACAO.md`](./INDICE_DOCUMENTACAO.md) | 5 min |
 | **🚀 Começar a desenvolver** | Continue lendo abaixo | 15 min |
 
