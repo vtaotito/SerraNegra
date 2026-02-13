@@ -50,3 +50,6 @@ mappings/src/**/*.js.map
 # Python
 __pycache__/
 *.pyc
+
+# SQLite / dev artifacts
+*.db
