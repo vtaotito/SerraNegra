@@ -25,6 +25,7 @@ from .models import (
     Product as DbProduct,
     InventoryStock as DbInventoryStock,
     Customer as DbCustomer,
+    CustomerProductPrice as DbCustomerProductPrice,
 )
 from .schemas import (
     CreateOrderRequest,
@@ -119,45 +120,92 @@ def list_catalog_items(
     db: Session = Depends(get_session),
     search: str | None = None,
     active: bool | None = None,
+    customerCode: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
-    """Listagem de produtos do catálogo."""
-    q = select(DbProduct).order_by(DbProduct.sku.asc())
-    if search:
-        q = q.where(
-            DbProduct.sku.ilike(f"%{search}%")
-            | DbProduct.description.ilike(f"%{search}%")
+    """Listagem de produtos do catálogo.
+
+    Se `customerCode` for informado, retorna apenas itens com preço ativo
+    configurado para esse cliente e inclui `price`/`currency` no payload.
+    """
+    if customerCode:
+        q = (
+            select(DbProduct, DbCustomerProductPrice)
+            .join(DbCustomerProductPrice, DbCustomerProductPrice.product_sku == DbProduct.sku)
+            .where(
+                DbCustomerProductPrice.customer_card_code == customerCode,
+                DbCustomerProductPrice.is_active.is_(True),
+            )
+            .order_by(DbProduct.sku.asc())
         )
+    else:
+        q = select(DbProduct).order_by(DbProduct.sku.asc())
+    if search:
+        q = q.where(DbProduct.sku.ilike(f"%{search}%") | DbProduct.description.ilike(f"%{search}%"))
     if active is not None:
         q = q.where(DbProduct.is_active == active)
 
-    total_q = select(DbProduct)
-    if search:
-        total_q = total_q.where(
-            DbProduct.sku.ilike(f"%{search}%")
-            | DbProduct.description.ilike(f"%{search}%")
+    # Total (best-effort; suficiente para UI)
+    if customerCode:
+        total_q = (
+            select(DbProduct)
+            .join(DbCustomerProductPrice, DbCustomerProductPrice.product_sku == DbProduct.sku)
+            .where(
+                DbCustomerProductPrice.customer_card_code == customerCode,
+                DbCustomerProductPrice.is_active.is_(True),
+            )
         )
-    total = len(db.execute(total_q).scalars().all())
-
-    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
+        if search:
+            total_q = total_q.where(DbProduct.sku.ilike(f"%{search}%") | DbProduct.description.ilike(f"%{search}%"))
+        if active is not None:
+            total_q = total_q.where(DbProduct.is_active == active)
+        total = len(db.execute(total_q).scalars().all())
+        rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).all()
+    else:
+        total_q = select(DbProduct)
+        if search:
+            total_q = total_q.where(DbProduct.sku.ilike(f"%{search}%") | DbProduct.description.ilike(f"%{search}%"))
+        if active is not None:
+            total_q = total_q.where(DbProduct.is_active == active)
+        total = len(db.execute(total_q).scalars().all())
+        rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
     return {
         "data": [
-            {
-                "id": p.id,
-                "sku": p.sku,
-                "description": p.description,
-                "ean": p.ean,
-                "category": p.category,
-                "unit_of_measure": p.unit_of_measure,
-                "is_active": p.is_active,
-                "is_inventory_item": p.is_inventory_item,
-                "is_sales_item": p.is_sales_item,
-                "sap_item_code": p.sap_item_code,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-            }
-            for p in rows
+            (
+                {
+                    "id": p.id,
+                    "sku": p.sku,
+                    "description": p.description,
+                    "ean": p.ean,
+                    "category": p.category,
+                    "unit_of_measure": p.unit_of_measure,
+                    "is_active": p.is_active,
+                    "is_inventory_item": p.is_inventory_item,
+                    "is_sales_item": p.is_sales_item,
+                    "sap_item_code": p.sap_item_code,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                    "price": float(price.price) if price and price.price is not None else None,
+                    "currency": price.currency if price else None,
+                }
+                if customerCode
+                else {
+                    "id": p.id,
+                    "sku": p.sku,
+                    "description": p.description,
+                    "ean": p.ean,
+                    "category": p.category,
+                    "unit_of_measure": p.unit_of_measure,
+                    "is_active": p.is_active,
+                    "is_inventory_item": p.is_inventory_item,
+                    "is_sales_item": p.is_sales_item,
+                    "sap_item_code": p.sap_item_code,
+                    "created_at": p.created_at.isoformat() if p.created_at else None,
+                    "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+                }
+            )
+            for (p, price) in (rows if customerCode else [(p, None) for p in rows])
         ],
         "total": total,
         "limit": limit,
@@ -247,6 +295,169 @@ def list_customers(
         "limit": limit,
         "offset": offset,
     }
+
+
+# ========================================
+# Precificação por Cliente (B2B)
+# ========================================
+
+
+class UpsertCustomerProductPriceRequest(BaseModel):
+    price: float = 0
+    currency: str = "BRL"
+    is_active: bool = True
+
+
+@app.get("/v1/customers/{card_code}/pricing")
+def list_customer_pricing(
+    card_code: str,
+    db: Session = Depends(get_session),
+    search: str | None = None,
+    active: bool | None = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """
+    Lista o catálogo/pricing configurado para um cliente.
+
+    Retorna apenas SKUs presentes em `customer_product_prices`.
+    """
+    customer = db.execute(select(DbCustomer).where(DbCustomer.card_code == card_code)).scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+
+    q = (
+        select(DbCustomerProductPrice, DbProduct)
+        .join(DbProduct, DbCustomerProductPrice.product_sku == DbProduct.sku)
+        .where(DbCustomerProductPrice.customer_card_code == card_code)
+        .order_by(DbProduct.sku.asc())
+    )
+
+    if search:
+        q = q.where(DbProduct.sku.ilike(f"%{search}%") | DbProduct.description.ilike(f"%{search}%"))
+
+    if active is not None:
+        q = q.where(DbCustomerProductPrice.is_active == active)
+
+    total = len(db.execute(q).all())
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).all()
+
+    return {
+        "data": [
+            {
+                "customer_card_code": p.customer_card_code,
+                "sku": prod.sku,
+                "description": prod.description,
+                "price": float(p.price),
+                "currency": p.currency,
+                "is_active": p.is_active,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            }
+            for (p, prod) in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@app.put("/v1/customers/{card_code}/pricing/{sku}")
+def upsert_customer_price(
+    card_code: str,
+    sku: str,
+    req: UpsertCustomerProductPriceRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Cria/atualiza o preço de um SKU para um cliente."""
+    correlation_id = request.state.correlation_id
+
+    customer = db.execute(select(DbCustomer).where(DbCustomer.card_code == card_code)).scalar_one_or_none()
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+
+    product = db.execute(select(DbProduct).where(DbProduct.sku == sku)).scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado.")
+
+    existing = db.execute(
+        select(DbCustomerProductPrice).where(
+            DbCustomerProductPrice.customer_card_code == card_code,
+            DbCustomerProductPrice.product_sku == sku,
+        )
+    ).scalar_one_or_none()
+
+    now = now_utc()
+    if existing:
+        existing.price = req.price
+        existing.currency = req.currency
+        existing.is_active = req.is_active
+        existing.updated_at = now
+        db.commit()
+        db.refresh(existing)
+        log.info(
+            "Preço atualizado.",
+            extra={"correlationId": correlation_id, "customer": card_code, "sku": sku},
+        )
+        p = existing
+    else:
+        p = DbCustomerProductPrice(
+            customer_card_code=card_code,
+            product_sku=sku,
+            price=req.price,
+            currency=req.currency,
+            is_active=req.is_active,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(p)
+        db.commit()
+        db.refresh(p)
+        log.info(
+            "Preço criado.",
+            extra={"correlationId": correlation_id, "customer": card_code, "sku": sku},
+        )
+
+    return {
+        "customer_card_code": p.customer_card_code,
+        "sku": sku,
+        "price": float(p.price),
+        "currency": p.currency,
+        "is_active": p.is_active,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+@app.delete("/v1/customers/{card_code}/pricing/{sku}")
+def deactivate_customer_price(
+    card_code: str,
+    sku: str,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Desativa o preço de um SKU para um cliente (soft-delete)."""
+    correlation_id = request.state.correlation_id
+
+    existing = db.execute(
+        select(DbCustomerProductPrice).where(
+            DbCustomerProductPrice.customer_card_code == card_code,
+            DbCustomerProductPrice.product_sku == sku,
+        )
+    ).scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Preço não encontrado para esse cliente/SKU.")
+
+    existing.is_active = False
+    existing.updated_at = now_utc()
+    db.commit()
+
+    log.info(
+        "Preço desativado.",
+        extra={"correlationId": correlation_id, "customer": card_code, "sku": sku},
+    )
+    return {"ok": True}
 
 
 # ========================================

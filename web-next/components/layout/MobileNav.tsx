@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   Warehouse,
   RefreshCw,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
@@ -33,6 +34,11 @@ const menuItems = [
     icon: Warehouse,
   },
   {
+    href: "/clientes",
+    label: "Clientes",
+    icon: Users,
+  },
+  {
     href: "/integracao",
     label: "Integração",
     icon: RefreshCw,
@@ -47,7 +53,7 @@ export function MobileNav() {
       <ul className="flex items-center justify-around">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
 
           return (
             <li key={item.href} className="flex-1">

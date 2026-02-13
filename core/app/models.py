@@ -129,6 +129,51 @@ class Customer(Base):
 
 
 # ========================================
+# Precificação por Cliente (B2B)
+# ========================================
+
+class CustomerProductPrice(Base):
+    """
+    Preço específico de um produto (SKU) para um cliente (CardCode).
+
+    Regra do MVP:
+    - Um preço ativo por (customer_card_code, product_sku).
+    - O catálogo do cliente pode ser derivado dessa tabela (somente SKUs com preço ativo).
+    """
+
+    __tablename__ = "customer_product_prices"
+    __table_args__ = (
+        UniqueConstraint("customer_card_code", "product_sku", name="uq_customer_product_price"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Vincula por CardCode/SKU (campos únicos nas tabelas origem)
+    customer_card_code: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("customers.card_code", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    product_sku: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("products.sku", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="BRL")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    customer: Mapped[Customer] = relationship()
+    product: Mapped[Product] = relationship()
+
+
+# ========================================
 # Idempotência
 # ========================================
 

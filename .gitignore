@@ -46,3 +46,10 @@ mappings/src/**/*.js.map
 # IDE
 .vscode/settings.json
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+
+# SQLite / dev artifacts
+*.db
