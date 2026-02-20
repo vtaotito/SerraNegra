@@ -849,6 +849,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
         Object.assign(sapBody, buildBpLevelUdfs(udfBp));
 
+        req.log.info({ correlationId, sapPayload: JSON.stringify(sapBody) }, "Payload SAP para criacao de BP");
+
         const response = await client.post<any>("/BusinessPartners", sapBody, { correlationId });
         const created = response.data;
         const finalCardCode = created.CardCode ?? cardCode;
