@@ -481,6 +481,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         CardName: razaoSocial,
         CardForeignName: nomeFantasia || undefined,
         CardType: "cCustomer",
+        GroupCode: 100,
         FederalTaxID: cnpjFormatted,
         UnifiedFederalTaxID: cnpjFormatted,
         EmailAddress: email,
@@ -492,6 +493,13 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         CompanyPrivate: "cCompany",
         PayTermsGrpCode: -1,
         PriceListNum: 1,
+        Currency: "R$",
+        SalesPersonCode: 9,
+        DebitorAccount: "1.1.2.01.001",
+        DownPaymentClearAct: "2.1.6.02.001",
+        LanguageCode: 29,
+        BilltoDefault: "COB",
+        ShipToDefault: "ENT",
       };
 
       const streetNum = address?.match(/\d+/)?.[0] || "S/N";
@@ -512,13 +520,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       };
 
       sapBody.BPAddresses = [
-        { AddressType: "bo_BillTo", AddressName: "COBRANCA", ...addrFields },
-        { AddressType: "bo_ShipTo", AddressName: "ENTREGA", ...addrFields },
+        { AddressType: "bo_BillTo", AddressName: "COB", ...addrFields },
+        { AddressType: "bo_ShipTo", AddressName: "ENT", ...addrFields },
       ];
 
       sapBody.BPFiscalTaxIDCollection = [
-        { Address: "COBRANCA", AddrType: "bo_BillTo", TaxId0: cnpjFormatted },
-        { Address: "ENTREGA", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted },
+        { Address: "", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
+        { Address: "COB", AddrType: "bo_BillTo", TaxId0: cnpjFormatted },
+        { Address: "ENT", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
+      ];
+
+      sapBody.BPBranchAssignment = [
+        { BPLID: 1, DisabledForBP: "tNO" },
       ];
 
       const response = await client.post<any>(
