@@ -468,6 +468,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         Valid: "tYES",
         Frozen: "tNO",
         SinglePayment: "tYES",
+        CompanyPrivate: "cCompany",
+        PayTermsGrpCode: -1,
+        PriceListNum: 1,
       };
 
       const streetNum = address?.match(/\d+/)?.[0] || "S/N";
