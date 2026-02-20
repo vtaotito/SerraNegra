@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useAuth } from "@/lib/auth/context";
 import { post } from "@/lib/api/client";
 import { formatCnpj, cleanCnpj, isValidCnpj, maskEmail } from "@/lib/cnpj";
@@ -26,6 +27,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { GSN_LOGO_URL } from "@/lib/product-images";
 
 type Step =
   | "cnpj"
@@ -285,14 +287,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#f0fdf4] via-white to-[#ecfdf5] p-4">
+      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-gsn-green">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg">
-            <Package className="h-7 w-7 text-primary-foreground" />
+          <div className="mx-auto">
+            <Image
+              src={GSN_LOGO_URL}
+              alt="GSN Online"
+              width={160}
+              height={72}
+              className="h-14 w-auto object-contain mx-auto"
+              priority
+            />
           </div>
           <div>
-            <CardTitle className="text-2xl">Portal B2B</CardTitle>
+            <CardTitle className="text-2xl text-gsn-text">Portal B2B</CardTitle>
             <CardDescription className="mt-1">
               {step === "cnpj" && "Informe o CNPJ da sua empresa"}
               {step === "password" && `Ola, ${lookupResult?.cardName}`}
@@ -719,9 +728,14 @@ export default function LoginPage() {
             </form>
           )}
 
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Garrafaria Serra Negra &mdash; Sistema de Pedidos B2B
-          </p>
+          <div className="mt-6 text-center space-y-1">
+            <p className="text-xs text-muted-foreground">
+              Garrafaria Serra Negra &mdash; Sistema de Pedidos B2B
+            </p>
+            <p className="text-[10px] text-muted-foreground/60">
+              Atendimento: (31) 99070-4765 | ecommerce@garrafariaserranegra.com.br
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

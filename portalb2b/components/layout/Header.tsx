@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useCart } from "@/lib/cart/context";
@@ -17,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { GSN_LOGO_URL } from "@/lib/product-images";
 
 const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: LayoutDashboard },
@@ -31,14 +33,21 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Package className="h-4 w-4 text-primary-foreground" />
-            </div>
-            <span className="text-lg font-bold hidden sm:inline">Portal B2B</span>
+          <Link href="/" className="flex items-center gap-3">
+            <Image
+              src={GSN_LOGO_URL}
+              alt="GSN Online"
+              width={100}
+              height={45}
+              className="h-9 w-auto object-contain"
+              priority
+            />
+            <span className="text-sm font-semibold text-gsn-green-dark hidden sm:inline border-l border-border pl-3">
+              Portal B2B
+            </span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
@@ -51,8 +60,8 @@ export function Header() {
                   className={cn(
                     "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      ? "bg-gsn-green/10 text-gsn-green-dark font-semibold"
+                      : "text-gsn-gray hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <item.icon className="h-4 w-4" />
@@ -65,10 +74,10 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           <Link href="/carrinho">
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-green-dark">
               <ShoppingCart className="h-5 w-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-green text-[10px] font-bold text-white">
                   {totalItems}
                 </span>
               )}
@@ -76,13 +85,13 @@ export function Header() {
           </Link>
 
           {customer && (
-            <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="hidden sm:flex items-center gap-2 text-sm text-gsn-gray">
               <User className="h-4 w-4" />
               <span className="max-w-[150px] truncate">{customer.cardName}</span>
             </div>
           )}
 
-          <Button variant="ghost" size="icon" onClick={logout} title="Sair">
+          <Button variant="ghost" size="icon" onClick={logout} title="Sair" className="text-gsn-gray hover:text-gsn-red">
             <LogOut className="h-4 w-4" />
           </Button>
 
@@ -98,7 +107,7 @@ export function Header() {
       </div>
 
       {mobileOpen && (
-        <nav className="border-t md:hidden px-4 py-3 space-y-1">
+        <nav className="border-t md:hidden px-4 py-3 space-y-1 bg-white">
           {NAV_ITEMS.map((item) => {
             const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
             return (
@@ -108,7 +117,7 @@ export function Header() {
                 onClick={() => setMobileOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium",
-                  isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent"
+                  isActive ? "bg-gsn-green/10 text-gsn-green-dark" : "text-gsn-gray hover:bg-accent"
                 )}
               >
                 <item.icon className="h-4 w-4" />

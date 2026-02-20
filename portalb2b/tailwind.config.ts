@@ -8,6 +8,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-montserrat)", "Montserrat", "sans-serif"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -41,6 +44,13 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        gsn: {
+          green: "#6AC768",
+          "green-dark": "#2AA647",
+          red: "#A91A1A",
+          text: "#2B2B2B",
+          gray: "#555555",
         },
       },
       borderRadius: {

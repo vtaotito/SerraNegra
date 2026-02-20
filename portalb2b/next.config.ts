@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   output: "standalone",
   basePath: "/b2b",
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.tcdn.com.br",
+        pathname: "/img/img_prod/**",
+      },
+    ],
+  },
   async rewrites() {
     if (process.env.NEXT_PUBLIC_API_BASE_URL) {
       return [];

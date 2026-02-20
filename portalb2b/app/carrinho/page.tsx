@@ -61,12 +61,12 @@ export default function CarrinhoPage() {
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
               <ShoppingCart className="h-10 w-10 text-muted-foreground/50" />
             </div>
-            <h2 className="text-xl font-semibold">Seu carrinho esta vazio</h2>
+            <h2 className="text-xl font-semibold text-gsn-text">Seu carrinho esta vazio</h2>
             <p className="text-muted-foreground">
               Adicione produtos do catalogo para montar seu pedido
             </p>
             <Link href="/catalogo">
-              <Button className="mt-2">
+              <Button className="mt-2 bg-gsn-green hover:bg-gsn-green-dark text-white">
                 <Package className="h-4 w-4" />
                 Ir para o Catalogo
               </Button>
@@ -205,7 +205,7 @@ export default function CarrinhoPage() {
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
                   <Button
-                    className="w-full"
+                    className="w-full bg-gsn-green hover:bg-gsn-green-dark text-white"
                     size="lg"
                     onClick={handleSubmitOrder}
                     disabled={submitting}
@@ -220,7 +220,7 @@ export default function CarrinhoPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-destructive"
+                    className="w-full text-gsn-red hover:text-gsn-red"
                     onClick={clearCart}
                   >
                     Limpar Carrinho

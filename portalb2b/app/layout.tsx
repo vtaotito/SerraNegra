@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "@/styles/globals.css";
 import { Providers } from "./providers";
 
-const inter = Inter({ subsets: ["latin"] });
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  variable: "--font-montserrat",
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
-  title: "Portal B2B - Pedidos",
-  description: "Portal de pedidos para parceiros de negocio",
+  title: "GSN Online - Portal B2B",
+  description: "Portal de pedidos B2B - Garrafaria Serra Negra",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
-      <body className={inter.className}>
+      <body className={`${montserrat.variable} ${montserrat.className}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

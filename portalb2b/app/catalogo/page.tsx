@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Header } from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   Package,
   Check,
 } from "lucide-react";
+import { getProductImageUrl } from "@/lib/product-images";
 
 interface Product {
   sku: string;
@@ -68,7 +70,7 @@ export default function CatalogoPage() {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Catalogo de Produtos</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-gsn-text">Catalogo de Produtos</h1>
               <p className="text-muted-foreground">
                 {data ? `${data.total} produto(s) disponivel(eis)` : "Carregando..."}
               </p>
@@ -85,9 +87,16 @@ export default function CatalogoPage() {
           </div>
 
           {isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-48 rounded-xl" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="rounded-xl border bg-card overflow-hidden">
+                  <Skeleton className="h-48 w-full" />
+                  <div className="p-4 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-8 w-full mt-3" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : !data?.items?.length ? (
@@ -101,35 +110,50 @@ export default function CatalogoPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {data.items.map((product) => {
                 const qty = quantities[product.sku] ?? 1;
                 const inCart = getItem(product.sku);
+                const imageUrl = getProductImageUrl(product.name);
 
                 return (
                   <Card
                     key={product.sku}
-                    className="flex flex-col transition-all hover:shadow-md"
+                    className="flex flex-col transition-all hover:shadow-lg group overflow-hidden"
                   >
-                    <CardContent className="flex flex-col flex-1 p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-sm leading-tight line-clamp-2">
-                            {product.name}
-                          </h3>
-                          <p className="text-xs text-muted-foreground mt-1 font-mono">
-                            {product.sku}
-                          </p>
+                    <div className="relative bg-gray-50 flex items-center justify-center h-48 overflow-hidden">
+                      {imageUrl ? (
+                        <Image
+                          src={imageUrl}
+                          alt={product.name}
+                          width={280}
+                          height={280}
+                          className="object-contain h-full w-full p-4 group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-muted-foreground/30">
+                          <Package className="h-16 w-16" />
                         </div>
-                        {inCart && (
-                          <Badge variant="success" className="ml-2 flex-shrink-0">
-                            <Check className="h-3 w-3 mr-1" />
-                            No carrinho
-                          </Badge>
-                        )}
+                      )}
+                      {inCart && (
+                        <Badge className="absolute top-2 right-2 bg-gsn-green text-white border-0 shadow-md">
+                          <Check className="h-3 w-3 mr-1" />
+                          No carrinho
+                        </Badge>
+                      )}
+                    </div>
+
+                    <CardContent className="flex flex-col flex-1 p-4">
+                      <div className="mb-3 min-h-[3rem]">
+                        <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-gsn-text">
+                          {product.name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-1 font-mono">
+                          {product.sku}
+                        </p>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 mb-4">
+                      <div className="flex flex-wrap gap-1.5 mb-3">
                         <Badge variant="outline" className="text-xs">
                           {product.unit}
                         </Badge>
@@ -162,7 +186,7 @@ export default function CatalogoPage() {
                         </div>
                         <Button
                           size="sm"
-                          className="flex-1"
+                          className="flex-1 bg-gsn-green hover:bg-gsn-green-dark text-white"
                           onClick={() => handleAddToCart(product)}
                         >
                           <ShoppingCart className="h-3.5 w-3.5" />
