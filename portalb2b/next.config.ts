@@ -12,11 +12,6 @@ const nextConfig: NextConfig = {
         hostname: "images.tcdn.com.br",
         pathname: "/img/img_prod/**",
       },
-      {
-        protocol: "https",
-        hostname: "garrafariaserranegra.com.br",
-        pathname: "/wp-content/uploads/**",
-      },
     ],
   },
   async rewrites() {

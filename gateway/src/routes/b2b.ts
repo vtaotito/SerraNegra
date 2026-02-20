@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
+import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { B2BAuthService } from "../services/b2bAuthService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
@@ -494,8 +495,29 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Erro ao cadastrar";
-      req.log.error({ error, correlationId }, "Erro register B2B");
-      reply.code(500).send({ error: "Erro ao cadastrar cliente", message });
+
+      let sapDetails: string | undefined;
+      let sapStatus: number | undefined;
+      if (error instanceof SapHttpError) {
+        sapStatus = error.status;
+        sapDetails = error.responseBodyText;
+        req.log.error(
+          { correlationId, sapStatus, sapDetails, errorMessage: message },
+          "Erro SAP ao registrar B2B"
+        );
+      } else {
+        req.log.error(
+          { correlationId, errorMessage: message, errorName: error instanceof Error ? error.name : typeof error },
+          "Erro register B2B"
+        );
+      }
+
+      reply.code(500).send({
+        error: "Erro ao cadastrar cliente",
+        message,
+        sapStatus,
+        sapDetails,
+      });
     }
   });
 
