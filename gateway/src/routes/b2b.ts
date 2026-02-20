@@ -525,8 +525,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       ];
 
       sapBody.BPFiscalTaxIDCollection = [
-        { Address: "", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
-        { Address: "COB", AddrType: "bo_BillTo", TaxId0: cnpjFormatted },
+        { Address: "COB", AddrType: "bo_BillTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
         { Address: "ENT", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
       ];
 
