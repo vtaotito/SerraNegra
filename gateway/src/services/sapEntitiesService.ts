@@ -130,9 +130,9 @@ export class SapEntitiesService {
 
     const candidates: string[] = [];
 
-    const fullSelect = "CardCode,CardName,CardType,Phone1,EmailAddress,Address,City,State,Valid,Frozen,UpdateDate";
-    const minSelect = "CardCode,CardName,CardType,Phone1,EmailAddress";
-    const bareSelect = "CardCode,CardName";
+    const fullSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen,UpdateDate";
+    const minSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress";
+    const bareSelect = "CardCode,CardName,FederalTaxID";
 
     candidates.push(`/BusinessPartners?$select=${fullSelect}&$filter=CardType eq '${cardType}' and Valid eq 'tYES'&$top=${limit}&$orderby=CardName asc`);
     candidates.push(`/BusinessPartners?$select=${minSelect}&$filter=CardType eq '${cardType}'&$top=${limit}&$orderby=CardName asc`);
@@ -201,11 +201,13 @@ export type SapBusinessPartnerRow = {
   CardCode: string;
   CardName?: string;
   CardType?: string;
+  FederalTaxID?: string;
   Phone1?: string;
   EmailAddress?: string;
   Address?: string;
   City?: string;
   State?: string;
+  ZipCode?: string;
   Valid?: string;
   Frozen?: string;
   UpdateDate?: string;

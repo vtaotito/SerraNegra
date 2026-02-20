@@ -1,11 +1,18 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
-import { post, get } from "@/lib/api/client";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 
 interface Customer {
   cardCode: string;
   cardName: string;
+  cnpj?: string;
   email?: string;
   phone?: string;
   address?: string;
@@ -21,7 +28,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  login: (cardCode: string, password?: string) => Promise<void>;
+  setAuth: (token: string, customer: Customer) => void;
   logout: () => void;
 }
 
@@ -41,7 +48,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (token && stored) {
       try {
         const customer = JSON.parse(stored);
-        setState({ customer, token, isLoading: false, isAuthenticated: true });
+        setState({
+          customer,
+          token,
+          isLoading: false,
+          isAuthenticated: true,
+        });
       } catch {
         localStorage.removeItem("b2b_token");
         localStorage.removeItem("b2b_customer");
@@ -52,16 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (cardCode: string, password?: string) => {
-    const res = await post<{ token: string; customer: Customer }>("/b2b/auth/login", {
-      cardCode,
-      password,
-    });
-    localStorage.setItem("b2b_token", res.token);
-    localStorage.setItem("b2b_customer", JSON.stringify(res.customer));
+  const setAuth = useCallback((token: string, customer: Customer) => {
+    localStorage.setItem("b2b_token", token);
+    localStorage.setItem("b2b_customer", JSON.stringify(customer));
     setState({
-      customer: res.customer,
-      token: res.token,
+      customer,
+      token,
       isLoading: false,
       isAuthenticated: true,
     });
@@ -70,11 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem("b2b_token");
     localStorage.removeItem("b2b_customer");
-    setState({ customer: null, token: null, isLoading: false, isAuthenticated: false });
+    setState({
+      customer: null,
+      token: null,
+      isLoading: false,
+      isAuthenticated: false,
+    });
   }, []);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout }}>
+    <AuthContext.Provider value={{ ...state, setAuth, logout }}>
       {children}
     </AuthContext.Provider>
   );
