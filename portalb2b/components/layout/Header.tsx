@@ -100,7 +100,7 @@ export function Header() {
       {mobileOpen && (
         <nav className="border-t md:hidden px-4 py-3 space-y-1">
           {NAV_ITEMS.map((item) => {
-            const isActive = pathname === item.href || (item.href !== "/b2b" && pathname.startsWith(item.href));
+            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
             return (
               <Link
                 key={item.href}
