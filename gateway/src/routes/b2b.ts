@@ -464,11 +464,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       };
 
       const addrFields = {
-        Street: address || "",
-        City: city || "",
-        County: city || "",
-        State: state || "",
-        ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "",
+        Street: address || "A definir",
+        Block: body.neighborhood || "Centro",
+        City: city || "A definir",
+        County: city || "A definir",
+        State: state || "SP",
+        ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "00000000",
         Country: "BR",
       };
 
