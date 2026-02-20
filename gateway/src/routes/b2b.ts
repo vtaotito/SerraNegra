@@ -463,8 +463,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         Frozen: "tNO",
       };
 
+      const streetNum = address?.match(/\d+/)?.[0] || "S/N";
       const addrFields = {
         Street: address || "A definir",
+        StreetNo: body.streetNumber || streetNum,
         Block: body.neighborhood || "Centro",
         City: city || "A definir",
         County: city || "A definir",
