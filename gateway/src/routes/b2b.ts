@@ -463,19 +463,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         Frozen: "tNO",
       };
 
-      if (address || city || state || zipCode) {
-        sapBody.BPAddresses = [
-          {
-            AddressType: "bo_BillTo",
-            AddressName: "FATURAMENTO",
-            Street: address || undefined,
-            City: city || undefined,
-            State: state || undefined,
-            ZipCode: zipCode ? zipCode.replace(/\D/g, "") : undefined,
-            Country: "BR",
-          },
-        ];
-      }
+      const addrFields = {
+        Street: address || "",
+        City: city || "",
+        State: state || "",
+        ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "",
+        Country: "BR",
+      };
+
+      sapBody.BPAddresses = [
+        { AddressType: "bo_BillTo", AddressName: "COBRANCA", ...addrFields },
+        { AddressType: "bo_ShipTo", AddressName: "ENTREGA", ...addrFields },
+      ];
 
       const response = await client.post<any>(
         "/BusinessPartners",
