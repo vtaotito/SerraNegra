@@ -476,9 +476,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         State: state || "SP",
         ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "00000000",
         Country: "BR",
-        AddressExtension: {
-          StreetPrefix: streetPrefix,
-        },
+        TypeOfAddress: streetPrefix,
       };
 
       sapBody.BPAddresses = [
