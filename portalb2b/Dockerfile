@@ -35,7 +35,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl && \
+    mkdir -p .next/cache && chown -R nextjs:nodejs .next/cache
 
 USER nextjs
 

@@ -448,7 +448,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       }
 
       const client = getSapClient();
-      const cardCode = `PB-${digits}`;
+      const cardCode = `B${digits.slice(-14)}`.slice(0, 15);
 
       const sapBody = {
         CardCode: cardCode,
