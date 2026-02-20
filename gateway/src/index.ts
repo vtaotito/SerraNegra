@@ -5,6 +5,7 @@ import websocket from "@fastify/websocket";
 import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { registerSapRoutes } from "./routes/sap.js";
+import { registerB2BRoutes } from "./routes/b2b.js";
 
 type GatewayEvent =
   | { type: "order.created"; orderId: string; status: string; occurredAt: string; correlationId: string }
@@ -199,6 +200,9 @@ app.get("/v1/dashboard/orders", async (req, reply) => {
 
 // Registrar rotas SAP
 await registerSapRoutes(app);
+
+// Registrar rotas B2B (Portal de Pedidos)
+await registerB2BRoutes(app);
 
 // Proxy genérico para API Core - todas as rotas /v1/*
 // Usar ALL com wildcard parameter

@@ -117,6 +117,23 @@ services:
       timeout: 3s
       retries: 5
 
+  portalb2b:
+    container_name: wms-portalb2b
+    build:
+      context: .
+      dockerfile: portalb2b/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: "/api"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/b2b"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   nginx:
     container_name: wms-nginx
     build:
@@ -126,6 +143,8 @@ services:
       web:
         condition: service_healthy
       gateway:
+        condition: service_healthy
+      portalb2b:
         condition: service_healthy
     ports:
       - "${WEB_PORT:-8080}:80"
