@@ -847,6 +847,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         sapBody.BPBranchAssignment = [{ BPLID: 1, DisabledForBP: "tNO" }];
         sapBody.BPPaymentMethods = [{ PaymentMethodCode: "Dinheiro", RowNumber: 0 }];
 
+        Object.assign(sapBody, buildBpLevelUdfs(udfBp));
+
         const response = await client.post<any>("/BusinessPartners", sapBody, { correlationId });
         const created = response.data;
         const finalCardCode = created.CardCode ?? cardCode;
