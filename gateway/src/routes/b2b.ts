@@ -450,7 +450,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const client = getSapClient();
       const cardCode = `B${digits.slice(-14)}`.slice(0, 15);
 
-      const sapBody = {
+      const sapBody: Record<string, unknown> = {
         CardCode: cardCode,
         CardName: razaoSocial,
         CardForeignName: nomeFantasia || undefined,
@@ -458,14 +458,24 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         FederalTaxID: digits,
         EmailAddress: email,
         Phone1: phone || undefined,
-        MailAddress: address || undefined,
-        MailCity: city || undefined,
-        MailState: state || undefined,
-        MailZipCode: zipCode || undefined,
         Notes: `Cadastro via Portal B2B em ${new Date().toISOString().split("T")[0]}`,
         Valid: "tYES",
         Frozen: "tNO",
       };
+
+      if (address || city || state || zipCode) {
+        sapBody.BPAddresses = [
+          {
+            AddressType: "bo_BillTo",
+            AddressName: "FATURAMENTO",
+            Street: address || undefined,
+            City: city || undefined,
+            State: state || undefined,
+            ZipCode: zipCode ? zipCode.replace(/\D/g, "") : undefined,
+            Country: "BR",
+          },
+        ];
+      }
 
       const response = await client.post<any>(
         "/BusinessPartners",
