@@ -533,6 +533,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         { BPLID: 1, DisabledForBP: "tNO" },
       ];
 
+      sapBody.BPPaymentMethods = [
+        { PaymentMethodCode: "Dinheiro", RowNumber: 0 },
+        { PaymentMethodCode: "Boleto", RowNumber: 1 },
+      ];
+
       const response = await client.post<any>(
         "/BusinessPartners",
         sapBody,
