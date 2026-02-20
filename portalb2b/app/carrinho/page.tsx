@@ -66,7 +66,7 @@ export default function CarrinhoPage() {
               Adicione produtos do catalogo para montar seu pedido
             </p>
             <Link href="/catalogo">
-              <Button className="mt-2 bg-gsn-green hover:bg-gsn-green-dark text-white">
+              <Button className="mt-2 bg-gsn-brand hover:bg-gsn-brand-dark text-white">
                 <Package className="h-4 w-4" />
                 Ir para o Catalogo
               </Button>
@@ -205,7 +205,7 @@ export default function CarrinhoPage() {
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
                   <Button
-                    className="w-full bg-gsn-green hover:bg-gsn-green-dark text-white"
+                    className="w-full bg-gsn-brand hover:bg-gsn-brand-dark text-white"
                     size="lg"
                     onClick={handleSubmitOrder}
                     disabled={submitting}
@@ -220,7 +220,7 @@ export default function CarrinhoPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-gsn-red hover:text-gsn-red"
+                    className="w-full text-destructive hover:text-destructive"
                     onClick={clearCart}
                   >
                     Limpar Carrinho

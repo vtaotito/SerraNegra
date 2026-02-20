@@ -94,51 +94,51 @@ export default function DashboardPage() {
               value={data?.ordersByStatus["DESPACHADO"]}
               icon={CheckCircle2}
               isLoading={isLoading}
-              color="text-gsn-green-dark"
+              color="text-gsn-brand-dark"
             />
             <KPICard
               title="Itens no Carrinho"
               value={0}
               icon={ShoppingCart}
               isLoading={false}
-              color="text-gsn-green"
+              color="text-gsn-brand"
             />
           </div>
 
           {/* Quick Actions */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Link href="/catalogo">
-              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-green/30">
+              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
                 <CardContent className="flex items-center gap-4 p-6">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gsn-green/10 text-gsn-green group-hover:bg-gsn-green group-hover:text-white transition-colors">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gsn-brand/10 text-gsn-brand group-hover:bg-gsn-brand group-hover:text-white transition-colors">
                     <Package className="h-6 w-6" />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-gsn-text">Ver Catalogo</h3>
                     <p className="text-sm text-muted-foreground">Explore nossos produtos</p>
                   </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-green transition-colors" />
+                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-brand transition-colors" />
                 </CardContent>
               </Card>
             </Link>
 
             <Link href="/pedidos">
-              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-green/30">
+              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
                 <CardContent className="flex items-center gap-4 p-6">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gsn-green/10 text-gsn-green-dark group-hover:bg-gsn-green-dark group-hover:text-white transition-colors">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gsn-brand/10 text-gsn-brand-dark group-hover:bg-gsn-brand-dark group-hover:text-white transition-colors">
                     <ClipboardList className="h-6 w-6" />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-gsn-text">Meus Pedidos</h3>
                     <p className="text-sm text-muted-foreground">Acompanhe seus pedidos</p>
                   </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-green-dark transition-colors" />
+                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-brand-dark transition-colors" />
                 </CardContent>
               </Card>
             </Link>
 
             <Link href="/carrinho">
-              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-green/30">
+              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
                 <CardContent className="flex items-center gap-4 p-6">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <TrendingUp className="h-6 w-6" />
@@ -158,7 +158,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base text-gsn-text">Produtos em Destaque</CardTitle>
               <Link href="/catalogo">
-                <Button variant="ghost" size="sm" className="text-gsn-green hover:text-gsn-green-dark">
+                <Button variant="ghost" size="sm" className="text-gsn-brand hover:text-gsn-brand-dark">
                   Ver catalogo <ArrowRight className="h-3 w-3" />
                 </Button>
               </Link>
@@ -167,7 +167,7 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 {FEATURED_PRODUCTS.map((product) => (
                   <Link key={product.name} href="/catalogo" className="group">
-                    <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-green/30 text-center">
+                    <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center">
                       <div className="relative h-24 mb-2">
                         <Image
                           src={product.image}
@@ -177,7 +177,7 @@ export default function DashboardPage() {
                           sizes="150px"
                         />
                         {product.discount && (
-                          <span className="absolute -top-1 -right-1 bg-gsn-red text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                          <span className="absolute -top-1 -right-1 bg-gsn-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
                             -{product.discount}%
                           </span>
                         )}
@@ -185,7 +185,7 @@ export default function DashboardPage() {
                       <p className="text-xs font-medium line-clamp-2 text-gsn-text leading-tight">
                         {product.name}
                       </p>
-                      <p className="text-xs font-bold text-gsn-green-dark mt-1">
+                      <p className="text-xs font-bold text-gsn-brand-dark mt-1">
                         {product.price}
                       </p>
                     </div>
@@ -200,7 +200,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base text-gsn-text">Pedidos Recentes</CardTitle>
               <Link href="/pedidos">
-                <Button variant="ghost" size="sm" className="text-gsn-green hover:text-gsn-green-dark">
+                <Button variant="ghost" size="sm" className="text-gsn-brand hover:text-gsn-brand-dark">
                   Ver todos <ArrowRight className="h-3 w-3" />
                 </Button>
               </Link>
@@ -217,7 +217,7 @@ export default function DashboardPage() {
                   <ClipboardList className="h-10 w-10 text-muted-foreground/30 mb-3" />
                   <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
                   <Link href="/catalogo" className="mt-3">
-                    <Button variant="outline" size="sm" className="border-gsn-green text-gsn-green-dark hover:bg-gsn-green/10">
+                    <Button variant="outline" size="sm" className="border-gsn-brand text-gsn-brand-dark hover:bg-gsn-brand/10">
                       Fazer primeiro pedido
                     </Button>
                   </Link>
@@ -242,7 +242,7 @@ export default function DashboardPage() {
                         </p>
                       </div>
                       {order.docTotal != null && (
-                        <span className="text-sm font-semibold text-gsn-green-dark">
+                        <span className="text-sm font-semibold text-gsn-brand-dark">
                           {new Intl.NumberFormat("pt-BR", {
                             style: "currency",
                             currency: order.currency ?? "BRL",

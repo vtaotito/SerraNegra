@@ -287,16 +287,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#f0fdf4] via-white to-[#ecfdf5] p-4">
-      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-gsn-green">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#fdf2f2] via-white to-[#fef5f5] p-4">
+      <Card className="w-full max-w-md shadow-xl border-t-4 border-t-gsn-brand">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto">
             <Image
               src={GSN_LOGO_URL}
-              alt="GSN Online"
-              width={160}
-              height={72}
-              className="h-14 w-auto object-contain mx-auto"
+              alt="Garrafaria Serra Negra"
+              width={220}
+              height={52}
+              className="h-12 w-auto object-contain mx-auto"
               priority
             />
           </div>

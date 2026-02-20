@@ -5,30 +5,30 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 17%;
+    --foreground: 0 0% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 17%;
+    --card-foreground: 0 0% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 17%;
-    --primary: 119 46% 59%;
+    --popover-foreground: 0 0% 13%;
+    --primary: 0 73% 38%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 17%;
-    --muted: 0 0% 96%;
+    --secondary: 0 4% 96%;
+    --secondary-foreground: 0 0% 13%;
+    --muted: 0 4% 96%;
     --muted-foreground: 0 0% 40%;
-    --accent: 134 60% 95%;
-    --accent-foreground: 134 60% 30%;
-    --destructive: 0 73% 38%;
+    --accent: 0 40% 96%;
+    --accent-foreground: 0 73% 28%;
+    --destructive: 0 84% 50%;
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 90%;
     --input: 0 0% 90%;
-    --ring: 119 46% 59%;
+    --ring: 0 73% 38%;
     --radius: 0.5rem;
 
-    --gsn-green: #6AC768;
-    --gsn-green-dark: #2AA647;
-    --gsn-red: #A91A1A;
-    --gsn-text: #2B2B2B;
+    --gsn-brand: #AA1A1B;
+    --gsn-brand-dark: #8A1516;
+    --gsn-brand-light: #C42B2C;
+    --gsn-text: #212020;
     --gsn-gray: #555555;
   }
 
@@ -39,19 +39,19 @@
     --card-foreground: 0 0% 95%;
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 95%;
-    --primary: 119 46% 50%;
+    --primary: 0 73% 45%;
     --primary-foreground: 0 0% 100%;
     --secondary: 0 0% 15%;
     --secondary-foreground: 0 0% 95%;
     --muted: 0 0% 15%;
     --muted-foreground: 0 0% 65%;
-    --accent: 134 40% 15%;
-    --accent-foreground: 134 60% 80%;
-    --destructive: 0 73% 45%;
+    --accent: 0 30% 15%;
+    --accent-foreground: 0 50% 80%;
+    --destructive: 0 84% 55%;
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 18%;
     --input: 0 0% 18%;
-    --ring: 119 46% 50%;
+    --ring: 0 73% 45%;
   }
 }
 
@@ -66,16 +66,10 @@
 }
 
 @layer utilities {
-  .text-gsn-green {
-    color: var(--gsn-green);
+  .text-gsn-brand {
+    color: var(--gsn-brand);
   }
-  .bg-gsn-green {
-    background-color: var(--gsn-green);
-  }
-  .text-gsn-red {
-    color: var(--gsn-red);
-  }
-  .bg-gsn-red {
-    background-color: var(--gsn-red);
+  .bg-gsn-brand {
+    background-color: var(--gsn-brand);
   }
 }

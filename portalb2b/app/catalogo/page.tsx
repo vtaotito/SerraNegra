@@ -136,7 +136,7 @@ export default function CatalogoPage() {
                         </div>
                       )}
                       {inCart && (
-                        <Badge className="absolute top-2 right-2 bg-gsn-green text-white border-0 shadow-md">
+                        <Badge className="absolute top-2 right-2 bg-gsn-brand text-white border-0 shadow-md">
                           <Check className="h-3 w-3 mr-1" />
                           No carrinho
                         </Badge>
@@ -186,7 +186,7 @@ export default function CatalogoPage() {
                         </div>
                         <Button
                           size="sm"
-                          className="flex-1 bg-gsn-green hover:bg-gsn-green-dark text-white"
+                          className="flex-1 bg-gsn-brand hover:bg-gsn-brand-dark text-white"
                           onClick={() => handleAddToCart(product)}
                         >
                           <ShoppingCart className="h-3.5 w-3.5" />

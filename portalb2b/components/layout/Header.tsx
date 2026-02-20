@@ -39,13 +39,13 @@ export function Header() {
           <Link href="/" className="flex items-center gap-3">
             <Image
               src={GSN_LOGO_URL}
-              alt="GSN Online"
-              width={100}
-              height={45}
-              className="h-9 w-auto object-contain"
+              alt="Garrafaria Serra Negra"
+              width={140}
+              height={33}
+              className="h-8 w-auto object-contain"
               priority
             />
-            <span className="text-sm font-semibold text-gsn-green-dark hidden sm:inline border-l border-border pl-3">
+            <span className="text-sm font-semibold text-gsn-brand hidden sm:inline border-l border-border pl-3">
               Portal B2B
             </span>
           </Link>
@@ -60,7 +60,7 @@ export function Header() {
                   className={cn(
                     "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-gsn-green/10 text-gsn-green-dark font-semibold"
+                      ? "bg-gsn-brand/10 text-gsn-brand font-semibold"
                       : "text-gsn-gray hover:bg-accent hover:text-foreground"
                   )}
                 >
@@ -74,10 +74,10 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           <Link href="/carrinho">
-            <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-green-dark">
+            <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
               <ShoppingCart className="h-5 w-5" />
               {totalItems > 0 && (
-                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-green text-[10px] font-bold text-white">
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-brand text-[10px] font-bold text-white">
                   {totalItems}
                 </span>
               )}
@@ -91,7 +91,7 @@ export function Header() {
             </div>
           )}
 
-          <Button variant="ghost" size="icon" onClick={logout} title="Sair" className="text-gsn-gray hover:text-gsn-red">
+          <Button variant="ghost" size="icon" onClick={logout} title="Sair" className="text-gsn-gray hover:text-gsn-brand">
             <LogOut className="h-4 w-4" />
           </Button>
 
@@ -117,7 +117,7 @@ export function Header() {
                 onClick={() => setMobileOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium",
-                  isActive ? "bg-gsn-green/10 text-gsn-green-dark" : "text-gsn-gray hover:bg-accent"
+                  isActive ? "bg-gsn-brand/10 text-gsn-brand" : "text-gsn-gray hover:bg-accent"
                 )}
               >
                 <item.icon className="h-4 w-4" />
