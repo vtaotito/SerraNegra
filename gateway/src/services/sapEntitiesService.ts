@@ -10,6 +10,33 @@ import { SapHttpError } from "../../../sap-connector/src/errors.js";
 export class SapEntitiesService {
   constructor(private readonly client: SapServiceLayerClient) {}
 
+  private escapeODataLiteral(value: string): string {
+    return value.replace(/'/g, "''");
+  }
+
+  private async queryWithCandidates<T>(
+    context: string,
+    candidates: string[],
+    correlationId?: string
+  ): Promise<T[]> {
+    let lastError: unknown;
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        const res = await this.client.get<{ value: T[] }>(candidates[i], { correlationId });
+        const rows = res.data.value || [];
+        console.log(`[${context}] Candidato #${i + 1} OK - ${rows.length} registros`);
+        return rows;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Erro ao consultar entidade SAP (${context}).`);
+  }
+
   // ========================================
   // ITEMS (Produtos)
   // ========================================
@@ -33,20 +60,7 @@ export class SapEntitiesService {
     candidates.push(`/Items?$select=${minSelect}&$top=${limit}`);
     candidates.push(`/Items?$select=${bareSelect}&$top=${limit}`);
 
-    let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
-      try {
-        const res = await this.client.get<{ value: SapItemRow[] }>(candidates[i], { correlationId });
-        const items = res.data.value || [];
-        console.log(`[listItems] Candidato #${i + 1} OK - ${items.length} itens`);
-        return items;
-      } catch (err) {
-        lastError = err;
-        if (err instanceof SapHttpError && err.status === 400) continue;
-        throw err;
-      }
-    }
-    throw lastError instanceof Error ? lastError : new Error("Erro ao listar itens do SAP.");
+    return this.queryWithCandidates<SapItemRow>("listItems", candidates, correlationId);
   }
 
   // ========================================
@@ -140,20 +154,138 @@ export class SapEntitiesService {
     candidates.push(`/BusinessPartners?$select=${minSelect}&$top=${limit}`);
     candidates.push(`/BusinessPartners?$select=${bareSelect}&$top=${limit}`);
 
-    let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
-      try {
-        const res = await this.client.get<{ value: SapBusinessPartnerRow[] }>(candidates[i], { correlationId });
-        const bps = res.data.value || [];
-        console.log(`[listBusinessPartners] Candidato #${i + 1} OK - ${bps.length} parceiros`);
-        return bps;
-      } catch (err) {
-        lastError = err;
-        if (err instanceof SapHttpError && err.status === 400) continue;
-        throw err;
-      }
+    return this.queryWithCandidates<SapBusinessPartnerRow>("listBusinessPartners", candidates, correlationId);
+  }
+
+  // ========================================
+  // SALES PERSONS (Vendedores)
+  // ========================================
+
+  async listSalesPersons(
+    opts: { limit?: number } = {},
+    correlationId?: string
+  ): Promise<SapSalesPersonRow[]> {
+    const limit = opts.limit ?? 200;
+    const candidates: string[] = [];
+
+    candidates.push(`/SalesPersons?$select=SalesEmployeeCode,SalesEmployeeName,Active&$top=${limit}&$orderby=SalesEmployeeName asc`);
+    candidates.push(`/SalesPersons?$select=SalesEmployeeCode,SalesEmployeeName&$top=${limit}`);
+    candidates.push(`/SalesPersons?$top=${limit}`);
+
+    return this.queryWithCandidates<SapSalesPersonRow>("listSalesPersons", candidates, correlationId);
+  }
+
+  // ========================================
+  // SPECIAL PRICES (Preço por cliente/item)
+  // ========================================
+
+  async listSpecialPrices(
+    opts: { limit?: number; cardCode?: string; itemCode?: string } = {},
+    correlationId?: string
+  ): Promise<SapSpecialPriceRow[]> {
+    const limit = opts.limit ?? 200;
+    const filters: string[] = [];
+
+    if (opts.cardCode) {
+      filters.push(`CardCode eq '${this.escapeODataLiteral(opts.cardCode)}'`);
     }
-    throw lastError instanceof Error ? lastError : new Error("Erro ao listar parceiros do SAP.");
+    if (opts.itemCode) {
+      filters.push(`ItemCode eq '${this.escapeODataLiteral(opts.itemCode)}'`);
+    }
+    const filterQuery = filters.length > 0 ? `&$filter=${filters.join(" and ")}` : "";
+
+    const candidates: string[] = [];
+    candidates.push(
+      `/SpecialPrices?$select=CardCode,ItemCode,Price,Currency,PriceListNum,ValidFrom,ValidTo${filterQuery}&$top=${limit}`
+    );
+    candidates.push(`/SpecialPrices?$select=CardCode,ItemCode,Price${filterQuery}&$top=${limit}`);
+    candidates.push(`/SpecialPrices?$select=CardCode,ItemCode${filterQuery}&$top=${limit}`);
+    candidates.push(`/SpecialPrices?$top=${limit}`);
+
+    return this.queryWithCandidates<SapSpecialPriceRow>("listSpecialPrices", candidates, correlationId);
+  }
+
+  // ========================================
+  // DRAFTS (Rascunhos de pedido)
+  // ========================================
+
+  async listDrafts(
+    opts: { limit?: number; onlySalesOrders?: boolean } = {},
+    correlationId?: string
+  ): Promise<SapDraftRow[]> {
+    const limit = opts.limit ?? 200;
+    const onlySalesOrders = opts.onlySalesOrders !== false;
+    const candidates: string[] = [];
+
+    const fullSelect =
+      "DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocCurrency,ObjType,DocObjectCode,UpdateDate";
+    const minSelect = "DocEntry,DocNum,CardCode,CardName,DocDate,DocTotal";
+
+    if (onlySalesOrders) {
+      candidates.push(`/Drafts?$select=${fullSelect}&$filter=ObjType eq '17'&$top=${limit}&$orderby=DocEntry desc`);
+      candidates.push(`/Drafts?$select=${fullSelect}&$filter=DocObjectCode eq 'oOrders'&$top=${limit}&$orderby=DocEntry desc`);
+      candidates.push(`/Drafts?$select=${minSelect}&$filter=ObjType eq '17'&$top=${limit}&$orderby=DocEntry desc`);
+    }
+
+    candidates.push(`/Drafts?$select=${fullSelect}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/Drafts?$select=${minSelect}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/Drafts?$top=${limit}`);
+
+    return this.queryWithCandidates<SapDraftRow>("listDrafts", candidates, correlationId);
+  }
+
+  // ========================================
+  // INVOICES (Notas/Faturas)
+  // ========================================
+
+  async listInvoices(
+    opts: { limit?: number; onlyOpen?: boolean } = {},
+    correlationId?: string
+  ): Promise<SapInvoiceRow[]> {
+    const limit = opts.limit ?? 200;
+    const onlyOpen = opts.onlyOpen === true;
+    const candidates: string[] = [];
+
+    const fullSelect =
+      "DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,DocTotal,DocCurrency,DocStatus,DocumentStatus,UpdateDate";
+    const minSelect = "DocEntry,DocNum,CardCode,CardName,DocDate,DocTotal,DocStatus";
+
+    if (onlyOpen) {
+      candidates.push(`/Invoices?$select=${fullSelect}&$filter=DocStatus eq 'O'&$top=${limit}&$orderby=DocEntry desc`);
+      candidates.push(`/Invoices?$select=${fullSelect}&$filter=DocumentStatus eq 'bost_Open'&$top=${limit}&$orderby=DocEntry desc`);
+      candidates.push(`/Invoices?$select=${minSelect}&$filter=DocStatus eq 'O'&$top=${limit}&$orderby=DocEntry desc`);
+    }
+
+    candidates.push(`/Invoices?$select=${fullSelect}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/Invoices?$select=${minSelect}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/Invoices?$top=${limit}`);
+
+    return this.queryWithCandidates<SapInvoiceRow>("listInvoices", candidates, correlationId);
+  }
+
+  // ========================================
+  // INCOMING PAYMENTS (Pagamentos)
+  // ========================================
+
+  async listIncomingPayments(
+    opts: { limit?: number; cardCode?: string } = {},
+    correlationId?: string
+  ): Promise<SapIncomingPaymentRow[]> {
+    const limit = opts.limit ?? 200;
+    const candidates: string[] = [];
+    const filter = opts.cardCode
+      ? `&$filter=CardCode eq '${this.escapeODataLiteral(opts.cardCode)}'`
+      : "";
+
+    const fullSelect =
+      "DocEntry,DocNum,CardCode,CardName,DocDate,DocCurrency,CashSum,TransferSum,DocTotal,UpdateDate";
+    const minSelect = "DocEntry,DocNum,CardCode,CardName,DocDate,DocTotal";
+
+    candidates.push(`/IncomingPayments?$select=${fullSelect}${filter}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/IncomingPayments?$select=${minSelect}${filter}&$top=${limit}&$orderby=DocEntry desc`);
+    candidates.push(`/IncomingPayments?$top=${limit}`);
+
+    return this.queryWithCandidates<SapIncomingPaymentRow>("listIncomingPayments", candidates, correlationId);
   }
 }
 
@@ -208,6 +340,68 @@ export type SapBusinessPartnerRow = {
   State?: string;
   Valid?: string;
   Frozen?: string;
+  UpdateDate?: string;
+  [key: string]: unknown;
+};
+
+export type SapSalesPersonRow = {
+  SalesEmployeeCode: number;
+  SalesEmployeeName?: string;
+  Active?: string;
+  [key: string]: unknown;
+};
+
+export type SapSpecialPriceRow = {
+  CardCode?: string;
+  ItemCode?: string;
+  Price?: number;
+  Currency?: string;
+  PriceListNum?: number;
+  ValidFrom?: string;
+  ValidTo?: string;
+  [key: string]: unknown;
+};
+
+export type SapDraftRow = {
+  DocEntry: number;
+  DocNum?: number;
+  CardCode?: string;
+  CardName?: string;
+  DocDate?: string;
+  DocDueDate?: string;
+  DocTotal?: number;
+  DocCurrency?: string;
+  ObjType?: string;
+  DocObjectCode?: string;
+  UpdateDate?: string;
+  [key: string]: unknown;
+};
+
+export type SapInvoiceRow = {
+  DocEntry: number;
+  DocNum?: number;
+  CardCode?: string;
+  CardName?: string;
+  DocDate?: string;
+  DocDueDate?: string;
+  DocTotal?: number;
+  DocCurrency?: string;
+  DocStatus?: string;
+  DocumentStatus?: string;
+  UpdateDate?: string;
+  [key: string]: unknown;
+};
+
+export type SapIncomingPaymentRow = {
+  DocEntry: number;
+  DocNum?: number;
+  CardCode?: string;
+  CardName?: string;
+  DocDate?: string;
+  DocCurrency?: string;
+  CashSum?: number;
+  TransferSum?: number;
+  DocTotal?: number;
   UpdateDate?: string;
   [key: string]: unknown;
 };

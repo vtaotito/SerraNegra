@@ -64,6 +64,21 @@ export async function registerSapRoutes(app: FastifyInstance) {
     return entitiesService;
   }
 
+  function parseLimit(raw: unknown, fallback = 100): number {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+    return Math.floor(parsed);
+  }
+
+  function parseBoolean(raw: unknown): boolean | undefined {
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw !== "string") return undefined;
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+    return undefined;
+  }
+
   /**
    * GET /api/sap/health
    * Testa conexão com SAP e retorna status completo para o frontend.
@@ -273,6 +288,292 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
       reply.code(500).send({
         error: "Erro ao atualizar status no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ========================================
+  // Módulo Portal B2B: Catálogo, Cliente, Comercial e Financeiro
+  // ========================================
+
+  /**
+   * GET /api/sap/business-partners
+   * Lista parceiros de negócio (clientes, fornecedores ou leads).
+   */
+  app.get("/sap/business-partners", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; cardType?: string };
+
+    try {
+      const service = getEntitiesService();
+      const partners = await service.listBusinessPartners(
+        {
+          limit: parseLimit(query?.limit, 200),
+          cardType: query?.cardType
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: partners,
+        count: partners.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar parceiros de negócio SAP");
+      reply.code(500).send({
+        error: "Erro ao listar parceiros de negócio no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/items
+   * Lista itens (catálogo de produtos).
+   */
+  app.get("/sap/items", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; onlyActive?: string };
+
+    try {
+      const service = getEntitiesService();
+      const onlyActive = parseBoolean(query?.onlyActive);
+      const items = await service.listItems(
+        {
+          limit: parseLimit(query?.limit, 200),
+          onlyActive
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items,
+        count: items.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar itens SAP");
+      reply.code(500).send({
+        error: "Erro ao listar itens no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/inventory
+   * Lista estoque por item e depósito.
+   */
+  app.get("/sap/inventory", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string };
+
+    try {
+      const service = getEntitiesService();
+      const inventory = await service.listInventory(
+        {
+          limit: parseLimit(query?.limit, 1000)
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: inventory,
+        count: inventory.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar estoque SAP");
+      reply.code(500).send({
+        error: "Erro ao listar estoque no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/sales-persons
+   * Lista vendedores do SAP.
+   */
+  app.get("/sap/sales-persons", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string };
+
+    try {
+      const service = getEntitiesService();
+      const salesPersons = await service.listSalesPersons(
+        {
+          limit: parseLimit(query?.limit, 200)
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: salesPersons,
+        count: salesPersons.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar vendedores SAP");
+      reply.code(500).send({
+        error: "Erro ao listar vendedores no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/special-prices
+   * Lista preços especiais por cliente/item.
+   */
+  app.get("/sap/special-prices", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; cardCode?: string; itemCode?: string };
+
+    try {
+      const service = getEntitiesService();
+      const prices = await service.listSpecialPrices(
+        {
+          limit: parseLimit(query?.limit, 200),
+          cardCode: query?.cardCode,
+          itemCode: query?.itemCode
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: prices,
+        count: prices.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar preços especiais SAP");
+      reply.code(500).send({
+        error: "Erro ao listar preços especiais no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/drafts
+   * Lista rascunhos (drafts), por padrão focado em pedidos de venda.
+   */
+  app.get("/sap/drafts", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; onlySalesOrders?: string };
+
+    try {
+      const service = getEntitiesService();
+      const onlySalesOrders = parseBoolean(query?.onlySalesOrders);
+      const drafts = await service.listDrafts(
+        {
+          limit: parseLimit(query?.limit, 200),
+          onlySalesOrders
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: drafts,
+        count: drafts.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar drafts SAP");
+      reply.code(500).send({
+        error: "Erro ao listar drafts no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/invoices
+   * Lista notas/faturas do SAP.
+   */
+  app.get("/sap/invoices", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; onlyOpen?: string };
+
+    try {
+      const service = getEntitiesService();
+      const onlyOpen = parseBoolean(query?.onlyOpen);
+      const invoices = await service.listInvoices(
+        {
+          limit: parseLimit(query?.limit, 200),
+          onlyOpen
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: invoices,
+        count: invoices.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar invoices SAP");
+      reply.code(500).send({
+        error: "Erro ao listar invoices no SAP",
+        message,
+        correlationId,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  /**
+   * GET /api/sap/incoming-payments
+   * Lista pagamentos recebidos.
+   */
+  app.get("/sap/incoming-payments", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as { limit?: string; cardCode?: string };
+
+    try {
+      const service = getEntitiesService();
+      const payments = await service.listIncomingPayments(
+        {
+          limit: parseLimit(query?.limit, 200),
+          cardCode: query?.cardCode
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        items: payments,
+        count: payments.length,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido";
+      req.log.error({ error, correlationId }, "Erro ao listar incoming payments SAP");
+      reply.code(500).send({
+        error: "Erro ao listar incoming payments no SAP",
         message,
         correlationId,
         timestamp: new Date().toISOString()
