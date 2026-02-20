@@ -1,0 +1,276 @@
+{
+  "logo": {
+    "src": "https://images.tcdn.com.br/img/img_prod/1123510/1663874735_logogsnonline.png",
+    "alt": "gsnonline",
+    "width": 133,
+    "height": 60
+  },
+  "products": [
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_diamantina_200ml_51_1_45decf039b05a35747b1b6c7d12d4910.jpg",
+      "largeImageUrl": null,
+      "width": 918,
+      "height": 918,
+      "alt": "Garrafa Diamantina 200ml (Caixa com 35 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_cachaca_do_brasil_700_ml_193_1_6a2b07a7e024391c3feea4847db29b83.jpg",
+      "largeImageUrl": null,
+      "width": 918,
+      "height": 918,
+      "alt": "Garrafa Cachaça do Brasil 700 ml (Fardo com 24 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_pote_belem_240_ml_caixa_com_24_unidades_41_1_52d3770c8a252c5d98048be7c5aa4663.jpg",
+      "largeImageUrl": null,
+      "width": 918,
+      "height": 918,
+      "alt": "Pote Belém 240 ml (Caixa com 24 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_pote_mini_molho_pimenta_60_ml_caixa_com_90_unidades_17_1_c5b690d65a4ab2181e6d5b98282de670.jpg",
+      "largeImageUrl": null,
+      "width": 918,
+      "height": 918,
+      "alt": "Molho de Pimenta 150 ml (Caixa com 24 unidades)"
+    },
+    {
+      "name": "gsnonline",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/1663874735_logogsnonline.png",
+      "largeImageUrl": null,
+      "width": 133,
+      "height": 60,
+      "alt": "gsnonline"
+    },
+    {
+      "name": "Potes de Vidro",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/categoria_img_3_20220818103527.png",
+      "largeImageUrl": null,
+      "width": 24,
+      "height": 24,
+      "alt": "Potes de Vidro"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_pote_600_ml_caixa_com_15_unidades_445_1_29f0323bd0e3a515369a76c4f8e7ec5b.jpg",
+      "largeImageUrl": null,
+      "width": 232,
+      "height": 232,
+      "alt": "Pote Conserva 600 ml (Caixa com 15 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_andino_360_ml_47_1_c398b8c802a8b1119f7ffee393721ccd.jpg",
+      "largeImageUrl": null,
+      "width": 232,
+      "height": 232,
+      "alt": "Pote Andino 360 ml (Caixa com 24 unidades)"
+    },
+    {
+      "name": "Garrafas de Vidro",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/categoria_img_75_20220818105928.png",
+      "largeImageUrl": null,
+      "width": 24,
+      "height": 24,
+      "alt": "Garrafas de Vidro"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_paraiba_700_ml_fardo_com_15_unidades_471_1_e03cbb5797f757fafa9b391a77041df4.png",
+      "largeImageUrl": null,
+      "width": 218,
+      "height": 218,
+      "alt": "Garrafa Paraíba 700ML de Rosca (Fardo com 12 unidades)"
+    },
+    {
+      "name": "Rolhas, Tampas e Lacres",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/categoria_img_15_20220818104355.png",
+      "largeImageUrl": null,
+      "width": 24,
+      "height": 24,
+      "alt": "Rolhas, Tampas e Lacres"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_tampa_metlica_74_mm_caixa_c15_unidades_1_20251128170104_b1472ce868c1.jpeg",
+      "largeImageUrl": null,
+      "width": 239,
+      "height": 239,
+      "alt": "Tampa  Metálica 74 MM (Caixa c/15 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_tampa_metlica_74_mm_caixa_c15_unidades_2_20251128170104_ec635edb39ec.jpeg",
+      "largeImageUrl": null,
+      "width": 239,
+      "height": 239,
+      "alt": "Tampa  Metálica 74 MM (Caixa c/15 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_lacre_termoencolhvel_29mm_garrafas_pct_c_50_1_20260102175405_7e7a83a3fee7.png",
+      "largeImageUrl": null,
+      "width": 239,
+      "height": 239,
+      "alt": "Lacre TermoEncolhível 29mm - Garrafas (Pct c/ 50)"
+    },
+    {
+      "name": "Laboratório",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/categoria_img_19_20220818105350.png",
+      "largeImageUrl": null,
+      "width": 24,
+      "height": 24,
+      "alt": "Laboratório"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_levedura_para_cachaca_75_1_c446b2e2a1cfbdf91b9c357b6201d066.jpg",
+      "largeImageUrl": null,
+      "width": 248,
+      "height": 248,
+      "alt": "Levedura Para Cachaça CA-11"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_levedura_para_cachaca_75_2_a107285ca24632a5d0f73282cb71fd7d.jpg",
+      "largeImageUrl": null,
+      "width": 248,
+      "height": 248,
+      "alt": "Levedura Para Cachaça CA-11"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_frasco_erlenmeyer_500_ml_vidro_383_1_3bb9c004ab32e8bb5a8ac86bfc07e213.jpg",
+      "largeImageUrl": null,
+      "width": 248,
+      "height": 248,
+      "alt": "Frasco erlenmeyer 500 ml de vidro"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_copo_pate_156_ml_caixa_com_24_unidades_487_1_ab52351739d5687165bdc54edbd8c78f.jpg",
+      "largeImageUrl": null,
+      "width": 229,
+      "height": 229,
+      "alt": "Pote Vela/Copo Patê 156 ml (Caixa com 24 unidades)"
+    },
+    {
+      "name": "",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_azeite_500_ml_com_24_unidades_409_1_914a7d90cad2e466dda6e0c97ab019d1.jpg",
+      "largeImageUrl": null,
+      "width": 229,
+      "height": 229,
+      "alt": "Garrafa Azeite Transparente 500 ml (Fardo com 24 unidades)"
+    },
+    {
+      "name": "Banner",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/1695414666_banner_02_-_miniaturas_-_desktop.jpg",
+      "largeImageUrl": null,
+      "width": 1905,
+      "height": 595,
+      "alt": "Banner"
+    },
+    {
+      "name": "Banner",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/696690341393f_Aembalagemquevalorizaoseuproduto.png",
+      "largeImageUrl": null,
+      "width": 1905,
+      "height": 546,
+      "alt": "Banner"
+    },
+    {
+      "name": "Banner",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/69668a0d506f7_banner1.png",
+      "largeImageUrl": null,
+      "width": 1905,
+      "height": 546,
+      "alt": "Banner"
+    },
+    {
+      "name": "Banner",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/1695414666_banner_01_-_potes_alimenticios.jpg",
+      "largeImageUrl": null,
+      "width": 1905,
+      "height": 595,
+      "alt": "Banner"
+    },
+    {
+      "name": "Garrafa Kappa 750 ml (Caixa com 30 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_kappa_750_ml_caixa_com_30_unidades_1_20251126103137_9ed96b947be5.jpeg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Kappa 750 ml (Caixa com 30 unidades)"
+    },
+    {
+      "name": "Selo",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/1663874708_logogsnonline.png",
+      "largeImageUrl": null,
+      "width": 107,
+      "height": 48,
+      "alt": "Selo"
+    },
+    {
+      "name": "Garrafa Khloe 750 ml Rolha (Fardo com 20 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_khloe_750_ml_rolha_fardo_com_20_unidades_1_20251125165559_f62c92a1936a.jpeg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Khloe 750 ml Rolha (Fardo com 20 unidades)"
+    },
+    {
+      "name": "Garrafa Epsilon 750 ml (Caixa com 15 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_munich_750_ml_133_3_a90d9676c940f86837d5b975d30427e7.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Epsilon 750 ml (Caixa com 15 unidades)"
+    },
+    {
+      "name": "Garrafa Epsilon 750 ml (Caixa com 15 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_munich_750_ml_133_1_a01232ab948cdbac975a14edd717b99f.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Epsilon 750 ml (Caixa com 15 unidades)"
+    },
+    {
+      "name": "Garrafa Euro 500 ml (Fardo com 24 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_euro_500_ml_123_1_e119d341fff42e36183c1e0269dc95b3.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Euro 500 ml (Fardo com 24 unidades)"
+    },
+    {
+      "name": "Garrafa Suco 300 ml (Fardo com 24 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_suco_300_ml_caixa_com_24_unidades_177_1_c7ee882a1adfd5d115fceccd68ee6b0b.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Suco 300 ml (Fardo com 24 unidades)"
+    },
+    {
+      "name": "Garrafa Quimio Âmbar 1100ML de Rosca (Fardo com 12 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_quimio_1100_ml_109_1_f10036c1ec979a6b9f9be0842af4a31e.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Quimio Âmbar 1100ML de Rosca (Fardo com 12 unidades)"
+    },
+    {
+      "name": "Garrafa Tiradentes 700ML de Rosca (Fardo com 24 unidades)",
+      "imageUrl": "https://images.tcdn.com.br/img/img_prod/1123510/180_garrafa_tiradentes_700ml_fardo_com_24_unidades_545_1_f8897dcd2eac938c6d362efeece4f0d2.jpg",
+      "largeImageUrl": null,
+      "width": 339,
+      "height": 339,
+      "alt": "Garrafa Tiradentes 700ML de Rosca (Fardo com 24 unidades)"
+    }
+  ],
+  "totalProducts": 33,
+  "extractedAt": "2026-02-20T19:54:12.717Z"
+}

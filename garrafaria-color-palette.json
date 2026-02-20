@@ -1,0 +1,666 @@
+{
+  "website": "Garrafaria Serra Negra",
+  "url": "https://garrafariaserranegra.com.br/",
+  "extractedAt": "2026-02-20T20:16:23.078Z",
+  "logo": {
+    "found": true,
+    "images": [
+      {
+        "src": "https://garrafariaserranegra.com.br/wp-content/uploads/2023/05/LOGO-GARRAFARIA-SERRA-NEGRA-40-ANOS-SITE-OFICIAL.png",
+        "alt": "Garrafaria Serra Negra",
+        "width": 335,
+        "height": 78
+      },
+      {
+        "src": "https://garrafariaserranegra.com.br/wp-content/uploads/2023/05/LOGO-GARRAFARIA-SERRA-NEGRA-40-ANOS-SITE-OFICIAL.png",
+        "alt": "Woostify mobile logo",
+        "width": 470,
+        "height": 110
+      }
+    ]
+  },
+  "primaryColors": {
+    "body_background": {
+      "rgb": "rgba(0, 0, 0, 0)",
+      "hex": null
+    },
+    "body_text": {
+      "rgb": "rgb(33, 32, 32)",
+      "hex": "#212020"
+    }
+  },
+  "headerColors": [
+    {
+      "name": "header_0",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "home wp-singular page-template page-template-elementor_header_footer page page-id-43721 wp-custom-logo wp-embed-responsive wp-theme-woostify theme-woostify woocommerce-js infinite-scroll-active site-full-width-container has-header-layout-8 no-sidebar no-cart-sidebar disabled-sidebar-cart has-gallery-slider-layout has-variation-swatches ajax-single-add-to-cart elementor-default elementor-template-full-width elementor-kit-869 elementor-page elementor-page-43721 has-sticky-header sticky-header-for-all-devices e--ua-blink e--ua-chrome e--ua-webkit"
+    },
+    {
+      "name": "header_1",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "site-header header-layout-8"
+    },
+    {
+      "name": "header_2",
+      "background": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "site-header-inner"
+    },
+    {
+      "name": "header_3",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "header-content-top"
+    },
+    {
+      "name": "header_4",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "className": "tools-icon header-search-icon"
+    },
+    {
+      "name": "header_5",
+      "background": {
+        "rgb": "rgba(237, 227, 227, 0.58)",
+        "hex": "#ede3e3"
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "header-content-bottom"
+    },
+    {
+      "name": "header_6",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "className": "tools-icon header-search-icon"
+    },
+    {
+      "name": "header_7",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "dialog-search-header"
+    }
+  ],
+  "footerColors": [
+    {
+      "name": "footer_0",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      "className": "home wp-singular page-template page-template-elementor_header_footer page page-id-43721 wp-custom-logo wp-embed-responsive wp-theme-woostify theme-woostify woocommerce-js infinite-scroll-active site-full-width-container has-header-layout-8 no-sidebar no-cart-sidebar disabled-sidebar-cart has-gallery-slider-layout has-variation-swatches ajax-single-add-to-cart elementor-default elementor-template-full-width elementor-kit-869 elementor-page elementor-page-43721 has-sticky-header sticky-header-for-all-devices e--ua-blink e--ua-chrome e--ua-webkit"
+    },
+    {
+      "name": "footer_1",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "className": "woostify-footer-social-icon"
+    },
+    {
+      "name": "footer_2",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "site-footer"
+    },
+    {
+      "name": "footer_3",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "site-footer-widget footer-widget-col-4"
+    },
+    {
+      "name": "footer_4",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "widget_text widget footer-widget widget_custom_html"
+    },
+    {
+      "name": "footer_5",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "widget footer-widget widget_nav_menu"
+    },
+    {
+      "name": "footer_6",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "widget footer-widget widget_nav_menu"
+    },
+    {
+      "name": "footer_7",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "widget footer-widget widget_text"
+    },
+    {
+      "name": "footer_8",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "text": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "className": "woostify-footer-menu"
+    }
+  ],
+  "buttonColors": [
+    {
+      "text": "CATEGORIAS",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      }
+    },
+    {
+      "text": "SEARCH",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "textColor": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "border": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      }
+    },
+    {
+      "text": "FAÇA UMA COTAÇÃO",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "COMPRAR ONLINE",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "BAIXAR CATÁLOGO",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "SOLICITE UM ORÇAMENTO",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "CADASTRAR MINHA CONTA",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "JÁ TENHO UMA CONTA",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "SEARCH",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "textColor": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "border": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      }
+    },
+    {
+      "text": "",
+      "background": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "textColor": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      },
+      "border": {
+        "rgb": "rgba(0, 0, 0, 0)",
+        "hex": null
+      }
+    },
+    {
+      "text": "",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    },
+    {
+      "text": "",
+      "background": {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      "textColor": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      },
+      "border": {
+        "rgb": "rgb(255, 255, 255)",
+        "hex": "#ffffff"
+      }
+    }
+  ],
+  "topBackgroundColors": [
+    {
+      "rgb": "rgb(255, 255, 255)",
+      "hex": "#ffffff",
+      "usageCount": 26
+    },
+    {
+      "rgb": "rgb(170, 26, 27)",
+      "hex": "#aa1a1b",
+      "usageCount": 14
+    },
+    {
+      "rgb": "rgb(168, 28, 44)",
+      "hex": "#a81c2c",
+      "usageCount": 5
+    },
+    {
+      "rgb": "rgb(238, 238, 236)",
+      "hex": "#eeeeec",
+      "usageCount": 2
+    },
+    {
+      "rgb": "rgba(0, 0, 0, 0.5)",
+      "hex": "#000000",
+      "usageCount": 2
+    },
+    {
+      "rgb": "rgba(55, 58, 71, 0.9)",
+      "hex": "#373a47",
+      "usageCount": 2
+    },
+    {
+      "rgb": "rgb(241, 243, 245)",
+      "hex": "#f1f3f5",
+      "usageCount": 2
+    },
+    {
+      "rgb": "rgba(237, 227, 227, 0.58)",
+      "hex": "#ede3e3",
+      "usageCount": 1
+    },
+    {
+      "rgb": "rgb(0, 0, 0)",
+      "hex": "#000000",
+      "usageCount": 1
+    },
+    {
+      "rgb": "rgb(254, 254, 254)",
+      "hex": "#fefefe",
+      "usageCount": 1
+    }
+  ],
+  "topTextColors": [
+    {
+      "rgb": "rgb(33, 32, 32)",
+      "hex": "#212020",
+      "usageCount": 683
+    },
+    {
+      "rgb": "rgb(0, 0, 0)",
+      "hex": "#000000",
+      "usageCount": 331
+    },
+    {
+      "rgb": "rgb(255, 255, 255)",
+      "hex": "#ffffff",
+      "usageCount": 135
+    },
+    {
+      "rgb": "rgb(43, 43, 43)",
+      "hex": "#2b2b2b",
+      "usageCount": 87
+    },
+    {
+      "rgb": "rgb(170, 26, 27)",
+      "hex": "#aa1a1b",
+      "usageCount": 64
+    },
+    {
+      "rgb": "rgb(105, 114, 125)",
+      "hex": "#69727d",
+      "usageCount": 8
+    },
+    {
+      "rgb": "rgb(51, 71, 91)",
+      "hex": "#33475b",
+      "usageCount": 7
+    },
+    {
+      "rgb": "rgb(169, 29, 45)",
+      "hex": "#a91d2d",
+      "usageCount": 7
+    },
+    {
+      "rgb": "rgb(45, 45, 45)",
+      "hex": "#2d2d2d",
+      "usageCount": 4
+    },
+    {
+      "rgb": "rgba(0, 0, 0, 0)",
+      "hex": null,
+      "usageCount": 3
+    },
+    {
+      "rgb": "rgb(178, 34, 34)",
+      "hex": "#b22222",
+      "usageCount": 3
+    },
+    {
+      "rgb": "rgba(51, 51, 51, 0.8)",
+      "hex": "#333333",
+      "usageCount": 3
+    },
+    {
+      "rgb": "rgb(0, 145, 174)",
+      "hex": "#0091ae",
+      "usageCount": 1
+    },
+    {
+      "rgb": "rgb(168, 28, 44)",
+      "hex": "#a81c2c",
+      "usageCount": 1
+    },
+    {
+      "rgb": "rgba(0, 0, 0, 0.5)",
+      "hex": "#000000",
+      "usageCount": 1
+    },
+    {
+      "rgb": "rgba(0, 0, 0, 0.6)",
+      "hex": "#000000",
+      "usageCount": 1
+    }
+  ],
+  "specialColors": {
+    "gold": [],
+    "amber": [],
+    "darkTones": [
+      {
+        "rgb": "rgb(0, 0, 0)",
+        "hex": "#000000"
+      },
+      {
+        "rgb": "rgb(33, 32, 32)",
+        "hex": "#212020"
+      },
+      {
+        "rgb": "rgb(43, 43, 43)",
+        "hex": "#2b2b2b"
+      },
+      {
+        "rgb": "rgb(45, 45, 45)",
+        "hex": "#2d2d2d"
+      },
+      {
+        "rgb": "rgba(0, 0, 0, 0.5)",
+        "hex": "#000000"
+      },
+      {
+        "rgb": "rgba(55, 58, 71, 0.9)",
+        "hex": "#373a47"
+      },
+      {
+        "rgb": "rgba(0, 0, 0, 0.6)",
+        "hex": "#000000"
+      },
+      {
+        "rgb": "rgba(51, 51, 51, 0.8)",
+        "hex": "#333333"
+      }
+    ],
+    "green": [],
+    "red": [
+      {
+        "rgb": "rgb(168, 28, 44)",
+        "hex": "#a81c2c"
+      },
+      {
+        "rgb": "rgb(170, 26, 27)",
+        "hex": "#aa1a1b"
+      },
+      {
+        "rgb": "rgba(237, 227, 227, 0.58)",
+        "hex": "#ede3e3"
+      },
+      {
+        "rgb": "rgb(169, 29, 45)",
+        "hex": "#a91d2d"
+      },
+      {
+        "rgb": "rgb(178, 34, 34)",
+        "hex": "#b22222"
+      }
+    ]
+  },
+  "allUniqueColors": [
+    {
+      "rgb": "rgb(33, 32, 32)",
+      "hex": "#212020"
+    },
+    {
+      "rgb": "rgb(255, 255, 255)",
+      "hex": "#ffffff"
+    },
+    {
+      "rgb": "rgb(170, 26, 27)",
+      "hex": "#aa1a1b"
+    },
+    {
+      "rgb": "rgba(237, 227, 227, 0.58)",
+      "hex": "#ede3e3"
+    },
+    {
+      "rgb": "rgb(0, 145, 174)",
+      "hex": "#0091ae"
+    },
+    {
+      "rgb": "rgb(168, 28, 44)",
+      "hex": "#a81c2c"
+    },
+    {
+      "rgb": "rgb(43, 43, 43)",
+      "hex": "#2b2b2b"
+    },
+    {
+      "rgb": "rgb(0, 0, 0)",
+      "hex": "#000000"
+    }
+  ]
+}

@@ -632,6 +632,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         sapConfig: {
           label: "Configuracoes SAP",
           fields: {
+            ibgeCode: { label: "Codigo IBGE Municipio", type: "text", default: "" },
             GroupCode: { label: "Grupo de PN", type: "number", default: 100 },
             SalesPersonCode: { label: "Vendedor", type: "number", default: 9 },
             PriceListNum: { label: "Lista de Precos", type: "number", default: 1 },
@@ -821,7 +822,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           StreetNo: reg.street_number || streetNum,
           Block: reg.neighborhood || "Centro",
           City: reg.city || "A definir",
-          County: reg.city || "A definir",
+          County: (cfg.ibgeCode as string) || reg.city || "A definir",
           State: reg.state || "SP",
           ZipCode: reg.zip_code ? reg.zip_code.replace(/\D/g, "") : "00000000",
           Country: "BR",
