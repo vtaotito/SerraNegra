@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Instalar dependencias
 COPY portalb2b/package*.json ./
-RUN npm ci
+RUN npm install --ignore-scripts
 
 # Copiar codigo fonte
 COPY portalb2b/ ./
