@@ -808,7 +808,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           LanguageCode: cfg.LanguageCode ?? 29,
           BilltoDefault: "COB",
           ShipToDefault: "ENT",
-          ...buildBpLevelUdfs(udfBp),
+          Series: 70,
         };
 
         const streetNum = reg.address?.match(/\d+/)?.[0] || "S/N";
