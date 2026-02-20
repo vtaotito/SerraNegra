@@ -492,6 +492,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         { AddressType: "bo_ShipTo", AddressName: "ENTREGA", ...addrFields },
       ];
 
+      sapBody.BPFiscalTaxIDCollection = [
+        { Address: "COBRANCA", AddrType: "bo_BillTo", TaxId0: cnpjFormatted },
+        { Address: "ENTREGA", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted },
+      ];
+
       const response = await client.post<any>(
         "/BusinessPartners",
         sapBody,
