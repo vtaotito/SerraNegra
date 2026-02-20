@@ -461,6 +461,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         Notes: `Cadastro via Portal B2B em ${new Date().toISOString().split("T")[0]}`,
         Valid: "tYES",
         Frozen: "tNO",
+        SinglePayment: "tYES",
       };
 
       const streetNum = address?.match(/\d+/)?.[0] || "S/N";
