@@ -466,6 +466,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const addrFields = {
         Street: address || "",
         City: city || "",
+        County: city || "",
         State: state || "",
         ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "",
         Country: "BR",
