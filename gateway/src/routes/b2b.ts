@@ -805,5 +805,25 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
   );
 
+  // DEBUG: listar CNPJs dos clientes (remover)
+  app.get("/b2b/debug/cnpjs", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const entSvc = getEntitiesService();
+      const partners = await entSvc.listBusinessPartners({ limit: 100 }, correlationId);
+      const list = partners
+        .filter((p) => p.FederalTaxID)
+        .map((c) => ({
+          cardCode: c.CardCode,
+          cardName: c.CardName,
+          cnpj: c.FederalTaxID,
+          email: c.EmailAddress,
+        }));
+      reply.code(200).send({ customers: list, total: list.length });
+    } catch (error) {
+      reply.code(500).send({ error: (error as Error).message });
+    }
+  });
+
   app.log.info("Rotas B2B registradas");
 }
