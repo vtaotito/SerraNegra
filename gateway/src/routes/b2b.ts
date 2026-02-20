@@ -403,6 +403,26 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
   });
 
+  // DIAGNOSTICO TEMPORARIO - remover apos debug
+  app.get("/b2b/debug/bp-sample", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const client = getSapClient();
+      const res = await client.get<any>(
+        "/BusinessPartners?$top=1&$filter=CardType eq 'cCustomer'&$expand=BPAddresses,BPFiscalTaxIDCollection",
+        { correlationId }
+      );
+      reply.code(200).send(res.data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      let sapDetails: string | undefined;
+      if (error instanceof SapHttpError) {
+        sapDetails = error.responseBodyText;
+      }
+      reply.code(500).send({ error: message, sapDetails });
+    }
+  });
+
   // =============================================
   // AUTH - REGISTER (novo cliente no SAP B1)
   // =============================================
