@@ -408,10 +408,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     const correlationId = (req as any).correlationId as string;
     try {
       const client = getSapClient();
-      const res = await client.get<any>(
-        "/BusinessPartners?$top=1&$filter=CardType eq 'cCustomer'&$expand=BPAddresses,BPFiscalTaxIDCollection",
-        { correlationId }
-      );
+      const q = (req.query as any).q as string | undefined;
+      const path = q
+        ? `/BusinessPartners('${q}')`
+        : "/BusinessPartners?$top=1&$filter=CardType eq 'cCustomer'";
+      const res = await client.get<any>(path, { correlationId });
       reply.code(200).send(res.data);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
