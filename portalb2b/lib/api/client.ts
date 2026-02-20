@@ -21,7 +21,8 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== "undefined") {
+    const isLoginRequest = error.config?.url?.includes("/auth/login");
+    if (error.response?.status === 401 && typeof window !== "undefined" && !isLoginRequest) {
       localStorage.removeItem("b2b_token");
       localStorage.removeItem("b2b_customer");
       window.location.href = "/b2b/login";
