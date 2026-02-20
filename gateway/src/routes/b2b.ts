@@ -450,12 +450,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const client = getSapClient();
       const cardCode = `B${digits.slice(-14)}`.slice(0, 15);
 
+      const cnpjFormatted = digits.replace(
+        /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+        "$1.$2.$3/$4-$5"
+      );
+
       const sapBody: Record<string, unknown> = {
         CardCode: cardCode,
         CardName: razaoSocial,
         CardForeignName: nomeFantasia || undefined,
         CardType: "cCustomer",
-        FederalTaxID: digits,
+        FederalTaxID: cnpjFormatted,
+        UnifiedFederalTaxID: cnpjFormatted,
         EmailAddress: email,
         Phone1: phone || undefined,
         Notes: `Cadastro via Portal B2B em ${new Date().toISOString().split("T")[0]}`,
