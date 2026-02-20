@@ -511,12 +511,16 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         StreetNo: body.streetNumber || streetNum,
         Block: body.neighborhood || "Centro",
         City: city || "A definir",
-        County: city || "A definir",
+        County: body.ibgeCode || city || "A definir",
         State: state || "SP",
         ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "00000000",
         Country: "BR",
-        TypeOfAddress: streetPrefix,
+        TypeOfAddress: streetPrefix.toUpperCase(),
         FederalTaxID: cnpjFormatted,
+        U_TX_CNPJ: cnpjFormatted,
+        U_TX_IE: body.inscricaoEstadual || "ISENTO",
+        U_TX_IndFinal: "1",
+        U_TX_IndIEDest: "9",
       };
 
       sapBody.BPAddresses = [
