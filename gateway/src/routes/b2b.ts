@@ -361,25 +361,5 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
   });
 
-  // DEBUG: listar clientes disponíveis (remover em produção)
-  app.get("/b2b/debug/customers", async (req, reply) => {
-    const correlationId = (req as any).correlationId as string;
-    try {
-      const entSvc = getEntitiesService();
-      const partners = await entSvc.listBusinessPartners({ limit: 100 }, correlationId);
-      const customers = partners.map((c) => ({
-        cardCode: c.CardCode,
-        cardName: c.CardName,
-        cardType: c.CardType,
-        valid: c.Valid,
-        frozen: c.Frozen,
-      }));
-      reply.code(200).send({ customers, total: customers.length });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro";
-      reply.code(500).send({ error: message });
-    }
-  });
-
   app.log.info("Rotas B2B registradas");
 }
