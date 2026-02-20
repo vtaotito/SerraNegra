@@ -5,6 +5,7 @@ import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { B2BAuthService } from "../services/b2bAuthService.js";
+import { B2BRegistrationService } from "../services/b2bRegistrationService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
@@ -17,12 +18,20 @@ const B2B_DB_URL =
   process.env.B2B_DATABASE_URL ??
   "postgresql://wms:wms@postgres:5432/wms";
 
+const B2B_ADMIN_USER = process.env.B2B_ADMIN_USER ?? "admin";
+const B2B_ADMIN_PASS = process.env.B2B_ADMIN_PASSWORD ?? "gsn@comercial2026";
+
 interface B2BTokenPayload {
   cardCode: string;
   cardName: string;
   cnpj: string;
   email?: string;
   type: "b2b_customer";
+}
+
+interface B2BAdminTokenPayload {
+  user: string;
+  type: "b2b_admin";
 }
 
 function normalizeCnpj(raw: string): string {
@@ -64,6 +73,19 @@ function verifyTempToken(token: string): { cnpj: string } {
   }) as { cnpj: string };
 }
 
+function signAdminToken(user: string): string {
+  return jwt.sign({ user, type: "b2b_admin" } as B2BAdminTokenPayload, B2B_JWT_SECRET, {
+    expiresIn: "8h",
+    issuer: "wms-b2b-admin",
+  });
+}
+
+function verifyAdminToken(token: string): B2BAdminTokenPayload {
+  return jwt.verify(token, B2B_JWT_SECRET, {
+    issuer: "wms-b2b-admin",
+  }) as B2BAdminTokenPayload;
+}
+
 async function b2bAuth(req: FastifyRequest, reply: FastifyReply) {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith("Bearer ")) {
@@ -78,9 +100,37 @@ async function b2bAuth(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+async function b2bAdminAuth(req: FastifyRequest, reply: FastifyReply) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    reply.code(401).send({ error: "Token admin ausente" });
+    return;
+  }
+  try {
+    const payload = verifyAdminToken(authHeader.slice(7));
+    if (payload.type !== "b2b_admin") throw new Error("Tipo invalido");
+    (req as any).b2bAdmin = payload;
+  } catch {
+    reply.code(401).send({ error: "Token admin invalido ou expirado" });
+  }
+}
+
+function buildBpLevelUdfs(udfBp: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(udfBp)) {
+    if (value !== null && value !== undefined && value !== "") {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 export async function registerB2BRoutes(app: FastifyInstance) {
   const authService = new B2BAuthService(B2B_DB_URL);
   await authService.init();
+
+  const registrationService = new B2BRegistrationService(B2B_DB_URL);
+  await registrationService.init();
 
   let sapOrdersService: SapOrdersService | null = null;
   let sapEntitiesService: SapEntitiesService | null = null;
@@ -403,53 +453,17 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
   });
 
-  // DIAGNOSTICO TEMPORARIO - remover apos debug
-  app.get("/b2b/debug/bp-sample", async (req, reply) => {
-    const correlationId = (req as any).correlationId as string;
-    try {
-      const client = getSapClient();
-      const q = (req.query as any).q as string | undefined;
-      const path = q
-        ? `/BusinessPartners('${q}')`
-        : "/BusinessPartners?$top=1&$filter=CardType eq 'cCustomer'";
-      const res = await client.get<any>(path, { correlationId });
-      reply.code(200).send(res.data);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erro";
-      let sapDetails: string | undefined;
-      if (error instanceof SapHttpError) {
-        sapDetails = error.responseBodyText;
-      }
-      reply.code(500).send({ error: message, sapDetails });
-    }
-  });
-
   // =============================================
-  // AUTH - REGISTER (novo cliente no SAP B1)
+  // AUTH - REGISTER (salva localmente para aprovacao)
   // =============================================
   app.post("/b2b/auth/register", async (req, reply) => {
     const body = req.body as any;
     const correlationId = (req as any).correlationId as string;
 
-    const {
-      cnpj,
-      razaoSocial,
-      nomeFantasia,
-      email,
-      phone,
-      address,
-      city,
-      state,
-      zipCode,
-      contactName,
-    } = body;
+    const { cnpj, razaoSocial, email } = body;
 
     if (!cnpj || !razaoSocial || !email) {
-      reply
-        .code(400)
-        .send({
-          error: "CNPJ, razao social e email sao obrigatorios",
-        });
+      reply.code(400).send({ error: "CNPJ, razao social e email sao obrigatorios" });
       return;
     }
 
@@ -462,138 +476,419 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     try {
       const existing = await findPartnerByCnpj(digits, correlationId);
       if (existing) {
-        reply
-          .code(409)
-          .send({ error: "CNPJ ja cadastrado no sistema" });
+        reply.code(409).send({ error: "CNPJ ja cadastrado no sistema" });
         return;
       }
 
-      const client = getSapClient();
-      const cardCode = `B${digits.slice(-14)}`.slice(0, 15);
+      const alreadyPending = await registrationService.findByCnpj(digits);
+      if (alreadyPending) {
+        reply.code(409).send({
+          error: "Cadastro ja em analise pela equipe comercial",
+          status: alreadyPending.status,
+        });
+        return;
+      }
 
-      const cnpjFormatted = digits.replace(
-        /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
-        "$1.$2.$3/$4-$5"
-      );
-
-      const sapBody: Record<string, unknown> = {
-        CardCode: cardCode,
-        CardName: razaoSocial,
-        CardForeignName: nomeFantasia || undefined,
-        CardType: "cCustomer",
-        GroupCode: 100,
-        FederalTaxID: cnpjFormatted,
-        UnifiedFederalTaxID: cnpjFormatted,
-        EmailAddress: email,
-        Phone1: phone || undefined,
-        Notes: `Cadastro via Portal B2B em ${new Date().toISOString().split("T")[0]}`,
-        Valid: "tYES",
-        Frozen: "tNO",
-        SinglePayment: "tYES",
-        CompanyPrivate: "cCompany",
-        PayTermsGrpCode: -1,
-        PriceListNum: 1,
-        Currency: "R$",
-        SalesPersonCode: 9,
-        DebitorAccount: "1.1.2.01.001",
-        DownPaymentClearAct: "2.1.6.02.001",
-        LanguageCode: 29,
-        BilltoDefault: "COB",
-        ShipToDefault: "ENT",
-      };
-
-      const streetNum = address?.match(/\d+/)?.[0] || "S/N";
-      const streetPrefixMatch = address?.match(/^(Rua|Av\.?|Avenida|Trav\.?|Travessa|Al\.?|Alameda|Rod\.?|Rodovia|Estr\.?|Estrada|Pra[cç]a)/i);
-      const streetPrefix = body.streetType || streetPrefixMatch?.[1] || "Rua";
-
-      const addrFields = {
-        Street: address || "A definir",
-        StreetNo: body.streetNumber || streetNum,
-        Block: body.neighborhood || "Centro",
-        City: city || "A definir",
-        County: body.ibgeCode || city || "A definir",
-        State: state || "SP",
-        ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "00000000",
-        Country: "BR",
-        TypeOfAddress: streetPrefix.toUpperCase(),
-        FederalTaxID: cnpjFormatted,
-        U_TX_CNPJ: cnpjFormatted,
-        U_TX_IE: body.inscricaoEstadual || "ISENTO",
-        U_TX_IndFinal: "1",
-        U_TX_IndIEDest: "9",
-      };
-
-      sapBody.BPAddresses = [
-        { AddressType: "bo_BillTo", AddressName: "COB", ...addrFields },
-        { AddressType: "bo_ShipTo", AddressName: "ENT", ...addrFields },
-      ];
-
-      sapBody.BPFiscalTaxIDCollection = [
-        { Address: "COB", AddrType: "bo_BillTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
-        { Address: "ENT", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: "Isento", CNAECode: -1 },
-      ];
-
-      sapBody.BPBranchAssignment = [
-        { BPLID: 1, DisabledForBP: "tNO" },
-      ];
-
-      sapBody.BPPaymentMethods = [
-        { PaymentMethodCode: "Dinheiro", RowNumber: 0 },
-      ];
-
-      const response = await client.post<any>(
-        "/BusinessPartners",
-        sapBody,
-        { correlationId }
-      );
-      const created = response.data;
-
-      await authService.upsertCredential({
-        cardCode: created.CardCode ?? cardCode,
+      const reg = await registrationService.create({
         cnpj: digits,
-        cardName: razaoSocial,
-        email,
+        razaoSocial: body.razaoSocial,
+        nomeFantasia: body.nomeFantasia,
+        email: body.email,
+        phone: body.phone,
+        contactName: body.contactName,
+        address: body.address,
+        streetNumber: body.streetNumber,
+        neighborhood: body.neighborhood,
+        city: body.city,
+        state: body.state,
+        zipCode: body.zipCode,
+        inscricaoEstadual: body.inscricaoEstadual,
       });
-
-      const otp = await authService.generateOtp(digits);
-      const emailSent = await sendOtpEmail(email, otp, razaoSocial);
 
       reply.code(201).send({
         ok: true,
-        cardCode: created.CardCode ?? cardCode,
-        message: "Cliente cadastrado com sucesso",
-        emailSent,
-        maskedEmail: maskEmail(email),
-        ...(!emailSent ? { devOtp: otp } : {}),
+        message: "Cadastro recebido! A equipe comercial analisara seus dados em breve.",
+        registrationId: reg.id,
+        status: "pending",
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Erro ao cadastrar";
-
-      let sapDetails: string | undefined;
-      let sapStatus: number | undefined;
-      if (error instanceof SapHttpError) {
-        sapStatus = error.status;
-        sapDetails = error.responseBodyText;
-        req.log.error(
-          { correlationId, sapStatus, sapDetails, errorMessage: message },
-          "Erro SAP ao registrar B2B"
-        );
-      } else {
-        req.log.error(
-          { correlationId, errorMessage: message, errorName: error instanceof Error ? error.name : typeof error },
-          "Erro register B2B"
-        );
-      }
-
-      reply.code(500).send({
-        error: "Erro ao cadastrar cliente",
-        message,
-        sapStatus,
-        sapDetails,
-      });
+      const message = error instanceof Error ? error.message : "Erro ao cadastrar";
+      req.log.error({ correlationId, errorMessage: message }, "Erro register B2B");
+      reply.code(500).send({ error: "Erro ao cadastrar cliente", message });
     }
   });
+
+  // =============================================
+  // ADMIN - LOGIN
+  // =============================================
+  app.post("/b2b/admin/login", async (req, reply) => {
+    const { user, password } = req.body as any;
+
+    if (!user || !password) {
+      reply.code(400).send({ error: "Usuario e senha sao obrigatorios" });
+      return;
+    }
+
+    if (user !== B2B_ADMIN_USER || password !== B2B_ADMIN_PASS) {
+      reply.code(401).send({ error: "Credenciais invalidas" });
+      return;
+    }
+
+    const token = signAdminToken(user);
+    reply.code(200).send({ token, user });
+  });
+
+  // =============================================
+  // ADMIN - LISTAR REGISTROS PENDENTES
+  // =============================================
+  app.get(
+    "/b2b/admin/registrations",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const status = (req.query as any).status as string | undefined;
+      try {
+        const items = await registrationService.list(status);
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - DETALHE DE REGISTRO
+  // =============================================
+  app.get(
+    "/b2b/admin/registrations/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      try {
+        const reg = await registrationService.findById(Number(id));
+        if (!reg) {
+          reply.code(404).send({ error: "Registro nao encontrado" });
+          return;
+        }
+        reply.code(200).send(reg);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - METADADOS UDFs (campos disponiveis)
+  // =============================================
+  app.get(
+    "/b2b/admin/udf-metadata",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      reply.code(200).send({
+        udfBp: {
+          label: "UDFs do Parceiro de Negocios",
+          fields: {
+            U_TX_IndFinal: { label: "Indicador Consumidor Final", type: "select", options: ["0","1"], default: "1" },
+            U_TX_IndIEDest: { label: "Indicador IE Destinatario", type: "select", options: ["1","2","9"], default: "9" },
+            U_TX_SN: { label: "Simples Nacional", type: "text" },
+            U_TX_ProdRural: { label: "Produtor Rural", type: "text" },
+            U_TX_PrestServ: { label: "Prestador de Servico", type: "text" },
+            U_TX_ExImp: { label: "Exportador/Importador", type: "text" },
+            U_TX_SitResp: { label: "Situacao Responsavel", type: "text" },
+            U_TX_IndNat: { label: "Indicador Natureza", type: "text" },
+            U_TX_Pagador: { label: "Pagador", type: "text" },
+            U_TX_Rendimento: { label: "Rendimento", type: "text" },
+            U_TX_DCReEmpColigada: { label: "DC RE Empresa Coligada", type: "text" },
+            U_TX_TpEnteGov: { label: "Tipo Ente Governamental", type: "text", default: "-1" },
+            U_TX_RegraImTomRibPreto: { label: "Regra Imposto Tomador Rib.Preto", type: "text", default: "0" },
+            U_AGL_ECF_ComExp: { label: "ECF Com Exportacao", type: "select", options: ["S","N"], default: "N" },
+            U_AGL_NAT_FRT: { label: "Natureza Frete", type: "number", default: 9 },
+            U_AGL_CONTR_IPI: { label: "Contribuinte IPI", type: "select", options: ["0","1"], default: "0" },
+            U_AGL_TP_PN: { label: "Tipo PN (Agilitas)", type: "text" },
+            U_AGL_LPRECO_PMC: { label: "Lista Preco PMC", type: "text" },
+            U_AGL_IND_NAT_RET: { label: "Indicador Natureza Retencao", type: "text" },
+            U_nfe_RNTC: { label: "RNTC", type: "text" },
+            U_nfe_CPRB: { label: "CPRB", type: "select", options: ["S","N"], default: "N" },
+            U_SX_MercadosAlcoolicos: { label: "Mercados Alcoolicos", type: "text" },
+            U_SX_MercadosNaoAlcoolicos: { label: "Mercados Nao Alcoolicos", type: "text" },
+            U_SX_MercadoAlimenticio: { label: "Mercado Alimenticio", type: "text" },
+            U_SX_SuspensaoIPI: { label: "Suspensao IPI", type: "select", options: ["S","N"], default: "N" },
+            U_HCO_GrupoEconomico: { label: "Grupo Economico", type: "text" },
+            U_IV_BP_PayerID: { label: "Payer ID", type: "text" },
+            U_IB_BoletoGeradoPor: { label: "Boleto Gerado Por", type: "text", default: "0" },
+            U_ImprimirBoleto: { label: "Imprimir Boleto", type: "number", default: 1 },
+          },
+        },
+        udfAddr: {
+          label: "UDFs do Endereco",
+          fields: {
+            U_TX_IE: { label: "Inscricao Estadual", type: "text", default: "ISENTO" },
+            U_TX_CNPJ: { label: "CNPJ (endereco)", type: "text" },
+            U_TX_IndFinal: { label: "Ind. Consumidor Final (end.)", type: "select", options: ["0","1"] },
+            U_TX_IndIEDest: { label: "Ind. IE Destinatario (end.)", type: "select", options: ["1","2","9"] },
+          },
+        },
+        sapConfig: {
+          label: "Configuracoes SAP",
+          fields: {
+            GroupCode: { label: "Grupo de PN", type: "number", default: 100 },
+            SalesPersonCode: { label: "Vendedor", type: "number", default: 9 },
+            PriceListNum: { label: "Lista de Precos", type: "number", default: 1 },
+            Currency: { label: "Moeda", type: "text", default: "R$" },
+            LanguageCode: { label: "Idioma", type: "number", default: 29 },
+          },
+        },
+      });
+    },
+  );
+
+  // =============================================
+  // ADMIN - ATUALIZAR UDFs e dados do registro
+  // =============================================
+  app.patch(
+    "/b2b/admin/registrations/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const body = req.body as any;
+
+      try {
+        const updated = await registrationService.updateFields(Number(id), {
+          udfBp: body.udfBp,
+          udfAddr: body.udfAddr,
+          sapConfig: body.sapConfig,
+          adminNotes: body.adminNotes,
+          reviewedBy: admin.user,
+          address: body.address,
+          streetNumber: body.streetNumber,
+          neighborhood: body.neighborhood,
+          city: body.city,
+          state: body.state,
+          zipCode: body.zipCode,
+          inscricaoEstadual: body.inscricaoEstadual,
+          phone: body.phone,
+          contactName: body.contactName,
+        });
+
+        if (!updated) {
+          reply.code(404).send({ error: "Registro nao encontrado" });
+          return;
+        }
+
+        reply.code(200).send(updated);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - APROVAR REGISTRO
+  // =============================================
+  app.post(
+    "/b2b/admin/registrations/:id/approve",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const { notes } = (req.body as any) ?? {};
+
+      try {
+        const updated = await registrationService.setStatus(
+          Number(id), "approved", admin.user, notes,
+        );
+        if (!updated) {
+          reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
+          return;
+        }
+        reply.code(200).send(updated);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - REJEITAR REGISTRO
+  // =============================================
+  app.post(
+    "/b2b/admin/registrations/:id/reject",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const { notes } = (req.body as any) ?? {};
+
+      try {
+        const updated = await registrationService.setStatus(
+          Number(id), "rejected", admin.user, notes,
+        );
+        if (!updated) {
+          reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
+          return;
+        }
+        reply.code(200).send(updated);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - PUBLICAR NO SAP B1
+  // =============================================
+  app.post(
+    "/b2b/admin/registrations/:id/publish",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const correlationId = (req as any).correlationId as string;
+
+      try {
+        const reg = await registrationService.findById(Number(id));
+        if (!reg) {
+          reply.code(404).send({ error: "Registro nao encontrado" });
+          return;
+        }
+        if (reg.status !== "approved") {
+          reply.code(400).send({ error: `Registro deve estar aprovado (atual: ${reg.status})` });
+          return;
+        }
+
+        const digits = normalizeCnpj(reg.cnpj);
+        const existing = await findPartnerByCnpj(digits, correlationId);
+        if (existing) {
+          await registrationService.markPublished(Number(id), existing.CardCode);
+          reply.code(200).send({
+            ok: true,
+            message: "BP ja existia no SAP",
+            cardCode: existing.CardCode,
+          });
+          return;
+        }
+
+        const client = getSapClient();
+        const cardCode = `B${digits.slice(-14)}`.slice(0, 15);
+        const cnpjFormatted = digits.replace(
+          /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+          "$1.$2.$3/$4-$5",
+        );
+
+        const cfg = reg.sap_config ?? {};
+        const udfBp = reg.udf_bp ?? {};
+        const udfAddr = reg.udf_addr ?? {};
+
+        const sapBody: Record<string, unknown> = {
+          CardCode: cardCode,
+          CardName: reg.razao_social,
+          CardForeignName: reg.nome_fantasia || undefined,
+          CardType: "cCustomer",
+          GroupCode: cfg.GroupCode ?? 100,
+          FederalTaxID: cnpjFormatted,
+          UnifiedFederalTaxID: cnpjFormatted,
+          EmailAddress: reg.email,
+          Phone1: reg.phone || undefined,
+          Notes: `Cadastro via Portal B2B em ${new Date().toISOString().split("T")[0]}`,
+          Valid: "tYES",
+          Frozen: "tNO",
+          SinglePayment: "tYES",
+          CompanyPrivate: "cCompany",
+          PayTermsGrpCode: -1,
+          PriceListNum: cfg.PriceListNum ?? 1,
+          Currency: cfg.Currency ?? "R$",
+          SalesPersonCode: cfg.SalesPersonCode ?? 9,
+          DebitorAccount: "1.1.2.01.001",
+          DownPaymentClearAct: "2.1.6.02.001",
+          LanguageCode: cfg.LanguageCode ?? 29,
+          BilltoDefault: "COB",
+          ShipToDefault: "ENT",
+          ...buildBpLevelUdfs(udfBp),
+        };
+
+        const streetNum = reg.address?.match(/\d+/)?.[0] || "S/N";
+        const streetPrefixMatch = reg.address?.match(
+          /^(Rua|Av\.?|Avenida|Trav\.?|Travessa|Al\.?|Alameda|Rod\.?|Rodovia|Estr\.?|Estrada|Pra[cç]a)/i,
+        );
+        const streetPrefix = streetPrefixMatch?.[1] || "Rua";
+
+        const addrFields = {
+          Street: reg.address || "A definir",
+          StreetNo: reg.street_number || streetNum,
+          Block: reg.neighborhood || "Centro",
+          City: reg.city || "A definir",
+          County: reg.city || "A definir",
+          State: reg.state || "SP",
+          ZipCode: reg.zip_code ? reg.zip_code.replace(/\D/g, "") : "00000000",
+          Country: "BR",
+          TypeOfAddress: streetPrefix.toUpperCase(),
+          FederalTaxID: cnpjFormatted,
+          U_TX_CNPJ: (udfAddr.U_TX_CNPJ as string) || cnpjFormatted,
+          U_TX_IE: (udfAddr.U_TX_IE as string) || reg.inscricao_estadual || "ISENTO",
+          U_TX_IndFinal: (udfAddr.U_TX_IndFinal as string) || "1",
+          U_TX_IndIEDest: (udfAddr.U_TX_IndIEDest as string) || "9",
+        };
+
+        sapBody.BPAddresses = [
+          { AddressType: "bo_BillTo", AddressName: "COB", ...addrFields },
+          { AddressType: "bo_ShipTo", AddressName: "ENT", ...addrFields },
+        ];
+
+        sapBody.BPFiscalTaxIDCollection = [
+          { Address: "COB", AddrType: "bo_BillTo", TaxId0: cnpjFormatted, TaxId1: (udfAddr.U_TX_IE as string) || "Isento", CNAECode: -1 },
+          { Address: "ENT", AddrType: "bo_ShipTo", TaxId0: cnpjFormatted, TaxId1: (udfAddr.U_TX_IE as string) || "Isento", CNAECode: -1 },
+        ];
+
+        sapBody.BPBranchAssignment = [{ BPLID: 1, DisabledForBP: "tNO" }];
+        sapBody.BPPaymentMethods = [{ PaymentMethodCode: "Dinheiro", RowNumber: 0 }];
+
+        const response = await client.post<any>("/BusinessPartners", sapBody, { correlationId });
+        const created = response.data;
+        const finalCardCode = created.CardCode ?? cardCode;
+
+        await registrationService.markPublished(Number(id), finalCardCode);
+
+        await authService.upsertCredential({
+          cardCode: finalCardCode,
+          cnpj: digits,
+          cardName: reg.razao_social,
+          email: reg.email,
+        });
+
+        const otp = await authService.generateOtp(digits);
+        const emailSent = await sendOtpEmail(reg.email, otp, reg.razao_social);
+
+        reply.code(201).send({
+          ok: true,
+          message: "BP criado no SAP com sucesso",
+          cardCode: finalCardCode,
+          emailSent,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro ao publicar";
+        let sapDetails: string | undefined;
+        let sapStatus: number | undefined;
+        if (error instanceof SapHttpError) {
+          sapStatus = error.status;
+          sapDetails = error.responseBodyText;
+        }
+        req.log.error({ correlationId, sapStatus, sapDetails, errorMessage: message }, "Erro publicar BP no SAP");
+
+        await registrationService.markPublishError(Number(id), sapDetails ?? message);
+
+        reply.code(500).send({
+          error: "Erro ao publicar no SAP",
+          message,
+          sapStatus,
+          sapDetails,
+        });
+      }
+    },
+  );
 
   // =============================================
   // AUTH - ME

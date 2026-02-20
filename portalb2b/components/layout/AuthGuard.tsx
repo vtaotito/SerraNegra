@@ -9,11 +9,17 @@ export function AuthGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
 
+  const isPublicRoute = pathname === "/login" || pathname.startsWith("/admin");
+
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && pathname !== "/login") {
+    if (!isLoading && !isAuthenticated && !isPublicRoute) {
       router.replace("/login");
     }
-  }, [isAuthenticated, isLoading, pathname, router]);
+  }, [isAuthenticated, isLoading, isPublicRoute, pathname, router]);
+
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
 
   if (isLoading) {
     return (
@@ -26,7 +32,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!isAuthenticated && pathname !== "/login") {
+  if (!isAuthenticated) {
     return null;
   }
 

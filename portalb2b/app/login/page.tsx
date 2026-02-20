@@ -35,7 +35,8 @@ type Step =
   | "email"
   | "otp"
   | "set-password"
-  | "register";
+  | "register"
+  | "pending-approval";
 
 interface LookupResult {
   status: "has_password" | "needs_verification" | "not_found";
@@ -240,27 +241,17 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await post<{
+      await post<{
         ok: boolean;
-        cardCode: string;
-        emailSent: boolean;
-        devOtp?: string;
-        maskedEmail: string;
+        registrationId: number;
+        status: string;
+        message: string;
       }>("/b2b/auth/register", {
         cnpj: cleanCnpj(cnpj),
         ...regForm,
       });
 
-      setLookupResult({
-        status: "needs_verification",
-        cardCode: res.cardCode,
-        cardName: regForm.razaoSocial,
-        maskedEmail: res.maskedEmail,
-        hasEmail: true,
-      });
-      setEmailInput(regForm.email);
-      if (res.devOtp) setDevOtp(res.devOtp);
-      setStep("otp");
+      setStep("pending-approval");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Erro ao cadastrar"
@@ -309,6 +300,7 @@ export default function LoginPage() {
               {step === "otp" && "Codigo de verificacao"}
               {step === "set-password" && "Crie sua senha de acesso"}
               {step === "register" && "Cadastro de novo cliente"}
+              {step === "pending-approval" && "Cadastro recebido!"}
             </CardDescription>
           </div>
         </CardHeader>
@@ -321,7 +313,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {step !== "cnpj" && (
+          {step !== "cnpj" && step !== "pending-approval" && (
             <button
               type="button"
               onClick={goBack}
@@ -726,6 +718,35 @@ export default function LoginPage() {
                 {loading ? "Cadastrando..." : "Cadastrar"}
               </Button>
             </form>
+          )}
+
+          {/* STEP: PENDING APPROVAL */}
+          {step === "pending-approval" && (
+            <div className="space-y-4 text-center">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 border-2 border-emerald-200">
+                <Check className="h-8 w-8 text-emerald-600" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-base font-medium text-foreground">
+                  Cadastro enviado com sucesso!
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Sua solicitacao foi recebida e sera analisada pela nossa equipe comercial.
+                  Voce recebera um email quando o cadastro for aprovado.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  setStep("cnpj");
+                  setCnpj("");
+                  setRegForm({ razaoSocial: "", nomeFantasia: "", email: "", phone: "", address: "", city: "", state: "", zipCode: "", contactName: "" });
+                }}
+                variant="outline"
+                className="mt-2"
+              >
+                Voltar ao inicio
+              </Button>
+            </div>
           )}
 
           <div className="mt-6 text-center space-y-1">
