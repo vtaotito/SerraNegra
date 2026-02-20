@@ -464,6 +464,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       };
 
       const streetNum = address?.match(/\d+/)?.[0] || "S/N";
+      const streetPrefixMatch = address?.match(/^(Rua|Av\.?|Avenida|Trav\.?|Travessa|Al\.?|Alameda|Rod\.?|Rodovia|Estr\.?|Estrada|Pra[cç]a)/i);
+      const streetPrefix = body.streetType || streetPrefixMatch?.[1] || "Rua";
+
       const addrFields = {
         Street: address || "A definir",
         StreetNo: body.streetNumber || streetNum,
@@ -473,6 +476,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         State: state || "SP",
         ZipCode: zipCode ? zipCode.replace(/\D/g, "") : "00000000",
         Country: "BR",
+        AddressExtension: {
+          StreetPrefix: streetPrefix,
+        },
       };
 
       sapBody.BPAddresses = [
