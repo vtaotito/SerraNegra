@@ -19,9 +19,9 @@ import {
 import { useState } from "react";
 
 const NAV_ITEMS = [
-  { href: "/b2b", label: "Inicio", icon: LayoutDashboard },
-  { href: "/b2b/catalogo", label: "Catalogo", icon: Package },
-  { href: "/b2b/pedidos", label: "Meus Pedidos", icon: ClipboardList },
+  { href: "/", label: "Inicio", icon: LayoutDashboard },
+  { href: "/catalogo", label: "Catalogo", icon: Package },
+  { href: "/pedidos", label: "Meus Pedidos", icon: ClipboardList },
 ];
 
 export function Header() {
@@ -34,7 +34,7 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
-          <Link href="/b2b" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Package className="h-4 w-4 text-primary-foreground" />
             </div>
@@ -43,7 +43,7 @@ export function Header() {
 
           <nav className="hidden md:flex items-center gap-1">
             {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href || (item.href !== "/b2b" && pathname.startsWith(item.href));
+              const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
               return (
                 <Link
                   key={item.href}
@@ -64,7 +64,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link href="/b2b/carrinho">
+          <Link href="/carrinho">
             <Button variant="ghost" size="icon" className="relative">
               <ShoppingCart className="h-5 w-5" />
               {totalItems > 0 && (

@@ -81,7 +81,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
-            <Link href="/b2b/pedidos">
+            <Link href="/pedidos">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-4 w-4" />
               </Button>

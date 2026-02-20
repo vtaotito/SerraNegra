@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   if (isAuthenticated) {
-    router.replace("/b2b");
+    router.replace("/");
     return null;
   }
 
@@ -28,7 +28,7 @@ export default function LoginPage() {
     setError("");
     try {
       await login(cardCode.trim());
-      router.replace("/b2b");
+      router.replace("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao fazer login");
     } finally {

@@ -11,7 +11,7 @@ export function AuthGuard({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && pathname !== "/b2b/login") {
-      router.replace("/b2b/login");
+      router.replace("/login");
     }
   }, [isAuthenticated, isLoading, pathname, router]);
 

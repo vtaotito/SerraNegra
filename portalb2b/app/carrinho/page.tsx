@@ -42,7 +42,7 @@ export default function CarrinhoPage() {
         description: `Pedido #${res.docNum} registrado no SAP`,
       });
       clearCart();
-      router.push("/b2b/pedidos");
+      router.push("/pedidos");
     } catch (error) {
       toast.error("Erro ao criar pedido", {
         description: error instanceof Error ? error.message : "Tente novamente",
@@ -65,7 +65,7 @@ export default function CarrinhoPage() {
             <p className="text-muted-foreground">
               Adicione produtos do catalogo para montar seu pedido
             </p>
-            <Link href="/b2b/catalogo">
+            <Link href="/catalogo">
               <Button className="mt-2">
                 <Package className="h-4 w-4" />
                 Ir para o Catalogo
@@ -83,7 +83,7 @@ export default function CarrinhoPage() {
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
-            <Link href="/b2b/catalogo">
+            <Link href="/catalogo">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="h-4 w-4" />
               </Button>

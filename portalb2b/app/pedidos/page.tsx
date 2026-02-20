@@ -110,7 +110,7 @@ export default function PedidosPage() {
                   className="pl-9"
                 />
               </div>
-              <Link href="/b2b/catalogo">
+              <Link href="/catalogo">
                 <Button>
                   <Package className="h-4 w-4" />
                   <span className="hidden sm:inline">Novo Pedido</span>
@@ -151,7 +151,7 @@ export default function PedidosPage() {
                     ? "Tente alterar os filtros"
                     : "Voce ainda nao possui pedidos"}
                 </p>
-                <Link href="/b2b/catalogo" className="mt-4">
+                <Link href="/catalogo" className="mt-4">
                   <Button>Fazer primeiro pedido</Button>
                 </Link>
               </CardContent>
@@ -159,7 +159,7 @@ export default function PedidosPage() {
           ) : (
             <div className="space-y-3">
               {filtered.map((order) => (
-                <Link key={order.orderId} href={`/b2b/pedidos/${order.sapDocEntry}`}>
+                <Link key={order.orderId} href={`/pedidos/${order.sapDocEntry}`}>
                   <Card className="transition-all hover:shadow-md hover:border-primary/20 cursor-pointer">
                     <CardContent className="flex items-center gap-4 p-4 sm:p-5">
                       <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">

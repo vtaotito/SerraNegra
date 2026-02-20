@@ -105,7 +105,7 @@ export default function DashboardPage() {
 
           {/* Quick Actions */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Link href="/b2b/catalogo">
+            <Link href="/catalogo">
               <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-primary/30">
                 <CardContent className="flex items-center gap-4 p-6">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
@@ -120,7 +120,7 @@ export default function DashboardPage() {
               </Card>
             </Link>
 
-            <Link href="/b2b/pedidos">
+            <Link href="/pedidos">
               <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-primary/30">
                 <CardContent className="flex items-center gap-4 p-6">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
@@ -135,7 +135,7 @@ export default function DashboardPage() {
               </Card>
             </Link>
 
-            <Link href="/b2b/carrinho">
+            <Link href="/carrinho">
               <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-primary/30">
                 <CardContent className="flex items-center gap-4 p-6">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -155,7 +155,7 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Pedidos Recentes</CardTitle>
-              <Link href="/b2b/pedidos">
+              <Link href="/pedidos">
                 <Button variant="ghost" size="sm">
                   Ver todos <ArrowRight className="h-3 w-3" />
                 </Button>
@@ -172,7 +172,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col items-center py-8 text-center">
                   <ClipboardList className="h-10 w-10 text-muted-foreground/30 mb-3" />
                   <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
-                  <Link href="/b2b/catalogo" className="mt-3">
+                  <Link href="/catalogo" className="mt-3">
                     <Button variant="outline" size="sm">
                       Fazer primeiro pedido
                     </Button>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
                   {data.recentOrders.map((order) => (
                     <Link
                       key={order.orderId}
-                      href={`/b2b/pedidos/${order.sapDocEntry}`}
+                      href={`/pedidos/${order.sapDocEntry}`}
                       className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-muted/50"
                     >
                       <div className="space-y-1">
