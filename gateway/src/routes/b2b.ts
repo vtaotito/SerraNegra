@@ -10,6 +10,9 @@ import {
   B2BCatalogService,
   fetchAllGsnProducts,
   matchSapToGsn,
+  EXCLUDED_SAP_GROUPS,
+  setSapGroupNames,
+  getGroupDisplayName,
 } from "../services/b2bCatalogService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
@@ -139,6 +142,27 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const catalogService = new B2BCatalogService(B2B_DB_URL);
   await catalogService.init();
+
+  // Seed test credential
+  try {
+    const testCnpj = "45825180000189";
+    const existing = await authService.findByCnpj(testCnpj);
+    if (!existing) {
+      await authService.upsertCredential({
+        cardCode: "C10867",
+        cnpj: testCnpj,
+        cardName: "VTAO TITO TECH ME LTDA",
+        email: "vitor@titotech.com.br",
+      });
+    }
+    const hasPass = await authService.hasPassword(testCnpj);
+    if (!hasPass) {
+      await authService.setPassword(testCnpj, "@VWTito1985!");
+    }
+    app.log.info("B2B seed: credencial de teste pronta (CNPJ 45825180000189)");
+  } catch (err: any) {
+    app.log.warn({ error: err?.message }, "B2B seed: falha ao criar credencial de teste");
+  }
 
   let sapOrdersService: SapOrdersService | null = null;
   let sapEntitiesService: SapEntitiesService | null = null;
@@ -1273,8 +1297,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     app.log.info({ correlationId }, "Catalog sync: iniciando");
 
     const entSvc = getEntitiesService();
+
+    let sapGroups: { Number: number; GroupName: string }[] = [];
+    try {
+      sapGroups = await entSvc.listItemGroups(correlationId);
+      setSapGroupNames(sapGroups);
+      app.log.info({ correlationId, groups: sapGroups.length }, "Catalog sync: grupos carregados");
+    } catch (err: any) {
+      app.log.warn({ correlationId, error: err?.message?.slice(0, 200) }, "Catalog sync: falha ao buscar grupos");
+    }
+
     const [sapItems, gsnProducts] = await Promise.all([
-      entSvc.listItems({ limit: 5000 }, correlationId),
+      entSvc.listItems({ limit: 5000, onlyActive: false }, correlationId),
       fetchAllGsnProducts(),
     ]);
 
@@ -1286,11 +1320,23 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     const matches = matchSapToGsn(sapItems, gsnProducts);
 
     let upserted = 0;
+    let skipped = 0;
     for (const item of sapItems) {
-      const isSalesItem = item.SalesItem === "tYES" || !item.SalesItem;
+      const groupCode = item.ItemsGroupCode ?? null;
 
+      if (groupCode != null && EXCLUDED_SAP_GROUPS.includes(groupCode)) {
+        skipped++;
+        continue;
+      }
+
+      const isSalesItem = item.SalesItem === "tYES" || !item.SalesItem;
       const match = matches.get(item.ItemCode);
       const firstImage = match?.gsn.images[0];
+
+      const categoryName = match?.gsn.category_name || getGroupDisplayName(groupCode);
+
+      const packagingType = item.SalesPackagingUnit || item.InventoryUOM || null;
+      const unitsPerPackage = item.SalesQtyPerPackUnit || item.SalesItemsPerUnit || null;
 
       await catalogService.upsertProduct({
         sap_item_code: item.ItemCode,
@@ -1300,10 +1346,13 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         gsn_slug: match?.gsn.slug ?? null,
         image_url: firstImage?.url ?? null,
         image_thumb_url: firstImage?.thumbUrl ?? null,
-        category_name: match?.gsn.category_name ?? (item.ItemsGroupCode ? `Grupo ${item.ItemsGroupCode}` : null),
+        category_name: categoryName,
+        sap_group_code: groupCode,
         description_short: match?.gsn.description_small ?? null,
         ean: item.BarCode ?? match?.gsn.ean ?? null,
         unit_of_measure: item.InventoryUOM ?? "UN",
+        packaging_type: packagingType,
+        units_per_package: unitsPerPackage,
         is_active: (item.Valid === "tYES" || !item.Valid) && item.Frozen !== "tYES",
         is_sales_item: isSalesItem,
         match_score: match?.score ?? 0,
@@ -1355,11 +1404,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
 
     app.log.info(
-      { correlationId, upserted, matched: matches.size, inventoryRows, notified },
+      { correlationId, upserted, skipped, matched: matches.size, inventoryRows, notified },
       "Catalog sync: concluido",
     );
 
-    return { upserted, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
+    return { upserted, skipped, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
   }
 
   // =============================================

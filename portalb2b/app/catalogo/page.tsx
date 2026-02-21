@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Filter,
   XCircle,
+  Box,
 } from "lucide-react";
 
 interface CatalogProduct {
@@ -36,6 +37,8 @@ interface CatalogProduct {
   category_name: string | null;
   ean: string | null;
   unit_of_measure: string;
+  packaging_type: string | null;
+  units_per_package: number | null;
   total_stock: number;
   is_in_stock: boolean;
   match_score: number;
@@ -53,6 +56,30 @@ interface CategoriesResponse {
 }
 
 const PAGE_SIZE = 24;
+
+function packagingLabel(type: string | null): string {
+  if (!type) return "Unidade";
+  const t = type.toLowerCase().trim();
+  if (t.includes("cx") || t.includes("caixa")) return "Caixa";
+  if (t.includes("frd") || t.includes("fardo")) return "Fardo";
+  if (t.includes("plt") || t.includes("palet") || t.includes("pallet")) return "Palet";
+  if (t.includes("sc") || t.includes("saco")) return "Saco";
+  if (t.includes("pct") || t.includes("pcte") || t.includes("pacote")) return "Pacote";
+  if (t.includes("dz") || t.includes("duzia")) return "Duzia";
+  if (t.includes("un")) return "Unidade";
+  return type;
+}
+
+function packagingIcon(type: string | null): string {
+  if (!type) return "📦";
+  const t = type.toLowerCase();
+  if (t.includes("cx") || t.includes("caixa")) return "📦";
+  if (t.includes("frd") || t.includes("fardo")) return "📦";
+  if (t.includes("plt") || t.includes("palet")) return "🏗️";
+  if (t.includes("sc") || t.includes("saco")) return "🛍️";
+  if (t.includes("pct") || t.includes("pacote")) return "📦";
+  return "📦";
+}
 
 export default function CatalogoPage() {
   const [search, setSearch] = useState("");
@@ -91,13 +118,19 @@ export default function CatalogoPage() {
 
   function handleAddToCart(product: CatalogProduct) {
     const qty = quantities[product.sap_item_code] ?? 1;
+    const totalUnits =
+      product.units_per_package && product.units_per_package > 1
+        ? qty * product.units_per_package
+        : qty;
     addItem(
       { sku: product.sap_item_code, name: product.sap_item_name, unit: product.unit_of_measure },
-      qty,
+      totalUnits,
     );
-    toast.success(`${product.sap_item_name} adicionado ao carrinho`, {
-      description: `${qty} ${product.unit_of_measure}`,
-    });
+    const desc =
+      product.units_per_package && product.units_per_package > 1
+        ? `${qty} ${packagingLabel(product.packaging_type)}(s) = ${totalUnits} ${product.unit_of_measure}`
+        : `${qty} ${product.unit_of_measure}`;
+    toast.success(`${product.sap_item_name} adicionado ao carrinho`, { description: desc });
   }
 
   async function handleNotify(product: CatalogProduct) {
@@ -125,7 +158,6 @@ export default function CatalogoPage() {
       <Header />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="space-y-6">
-          {/* Title & search */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-gsn-text">
@@ -149,10 +181,8 @@ export default function CatalogoPage() {
             </div>
           </div>
 
-          {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
-
             <select
               value={category}
               onChange={(e) => {
@@ -168,7 +198,6 @@ export default function CatalogoPage() {
                 </option>
               ))}
             </select>
-
             <select
               value={stockFilter}
               onChange={(e) => {
@@ -181,7 +210,6 @@ export default function CatalogoPage() {
               <option value="in">Em estoque</option>
               <option value="out">Sem estoque</option>
             </select>
-
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={resetFilters} className="text-xs">
                 <XCircle className="h-3 w-3 mr-1" />
@@ -190,7 +218,6 @@ export default function CatalogoPage() {
             )}
           </div>
 
-          {/* Products grid */}
           {isLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -223,6 +250,10 @@ export default function CatalogoPage() {
                   const qty = quantities[product.sap_item_code] ?? 1;
                   const inCart = getItem(product.sap_item_code);
                   const imgSrc = product.image_thumb_url ?? product.image_url;
+                  const hasPack =
+                    product.units_per_package != null && product.units_per_package > 1;
+                  const packLabel = packagingLabel(product.packaging_type);
+                  const totalUnits = hasPack ? qty * product.units_per_package! : qty;
 
                   return (
                     <Card
@@ -246,13 +277,11 @@ export default function CatalogoPage() {
                             <Package className="h-16 w-16" />
                           </div>
                         )}
-
                         {!product.is_in_stock && (
                           <Badge className="absolute top-2 left-2 bg-red-600 text-white border-0 shadow-md text-xs">
                             Sem estoque
                           </Badge>
                         )}
-
                         {inCart && (
                           <Badge className="absolute top-2 right-2 bg-gsn-brand text-white border-0 shadow-md">
                             <Check className="h-3 w-3 mr-1" />
@@ -262,7 +291,7 @@ export default function CatalogoPage() {
                       </Link>
 
                       <CardContent className="flex flex-col flex-1 p-4">
-                        <div className="mb-3 min-h-[3rem]">
+                        <div className="mb-2 min-h-[3rem]">
                           <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-gsn-text">
                             {product.sap_item_name}
                           </h3>
@@ -271,10 +300,7 @@ export default function CatalogoPage() {
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          <Badge variant="outline" className="text-xs">
-                            {product.unit_of_measure}
-                          </Badge>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
                           {product.category_name && (
                             <Badge variant="outline" className="text-xs">
                               {product.category_name}
@@ -287,39 +313,58 @@ export default function CatalogoPage() {
                           )}
                         </div>
 
+                        {hasPack && (
+                          <div className="flex items-center gap-1.5 mb-3 rounded-md bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-xs text-amber-800">
+                            <Box className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="font-medium">
+                              {packLabel} c/ {product.units_per_package} {product.unit_of_measure}
+                            </span>
+                          </div>
+                        )}
+
                         {product.is_in_stock ? (
-                          <div className="mt-auto flex items-center gap-2">
-                            <div className="flex items-center rounded-md border">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-r-none"
-                                onClick={() =>
-                                  handleQuantityChange(product.sap_item_code, -1)
-                                }
-                              >
-                                <Minus className="h-3 w-3" />
-                              </Button>
-                              <span className="w-10 text-center text-sm font-medium">
-                                {qty}
+                          <div className="mt-auto space-y-2">
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center rounded-md border">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-r-none"
+                                  onClick={() =>
+                                    handleQuantityChange(product.sap_item_code, -1)
+                                  }
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-10 text-center text-sm font-medium">
+                                  {qty}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-l-none"
+                                  onClick={() =>
+                                    handleQuantityChange(product.sap_item_code, 1)
+                                  }
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {hasPack ? packLabel : product.unit_of_measure}
                               </span>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 rounded-l-none"
-                                onClick={() =>
-                                  handleQuantityChange(product.sap_item_code, 1)
-                                }
-                              >
-                                <Plus className="h-3 w-3" />
-                              </Button>
                             </div>
+                            {hasPack && (
+                              <p className="text-xs text-muted-foreground">
+                                Total: <span className="font-semibold text-gsn-text">{totalUnits} {product.unit_of_measure}</span>
+                              </p>
+                            )}
                             <Button
                               size="sm"
-                              className="flex-1 bg-gsn-brand hover:bg-gsn-brand-dark text-white"
+                              className="w-full bg-gsn-brand hover:bg-gsn-brand-dark text-white"
                               onClick={() => handleAddToCart(product)}
                             >
-                              <ShoppingCart className="h-3.5 w-3.5" />
+                              <ShoppingCart className="h-3.5 w-3.5 mr-1" />
                               Adicionar
                             </Button>
                           </div>
@@ -342,7 +387,6 @@ export default function CatalogoPage() {
                 })}
               </div>
 
-              {/* Pagination */}
               {data.pages > 1 && (
                 <div className="flex items-center justify-center gap-4 pt-4">
                   <Button

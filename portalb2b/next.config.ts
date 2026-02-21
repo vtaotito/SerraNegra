@@ -17,6 +17,11 @@ const nextConfig: NextConfig = {
         hostname: "garrafariaonline.commercesuite.com.br",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "garrafariaserranegra.com.br",
+        pathname: "/wp-content/**",
+      },
     ],
   },
   async rewrites() {

@@ -21,13 +21,15 @@ export class SapEntitiesService {
     const limit = opts.limit ?? 200;
     const candidates: string[] = [];
 
-    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
-    const minSelect = "ItemCode,ItemName,InventoryUOM,Valid,Frozen";
+    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
+    const packSelect = "ItemCode,ItemName,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode";
+    const minSelect = "ItemCode,ItemName,InventoryUOM,Valid,Frozen,ItemsGroupCode";
     const bareSelect = "ItemCode,ItemName";
 
     const activeFilter = opts.onlyActive !== false ? "&$filter=Valid eq 'tYES' and Frozen eq 'tNO'" : "";
 
     candidates.push(`/Items?$select=${fullSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
+    candidates.push(`/Items?$select=${packSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
     candidates.push(`/Items?$select=${minSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
     candidates.push(`/Items?$select=${fullSelect}&$top=${limit}`);
     candidates.push(`/Items?$select=${minSelect}&$top=${limit}`);
@@ -47,6 +49,34 @@ export class SapEntitiesService {
       }
     }
     throw lastError instanceof Error ? lastError : new Error("Erro ao listar itens do SAP.");
+  }
+
+  // ========================================
+  // ITEM GROUPS (Categorias/Grupos de Itens)
+  // ========================================
+
+  async listItemGroups(
+    correlationId?: string
+  ): Promise<SapItemGroupRow[]> {
+    const candidates = [
+      "/ItemGroups?$select=Number,GroupName&$top=500",
+      "/ItemGroups?$top=500",
+    ];
+    let lastError: unknown;
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        const res = await this.client.get<{ value: SapItemGroupRow[] }>(candidates[i], { correlationId });
+        const groups = res.data.value || [];
+        console.log(`[listItemGroups] Candidato #${i + 1} OK - ${groups.length} grupos`);
+        return groups;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    console.log("[listItemGroups] Nenhum candidato funcionou - retornando vazio");
+    return [];
   }
 
   // ========================================
@@ -166,6 +196,9 @@ export type SapItemRow = {
   SalesItem?: string;
   PurchaseItem?: string;
   InventoryUOM?: string;
+  SalesPackagingUnit?: string;
+  SalesQtyPerPackUnit?: number;
+  SalesItemsPerUnit?: number;
   Valid?: string;
   Frozen?: string;
   ItemsGroupCode?: number;
@@ -211,5 +244,11 @@ export type SapBusinessPartnerRow = {
   Valid?: string;
   Frozen?: string;
   UpdateDate?: string;
+  [key: string]: unknown;
+};
+
+export type SapItemGroupRow = {
+  Number: number;
+  GroupName: string;
   [key: string]: unknown;
 };

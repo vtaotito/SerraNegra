@@ -40,9 +40,9 @@ export function Header() {
             <Image
               src={GSN_LOGO_URL}
               alt="Garrafaria Serra Negra"
-              width={140}
-              height={33}
-              className="h-8 w-auto object-contain"
+              width={180}
+              height={45}
+              className="h-10 w-auto object-contain"
               priority
             />
             <span className="text-sm font-semibold text-gsn-brand hidden sm:inline border-l border-border pl-3">

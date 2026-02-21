@@ -14,9 +14,12 @@ export interface CatalogProduct {
   image_url: string | null;
   image_thumb_url: string | null;
   category_name: string | null;
+  sap_group_code: number | null;
   description_short: string | null;
   ean: string | null;
   unit_of_measure: string;
+  packaging_type: string | null;
+  units_per_package: number | null;
   is_active: boolean;
   is_sales_item: boolean;
   match_score: number;
@@ -26,6 +29,21 @@ export interface CatalogProduct {
   last_sync_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export const EXCLUDED_SAP_GROUPS = [129, 134];
+
+export const SAP_GROUP_NAME_MAP: Record<number, string> = {};
+
+export function setSapGroupNames(groups: { Number: number; GroupName: string }[]): void {
+  for (const g of groups) {
+    SAP_GROUP_NAME_MAP[g.Number] = g.GroupName;
+  }
+}
+
+export function getGroupDisplayName(groupCode: number | null | undefined): string | null {
+  if (groupCode == null) return null;
+  return SAP_GROUP_NAME_MAP[groupCode] ?? `Grupo ${groupCode}`;
 }
 
 export interface StockNotification {
@@ -211,9 +229,12 @@ export class B2BCatalogService {
         image_url TEXT,
         image_thumb_url TEXT,
         category_name VARCHAR(255),
+        sap_group_code INTEGER,
         description_short TEXT,
         ean VARCHAR(128),
         unit_of_measure VARCHAR(64) NOT NULL DEFAULT 'UN',
+        packaging_type VARCHAR(64),
+        units_per_package NUMERIC(12,2),
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         is_sales_item BOOLEAN NOT NULL DEFAULT TRUE,
         match_score INTEGER NOT NULL DEFAULT 0,
@@ -225,6 +246,15 @@ export class B2BCatalogService {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+
+    const migrations = [
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(64)",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS units_per_package NUMERIC(12,2)",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS sap_group_code INTEGER",
+    ];
+    for (const sql of migrations) {
+      try { await this.pool.query(sql); } catch { /* column may already exist */ }
+    }
 
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS b2b_stock_notifications (
@@ -248,9 +278,12 @@ export class B2BCatalogService {
     image_url?: string | null;
     image_thumb_url?: string | null;
     category_name?: string | null;
+    sap_group_code?: number | null;
     description_short?: string | null;
     ean?: string | null;
     unit_of_measure?: string;
+    packaging_type?: string | null;
+    units_per_package?: number | null;
     is_active?: boolean;
     is_sales_item?: boolean;
     match_score?: number;
@@ -258,9 +291,10 @@ export class B2BCatalogService {
     await this.pool.query(
       `INSERT INTO b2b_catalog_products
         (sap_item_code, sap_item_name, gsn_product_id, gsn_product_name, gsn_slug,
-         image_url, image_thumb_url, category_name, description_short, ean,
-         unit_of_measure, is_active, is_sales_item, match_score, last_sync_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+         image_url, image_thumb_url, category_name, sap_group_code, description_short, ean,
+         unit_of_measure, packaging_type, units_per_package,
+         is_active, is_sales_item, match_score, last_sync_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
        ON CONFLICT (sap_item_code) DO UPDATE SET
          sap_item_name = EXCLUDED.sap_item_name,
          gsn_product_id = COALESCE(EXCLUDED.gsn_product_id, b2b_catalog_products.gsn_product_id),
@@ -269,9 +303,12 @@ export class B2BCatalogService {
          image_url = COALESCE(EXCLUDED.image_url, b2b_catalog_products.image_url),
          image_thumb_url = COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url),
          category_name = COALESCE(EXCLUDED.category_name, b2b_catalog_products.category_name),
+         sap_group_code = COALESCE(EXCLUDED.sap_group_code, b2b_catalog_products.sap_group_code),
          description_short = COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short),
          ean = COALESCE(EXCLUDED.ean, b2b_catalog_products.ean),
          unit_of_measure = EXCLUDED.unit_of_measure,
+         packaging_type = COALESCE(EXCLUDED.packaging_type, b2b_catalog_products.packaging_type),
+         units_per_package = COALESCE(EXCLUDED.units_per_package, b2b_catalog_products.units_per_package),
          is_active = EXCLUDED.is_active,
          is_sales_item = EXCLUDED.is_sales_item,
          match_score = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.match_score ELSE EXCLUDED.match_score END,
@@ -286,9 +323,12 @@ export class B2BCatalogService {
         p.image_url ?? null,
         p.image_thumb_url ?? null,
         p.category_name ?? null,
+        p.sap_group_code ?? null,
         p.description_short ?? null,
         p.ean ?? null,
         p.unit_of_measure ?? "UN",
+        p.packaging_type ?? null,
+        p.units_per_package ?? null,
         p.is_active ?? true,
         p.is_sales_item ?? true,
         p.match_score ?? 0,

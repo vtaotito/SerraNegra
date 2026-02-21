@@ -285,14 +285,14 @@ export default function LoginPage() {
             <Image
               src={GSN_LOGO_URL}
               alt="Garrafaria Serra Negra"
-              width={220}
-              height={52}
-              className="h-12 w-auto object-contain mx-auto"
+              width={280}
+              height={80}
+              className="h-16 w-auto object-contain mx-auto"
               priority
             />
           </div>
           <div>
-            <CardTitle className="text-2xl text-gsn-text">Portal B2B</CardTitle>
+            <CardTitle className="text-2xl text-gsn-text">Portal Garrafaria Serra Negra</CardTitle>
             <CardDescription className="mt-1">
               {step === "cnpj" && "Informe o CNPJ da sua empresa"}
               {step === "password" && `Ola, ${lookupResult?.cardName}`}

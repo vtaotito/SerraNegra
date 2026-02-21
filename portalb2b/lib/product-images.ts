@@ -41,7 +41,7 @@ export function getProductImageUrl(productName: string): string | null {
   return null;
 }
 
-export const GSN_LOGO_URL = "/images/logo-garrafaria.png";
+export const GSN_LOGO_URL = "https://garrafariaserranegra.com.br/wp-content/uploads/2023/05/LOGO-GARRAFARIA-SERRA-NEGRA-40-ANOS-SITE-OFICIAL.png";
 
 export const PLACEHOLDER_PRODUCT_IMAGE = "/images/products/diamantina-200ml.jpg";
 
