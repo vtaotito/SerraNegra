@@ -1333,9 +1333,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
     for (const item of sapItems) {
       const groupCode = item.ItemsGroupCode ?? null;
+      const isExcludedGroup = groupCode != null && EXCLUDED_SAP_GROUPS.includes(groupCode);
 
-      if (groupCode != null && EXCLUDED_SAP_GROUPS.includes(groupCode)) {
+      if (isExcludedGroup) {
         skipped++;
+        await catalogService.upsertProduct({
+          sap_item_code: item.ItemCode,
+          sap_item_name: item.ItemName ?? item.ItemCode,
+          category_name: getGroupDisplayName(groupCode),
+          sap_group_code: groupCode,
+          unit_of_measure: item.InventoryUOM ?? "UN",
+          is_active: false,
+          is_sales_item: false,
+          match_score: 0,
+        });
         continue;
       }
 
