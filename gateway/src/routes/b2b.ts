@@ -841,7 +841,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
         const ie = (udfAddr.U_TX_IE as string) || reg.inscricao_estadual || "Isento";
         sapBody.BPFiscalTaxIDCollection = [
-          { Address: "", CNAECode: -1, TaxId0: cnpjFormatted, TaxId1: ie, TaxId12: `${cardCode}/COB`, AddrType: "bo_ShipTo" },
+          { Address: "", CNAECode: -1, TaxId0: "", TaxId1: ie, TaxId4: cnpjFormatted, TaxId12: `${cardCode}/COB`, AddrType: "bo_ShipTo" },
           { Address: "COB", CNAECode: -1, TaxId0: cnpjFormatted, TaxId1: ie, AddrType: "bo_BillTo" },
           { Address: "ENT", CNAECode: -1, TaxId0: cnpjFormatted, TaxId1: ie, TaxId12: `${cardCode}/COB`, AddrType: "bo_ShipTo" },
         ];
