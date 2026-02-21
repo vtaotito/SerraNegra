@@ -171,33 +171,62 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     );
 
     const client = getSapClient();
-    const select = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen";
+    const select =
+      "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen";
 
-    const candidates = [
-      `/BusinessPartners?$select=${select}&$filter=FederalTaxID eq '${formatted}' and CardType eq 'cCustomer'&$top=5`,
-      `/BusinessPartners?$select=${select}&$filter=FederalTaxID eq '${formatted}'&$top=5`,
-      `/BusinessPartners?$select=${select}&$filter=contains(FederalTaxID,'${digits}')&$top=5`,
+    const filters = [
+      `FederalTaxID eq '${formatted}' and CardType eq 'cCustomer'`,
+      `FederalTaxID eq '${formatted}'`,
+      `UnifiedFederalTaxID eq '${formatted}'`,
     ];
 
-    for (const url of candidates) {
+    for (let i = 0; i < filters.length; i++) {
+      const encoded = encodeURIComponent(filters[i]);
+      const url = `/BusinessPartners?$select=${select}&$filter=${encoded}&$top=10`;
       try {
         const res = await client.get<{ value: any[] }>(url, { correlationId });
         const bps = res.data.value ?? [];
+        app.log.info(
+          { correlationId, candidate: i + 1, count: bps.length },
+          "findPartnerByCnpj: filtro SAP",
+        );
         const match = bps.find(
           (bp: any) => normalizeCnpj(bp.FederalTaxID ?? "") === digits,
         );
         if (match) return match;
-      } catch {
+      } catch (err: any) {
+        app.log.warn(
+          { correlationId, candidate: i + 1, error: err?.message ?? String(err) },
+          "findPartnerByCnpj: filtro SAP falhou",
+        );
         continue;
       }
     }
 
-    const entSvc = getEntitiesService();
-    const partners = await entSvc.listBusinessPartners({ limit: 1000 }, correlationId);
-    return partners.find((bp) => {
-      const bpCnpj = normalizeCnpj(bp.FederalTaxID ?? "");
-      return bpCnpj === digits && bp.CardType === "cCustomer";
-    });
+    app.log.info({ correlationId }, "findPartnerByCnpj: fallback listBusinessPartners");
+    const allBps: any[] = [];
+    let skip = 0;
+    const pageSize = 100;
+    for (let page = 0; page < 50; page++) {
+      const encoded = encodeURIComponent(`CardType eq 'cCustomer'`);
+      const url = `/BusinessPartners?$select=${select}&$filter=${encoded}&$top=${pageSize}&$skip=${skip}`;
+      try {
+        const res = await client.get<{ value: any[] }>(url, { correlationId });
+        const bps = res.data.value ?? [];
+        allBps.push(...bps);
+        if (bps.length < pageSize) break;
+        skip += pageSize;
+      } catch {
+        break;
+      }
+    }
+    app.log.info(
+      { correlationId, total: allBps.length },
+      "findPartnerByCnpj: total BPs carregados via paginacao",
+    );
+    return allBps.find(
+      (bp: any) => normalizeCnpj(bp.FederalTaxID ?? "") === digits,
+    );
   }
 
   // =============================================
