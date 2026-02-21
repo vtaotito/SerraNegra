@@ -6,6 +6,11 @@ import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { B2BAuthService } from "../services/b2bAuthService.js";
 import { B2BRegistrationService } from "../services/b2bRegistrationService.js";
+import {
+  B2BCatalogService,
+  fetchAllGsnProducts,
+  matchSapToGsn,
+} from "../services/b2bCatalogService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
@@ -131,6 +136,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const registrationService = new B2BRegistrationService(B2B_DB_URL);
   await registrationService.init();
+
+  const catalogService = new B2BCatalogService(B2B_DB_URL);
+  await catalogService.init();
 
   let sapOrdersService: SapOrdersService | null = null;
   let sapEntitiesService: SapEntitiesService | null = null;
@@ -1255,6 +1263,237 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         reply.code(500).send({ error: message });
       }
     }
+  );
+
+  // =============================================
+  // CATALOG SYNC (reusable function)
+  // =============================================
+
+  async function runCatalogSync(correlationId: string) {
+    app.log.info({ correlationId }, "Catalog sync: iniciando");
+
+    const entSvc = getEntitiesService();
+    const [sapItems, gsnProducts] = await Promise.all([
+      entSvc.listItems({ limit: 5000 }, correlationId),
+      fetchAllGsnProducts(),
+    ]);
+
+    app.log.info(
+      { correlationId, sapCount: sapItems.length, gsnCount: gsnProducts.length },
+      "Catalog sync: dados carregados",
+    );
+
+    const matches = matchSapToGsn(sapItems, gsnProducts);
+
+    let upserted = 0;
+    for (const item of sapItems) {
+      if (item.SalesItem !== "tYES") continue;
+
+      const match = matches.get(item.ItemCode);
+      const firstImage = match?.gsn.images[0];
+
+      await catalogService.upsertProduct({
+        sap_item_code: item.ItemCode,
+        sap_item_name: item.ItemName ?? item.ItemCode,
+        gsn_product_id: match?.gsn.id ?? null,
+        gsn_product_name: match?.gsn.name ?? null,
+        gsn_slug: match?.gsn.slug ?? null,
+        image_url: firstImage?.url ?? null,
+        image_thumb_url: firstImage?.thumbUrl ?? null,
+        category_name: match?.gsn.category_name ?? (item.ItemsGroupCode ? `Grupo ${item.ItemsGroupCode}` : null),
+        description_short: match?.gsn.description_small ?? null,
+        ean: item.BarCode ?? match?.gsn.ean ?? null,
+        unit_of_measure: item.InventoryUOM ?? "UN",
+        is_active: item.Valid === "tYES" && item.Frozen !== "tYES",
+        is_sales_item: true,
+        match_score: match?.score ?? 0,
+      });
+      upserted++;
+    }
+
+    let inventoryRows = 0;
+    try {
+      const sapInv = await entSvc.listInventory({ limit: 5000 }, correlationId);
+      const stockBySku = new Map<string, number>();
+      for (const row of sapInv) {
+        const current = stockBySku.get(row.ItemCode) ?? 0;
+        stockBySku.set(row.ItemCode, current + row.InStock);
+      }
+      await catalogService.updateStock(stockBySku);
+      inventoryRows = sapInv.length;
+    } catch (err: any) {
+      app.log.warn(
+        { correlationId, error: err?.message?.slice(0, 200) },
+        "Catalog sync: falha ao sincronizar estoque",
+      );
+    }
+
+    let notified = 0;
+    try {
+      const backInStock = await catalogService.listBackInStockSkus();
+      for (const sku of backInStock) {
+        const pending = await catalogService.getPendingNotifications(sku);
+        if (pending.length === 0) continue;
+
+        for (const n of pending) {
+          try {
+            const product = await catalogService.getProduct(sku);
+            await sendOtpEmail(
+              n.email,
+              "Produto disponivel novamente - Garrafaria Serra Negra",
+              `<p>Ola!</p><p>O produto <strong>${product?.sap_item_name ?? sku}</strong> esta novamente disponivel em nosso catalogo B2B.</p><p>Acesse o portal para efetuar seu pedido.</p>`,
+            );
+          } catch {
+            // email delivery failure - continue
+          }
+        }
+        await catalogService.markNotified(pending.map((n) => n.id));
+        notified += pending.length;
+      }
+    } catch (err: any) {
+      app.log.warn({ correlationId, error: err?.message?.slice(0, 200) }, "Catalog sync: falha ao enviar notificacoes");
+    }
+
+    app.log.info(
+      { correlationId, upserted, matched: matches.size, inventoryRows, notified },
+      "Catalog sync: concluido",
+    );
+
+    return { upserted, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
+  }
+
+  // =============================================
+  // SCHEDULED SYNC (every 4 hours)
+  // =============================================
+
+  const SYNC_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  let syncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function scheduledSync() {
+    try {
+      await runCatalogSync(`auto-sync-${Date.now()}`);
+    } catch (err: any) {
+      app.log.error({ error: err?.message }, "Scheduled catalog sync failed");
+    }
+    syncTimer = setTimeout(scheduledSync, SYNC_INTERVAL_MS);
+  }
+
+  setTimeout(scheduledSync, 30_000);
+
+  // =============================================
+  // CATALOG ROUTES (B2B customer auth)
+  // =============================================
+
+  app.get(
+    "/b2b/catalog",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const items = await catalogService.listProducts({
+        search: query.search,
+        category: query.category,
+        inStock: query.inStock === "true" ? true : query.inStock === "false" ? false : undefined,
+        page: Number(query.page) || 1,
+        limit: Number(query.limit) || 24,
+      });
+      const pages = Math.ceil(items.total / (Number(query.limit) || 24));
+      reply.send({ ...items, page: Number(query.page) || 1, pages });
+    },
+  );
+
+  app.get(
+    "/b2b/catalog/categories",
+    { preHandler: b2bAuth },
+    async (_req, reply) => {
+      const categories = await catalogService.getCategories();
+      reply.send({ categories });
+    },
+  );
+
+  app.get(
+    "/b2b/catalog/:sku",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ error: "Produto nao encontrado" });
+        return;
+      }
+      reply.send(product);
+    },
+  );
+
+  app.post(
+    "/b2b/catalog/:sku/notify",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const customer = (req as any).b2bCustomer;
+      const { email } = req.body as { email?: string };
+
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ error: "Produto nao encontrado" });
+        return;
+      }
+
+      await catalogService.requestNotification(
+        sku,
+        customer.cnpj ?? "",
+        email ?? customer.email ?? "",
+      );
+      reply.send({ ok: true, message: "Voce sera notificado quando o produto estiver disponivel" });
+    },
+  );
+
+  // =============================================
+  // ADMIN CATALOG ROUTES
+  // =============================================
+
+  app.post(
+    "/b2b/admin/sync/catalog",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      try {
+        const result = await runCatalogSync(correlationId);
+        reply.send({ ok: true, ...result, timestamp: new Date().toISOString() });
+      } catch (err: any) {
+        app.log.error({ correlationId, error: err?.message }, "Admin catalog sync failed");
+        reply.code(500).send({ error: err?.message ?? "Erro ao sincronizar catalogo" });
+      }
+    },
+  );
+
+  app.get(
+    "/b2b/admin/catalog/matches",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const matches = await catalogService.listMatches(query.unconfirmed === "true");
+      reply.send({ matches, total: matches.length });
+    },
+  );
+
+  app.patch(
+    "/b2b/admin/catalog/matches/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = req.body as {
+        gsn_product_id?: string;
+        image_url?: string;
+        image_thumb_url?: string;
+      };
+      await catalogService.confirmMatch(
+        Number(id),
+        body.gsn_product_id,
+        body.image_url,
+        body.image_thumb_url,
+      );
+      reply.send({ ok: true });
+    },
   );
 
   app.log.info("Rotas B2B registradas");
