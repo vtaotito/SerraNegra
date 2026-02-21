@@ -18,8 +18,7 @@ export class SapEntitiesService {
     opts: { limit?: number; onlyActive?: boolean } = {},
     correlationId?: string
   ): Promise<SapItemRow[]> {
-    const limit = opts.limit ?? 200;
-    const candidates: string[] = [];
+    const maxItems = opts.limit ?? 5000;
 
     const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
     const packSelect = "ItemCode,ItemName,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode";
@@ -28,20 +27,35 @@ export class SapEntitiesService {
 
     const activeFilter = opts.onlyActive !== false ? "&$filter=Valid eq 'tYES' and Frozen eq 'tNO'" : "";
 
-    candidates.push(`/Items?$select=${fullSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
-    candidates.push(`/Items?$select=${packSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
-    candidates.push(`/Items?$select=${minSelect}${activeFilter}&$top=${limit}&$orderby=ItemCode asc`);
-    candidates.push(`/Items?$select=${fullSelect}&$top=${limit}`);
-    candidates.push(`/Items?$select=${minSelect}&$top=${limit}`);
-    candidates.push(`/Items?$select=${bareSelect}&$top=${limit}`);
+    const selectCandidates = [
+      { select: fullSelect, filter: activeFilter },
+      { select: packSelect, filter: activeFilter },
+      { select: minSelect, filter: activeFilter },
+      { select: fullSelect, filter: "" },
+      { select: minSelect, filter: "" },
+      { select: bareSelect, filter: "" },
+    ];
 
     let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
+    for (let ci = 0; ci < selectCandidates.length; ci++) {
+      const { select, filter } = selectCandidates[ci];
       try {
-        const res = await this.client.get<{ value: SapItemRow[] }>(candidates[i], { correlationId });
-        const items = res.data.value || [];
-        console.log(`[listItems] Candidato #${i + 1} OK - ${items.length} itens`);
-        return items;
+        const allItems: SapItemRow[] = [];
+        const pageSize = 100;
+        let skip = 0;
+
+        while (allItems.length < maxItems) {
+          const url = `/Items?$select=${select}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
+          const res = await this.client.get<{ value: SapItemRow[]; "odata.nextLink"?: string }>(url, { correlationId });
+          const page = res.data.value || [];
+          allItems.push(...page);
+
+          if (page.length < pageSize || !res.data["odata.nextLink"]) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listItems] Candidato #${ci + 1} OK - ${allItems.length} itens (paginado)`);
+        return allItems.slice(0, maxItems);
       } catch (err) {
         lastError = err;
         if (err instanceof SapHttpError && err.status === 400) continue;
@@ -87,39 +101,38 @@ export class SapEntitiesService {
     opts: { limit?: number } = {},
     correlationId?: string
   ): Promise<SapInventoryRow[]> {
-    const limit = opts.limit ?? 500;
+    const maxItems = opts.limit ?? 5000;
 
-    // A abordagem via Service Layer para estoque por warehouse:
-    // Opção 1: /Items com $expand=ItemWarehouseInfoCollection
-    // Opção 2: Query SQL via /SQLQueries
-    // Opção 3: /sml.svc/OITW
-    // Vamos tentar expand primeiro, depois fallback
-    const candidates: string[] = [];
-
-    // Tentar expand do ItemWarehouseInfoCollection
-    candidates.push(
-      `/Items?$select=ItemCode,ItemName&$expand=ItemWarehouseInfoCollection($select=WarehouseCode,InStock,Committed,Ordered)&$top=${limit}&$filter=Valid eq 'tYES'`
-    );
-    candidates.push(
-      `/Items?$select=ItemCode&$expand=ItemWarehouseInfoCollection($select=WarehouseCode,InStock)&$top=${limit}`
-    );
-    candidates.push(
-      `/Items?$select=ItemCode&$expand=ItemWarehouseInfoCollection&$top=${limit}`
-    );
+    const expandCandidates = [
+      { select: "ItemCode,ItemName", expand: "ItemWarehouseInfoCollection($select=WarehouseCode,InStock,Committed,Ordered)", filter: "&$filter=Valid eq 'tYES'" },
+      { select: "ItemCode", expand: "ItemWarehouseInfoCollection($select=WarehouseCode,InStock)", filter: "" },
+      { select: "ItemCode", expand: "ItemWarehouseInfoCollection", filter: "" },
+    ];
 
     let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
+    for (let ci = 0; ci < expandCandidates.length; ci++) {
+      const { select, expand, filter } = expandCandidates[ci];
       try {
-        const res = await this.client.get<{ value: SapItemWithWarehouse[] }>(candidates[i], { correlationId });
-        const items = res.data.value || [];
-        console.log(`[listInventory] Candidato #${i + 1} OK - ${items.length} itens com warehouse info`);
+        const allItems: SapItemWithWarehouse[] = [];
+        const pageSize = 50;
+        let skip = 0;
 
-        // Flatten: cada item pode ter múltiplos warehouses
+        while (allItems.length < maxItems) {
+          const url = `/Items?$select=${select}&$expand=${expand}${filter}&$top=${pageSize}&$skip=${skip}`;
+          const res = await this.client.get<{ value: SapItemWithWarehouse[]; "odata.nextLink"?: string }>(url, { correlationId });
+          const page = res.data.value || [];
+          allItems.push(...page);
+
+          if (page.length < pageSize || !res.data["odata.nextLink"]) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listInventory] Candidato #${ci + 1} OK - ${allItems.length} itens com warehouse info (paginado)`);
+
         const inventory: SapInventoryRow[] = [];
-        for (const item of items) {
+        for (const item of allItems) {
           const whInfo = item.ItemWarehouseInfoCollection || [];
           for (const wh of whInfo) {
-            // Só incluir se tem estoque
             const inStock = wh.InStock ?? 0;
             const committed = wh.Committed ?? 0;
             const ordered = wh.Ordered ?? 0;
@@ -142,7 +155,6 @@ export class SapEntitiesService {
       }
     }
 
-    // Se expand não funciona, retornar lista vazia (feature não suportada)
     console.log("[listInventory] Nenhum candidato funcionou - retornando vazio");
     return [];
   }

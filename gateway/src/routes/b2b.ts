@@ -1360,6 +1360,40 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       upserted++;
     }
 
+    const matchedGsnIds = new Set<string>();
+    for (const [, m] of matches) matchedGsnIds.add(m.gsn.id);
+
+    let gsnOnly = 0;
+    for (const gsn of gsnProducts) {
+      if (matchedGsnIds.has(gsn.id)) continue;
+
+      const firstImage = gsn.images[0];
+      const syntheticCode = `GSN-${gsn.id}`;
+
+      await catalogService.upsertProduct({
+        sap_item_code: syntheticCode,
+        sap_item_name: gsn.name,
+        gsn_product_id: gsn.id,
+        gsn_product_name: gsn.name,
+        gsn_slug: gsn.slug,
+        image_url: firstImage?.url ?? null,
+        image_thumb_url: firstImage?.thumbUrl ?? null,
+        category_name: gsn.category_name || null,
+        description_short: gsn.description_small || null,
+        ean: gsn.ean || null,
+        unit_of_measure: "UN",
+        is_active: true,
+        is_sales_item: true,
+        match_score: 0,
+      });
+      gsnOnly++;
+    }
+
+    app.log.info(
+      { correlationId, gsnOnly },
+      "Catalog sync: produtos GSN sem match SAP adicionados",
+    );
+
     let inventoryRows = 0;
     try {
       const sapInv = await entSvc.listInventory({ limit: 5000 }, correlationId);
@@ -1404,11 +1438,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
 
     app.log.info(
-      { correlationId, upserted, skipped, matched: matches.size, inventoryRows, notified },
+      { correlationId, upserted, skipped, gsnOnly, matched: matches.size, inventoryRows, notified },
       "Catalog sync: concluido",
     );
 
-    return { upserted, skipped, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
+    return { upserted, skipped, gsnOnly, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
   }
 
   // =============================================
