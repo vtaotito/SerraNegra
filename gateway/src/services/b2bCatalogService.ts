@@ -131,7 +131,8 @@ function normalizeForMatch(name: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\(.*?\)/g, "")
-    .replace(/\b(garrafa|pote|fardo|caixa|com|de|unidades?|ml|und|vidro|para)\b/g, "")
+    .replace(/\b(garrafa|garrafinha|pote|fardo|caixa|com|de|unidades?|ml|und|vidro|para|tra|rolha|cortica|tampa|metalica|mm|pcte?|pct|cx|un|c\/|litro|litros)\b/g, "")
+    .replace(/\b\d{2}mm\b/g, "")
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
     .trim();

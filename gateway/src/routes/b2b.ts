@@ -1287,7 +1287,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
     let upserted = 0;
     for (const item of sapItems) {
-      if (item.SalesItem !== "tYES") continue;
+      const isSalesItem = item.SalesItem === "tYES" || !item.SalesItem;
 
       const match = matches.get(item.ItemCode);
       const firstImage = match?.gsn.images[0];
@@ -1304,8 +1304,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         description_short: match?.gsn.description_small ?? null,
         ean: item.BarCode ?? match?.gsn.ean ?? null,
         unit_of_measure: item.InventoryUOM ?? "UN",
-        is_active: item.Valid === "tYES" && item.Frozen !== "tYES",
-        is_sales_item: true,
+        is_active: (item.Valid === "tYES" || !item.Valid) && item.Frozen !== "tYES",
+        is_sales_item: isSalesItem,
         match_score: match?.score ?? 0,
       });
       upserted++;
