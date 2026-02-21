@@ -632,7 +632,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         sapConfig: {
           label: "Configuracoes SAP",
           fields: {
-            ibgeCode: { label: "Codigo IBGE Municipio", type: "text", default: "" },
+            ibgeCode: { label: "Codigo Municipio (SAP OCNT)", type: "text", default: "" },
             GroupCode: { label: "Grupo de PN", type: "number", default: 100 },
             SalesPersonCode: { label: "Vendedor", type: "number", default: 9 },
             PriceListNum: { label: "Lista de Precos", type: "number", default: 1 },
@@ -852,8 +852,6 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         sapBody.BPPaymentMethods = [{ PaymentMethodCode: "Dinheiro", RowNumber: 0 }];
 
         Object.assign(sapBody, buildBpLevelUdfs(udfBp));
-
-        req.log.info({ correlationId, sapPayload: JSON.stringify(sapBody) }, "Payload SAP para criacao de BP");
 
         const response = await client.post<any>("/BusinessPartners", sapBody, { correlationId });
         const created = response.data;
