@@ -471,11 +471,12 @@ export class B2BCatalogService {
     stockBySku: Map<string, number>,
   ): Promise<void> {
     for (const [sku, total] of stockBySku) {
+      const inStock = total > 0;
       await this.pool.query(
         `UPDATE b2b_catalog_products
-         SET total_stock = $1, is_in_stock = $1 > 0, updated_at = NOW()
-         WHERE sap_item_code = $2`,
-        [total, sku],
+         SET total_stock = $1, is_in_stock = $2, updated_at = NOW()
+         WHERE sap_item_code = $3`,
+        [total, inStock, sku],
       );
     }
   }
@@ -484,7 +485,7 @@ export class B2BCatalogService {
     if (groupCodes.length === 0) return 0;
     const res = await this.pool.query(
       `UPDATE b2b_catalog_products SET is_active = FALSE, is_sales_item = FALSE, updated_at = NOW()
-       WHERE sap_group_code = ANY($1) AND (is_active = TRUE OR is_sales_item = TRUE)`,
+       WHERE sap_group_code = ANY($1::integer[]) AND (is_active = TRUE OR is_sales_item = TRUE)`,
       [groupCodes],
     );
     return res.rowCount ?? 0;
