@@ -72,4 +72,11 @@
   .bg-gsn-brand {
     background-color: var(--gsn-brand);
   }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
