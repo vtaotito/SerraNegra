@@ -809,6 +809,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           BilltoDefault: "COB",
           ShipToDefault: "ENT",
           Series: 70,
+          Password: cnpjFormatted,
+          VatLiable: "vLiable",
         };
 
         const streetNum = reg.address?.match(/\d+/)?.[0] || "S/N";
