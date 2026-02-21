@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+
 import { useAuth } from "@/lib/auth/context";
 import { post } from "@/lib/api/client";
 import { formatCnpj, cleanCnpj, isValidCnpj, maskEmail } from "@/lib/cnpj";
@@ -282,13 +282,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md shadow-xl border-t-4 border-t-gsn-brand">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto">
-            <Image
+            <img
               src={GSN_LOGO_URL}
               alt="Garrafaria Serra Negra"
-              width={280}
-              height={80}
               className="h-16 w-auto object-contain mx-auto"
-              priority
             />
           </div>
           <div>

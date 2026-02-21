@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useCart } from "@/lib/cart/context";
@@ -37,13 +37,10 @@ export function Header() {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-3">
-            <Image
+            <img
               src={GSN_LOGO_URL}
               alt="Garrafaria Serra Negra"
-              width={180}
-              height={45}
               className="h-10 w-auto object-contain"
-              priority
             />
             <span className="text-sm font-semibold text-gsn-brand hidden sm:inline border-l border-border pl-3">
               Portal B2B
