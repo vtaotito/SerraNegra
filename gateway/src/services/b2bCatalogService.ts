@@ -77,17 +77,18 @@ export function normalizeCategoryName(raw: string | null | undefined): string | 
 export function parsePackagingFromName(name: string): { type: string | null; units: number | null } {
   const lower = name.toLowerCase();
 
+  const qtyWord = `(?:(?:com|c[/.]?)\\s+)`;
   const patterns: [RegExp, string][] = [
-    [/\bcaixa\s+(?:c[\/.]?\s*)?(\d+)/i, "Caixa"],
-    [/\bcx\s*(?:c[\/.]?\s*)?(\d+)/i, "Caixa"],
-    [/\bfardo\s+(?:c[\/.]?\s*)?(\d+)/i, "Fardo"],
-    [/\bfd\s*(?:c[\/.]?\s*)?(\d+)/i, "Fardo"],
-    [/\bpack\s+(?:c[\/.]?\s*)?(\d+)/i, "Pack"],
-    [/\bpacote\s+(?:c[\/.]?\s*)?(\d+)/i, "Pacote"],
-    [/\bpcte?\s*(?:c[\/.]?\s*)?(\d+)/i, "Pacote"],
-    [/\bsaco\s+(?:c[\/.]?\s*)?(\d+)/i, "Saco"],
-    [/\bpalet[e]?\s+(?:c[\/.]?\s*)?(\d+)/i, "Palete"],
-    [/\bengradado\s+(?:c[\/.]?\s*)?(\d+)/i, "Engradado"],
+    [new RegExp(`\\bcaixa\\s+${qtyWord}?(\\d+)`, "i"), "Caixa"],
+    [new RegExp(`\\bcx\\s*${qtyWord}?(\\d+)`, "i"), "Caixa"],
+    [new RegExp(`\\bfardo\\s+${qtyWord}?(\\d+)`, "i"), "Fardo"],
+    [new RegExp(`\\bfd\\s*${qtyWord}?(\\d+)`, "i"), "Fardo"],
+    [new RegExp(`\\bpack\\s+${qtyWord}?(\\d+)`, "i"), "Pack"],
+    [new RegExp(`\\bpacote\\s+${qtyWord}?(\\d+)`, "i"), "Pacote"],
+    [new RegExp(`\\bpcte?\\s*${qtyWord}?(\\d+)`, "i"), "Pacote"],
+    [new RegExp(`\\bsaco\\s+${qtyWord}?(\\d+)`, "i"), "Saco"],
+    [new RegExp(`\\bpalet[e]?\\s+${qtyWord}?(\\d+)`, "i"), "Palete"],
+    [new RegExp(`\\bengradado\\s+${qtyWord}?(\\d+)`, "i"), "Engradado"],
     [/(\d+)\s*(?:un(?:id(?:ades?)?)?|pcs?|pecas?)\b/i, "_units_first"],
   ];
 
@@ -233,6 +234,18 @@ export async function fetchAllGsnProducts(): Promise<GsnProduct[]> {
           }
         }
 
+        let categoryName = p.category_name ?? "";
+        if (!categoryName) {
+          const rawSlug = p.slug ?? "";
+          const slashIdx = rawSlug.indexOf("/");
+          if (slashIdx > 0) {
+            const catSlug = rawSlug.substring(0, slashIdx);
+            categoryName = catSlug
+              .replace(/-/g, " ")
+              .replace(/\b\w/g, (c: string) => c.toUpperCase());
+          }
+        }
+
         all.push({
           id: String(p.id ?? ""),
           name: p.name ?? "",
@@ -240,7 +253,7 @@ export async function fetchAllGsnProducts(): Promise<GsnProduct[]> {
           price: p.price ?? "0",
           promotional_price: p.promotional_price ?? "0",
           available: p.available ?? "0",
-          category_name: p.category_name ?? "",
+          category_name: categoryName,
           images,
           description_small: p.description_small ?? "",
           ean: p.ean ?? "",
@@ -465,6 +478,27 @@ export class B2BCatalogService {
         [total, sku],
       );
     }
+  }
+
+  async deactivateByGroupCodes(groupCodes: number[]): Promise<number> {
+    if (groupCodes.length === 0) return 0;
+    const res = await this.pool.query(
+      `UPDATE b2b_catalog_products SET is_active = FALSE, is_sales_item = FALSE, updated_at = NOW()
+       WHERE sap_group_code = ANY($1) AND (is_active = TRUE OR is_sales_item = TRUE)`,
+      [groupCodes],
+    );
+    return res.rowCount ?? 0;
+  }
+
+  async countAll(): Promise<{ total: number; active: number; inStock: number }> {
+    const totalRes = await this.pool.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products");
+    const activeRes = await this.pool.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE AND is_sales_item = TRUE");
+    const stockRes = await this.pool.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_in_stock = TRUE");
+    return {
+      total: Number(totalRes.rows[0].cnt),
+      active: Number(activeRes.rows[0].cnt),
+      inStock: Number(stockRes.rows[0].cnt),
+    };
   }
 
   async listProducts(

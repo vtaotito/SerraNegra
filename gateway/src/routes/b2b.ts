@@ -1319,6 +1319,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       "Catalog sync: dados carregados",
     );
 
+    const deactivated = await catalogService.deactivateByGroupCodes(EXCLUDED_SAP_GROUPS);
+    if (deactivated > 0) {
+      app.log.info({ correlationId, deactivated, groups: EXCLUDED_SAP_GROUPS }, "Catalog sync: categorias excluidas desativadas no DB");
+    }
+
     const matches = matchSapToGsn(sapItems, gsnProducts);
 
     let upserted = 0;
@@ -1355,6 +1360,22 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       if (stock > 0) {
         stockBySku.set(item.ItemCode, stock);
         withStock++;
+      }
+
+      if (upserted < 3) {
+        app.log.info({
+          correlationId,
+          code: item.ItemCode,
+          name: item.ItemName,
+          stock,
+          uom: item.InventoryUOM,
+          salesUnit: item.SalesUnit,
+          salesPack: item.SalesPackagingUnit,
+          qtyPerPack: item.SalesQtyPerPackUnit,
+          itemsPerUnit: item.SalesItemsPerUnit,
+          group: groupCode,
+          resolvedPack: packaging,
+        }, "Catalog sync: sample item SAP");
       }
 
       await catalogService.upsertProduct({
