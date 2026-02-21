@@ -20,9 +20,9 @@ export class SapEntitiesService {
   ): Promise<SapItemRow[]> {
     const maxItems = opts.limit ?? 5000;
 
-    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
-    const packSelect = "ItemCode,ItemName,InventoryUOM,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,Valid,Frozen,ItemsGroupCode,BarCode";
-    const minSelect = "ItemCode,ItemName,InventoryUOM,Valid,Frozen,ItemsGroupCode";
+    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
+    const packSelect = "ItemCode,ItemName,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,Valid,Frozen,ItemsGroupCode,BarCode";
+    const minSelect = "ItemCode,ItemName,InventoryUOM,QuantityOnStock,Valid,Frozen,ItemsGroupCode";
     const bareSelect = "ItemCode,ItemName";
 
     const activeFilter = opts.onlyActive !== false ? "&$filter=Valid eq 'tYES' and Frozen eq 'tNO'" : "";
@@ -208,9 +208,13 @@ export type SapItemRow = {
   SalesItem?: string;
   PurchaseItem?: string;
   InventoryUOM?: string;
+  SalesUnit?: string;
   SalesPackagingUnit?: string;
   SalesQtyPerPackUnit?: number;
   SalesItemsPerUnit?: number;
+  QuantityOnStock?: number;
+  QuantityOrderedByCustomers?: number;
+  QuantityOrderedFromVendors?: number;
   Valid?: string;
   Frozen?: string;
   ItemsGroupCode?: number;

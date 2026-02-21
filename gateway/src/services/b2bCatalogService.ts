@@ -46,6 +46,124 @@ export function getGroupDisplayName(groupCode: number | null | undefined): strin
   return SAP_GROUP_NAME_MAP[groupCode] ?? `Grupo ${groupCode}`;
 }
 
+const CATEGORY_DISPLAY_MAP: Record<string, string> = {
+  "vinhos": "Vinhos",
+  "destilados": "Destilados",
+  "cervejas": "Cervejas",
+  "espumantes": "Espumantes",
+  "whisky": "Whisky",
+  "vodka": "Vodka",
+  "gin": "Gin",
+  "rum": "Rum",
+  "tequila": "Tequila",
+  "licores": "Licores",
+  "acessorios": "Acessórios",
+  "nao alcoolicos": "Não Alcoólicos",
+  "agua": "Água",
+  "refrigerantes": "Refrigerantes",
+  "sucos": "Sucos",
+  "energeticos": "Energéticos",
+  "alimentos": "Alimentos",
+};
+
+export function normalizeCategoryName(raw: string | null | undefined): string | null {
+  if (!raw || raw.trim() === "") return null;
+  const cleaned = raw.trim();
+  const key = cleaned.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (CATEGORY_DISPLAY_MAP[key]) return CATEGORY_DISPLAY_MAP[key];
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+export function parsePackagingFromName(name: string): { type: string | null; units: number | null } {
+  const lower = name.toLowerCase();
+
+  const patterns: [RegExp, string][] = [
+    [/\bcaixa\s+(?:c[\/.]?\s*)?(\d+)/i, "Caixa"],
+    [/\bcx\s*(?:c[\/.]?\s*)?(\d+)/i, "Caixa"],
+    [/\bfardo\s+(?:c[\/.]?\s*)?(\d+)/i, "Fardo"],
+    [/\bfd\s*(?:c[\/.]?\s*)?(\d+)/i, "Fardo"],
+    [/\bpack\s+(?:c[\/.]?\s*)?(\d+)/i, "Pack"],
+    [/\bpacote\s+(?:c[\/.]?\s*)?(\d+)/i, "Pacote"],
+    [/\bpcte?\s*(?:c[\/.]?\s*)?(\d+)/i, "Pacote"],
+    [/\bsaco\s+(?:c[\/.]?\s*)?(\d+)/i, "Saco"],
+    [/\bpalet[e]?\s+(?:c[\/.]?\s*)?(\d+)/i, "Palete"],
+    [/\bengradado\s+(?:c[\/.]?\s*)?(\d+)/i, "Engradado"],
+    [/(\d+)\s*(?:un(?:id(?:ades?)?)?|pcs?|pecas?)\b/i, "_units_first"],
+  ];
+
+  for (const [re, type] of patterns) {
+    const m = lower.match(re);
+    if (m) {
+      const units = parseInt(m[1], 10);
+      if (units > 0 && units <= 9999) {
+        if (type === "_units_first") return { type: "Caixa", units };
+        return { type, units };
+      }
+    }
+  }
+
+  if (/\bcaixa\b|\bcx\b/i.test(lower)) return { type: "Caixa", units: null };
+  if (/\bfardo\b|\bfd\b/i.test(lower)) return { type: "Fardo", units: null };
+  if (/\bpack\b/i.test(lower)) return { type: "Pack", units: null };
+  if (/\bsaco\b/i.test(lower)) return { type: "Saco", units: null };
+  if (/\bpalet[e]?\b/i.test(lower)) return { type: "Palete", units: null };
+  if (/\bengradado\b/i.test(lower)) return { type: "Engradado", units: null };
+
+  return { type: null, units: null };
+}
+
+const UOM_PACKAGING_MAP: Record<string, string> = {
+  "CX": "Caixa",
+  "FD": "Fardo",
+  "PCT": "Pacote",
+  "PC": "Pacote",
+  "UN": "Unidade",
+  "KG": "Quilograma",
+  "LT": "Litro",
+  "L": "Litro",
+  "ML": "Mililitro",
+  "SC": "Saco",
+  "PT": "Palete",
+  "GR": "Garrafa",
+  "BT": "Garrafa",
+  "DZ": "Dúzia",
+  "GL": "Galão",
+  "ENG": "Engradado",
+};
+
+export function resolvePackaging(
+  sapUOM: string | null | undefined,
+  salesUnit: string | null | undefined,
+  salesPackagingUnit: string | null | undefined,
+  salesQtyPerPack: number | null | undefined,
+  salesItemsPerUnit: number | null | undefined,
+  productName: string,
+): { type: string; units: number | null } {
+  const fromName = parsePackagingFromName(productName);
+
+  const sapType = salesPackagingUnit || salesUnit || sapUOM || null;
+  const sapUnits = salesQtyPerPack || salesItemsPerUnit || null;
+
+  let resolvedType = "Unidade";
+  let resolvedUnits: number | null = null;
+
+  if (sapType && sapType !== "UN" && UOM_PACKAGING_MAP[sapType.toUpperCase()]) {
+    resolvedType = UOM_PACKAGING_MAP[sapType.toUpperCase()];
+  } else if (fromName.type) {
+    resolvedType = fromName.type;
+  } else if (sapType && sapType !== "UN") {
+    resolvedType = sapType;
+  }
+
+  if (sapUnits && sapUnits > 1) {
+    resolvedUnits = sapUnits;
+  } else if (fromName.units) {
+    resolvedUnits = fromName.units;
+  }
+
+  return { type: resolvedType, units: resolvedUnits };
+}
+
 export interface StockNotification {
   id: number;
   sap_item_code: string;

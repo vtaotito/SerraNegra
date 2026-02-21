@@ -13,6 +13,8 @@ import {
   EXCLUDED_SAP_GROUPS,
   setSapGroupNames,
   getGroupDisplayName,
+  normalizeCategoryName,
+  resolvePackaging,
 } from "../services/b2bCatalogService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
@@ -1321,6 +1323,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
     let upserted = 0;
     let skipped = 0;
+    let withStock = 0;
+    const stockBySku = new Map<string, number>();
+
     for (const item of sapItems) {
       const groupCode = item.ItemsGroupCode ?? null;
 
@@ -1333,10 +1338,24 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const match = matches.get(item.ItemCode);
       const firstImage = match?.gsn.images[0];
 
-      const categoryName = match?.gsn.category_name || getGroupDisplayName(groupCode);
+      const rawCategory = match?.gsn.category_name || getGroupDisplayName(groupCode);
+      const categoryName = normalizeCategoryName(rawCategory);
 
-      const packagingType = item.SalesPackagingUnit || item.InventoryUOM || null;
-      const unitsPerPackage = item.SalesQtyPerPackUnit || item.SalesItemsPerUnit || null;
+      const productName = match?.gsn.name || item.ItemName || item.ItemCode;
+      const packaging = resolvePackaging(
+        item.InventoryUOM,
+        item.SalesUnit,
+        item.SalesPackagingUnit,
+        item.SalesQtyPerPackUnit,
+        item.SalesItemsPerUnit,
+        productName,
+      );
+
+      const stock = item.QuantityOnStock ?? 0;
+      if (stock > 0) {
+        stockBySku.set(item.ItemCode, stock);
+        withStock++;
+      }
 
       await catalogService.upsertProduct({
         sap_item_code: item.ItemCode,
@@ -1351,8 +1370,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         description_short: match?.gsn.description_small ?? null,
         ean: item.BarCode ?? match?.gsn.ean ?? null,
         unit_of_measure: item.InventoryUOM ?? "UN",
-        packaging_type: packagingType,
-        units_per_package: unitsPerPackage,
+        packaging_type: packaging.type,
+        units_per_package: packaging.units,
         is_active: (item.Valid === "tYES" || !item.Valid) && item.Frozen !== "tYES",
         is_sales_item: isSalesItem,
         match_score: match?.score ?? 0,
@@ -1370,6 +1389,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const firstImage = gsn.images[0];
       const syntheticCode = `GSN-${gsn.id}`;
 
+      const gsnCategory = normalizeCategoryName(gsn.category_name);
+      const gsnPackaging = resolvePackaging(null, null, null, null, null, gsn.name);
+
       await catalogService.upsertProduct({
         sap_item_code: syntheticCode,
         sap_item_name: gsn.name,
@@ -1378,10 +1400,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         gsn_slug: gsn.slug,
         image_url: firstImage?.url ?? null,
         image_thumb_url: firstImage?.thumbUrl ?? null,
-        category_name: gsn.category_name || null,
+        category_name: gsnCategory,
         description_short: gsn.description_small || null,
         ean: gsn.ean || null,
         unit_of_measure: "UN",
+        packaging_type: gsnPackaging.type,
+        units_per_package: gsnPackaging.units,
         is_active: true,
         is_sales_item: true,
         match_score: 0,
@@ -1394,21 +1418,28 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       "Catalog sync: produtos GSN sem match SAP adicionados",
     );
 
-    let inventoryRows = 0;
-    try {
-      const sapInv = await entSvc.listInventory({ limit: 5000 }, correlationId);
-      const stockBySku = new Map<string, number>();
-      for (const row of sapInv) {
-        const current = stockBySku.get(row.ItemCode) ?? 0;
-        stockBySku.set(row.ItemCode, current + row.InStock);
-      }
+    if (stockBySku.size > 0) {
       await catalogService.updateStock(stockBySku);
-      inventoryRows = sapInv.length;
-    } catch (err: any) {
-      app.log.warn(
-        { correlationId, error: err?.message?.slice(0, 200) },
-        "Catalog sync: falha ao sincronizar estoque",
-      );
+    }
+
+    let inventoryRows = stockBySku.size;
+    if (inventoryRows === 0) {
+      try {
+        const sapInv = await entSvc.listInventory({ limit: 5000 }, correlationId);
+        for (const row of sapInv) {
+          const current = stockBySku.get(row.ItemCode) ?? 0;
+          stockBySku.set(row.ItemCode, current + row.InStock);
+        }
+        if (stockBySku.size > 0) {
+          await catalogService.updateStock(stockBySku);
+          inventoryRows = stockBySku.size;
+        }
+      } catch (err: any) {
+        app.log.warn(
+          { correlationId, error: err?.message?.slice(0, 200) },
+          "Catalog sync: fallback listInventory tambem falhou",
+        );
+      }
     }
 
     let notified = 0;
@@ -1438,11 +1469,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
 
     app.log.info(
-      { correlationId, upserted, skipped, gsnOnly, matched: matches.size, inventoryRows, notified },
+      { correlationId, upserted, skipped, gsnOnly, withStock, matched: matches.size, inventoryRows, notified },
       "Catalog sync: concluido",
     );
 
-    return { upserted, skipped, gsnOnly, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
+    return { upserted, skipped, gsnOnly, withStock, matched: matches.size, gsnProducts: gsnProducts.length, inventoryRows, notified };
   }
 
   // =============================================
@@ -1556,6 +1587,38 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const query = req.query as Record<string, string>;
       const matches = await catalogService.listMatches(query.unconfirmed === "true");
       reply.send({ matches, total: matches.length });
+    },
+  );
+
+  app.get(
+    "/b2b/admin/catalog/stats",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      const dbUrl = B2B_DB_URL;
+      const pg2 = new (await import("pg")).default.Pool({ connectionString: dbUrl });
+      try {
+        const totalRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products");
+        const activeRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE AND is_sales_item = TRUE");
+        const inStockRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_in_stock = TRUE");
+        const withImageRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE image_url IS NOT NULL");
+        const gsnOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code LIKE 'GSN-%'");
+        const sapOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code NOT LIKE 'GSN-%'");
+        const catRes = await pg2.query("SELECT category_name, COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE GROUP BY category_name ORDER BY cnt DESC");
+        const sampleRes = await pg2.query("SELECT sap_item_code, sap_item_name, category_name, packaging_type, units_per_package, total_stock, is_in_stock, is_active, is_sales_item FROM b2b_catalog_products ORDER BY sap_item_code LIMIT 30");
+
+        reply.send({
+          total: Number(totalRes.rows[0].cnt),
+          active_sales: Number(activeRes.rows[0].cnt),
+          in_stock: Number(inStockRes.rows[0].cnt),
+          with_image: Number(withImageRes.rows[0].cnt),
+          gsn_only: Number(gsnOnlyRes.rows[0].cnt),
+          sap_only: Number(sapOnlyRes.rows[0].cnt),
+          categories: catRes.rows,
+          sample: sampleRes.rows,
+        });
+      } finally {
+        await pg2.end();
+      }
     },
   );
 
