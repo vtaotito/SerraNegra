@@ -165,50 +165,69 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   async function findPartnerByCnpj(cnpj: string, correlationId: string) {
     const digits = normalizeCnpj(cnpj);
+    const client = getSapClient();
 
-    const entSvc = getEntitiesService();
-    const partners = await entSvc.listBusinessPartners(
-      { limit: 5000 },
-      correlationId,
-    );
-
-    app.log.info(
-      {
-        correlationId,
-        total: partners.length,
-        cnpj: digits,
-        sample: partners.slice(0, 5).map((b) => ({
-          code: b.CardCode,
-          tax: b.FederalTaxID,
-          type: b.CardType,
-        })),
-      },
-      "findPartnerByCnpj: BPs carregados do SAP",
-    );
-
-    const match = partners.find((bp) => {
-      const bpCnpj = normalizeCnpj(bp.FederalTaxID ?? "");
-      return bpCnpj === digits;
-    });
-
-    if (match) {
+    const localReg = await registrationService.findByCnpj(digits);
+    if (localReg?.status === "published" && localReg.sap_card_code) {
       app.log.info(
-        { correlationId, cardCode: match.CardCode, cardType: match.CardType },
-        "findPartnerByCnpj: BP encontrado",
+        { correlationId, cardCode: localReg.sap_card_code },
+        "findPartnerByCnpj: CardCode encontrado via registro local",
       );
-    } else {
-      app.log.warn(
-        {
-          correlationId,
-          cnpj: digits,
-          totalBPs: partners.length,
-          allTaxIds: partners.map((b) => normalizeCnpj(b.FederalTaxID ?? "")),
-        },
-        "findPartnerByCnpj: CNPJ nao encontrado entre os BPs",
-      );
+      try {
+        const res = await client.get<any>(
+          `/BusinessPartners('${localReg.sap_card_code}')`,
+          { correlationId },
+        );
+        if (res.data?.CardCode) return res.data;
+      } catch (err: any) {
+        app.log.warn(
+          { correlationId, cardCode: localReg.sap_card_code, error: err?.message?.slice(0, 200) },
+          "findPartnerByCnpj: erro ao buscar BP por CardCode",
+        );
+      }
     }
 
-    return match ?? undefined;
+    const expandUrls = [
+      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,Phone1,EmailAddress,Valid,Frozen,BPFiscalTaxIDCollection&$top=5000`,
+      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,BPFiscalTaxIDCollection&$top=5000`,
+      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$top=500`,
+    ];
+
+    for (let i = 0; i < expandUrls.length; i++) {
+      try {
+        const res = await client.get<{ value: any[] }>(expandUrls[i], { correlationId });
+        const bps = res.data.value ?? [];
+        app.log.info(
+          { correlationId, candidate: i + 1, totalBPs: bps.length },
+          "findPartnerByCnpj: BPs carregados com fiscal collection",
+        );
+        for (const bp of bps) {
+          const taxIds: any[] = bp.BPFiscalTaxIDCollection ?? [];
+          const hasCnpj = taxIds.some((t: any) => {
+            const t0 = normalizeCnpj(t.TaxId0 ?? "");
+            const t4 = normalizeCnpj(t.TaxId4 ?? "");
+            return t0 === digits || t4 === digits;
+          });
+          if (hasCnpj) {
+            app.log.info(
+              { correlationId, cardCode: bp.CardCode },
+              "findPartnerByCnpj: BP encontrado via BPFiscalTaxIDCollection",
+            );
+            return bp;
+          }
+        }
+        break;
+      } catch (err: any) {
+        app.log.warn(
+          { correlationId, candidate: i + 1, error: err?.message?.slice(0, 200) },
+          "findPartnerByCnpj: candidato falhou",
+        );
+        continue;
+      }
+    }
+
+    app.log.warn({ correlationId, cnpj: digits }, "findPartnerByCnpj: CNPJ nao encontrado");
+    return undefined;
   }
 
   // =============================================
