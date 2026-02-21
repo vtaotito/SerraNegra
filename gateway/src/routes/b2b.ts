@@ -165,11 +165,35 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   async function findPartnerByCnpj(cnpj: string, correlationId: string) {
     const digits = normalizeCnpj(cnpj);
-    const entSvc = getEntitiesService();
-    const partners = await entSvc.listBusinessPartners(
-      { limit: 1000 },
-      correlationId
+    const formatted = digits.replace(
+      /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+      "$1.$2.$3/$4-$5",
     );
+
+    const client = getSapClient();
+    const select = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen";
+
+    const candidates = [
+      `/BusinessPartners?$select=${select}&$filter=FederalTaxID eq '${formatted}' and CardType eq 'cCustomer'&$top=5`,
+      `/BusinessPartners?$select=${select}&$filter=FederalTaxID eq '${formatted}'&$top=5`,
+      `/BusinessPartners?$select=${select}&$filter=contains(FederalTaxID,'${digits}')&$top=5`,
+    ];
+
+    for (const url of candidates) {
+      try {
+        const res = await client.get<{ value: any[] }>(url, { correlationId });
+        const bps = res.data.value ?? [];
+        const match = bps.find(
+          (bp: any) => normalizeCnpj(bp.FederalTaxID ?? "") === digits,
+        );
+        if (match) return match;
+      } catch {
+        continue;
+      }
+    }
+
+    const entSvc = getEntitiesService();
+    const partners = await entSvc.listBusinessPartners({ limit: 1000 }, correlationId);
     return partners.find((bp) => {
       const bpCnpj = normalizeCnpj(bp.FederalTaxID ?? "");
       return bpCnpj === digits && bp.CardType === "cCustomer";
