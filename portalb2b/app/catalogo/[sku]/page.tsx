@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
@@ -21,7 +21,6 @@ import {
   Bell,
   Check,
 } from "lucide-react";
-import { useState } from "react";
 
 interface CatalogProduct {
   id: number;
@@ -59,7 +58,11 @@ export default function ProductDetailPage({
   function handleAddToCart() {
     if (!product) return;
     addItem(
-      { sku: product.sap_item_code, name: product.sap_item_name, unit: product.unit_of_measure },
+      {
+        sku: product.sap_item_code,
+        name: product.sap_item_name,
+        unit: product.unit_of_measure,
+      },
       qty,
     );
     toast.success(`${product.sap_item_name} adicionado ao carrinho`, {
@@ -71,7 +74,8 @@ export default function ProductDetailPage({
     try {
       await post(`/b2b/catalog/${sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description: "Voce sera notificado quando este produto estiver disponivel.",
+        description:
+          "Voce sera notificado quando este produto estiver disponivel.",
       });
     } catch {
       toast.error("Erro ao cadastrar notificacao");
@@ -108,7 +112,9 @@ export default function ProductDetailPage({
           <Card>
             <CardContent className="flex flex-col items-center py-16 text-center">
               <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
-              <h2 className="text-xl font-semibold">Produto nao encontrado</h2>
+              <h2 className="text-xl font-semibold">
+                Produto nao encontrado
+              </h2>
               <p className="text-muted-foreground mt-1">SKU: {sku}</p>
               <Link href="/catalogo">
                 <Button variant="outline" className="mt-4">
@@ -174,10 +180,14 @@ export default function ProductDetailPage({
 
                   {product.description_short && (
                     <div className="mt-6">
-                      <h3 className="text-sm font-semibold text-gsn-text mb-1">Descricao</h3>
+                      <h3 className="text-sm font-semibold text-gsn-text mb-1">
+                        Descricao
+                      </h3>
                       <p
                         className="text-sm text-muted-foreground leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: product.description_short }}
+                        dangerouslySetInnerHTML={{
+                          __html: product.description_short,
+                        }}
                       />
                     </div>
                   )}
@@ -185,7 +195,8 @@ export default function ProductDetailPage({
                   {inCart && (
                     <div className="flex items-center gap-2 mt-4 text-sm text-gsn-brand">
                       <Check className="h-4 w-4" />
-                      Ja esta no carrinho ({inCart.quantity} {product.unit_of_measure})
+                      Ja esta no carrinho ({inCart.quantity}{" "}
+                      {product.unit_of_measure})
                     </div>
                   )}
 
