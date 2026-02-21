@@ -165,78 +165,50 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   async function findPartnerByCnpj(cnpj: string, correlationId: string) {
     const digits = normalizeCnpj(cnpj);
-    const formatted = digits.replace(
-      /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
-      "$1.$2.$3/$4-$5",
+
+    const entSvc = getEntitiesService();
+    const partners = await entSvc.listBusinessPartners(
+      { limit: 5000 },
+      correlationId,
     );
-
-    const client = getSapClient();
-    const select =
-      "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen";
-
-    const filterCandidates = [
-      `FederalTaxID eq '${formatted}' and CardType eq 'cCustomer'`,
-      `FederalTaxID eq '${formatted}'`,
-      `startswith(FederalTaxID,'${digits.slice(0, 8)}')`,
-    ];
-
-    for (let i = 0; i < filterCandidates.length; i++) {
-      const url = `/BusinessPartners?$select=${select}&$filter=${filterCandidates[i]}&$top=10`;
-      try {
-        const res = await client.get<{ value: any[] }>(url, { correlationId });
-        const bps = res.data.value ?? [];
-        app.log.info(
-          { correlationId, candidate: i + 1, count: bps.length },
-          "findPartnerByCnpj: filtro SAP OK",
-        );
-        const match = bps.find(
-          (bp: any) => normalizeCnpj(bp.FederalTaxID ?? "") === digits,
-        );
-        if (match) return match;
-      } catch (err: any) {
-        app.log.warn(
-          { correlationId, candidate: i + 1, error: err?.message?.slice(0, 200) },
-          "findPartnerByCnpj: filtro SAP falhou",
-        );
-        continue;
-      }
-    }
-
-    app.log.info({ correlationId }, "findPartnerByCnpj: fallback paginacao completa");
-    const allBps: any[] = [];
-    let skip = 0;
-    const pageSize = 500;
-    for (let page = 0; page < 20; page++) {
-      const url = `/BusinessPartners?$select=${select}&$filter=CardType eq 'cCustomer'&$top=${pageSize}&$skip=${skip}`;
-      try {
-        const res = await client.get<{ value: any[] }>(url, { correlationId });
-        const bps = res.data.value ?? [];
-        allBps.push(...bps);
-        app.log.info(
-          { correlationId, page: page + 1, fetched: bps.length, total: allBps.length },
-          "findPartnerByCnpj: pagina carregada",
-        );
-        if (bps.length < pageSize) break;
-        skip += pageSize;
-      } catch (err: any) {
-        app.log.warn(
-          { correlationId, page: page + 1, error: err?.message?.slice(0, 200) },
-          "findPartnerByCnpj: falha na paginacao",
-        );
-        break;
-      }
-    }
-
-    const match = allBps.find(
-      (bp: any) => normalizeCnpj(bp.FederalTaxID ?? "") === digits,
-    );
-    if (match) return match;
 
     app.log.info(
-      { correlationId, total: allBps.length, cnpj: digits, sample: allBps.slice(0, 3).map((b: any) => ({ code: b.CardCode, tax: b.FederalTaxID })) },
-      "findPartnerByCnpj: CNPJ nao encontrado",
+      {
+        correlationId,
+        total: partners.length,
+        cnpj: digits,
+        sample: partners.slice(0, 5).map((b) => ({
+          code: b.CardCode,
+          tax: b.FederalTaxID,
+          type: b.CardType,
+        })),
+      },
+      "findPartnerByCnpj: BPs carregados do SAP",
     );
-    return undefined;
+
+    const match = partners.find((bp) => {
+      const bpCnpj = normalizeCnpj(bp.FederalTaxID ?? "");
+      return bpCnpj === digits;
+    });
+
+    if (match) {
+      app.log.info(
+        { correlationId, cardCode: match.CardCode, cardType: match.CardType },
+        "findPartnerByCnpj: BP encontrado",
+      );
+    } else {
+      app.log.warn(
+        {
+          correlationId,
+          cnpj: digits,
+          totalBPs: partners.length,
+          allTaxIds: partners.map((b) => normalizeCnpj(b.FederalTaxID ?? "")),
+        },
+        "findPartnerByCnpj: CNPJ nao encontrado entre os BPs",
+      );
+    }
+
+    return match ?? undefined;
   }
 
   // =============================================
