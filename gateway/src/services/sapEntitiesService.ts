@@ -74,17 +74,32 @@ export class SapEntitiesService {
   async listItemGroups(
     correlationId?: string
   ): Promise<SapItemGroupRow[]> {
-    const candidates = [
-      "/ItemGroups?$select=Number,GroupName&$top=500",
-      "/ItemGroups?$top=500",
+    const selectCandidates = [
+      "$select=Number,GroupName",
+      "",
     ];
+
     let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
+    for (let ci = 0; ci < selectCandidates.length; ci++) {
+      const sel = selectCandidates[ci];
       try {
-        const res = await this.client.get<{ value: SapItemGroupRow[] }>(candidates[i], { correlationId });
-        const groups = res.data.value || [];
-        console.log(`[listItemGroups] Candidato #${i + 1} OK - ${groups.length} grupos`);
-        return groups;
+        const allGroups: SapItemGroupRow[] = [];
+        const pageSize = 20;
+        let skip = 0;
+
+        while (allGroups.length < 500) {
+          const selPart = sel ? `${sel}&` : "";
+          const url = `/ItemGroups?${selPart}$top=${pageSize}&$skip=${skip}`;
+          const res = await this.client.get<{ value: SapItemGroupRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          allGroups.push(...page);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listItemGroups] Candidato #${ci + 1} OK - ${allGroups.length} grupos (paginado)`);
+        return allGroups;
       } catch (err) {
         lastError = err;
         if (err instanceof SapHttpError && err.status === 400) continue;

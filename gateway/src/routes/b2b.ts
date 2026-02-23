@@ -1357,7 +1357,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         continue;
       }
 
-      const isSalesItem = item.SalesItem === "tYES" || !item.SalesItem;
+      const isSalesItem = item.SalesItem === "tYES";
       const match = matches.get(item.ItemCode);
       const firstImage = match?.gsn.images[0];
 

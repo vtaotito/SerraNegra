@@ -31,7 +31,15 @@ export interface CatalogProduct {
   updated_at: string;
 }
 
-export const EXCLUDED_SAP_GROUPS = [129, 134];
+export const EXCLUDED_SAP_GROUPS = [
+  123, // DESPESA ADMINISTRATIVA
+  124, // DESPESA DIRETA
+  127, // DESPESA COM TRIBUTOS
+  129, // ATIVO IMOBILIZADO
+  134, // CHAPATEX
+  139, // DESPESA COM VEÍCULOS
+  140, // DESPESA FINANCEIRA
+];
 
 export const SAP_GROUP_NAME_MAP: Record<number, string> = {};
 
@@ -47,6 +55,24 @@ export function getGroupDisplayName(groupCode: number | null | undefined): strin
 }
 
 const CATEGORY_DISPLAY_MAP: Record<string, string> = {
+  "grf standard": "Garrafas Standard",
+  "grf premium": "Garrafas Premium",
+  "grf artesanal": "Garrafas Artesanais",
+  "pote standard": "Potes",
+  "garrafao": "Garrafões",
+  "rolha": "Rolhas",
+  "lacre grf": "Lacres",
+  "lacre gfao": "Lacres Garrafão",
+  "tampa": "Tampas",
+  "embalagem": "Embalagens",
+  "equipamentos": "Equipamentos",
+  "insumos": "Insumos",
+  "potes e molhos": "Potes e Molhos",
+  "ambar": "Garrafas Âmbar",
+  "miniaturas": "Miniaturas",
+  "premium": "Premium",
+  "garrafas de vidro": "Garrafas de Vidro",
+  "garrafas de vidro premium": "Garrafas de Vidro Premium",
   "vinhos": "Vinhos",
   "destilados": "Destilados",
   "cervejas": "Cervejas",
@@ -71,7 +97,13 @@ export function normalizeCategoryName(raw: string | null | undefined): string | 
   const cleaned = raw.trim();
   const key = cleaned.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (CATEGORY_DISPLAY_MAP[key]) return CATEGORY_DISPLAY_MAP[key];
-  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  if (/^grupo\s+\d+$/i.test(cleaned)) return null;
+
+  return cleaned
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
 }
 
 export function parsePackagingFromName(name: string): { type: string | null; units: number | null } {
