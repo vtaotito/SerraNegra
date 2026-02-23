@@ -1326,6 +1326,13 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
     const matches = matchSapToGsn(sapItems, gsnProducts);
 
+    const eanMatches = [...matches.values()].filter((m) => m.score === 100).length;
+    const fuzzyMatches = [...matches.values()].filter((m) => m.score < 100).length;
+    app.log.info(
+      { correlationId, totalMatches: matches.size, eanMatches, fuzzyMatches },
+      "Catalog sync: matching SAP↔GSN concluido",
+    );
+
     let upserted = 0;
     let skipped = 0;
     let withStock = 0;
@@ -1635,16 +1642,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const withImageRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE image_url IS NOT NULL");
         const gsnOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code LIKE 'GSN-%'");
         const sapOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code NOT LIKE 'GSN-%'");
+        const matchedRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE gsn_product_id IS NOT NULL AND sap_item_code NOT LIKE 'GSN-%'");
+        const noImageSapRes = await pg2.query("SELECT sap_item_code, sap_item_name, match_score FROM b2b_catalog_products WHERE image_url IS NULL AND sap_item_code NOT LIKE 'GSN-%' AND is_active = TRUE ORDER BY sap_item_name LIMIT 30");
         const catRes = await pg2.query("SELECT category_name, COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE GROUP BY category_name ORDER BY cnt DESC");
-        const sampleRes = await pg2.query("SELECT sap_item_code, sap_item_name, category_name, packaging_type, units_per_package, total_stock, is_in_stock, is_active, is_sales_item FROM b2b_catalog_products ORDER BY sap_item_code LIMIT 30");
+        const sampleRes = await pg2.query("SELECT sap_item_code, sap_item_name, gsn_product_id, gsn_product_name, image_url IS NOT NULL AS has_image, match_score, category_name, packaging_type, units_per_package, total_stock, is_in_stock, is_active, is_sales_item FROM b2b_catalog_products ORDER BY sap_item_code LIMIT 50");
 
         reply.send({
           total: Number(totalRes.rows[0].cnt),
           active_sales: Number(activeRes.rows[0].cnt),
           in_stock: Number(inStockRes.rows[0].cnt),
           with_image: Number(withImageRes.rows[0].cnt),
+          sap_matched_gsn: Number(matchedRes.rows[0].cnt),
           gsn_only: Number(gsnOnlyRes.rows[0].cnt),
           sap_only: Number(sapOnlyRes.rows[0].cnt),
+          sap_no_image: noImageSapRes.rows,
           categories: catRes.rows,
           sample: sampleRes.rows,
         });

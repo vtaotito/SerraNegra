@@ -41,20 +41,24 @@ export class SapEntitiesService {
       const { select, filter } = selectCandidates[ci];
       try {
         const allItems: SapItemRow[] = [];
-        const pageSize = 100;
+        const pageSize = 20;
         let skip = 0;
 
         while (allItems.length < maxItems) {
           const url = `/Items?$select=${select}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
           const res = await this.client.get<{ value: SapItemRow[]; "odata.nextLink"?: string }>(url, { correlationId });
           const page = res.data.value || [];
+          if (page.length === 0) break;
           allItems.push(...page);
+          console.log(`[listItems] Candidato #${ci + 1} - pagina skip=${skip}, recebidos ${page.length}, total acumulado ${allItems.length}`);
 
-          if (page.length < pageSize || !res.data["odata.nextLink"]) break;
+          if (page.length < pageSize) break;
+          const hasNext = !!res.data["odata.nextLink"];
+          if (!hasNext) break;
           skip += pageSize;
         }
 
-        console.log(`[listItems] Candidato #${ci + 1} OK - ${allItems.length} itens (paginado)`);
+        console.log(`[listItems] Candidato #${ci + 1} OK - ${allItems.length} itens (paginado, ${Math.ceil(allItems.length / pageSize)} paginas)`);
         return allItems.slice(0, maxItems);
       } catch (err) {
         lastError = err;
@@ -114,16 +118,18 @@ export class SapEntitiesService {
       const { select, expand, filter } = expandCandidates[ci];
       try {
         const allItems: SapItemWithWarehouse[] = [];
-        const pageSize = 50;
+        const pageSize = 20;
         let skip = 0;
 
         while (allItems.length < maxItems) {
           const url = `/Items?$select=${select}&$expand=${expand}${filter}&$top=${pageSize}&$skip=${skip}`;
           const res = await this.client.get<{ value: SapItemWithWarehouse[]; "odata.nextLink"?: string }>(url, { correlationId });
           const page = res.data.value || [];
+          if (page.length === 0) break;
           allItems.push(...page);
 
-          if (page.length < pageSize || !res.data["odata.nextLink"]) break;
+          if (page.length < pageSize) break;
+          if (!res.data["odata.nextLink"]) break;
           skip += pageSize;
         }
 

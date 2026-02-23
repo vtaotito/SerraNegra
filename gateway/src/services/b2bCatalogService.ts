@@ -280,11 +280,25 @@ function normalizeForMatch(name: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\(.*?\)/g, "")
-    .replace(/\b(garrafa|garrafinha|pote|fardo|caixa|com|de|unidades?|ml|und|vidro|para|tra|rolha|cortica|tampa|metalica|mm|pcte?|pct|cx|un|c\/|litro|litros)\b/g, "")
+    .replace(/\b(garrafa|garrafinha|pote|vidro|para|tra|rolha|cortica|tampa|metalica|mm|pcte?|pct|un|c\/)\b/g, "")
     .replace(/\b\d{2}mm\b/g, "")
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractVolume(name: string): string | null {
+  const lower = name.toLowerCase();
+  const m = lower.match(/(\d+)\s*ml\b/) || lower.match(/(\d+(?:[.,]\d+)?)\s*l(?:itros?)?\b/);
+  if (m) {
+    const raw = m[0].replace(",", ".");
+    if (raw.includes("l") && !raw.includes("ml")) {
+      const liters = parseFloat(m[1].replace(",", "."));
+      return `${Math.round(liters * 1000)}ml`;
+    }
+    return `${m[1]}ml`;
+  }
+  return null;
 }
 
 function extractTokens(normalized: string): string[] {
@@ -308,22 +322,54 @@ function matchScore(sapName: string, gsnName: string): number {
     }
   }
 
+  const sapVol = extractVolume(sapName);
+  const gsnVol = extractVolume(gsnName);
+  const volumeMatch = sapVol && gsnVol && sapVol === gsnVol;
+  const volumeMismatch = sapVol && gsnVol && sapVol !== gsnVol;
+
+  if (volumeMismatch) return Math.min(matches, 10);
+
   const maxLen = Math.max(sapTokens.length, gsnTokens.length);
-  return Math.round((matches / maxLen) * 100);
+  let score = Math.round((matches / maxLen) * 100);
+  if (volumeMatch && score >= 20) score = Math.min(100, score + 10);
+  return score;
 }
 
 export function matchSapToGsn(
-  sapItems: { ItemCode: string; ItemName?: string }[],
+  sapItems: { ItemCode: string; ItemName?: string; BarCode?: string }[],
   gsnProducts: GsnProduct[],
 ): Map<string, { gsn: GsnProduct; score: number }> {
   const result = new Map<string, { gsn: GsnProduct; score: number }>();
 
+  const gsnByEan = new Map<string, GsnProduct>();
+  for (const gsn of gsnProducts) {
+    if (gsn.ean) {
+      const clean = gsn.ean.replace(/\D/g, "");
+      if (clean.length >= 8) gsnByEan.set(clean, gsn);
+    }
+  }
+
+  const usedGsnIds = new Set<string>();
+
   for (const sap of sapItems) {
+    if (sap.BarCode) {
+      const cleanBar = sap.BarCode.replace(/\D/g, "");
+      if (cleanBar.length >= 8) {
+        const gsnByBar = gsnByEan.get(cleanBar);
+        if (gsnByBar && !usedGsnIds.has(gsnByBar.id)) {
+          result.set(sap.ItemCode, { gsn: gsnByBar, score: 100 });
+          usedGsnIds.add(gsnByBar.id);
+          continue;
+        }
+      }
+    }
+
     const sapName = sap.ItemName ?? sap.ItemCode;
     let bestMatch: GsnProduct | null = null;
     let bestScore = 0;
 
     for (const gsn of gsnProducts) {
+      if (usedGsnIds.has(gsn.id)) continue;
       const score = matchScore(sapName, gsn.name);
       if (score > bestScore) {
         bestScore = score;
@@ -331,8 +377,9 @@ export function matchSapToGsn(
       }
     }
 
-    if (bestMatch && bestScore >= 40) {
+    if (bestMatch && bestScore >= 35) {
       result.set(sap.ItemCode, { gsn: bestMatch, score: bestScore });
+      usedGsnIds.add(bestMatch.id);
     }
   }
 
