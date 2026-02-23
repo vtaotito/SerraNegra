@@ -475,11 +475,11 @@ export class B2BCatalogService {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
        ON CONFLICT (sap_item_code) DO UPDATE SET
          sap_item_name = EXCLUDED.sap_item_name,
-         gsn_product_id = COALESCE(EXCLUDED.gsn_product_id, b2b_catalog_products.gsn_product_id),
-         gsn_product_name = COALESCE(EXCLUDED.gsn_product_name, b2b_catalog_products.gsn_product_name),
-         gsn_slug = COALESCE(EXCLUDED.gsn_slug, b2b_catalog_products.gsn_slug),
-         image_url = COALESCE(EXCLUDED.image_url, b2b_catalog_products.image_url),
-         image_thumb_url = COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url),
+         gsn_product_id = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_product_id ELSE EXCLUDED.gsn_product_id END,
+         gsn_product_name = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_product_name ELSE EXCLUDED.gsn_product_name END,
+         gsn_slug = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_slug ELSE EXCLUDED.gsn_slug END,
+         image_url = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_url, b2b_catalog_products.image_url) ELSE EXCLUDED.image_url END,
+         image_thumb_url = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url) ELSE EXCLUDED.image_thumb_url END,
          category_name = COALESCE(EXCLUDED.category_name, b2b_catalog_products.category_name),
          sap_group_code = COALESCE(EXCLUDED.sap_group_code, b2b_catalog_products.sap_group_code),
          description_short = COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short),
