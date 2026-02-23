@@ -1643,8 +1643,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const gsnOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code LIKE 'GSN-%'");
         const sapOnlyRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE sap_item_code NOT LIKE 'GSN-%'");
         const matchedRes = await pg2.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE gsn_product_id IS NOT NULL AND sap_item_code NOT LIKE 'GSN-%'");
-        const noImageSapRes = await pg2.query("SELECT sap_item_code, sap_item_name, match_score FROM b2b_catalog_products WHERE image_url IS NULL AND sap_item_code NOT LIKE 'GSN-%' AND is_active = TRUE ORDER BY sap_item_name LIMIT 30");
-        const catRes = await pg2.query("SELECT category_name, COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE GROUP BY category_name ORDER BY cnt DESC");
+        const noImageSapRes = await pg2.query("SELECT sap_item_code, sap_item_name, match_score FROM b2b_catalog_products WHERE image_url IS NULL AND sap_item_code NOT LIKE 'GSN-%' AND is_active = TRUE AND is_sales_item = TRUE ORDER BY sap_item_name LIMIT 30");
+        const catRes = await pg2.query("SELECT category_name, sap_group_code, COUNT(*) AS cnt, SUM(CASE WHEN is_sales_item THEN 1 ELSE 0 END) AS sales_cnt FROM b2b_catalog_products WHERE is_active = TRUE GROUP BY category_name, sap_group_code ORDER BY cnt DESC");
         const sampleRes = await pg2.query("SELECT sap_item_code, sap_item_name, gsn_product_id, gsn_product_name, image_url IS NOT NULL AS has_image, match_score, category_name, packaging_type, units_per_package, total_stock, is_in_stock, is_active, is_sales_item FROM b2b_catalog_products ORDER BY sap_item_code LIMIT 50");
 
         reply.send({
