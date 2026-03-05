@@ -1,0 +1,266 @@
+{
+  "source": "VOLUME COMERCIAL 10.12.xlsx",
+  "extractedAt": "2026-03-05",
+  "sheets": [
+    {
+      "id": 1,
+      "name": "DADOS",
+      "displayName": "Documentos / Vendas",
+      "category": "fact",
+      "rowCount": 1048575,
+      "columns": [
+        { "key": "A", "label": "A", "type": "number", "keyField": true },
+        { "key": "Nº do documento", "label": "Nº do documento", "type": "number", "keyField": true },
+        { "key": "Tipo de objeto", "label": "Tipo de objeto", "type": "number", "keyField": true, "filterable": true },
+        { "key": "Cancelado", "label": "Cancelado", "type": "string", "filterable": true },
+        { "key": "Status do documento", "label": "Status do documento", "type": "string", "filterable": true },
+        { "key": "Data de lançamento", "label": "Data de lançamento", "type": "date", "filterable": true },
+        { "key": "Data de vencimento", "label": "Data de vencimento", "type": "date" },
+        { "key": "Data do documento", "label": "Data do documento", "type": "date", "keyField": true, "filterable": true },
+        { "key": "MÊS", "label": "Mês", "type": "number", "filterable": true },
+        { "key": "Cód da cond de pgto", "label": "Cód. cond. pgto", "type": "number" },
+        { "key": "Forma de pagamento", "label": "Forma de pagamento", "type": "string", "filterable": true },
+        { "key": "Código do cliente/fornecedor", "label": "Código cliente", "type": "string", "keyField": true, "filterable": true },
+        { "key": "Nome do PN", "label": "Nome do PN", "type": "string" },
+        { "key": "Código de grupo", "label": "Código de grupo", "type": "number" },
+        { "key": "Nome do grupo", "label": "Nome do grupo", "type": "string", "filterable": true },
+        { "key": "COD", "label": "COD", "type": "string" },
+        { "key": "Nº do item", "label": "Nº do item", "type": "string", "keyField": true, "filterable": true },
+        { "key": "Descrição do item/serviço", "label": "Descrição do item", "type": "string" },
+        { "key": "Sub-Nome", "label": "Sub-Nome", "type": "string" },
+        { "key": "Quantidade", "label": "Quantidade", "type": "number" },
+        { "key": "UNIT", "label": "UNIT", "type": "number" },
+        { "key": "Quant. Real", "label": "Quant. Real", "type": "number" },
+        { "key": "EMBALA", "label": "Embalagem", "type": "string" },
+        { "key": "LineTotal", "label": "Total linha (R$)", "type": "number" },
+        { "key": "TotalGeral", "label": "Total geral (R$)", "type": "number" },
+        { "key": "% de desconto por linha", "label": "% desconto", "type": "number" },
+        { "key": "Código CFOP para documento", "label": "CFOP", "type": "number" },
+        { "key": "Peso", "label": "Peso", "type": "number" },
+        { "key": "Código de utilização para documento", "label": "Cód. utilização", "type": "number" },
+        { "key": "DescriptionUsage", "label": "Uso/Descrição", "type": "string", "filterable": true }
+      ],
+      "primaryKeyHint": ["Nº do documento", "Tipo de objeto", "Data do documento", "Código do cliente/fornecedor", "Nº do item"],
+      "notes": "Grão: linha de documento. 72 colunas no total; primeiras 30 mapeadas. Restante em excel_structure.json."
+    },
+    {
+      "id": 2,
+      "name": "ESTOQUE",
+      "displayName": "Estoque",
+      "category": "fact",
+      "rowCount": 832,
+      "columns": [
+        { "key": "COD", "label": "COD", "type": "string", "keyField": true },
+        { "key": "Nº do item", "label": "Nº do item", "type": "string", "keyField": true, "filterable": true },
+        { "key": "DESCRIÇÃO", "label": "Descrição", "type": "string" },
+        { "key": "Descrição do item", "label": "Descrição do item", "type": "string" },
+        { "key": "Em estoque", "label": "Em estoque", "type": "number" },
+        { "key": "Confirmado", "label": "Confirmado", "type": "string" },
+        { "key": "Pedido", "label": "Pedido", "type": "string" },
+        { "key": "Disponível", "label": "Disponível", "type": "number" },
+        { "key": "Estoque mínimo", "label": "Estoque mínimo", "type": "number" },
+        { "key": "unidade", "label": "Unidade", "type": "string" },
+        { "key": "UNIT", "label": "UNIT", "type": "number" },
+        { "key": "TOTAL1", "label": "Total 1", "type": "number" },
+        { "key": "TOTLA2", "label": "Total 2", "type": "number" }
+      ],
+      "notes": "45 colunas no total. Planilha6 tem estrutura similar (Nº do item, Descrição, Em estoque, Disponível, Estoque mínimo, Unidade)."
+    },
+    {
+      "id": 3,
+      "name": "Planilha6",
+      "displayName": "Estoque (lista itens)",
+      "category": "fact",
+      "rowCount": 772,
+      "columns": [
+        { "key": "Nº do item", "label": "Nº do item", "type": "string", "keyField": true, "filterable": true },
+        { "key": "Descrição do item", "label": "Descrição do item", "type": "string" },
+        { "key": "Em estoque", "label": "Em estoque", "type": "number" },
+        { "key": "Confirmado", "label": "Confirmado", "type": "string" },
+        { "key": "Pedido", "label": "Pedido", "type": "string" },
+        { "key": "Disponível", "label": "Disponível", "type": "number" },
+        { "key": "Estoque mínimo", "label": "Estoque mínimo", "type": "number" },
+        { "key": "Unidade de medida de estoque", "label": "Unidade", "type": "string" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "ESTUDO ESTOQUE",
+      "displayName": "Estudo de Estoque",
+      "category": "analysis",
+      "rowCount": 11,
+      "columns": [
+        { "key": "% ABC FAT", "label": "% ABC FAT", "type": "number" },
+        { "key": "PRODUTO", "label": "Produto", "type": "string", "filterable": true },
+        { "key": "FABRICA", "label": "Fábrica", "type": "string" },
+        { "key": "VOL. TOTAL            12 MÊSES", "label": "Vol. total 12 meses", "type": "number" },
+        { "key": "FAT. VOL TOTAL R$", "label": "Fat. vol. total R$", "type": "number" },
+        { "key": "Média Mês                  3 MESES", "label": "Média mês 3 meses", "type": "number" },
+        { "key": "VALOR UNIT", "label": "Valor unit.", "type": "number" },
+        { "key": "VALOR 60 DIAS", "label": "Valor 60 dias", "type": "number" },
+        { "key": "VALOR 90 DIAS", "label": "Valor 90 dias", "type": "number" },
+        { "key": "Col_9", "label": "Tipo (ex.: COMPRADO)", "type": "string" },
+        { "key": "Col_10", "label": "Col 10", "type": "number" },
+        { "key": "Col_11", "label": "Col 11", "type": "number" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "CLIENTE",
+      "displayName": "Clientes",
+      "category": "dimension",
+      "rowCount": 21994,
+      "columns": [
+        { "key": "Col_0", "label": "Rótulo (%abc)", "type": "string" },
+        { "key": "Soma de TotalGeral", "label": "Rótulos de Coluna", "type": "string" },
+        { "key": "Rótulos de Coluna", "label": "Cliente / Período", "type": "string", "filterable": true }
+      ],
+      "notes": "Layout tipo pivot: linhas = clientes/segmentos, colunas = meses (datas). Usar para análise temporal por cliente."
+    },
+    {
+      "id": 6,
+      "name": "CARTEIRA GERAL",
+      "displayName": "Carteira Geral",
+      "category": "analysis",
+      "rowCount": 50073,
+      "columns": [
+        { "key": "(Tudo)", "label": "(Tudo)", "type": "string" },
+        { "key": "VOL. CLIENTES PERDIDOS 90 DIAS", "label": "Vol. clientes perdidos 90 dias", "type": "number" },
+        { "key": "VOL. CLIENTES     ATENÇÃO 90 DIAS", "label": "Vol. clientes atenção 90 dias", "type": "number" },
+        { "key": "TL. CLIENTES     80/20", "label": "TL. clientes 80/20", "type": "number" },
+        { "key": "TICKET MÉDIO CLIENTE 80/20", "label": "Ticket médio 80/20", "type": "number" },
+        { "key": "TL. CLIENTES      GOLD", "label": "TL. clientes Gold", "type": "number" },
+        { "key": "Nome do vendedor", "label": "Nome do vendedor", "type": "string", "filterable": true },
+        { "key": "TOTAL DE CLIENTES", "label": "Total de clientes", "type": "number" },
+        { "key": "MÉDIA - TICKET MÉDIO", "label": "Média ticket médio", "type": "number" },
+        { "key": "MÉDIA - SKU", "label": "Média SKU", "type": "number" },
+        { "key": "VLT. FAT. 90 DIAS", "label": "Vlt. fat. 90 dias", "type": "number" },
+        { "key": "MÉDIA FAT. MÊS", "label": "Média fat. mês", "type": "number" }
+      ],
+      "notes": "58 colunas. Layout pivot; várias métricas por vendedor/estado."
+    },
+    {
+      "id": 7,
+      "name": "MAPA VENDEDORES",
+      "displayName": "Mapa de Vendedores",
+      "category": "dimension",
+      "rowCount": 80,
+      "columns": [
+        { "key": "Col_0", "label": "Rótulo (ex.: VOLUME DE VENDAS)", "type": "string" },
+        { "key": "Col_1", "label": "Col 1", "type": "number" }
+      ],
+      "notes": "29 colunas; layout pivot. Primeira coluna = rótulos (Volume de vendas, etc.), demais = valores por período/vendedor."
+    },
+    {
+      "id": 8,
+      "name": "RESUMO COMERCIAL",
+      "displayName": "Resumo Comercial",
+      "category": "summary",
+      "rowCount": 80,
+      "columns": [
+        { "key": "INDICADORES DE ESTOQUE", "label": "Indicador", "type": "string" },
+        { "key": "Col_1", "label": "Col 1", "type": "string" },
+        { "key": "Col_2", "label": "Data/Valor", "type": "number" },
+        { "key": "Col_3", "label": "Data 1", "type": "date" },
+        { "key": "Col_4", "label": "Data 2", "type": "date" },
+        { "key": "%Evol", "label": "% Evol", "type": "string" }
+      ],
+      "notes": "Usado para reconciliação: totais por período (ex.: CUSTO ESTOQUE - CMV, DATA). 20 colunas."
+    },
+    {
+      "id": 9,
+      "name": "CMV",
+      "displayName": "CMV",
+      "category": "analysis",
+      "rowCount": 540,
+      "columns": [
+        { "key": "Col_0", "label": "Rótulo", "type": "string" },
+        { "key": "GRUPO", "label": "Grupo", "type": "string", "filterable": true },
+        { "key": "(Vários itens)", "label": "Mês/Período", "type": "date" },
+        { "key": "CMV GERAL", "label": "CMV Geral", "type": "string" },
+        { "key": "CMV A", "label": "CMV A", "type": "string" }
+      ],
+      "notes": "13 colunas; layout pivot (grupo, mês, CMV)."
+    },
+    {
+      "id": 10,
+      "name": "VLR. ESTOQUE",
+      "displayName": "Valor Estoque",
+      "category": "fact",
+      "rowCount": 657,
+      "columns": [
+        { "key": "Col_0", "label": "Nº do item", "type": "string", "filterable": true },
+        { "key": "Col_6", "label": "Código item", "type": "string" },
+        { "key": "Col_7", "label": "Valor", "type": "number" }
+      ],
+      "notes": "8 colunas; amostra: Nº do item + código (ex.: GN0000022) + valor numérico."
+    },
+    {
+      "id": 11,
+      "name": "PRODUTO",
+      "displayName": "Produtos",
+      "category": "dimension",
+      "rowCount": 217,
+      "columns": [
+        { "key": "EMBALAGENS DE VIDRO (GARRAFAS, GARRAFÕES, MINIATURAS, ARTESANAL)", "label": "Categoria", "type": "string", "filterable": true },
+        { "key": "VENDA ESTOQUE ATUAL", "label": "Venda estoque atual", "type": "number" },
+        { "key": "CUSTO ESTOQUE ATUAL", "label": "Custo estoque atual", "type": "number" },
+        { "key": "VENDA P/ CLASSE 12 MESES", "label": "Venda p/ classe 12 meses", "type": "string" },
+        { "key": "VENDA ROLHAS/TAMPAS", "label": "Venda rolhas/tampas", "type": "string" }
+      ],
+      "notes": "60 colunas; layout hierárquico (GRUPO, MÊS, categorias). Primeira linha pode ser totais."
+    },
+    {
+      "id": 12,
+      "name": "80-20",
+      "displayName": "Análise 80-20",
+      "category": "analysis",
+      "rowCount": 8308,
+      "columns": [
+        { "key": "Quant. Clientes Usuarios", "label": "Métrica", "type": "string" },
+        { "key": "5238", "label": "Valor 1", "type": "number" }
+      ],
+      "notes": "26 colunas; pivot (MÊS, Nome vendedor, % Peso, CATEGORIA, % PESO, % QUANT)."
+    },
+    {
+      "id": 13,
+      "name": "ESTUDO DE MARGENS",
+      "displayName": "Estudo de Margens",
+      "category": "analysis",
+      "rowCount": 47,
+      "columns": [
+        { "key": "MÊS", "label": "Mês", "type": "string" },
+        { "key": "2025-01-01 00:00:00", "label": "Período", "type": "string" }
+      ],
+      "notes": "6 colunas; layout pivot (COD, ICMS, etc.)."
+    },
+    {
+      "id": 14,
+      "name": "GABARITO",
+      "displayName": "Gabarito",
+      "category": "other",
+      "rowCount": 0,
+      "columns": []
+    }
+  ],
+  "navigation": {
+    "sidebar": [
+      { "sheetId": 1, "label": "Documentos / Vendas", "path": "/comercial/dados" },
+      { "sheetId": 2, "label": "Estoque", "path": "/estoque" },
+      { "sheetId": 5, "label": "Clientes", "path": "/clientes" },
+      { "sheetId": 6, "label": "Carteira", "path": "/carteira" },
+      { "sheetId": 7, "label": "Vendedores", "path": "/vendedores" },
+      { "sheetId": 9, "label": "CMV / Margens", "path": "/margens" },
+      { "sheetId": 8, "label": "Resumo Comercial", "path": "/resumo" }
+    ],
+    "globalFiltersFromSheets": ["DADOS"],
+    "filterFields": [
+      { "key": "Data do documento", "label": "Período", "type": "date", "sheet": "DADOS" },
+      { "key": "Código do cliente/fornecedor", "label": "Cliente", "type": "string", "sheet": "DADOS" },
+      { "key": "Nº do item", "label": "Produto", "type": "string", "sheet": "DADOS" },
+      { "key": "Forma de pagamento", "label": "Forma pagamento", "type": "string", "sheet": "DADOS" },
+      { "key": "Nome do grupo", "label": "Grupo cliente", "type": "string", "sheet": "DADOS" },
+      { "key": "DescriptionUsage", "label": "Uso/Venda", "type": "string", "sheet": "DADOS" }
+    ]
+  }
+}

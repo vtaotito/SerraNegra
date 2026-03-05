@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cockpit-bg: #0d1117;
+  --cockpit-surface: #161b22;
+  --cockpit-border: #30363d;
+  --cockpit-accent: #238636;
+  --cockpit-gold: #d4a853;
+}
+
+body {
+  @apply bg-cockpit-bg text-gray-100 antialiased;
+}
+
+/* Scrollbar minimal */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cockpit-border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--cockpit-border);
+  border-radius: 3px;
+}

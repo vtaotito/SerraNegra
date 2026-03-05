@@ -2,8 +2,14 @@ node_modules/
 dist/
 web/dist/
 web-next/.next/
+cockpit/front-cockpit/.next/
+cockpit/front-cockpit/node_modules/
 
-# Arquivos de ambiente com credenciais - NUNCA versionar!
+# Excel de dados (muito grande; usar apenas em ingestão local)
+cockpit/etl/ingest/*.xlsx
+cockpit/etl/contract/*.xlsx
+
+# Arquivos de ambiente com credenciais com credenciais - NUNCA versionar!
 .env
 .env.local
 .env.production

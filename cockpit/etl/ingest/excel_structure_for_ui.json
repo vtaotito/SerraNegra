@@ -1,0 +1,3624 @@
+{
+  "sheets": [
+    {
+      "id": 1,
+      "name": "80-20",
+      "rowCount": 8308,
+      "columns": [
+        {
+          "key": "Quant. Clientes Usuarios",
+          "label": "Quant. Clientes Usuarios",
+          "type": "string"
+        },
+        {
+          "key": "5238",
+          "label": "5238",
+          "type": "number"
+        },
+        {
+          "key": "1824",
+          "label": "1824",
+          "type": "number"
+        },
+        {
+          "key": "2473",
+          "label": "2473",
+          "type": "number"
+        },
+        {
+          "key": "3773",
+          "label": "3773",
+          "type": "number"
+        },
+        {
+          "key": "901",
+          "label": "901",
+          "type": "number"
+        },
+        {
+          "key": "400",
+          "label": "400",
+          "type": "number"
+        },
+        {
+          "key": "2230",
+          "label": "2230",
+          "type": "number"
+        },
+        {
+          "key": "2190",
+          "label": "2190",
+          "type": "number"
+        },
+        {
+          "key": "619",
+          "label": "619",
+          "type": "number"
+        },
+        {
+          "key": "5719",
+          "label": "5719",
+          "type": "number"
+        },
+        {
+          "key": "236",
+          "label": "236",
+          "type": "number"
+        },
+        {
+          "key": "246",
+          "label": "246",
+          "type": "number"
+        },
+        {
+          "key": "135",
+          "label": "135",
+          "type": "number"
+        },
+        {
+          "key": "217",
+          "label": "217",
+          "type": "number"
+        },
+        {
+          "key": "285",
+          "label": "285",
+          "type": "number"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "string"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "MÊS",
+          "(Tudo)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Nome do vendedor",
+          "(Tudo)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "% Peso Clientes Usuarios x Carteira",
+          0.6309767553896182,
+          0.21980007226303747,
+          0.2979645911116464,
+          0.4545345056003854,
+          0.10863543297603276,
+          0.04829579669998796,
+          0.26869806094182824,
+          0.26388052511140553,
+          0.07467180537155245,
+          0.6889076237504517,
+          0.028543899795254728,
+          0.029748283752860413,
+          0.016379621823437312,
+          0.026255570275803927,
+          0.034445381187522585,
+          null,
+          null,
+          null,
+          null,
+          "CATEGORIA",
+          "% PESO",
+          null,
+          "% QUANT",
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "name": "ESTUDO DE MARGENS",
+      "rowCount": 47,
+      "columns": [
+        {
+          "key": "MÊS",
+          "label": "MÊS",
+          "type": "string"
+        },
+        {
+          "key": "2025-01-01 00:00:00",
+          "label": "2025-01-01 00:00:00",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "COD",
+          "GN",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "ICMS",
+          "(Vários itens)",
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "name": "SP",
+      "rowCount": 424,
+      "columns": [
+        {
+          "key": "Estado",
+          "label": "Estado",
+          "type": "string"
+        },
+        {
+          "key": "(Vários itens)",
+          "label": "(Vários itens)",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "MÊS",
+          "(Vários itens)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Nome do grupo2",
+          "GRF PREMIUM",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Planilha1",
+      "rowCount": 83,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "string"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "string"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        },
+        {
+          "key": "Col_29",
+          "label": "Col_29",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "Cidade",
+          "(Tudo)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Nome do vendedor",
+          "Fernanda Esteves",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 5,
+      "name": "CMV",
+      "rowCount": 540,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "GRUPO",
+          "label": "GRUPO",
+          "type": "string"
+        },
+        {
+          "key": "(Vários itens)",
+          "label": "(Vários itens)",
+          "type": "date"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          "MÊS",
+          "2025-10-01T00:00:00",
+          "CMV GERAL",
+          "CMV A",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          "Estado",
+          "(Tudo)",
+          "#N/A",
+          "#N/A",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          "REGIÃO",
+          "SUDESTE",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Planilha2",
+      "rowCount": 38,
+      "columns": [
+        {
+          "key": "Data do documento",
+          "label": "Data do documento",
+          "type": "string"
+        },
+        {
+          "key": "(Vários itens)",
+          "label": "(Vários itens)",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Soma de TotalGeral",
+          "Rótulos de Coluna",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Rótulos de Linha",
+          "ago",
+          "set",
+          "out",
+          "Total Geral",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 7,
+      "name": "DADOS",
+      "rowCount": 1048575,
+      "columns": [
+        {
+          "key": "A",
+          "label": "A",
+          "type": "number"
+        },
+        {
+          "key": "Nº do documento",
+          "label": "Nº do documento",
+          "type": "number"
+        },
+        {
+          "key": "Tipo de objeto",
+          "label": "Tipo de objeto",
+          "type": "number"
+        },
+        {
+          "key": "Cancelado",
+          "label": "Cancelado",
+          "type": "string"
+        },
+        {
+          "key": "Status do documento",
+          "label": "Status do documento",
+          "type": "string"
+        },
+        {
+          "key": "Data de lançamento",
+          "label": "Data de lançamento",
+          "type": "date"
+        },
+        {
+          "key": "Data de vencimento",
+          "label": "Data de vencimento",
+          "type": "date"
+        },
+        {
+          "key": "Data do documento",
+          "label": "Data do documento",
+          "type": "date"
+        },
+        {
+          "key": "MÊS",
+          "label": "MÊS",
+          "type": "date"
+        },
+        {
+          "key": "Cód da cond de pgto",
+          "label": "Cód da cond de pgto",
+          "type": "number"
+        },
+        {
+          "key": "Forma de pagamento",
+          "label": "Forma de pagamento",
+          "type": "string"
+        },
+        {
+          "key": "Código do cliente/fornecedor",
+          "label": "Código do cliente/fornecedor",
+          "type": "string"
+        },
+        {
+          "key": "Nome do PN",
+          "label": "Nome do PN",
+          "type": "string"
+        },
+        {
+          "key": "Código de grupo",
+          "label": "Código de grupo",
+          "type": "number"
+        },
+        {
+          "key": "Nome do grupo",
+          "label": "Nome do grupo",
+          "type": "string"
+        },
+        {
+          "key": "COD",
+          "label": "COD",
+          "type": "string"
+        },
+        {
+          "key": "Nº do item",
+          "label": "Nº do item",
+          "type": "string"
+        },
+        {
+          "key": "Descrição do item/serviço",
+          "label": "Descrição do item/serviço",
+          "type": "string"
+        },
+        {
+          "key": "Sub-Nome",
+          "label": "Sub-Nome",
+          "type": "string"
+        },
+        {
+          "key": "Quantidade",
+          "label": "Quantidade",
+          "type": "number"
+        },
+        {
+          "key": "UNIT",
+          "label": "UNIT",
+          "type": "number"
+        },
+        {
+          "key": "Quant. Real",
+          "label": "Quant. Real",
+          "type": "number"
+        },
+        {
+          "key": "EMBALA",
+          "label": "EMBALA",
+          "type": "string"
+        },
+        {
+          "key": "LineTotal",
+          "label": "LineTotal",
+          "type": "number"
+        },
+        {
+          "key": "TotalGeral",
+          "label": "TotalGeral",
+          "type": "number"
+        },
+        {
+          "key": "% de desconto por linha",
+          "label": "% de desconto por linha",
+          "type": "number"
+        },
+        {
+          "key": "Código CFOP para documento",
+          "label": "Código CFOP para documento",
+          "type": "number"
+        },
+        {
+          "key": "Peso",
+          "label": "Peso",
+          "type": "number"
+        },
+        {
+          "key": "Código de utilização para documento",
+          "label": "Código de utilização para documento",
+          "type": "number"
+        },
+        {
+          "key": "DescriptionUsage",
+          "label": "DescriptionUsage",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          912,
+          448,
+          17,
+          "N",
+          "C",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          -2,
+          "Cartão Credito",
+          "C00700",
+          "PAULO CESAR ALVES BARBOSA",
+          100,
+          "Cliente Alcoólicos",
+          "GN",
+          "GN0000116",
+          "GARRAFA UAI 670 ML TRA ROSCA 31MM - FARDO C/ 24 UND",
+          "GARRAFA UAI 670 ML TRA ROSCA",
+          4,
+          24,
+          96,
+          "FARDO",
+          371.75,
+          408,
+          0,
+          5101,
+          42,
+          10,
+          "Venda Garrafaria"
+        ],
+        [
+          912,
+          448,
+          17,
+          "N",
+          "C",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          -2,
+          "Cartão Credito",
+          "C00700",
+          "PAULO CESAR ALVES BARBOSA",
+          100,
+          "Cliente Alcoólicos",
+          "TA",
+          "TA0000010",
+          "TAMPA ALUMÍNIO ROSCA DOURADA 31MM GRAVADA REF>GRF - UND",
+          "TAMPA ALUMÍNIO ROSCA DOURADA 31MM GRAVADA",
+          100,
+          1,
+          100,
+          "UND",
+          50,
+          50,
+          0,
+          5101,
+          0,
+          10,
+          "Venda Garrafaria"
+        ],
+        [
+          913,
+          449,
+          17,
+          "N",
+          "C",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          "2023-03-01T00:00:00",
+          -1,
+          "Transf. Banco",
+          "C00527",
+          "CEMAS DO BRASIL",
+          100,
+          "Cliente Alcoólicos",
+          "GN",
+          "GN0000116",
+          "GARRAFA UAI 670 ML TRA ROSCA 31MM - FARDO C/ 24 UND",
+          "GARRAFA UAI 670 ML TRA ROSCA",
+          5,
+          24,
+          120,
+          "FARDO",
+          464.59,
+          509.89,
+          0.02,
+          5101,
+          0,
+          10,
+          "Venda Garrafaria"
+        ]
+      ]
+    },
+    {
+      "id": 8,
+      "name": "PRODUTO",
+      "rowCount": 217,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "EMBALAGENS DE VIDRO (GARRAFAS, GARRAFÕES, MINIATURAS, ARTESANAL)",
+          "label": "EMBALAGENS DE VIDRO (GARRAFAS, GARRAFÕES, MINIATURAS, ARTESANAL)",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "VENDA ESTOQUE ATUAL",
+          "label": "VENDA ESTOQUE ATUAL",
+          "type": "number"
+        },
+        {
+          "key": "CUSTO ESTOQUE ATUAL",
+          "label": "CUSTO ESTOQUE ATUAL",
+          "type": "number"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "VENDA P/ CLASSE 12 MESES",
+          "label": "VENDA P/ CLASSE 12 MESES",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "string"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "string"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        },
+        {
+          "key": "VENDA ROLHAS/TAMPAS",
+          "label": "VENDA ROLHAS/TAMPAS",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          9464963.498099517,
+          5820952.5513312025,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          "GRUPO",
+          "GRF STANDARD",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Atualização",
+          null,
+          "2025-12-10T00:00:00",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          "MÊS",
+          "(Vários itens)",
+          "GARRAFA STANDARD",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 9,
+      "name": "ESTUDO ESTOQUE",
+      "rowCount": 11,
+      "columns": [
+        {
+          "key": "% ABC FAT",
+          "label": "% ABC FAT",
+          "type": "number"
+        },
+        {
+          "key": "PRODUTO",
+          "label": "PRODUTO",
+          "type": "string"
+        },
+        {
+          "key": "FABRICA",
+          "label": "FABRICA",
+          "type": "string"
+        },
+        {
+          "key": "VOL. TOTAL            12 MÊSES",
+          "label": "VOL. TOTAL            12 MÊSES",
+          "type": "number"
+        },
+        {
+          "key": "FAT. VOL TOTAL R$",
+          "label": "FAT. VOL TOTAL R$",
+          "type": "number"
+        },
+        {
+          "key": "Média Mês                  3 MESES",
+          "label": "Média Mês                  3 MESES",
+          "type": "number"
+        },
+        {
+          "key": "VALOR UNIT",
+          "label": "VALOR UNIT",
+          "type": "number"
+        },
+        {
+          "key": "VALOR 60 DIAS",
+          "label": "VALOR 60 DIAS",
+          "type": "number"
+        },
+        {
+          "key": "VALOR 90 DIAS",
+          "label": "VALOR 90 DIAS",
+          "type": "number"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "number"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          0.08772448673635858,
+          "GARRAFA LITRO.GIN 1000 ML TRA CONTA.GOTAS",
+          "VIDRO PORTO",
+          449307,
+          1343020.2999999982,
+          43877.333333333336,
+          2069.21,
+          181582.83381333333,
+          272374.25072,
+          "COMPRADO",
+          56,
+          163153.07008
+        ],
+        [
+          0.07037660724735675,
+          "GARRAFA BORDALESA 750 ML TRA ROSCA",
+          "VIDRO PORTO",
+          386738,
+          1077432.4900000035,
+          34368,
+          2074.1,
+          142565.3376,
+          213848.0064,
+          "COMPRAR ",
+          48,
+          156801.96
+        ],
+        [
+          0.0636860715114451,
+          "GARRAFA CAÇULA 600 ML AMB COROA",
+          "VIDRO PORTO",
+          531806,
+          975003.559999999,
+          59264.6666666667,
+          1399.05,
+          165828.46380000009,
+          248742.69570000016,
+          "COMPRAR ",
+          72,
+          203981.49
+        ]
+      ]
+    },
+    {
+      "id": 10,
+      "name": "CARTEIRA GERAL",
+      "rowCount": 50073,
+      "columns": [
+        {
+          "key": "(Tudo)",
+          "label": "(Tudo)",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "VOL. CLIENTES PERDIDOS 90 DIAS",
+          "label": "VOL. CLIENTES PERDIDOS 90 DIAS",
+          "type": "number"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "number"
+        },
+        {
+          "key": "VOL. CLIENTES     ATENÇÃO 90 DIAS",
+          "label": "VOL. CLIENTES     ATENÇÃO 90 DIAS",
+          "type": "number"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        },
+        {
+          "key": "TL. CLIENTES     80/20",
+          "label": "TL. CLIENTES     80/20",
+          "type": "number"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "number"
+        },
+        {
+          "key": "TICKET MÉDIO CLIENTE 80/20",
+          "label": "TICKET MÉDIO CLIENTE 80/20",
+          "type": "number"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "TL. CLIENTES      GOLD",
+          "label": "TL. CLIENTES      GOLD",
+          "type": "number"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "number"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Nome do vendedor",
+          "label": "Nome do vendedor",
+          "type": "string"
+        },
+        {
+          "key": "(Tudo)",
+          "label": "(Tudo)",
+          "type": "string"
+        },
+        {
+          "key": "TOTAL DE CLIENTES",
+          "label": "TOTAL DE CLIENTES",
+          "type": "number"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "MÉDIA - TICKET MÉDIO",
+          "label": "MÉDIA - TICKET MÉDIO",
+          "type": "number"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "MÉDIA - SKU",
+          "label": "MÉDIA - SKU",
+          "type": "number"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "VLT. FAT. 90 DIAS",
+          "label": "VLT. FAT. 90 DIAS",
+          "type": "number"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        },
+        {
+          "key": "MÉDIA FAT. MÊS",
+          "label": "MÉDIA FAT. MÊS",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          null,
+          null,
+          2368,
+          0.5101249461439035,
+          1413,
+          null,
+          0.3043946574752262,
+          629,
+          null,
+          0.13550193881947437,
+          8860.743102424998,
+          null,
+          null,
+          null,
+          154,
+          0.03317535545023697,
+          null,
+          null,
+          "Estado",
+          "(Tudo)",
+          4642,
+          null,
+          2666.0609766925622,
+          null,
+          7.891102873030584,
+          null,
+          7521451.689999995,
+          null,
+          2507150.5633333316
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "Sub-Nome",
+          "(Tudo)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 11,
+      "name": "EVOL. QUANT",
+      "rowCount": 391,
+      "columns": [
+        {
+          "key": "COD",
+          "label": "COD",
+          "type": "string"
+        },
+        {
+          "key": "GN",
+          "label": "GN",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "string"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "string"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        },
+        {
+          "key": "Col_29",
+          "label": "Col_29",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "Estado",
+          "(Tudo)",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Soma de Quant. Real",
+          "Rótulos de Coluna",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "HOJE",
+          null,
+          null,
+          null,
+          "ANTES"
+        ]
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Planilha6",
+      "rowCount": 772,
+      "columns": [
+        {
+          "key": "Nº do item",
+          "label": "Nº do item",
+          "type": "string"
+        },
+        {
+          "key": "Descrição do item",
+          "label": "Descrição do item",
+          "type": "string"
+        },
+        {
+          "key": "Em estoque",
+          "label": "Em estoque",
+          "type": "number"
+        },
+        {
+          "key": "Confirmado",
+          "label": "Confirmado",
+          "type": "string"
+        },
+        {
+          "key": "Pedido",
+          "label": "Pedido",
+          "type": "string"
+        },
+        {
+          "key": "Disponível",
+          "label": "Disponível",
+          "type": "number"
+        },
+        {
+          "key": "Estoque mínimo",
+          "label": "Estoque mínimo",
+          "type": "number"
+        },
+        {
+          "key": "Unidade de medida de estoque",
+          "label": "Unidade de medida de estoque",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "AR00000001",
+          "BARRICA 3,5 LITROS TRA COM TORNEIRA - UND",
+          67,
+          null,
+          null,
+          67,
+          30,
+          "UN"
+        ],
+        [
+          "AR00000002",
+          "COPINHO 100 ML CAVEIRA - UND",
+          265,
+          null,
+          null,
+          265,
+          20,
+          "UN"
+        ],
+        [
+          "AR00000003",
+          "GARRAFA ACOPLADA 300 ML TRA ROLHA.CORTIÇA 00MM - UND",
+          120,
+          null,
+          null,
+          120,
+          30,
+          "UN"
+        ]
+      ]
+    },
+    {
+      "id": 13,
+      "name": "ESTOQUE",
+      "rowCount": 832,
+      "columns": [
+        {
+          "key": "COD",
+          "label": "COD",
+          "type": "string"
+        },
+        {
+          "key": "Nº do item",
+          "label": "Nº do item",
+          "type": "string"
+        },
+        {
+          "key": "DESCRIÇÃO",
+          "label": "DESCRIÇÃO",
+          "type": "string"
+        },
+        {
+          "key": "Descrição do item",
+          "label": "Descrição do item",
+          "type": "string"
+        },
+        {
+          "key": "Em estoque",
+          "label": "Em estoque",
+          "type": "number"
+        },
+        {
+          "key": "Confirmado",
+          "label": "Confirmado",
+          "type": "string"
+        },
+        {
+          "key": "Pedido",
+          "label": "Pedido",
+          "type": "string"
+        },
+        {
+          "key": "Disponível",
+          "label": "Disponível",
+          "type": "number"
+        },
+        {
+          "key": "Estoque mínimo",
+          "label": "Estoque mínimo",
+          "type": "number"
+        },
+        {
+          "key": "unidade",
+          "label": "unidade",
+          "type": "string"
+        },
+        {
+          "key": "UNIT",
+          "label": "UNIT",
+          "type": "number"
+        },
+        {
+          "key": "TOTAL1",
+          "label": "TOTAL1",
+          "type": "number"
+        },
+        {
+          "key": "TOTLA2",
+          "label": "TOTLA2",
+          "type": "number"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "number"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "number"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "number"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "string"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        },
+        {
+          "key": "Col_29",
+          "label": "Col_29",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          "AR",
+          "AR00000001",
+          "BARRICA 3,5 LITROS TRA COM TORNEIRA",
+          "BARRICA 3,5 LITROS TRA COM TORNEIRA - UND",
+          68,
+          null,
+          null,
+          68,
+          30,
+          "UN",
+          1,
+          68,
+          0,
+          "BARRICA",
+          3.5,
+          "LITROS",
+          "TRA",
+          "COM",
+          "TORNEIRA",
+          "-",
+          "UND",
+          "UND",
+          null,
+          1,
+          null,
+          null,
+          null,
+          "BARRICA 3,5 LITROS TRA COM TORNEIRA",
+          "AR",
+          1
+        ],
+        [
+          "AR",
+          "AR00000002",
+          "COPINHO 100 ML CAVEIRA - UND",
+          "COPINHO 100 ML CAVEIRA - UND",
+          273,
+          null,
+          null,
+          273,
+          20,
+          "UN",
+          1,
+          273,
+          0,
+          "COPINHO",
+          100,
+          "ML",
+          "CAVEIRA",
+          "-",
+          "UND",
+          null,
+          null,
+          "UND",
+          null,
+          1,
+          null,
+          null,
+          null,
+          "COPINHO 100 ML CAVEIRA - UND",
+          "AR",
+          2
+        ],
+        [
+          "AR",
+          "AR00000003",
+          "GARRAFA ACOPLADA 300 ML TRA ROLHA.CORTIÇA",
+          "GARRAFA ACOPLADA 300 ML TRA ROLHA.CORTIÇA 00MM - UND",
+          120,
+          null,
+          null,
+          120,
+          30,
+          "UN",
+          1,
+          120,
+          0,
+          "GARRAFA",
+          "ACOPLADA",
+          300,
+          "ML",
+          "TRA",
+          "ROLHA.CORTIÇA",
+          "00MM",
+          "-",
+          "UND",
+          null,
+          1,
+          null,
+          null,
+          null,
+          "GARRAFA ACOPLADA 300 ML TRA ROLHA.CORTIÇA",
+          "AR",
+          3
+        ]
+      ]
+    },
+    {
+      "id": 14,
+      "name": "CLIENTE",
+      "rowCount": 21994,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "Soma de TotalGeral",
+          "label": "Soma de TotalGeral",
+          "type": "string"
+        },
+        {
+          "key": "Rótulos de Coluna",
+          "label": "Rótulos de Coluna",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "date"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "number"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "number"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "number"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "number"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "number"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "number"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "number"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "number"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "number"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "number"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "number"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "number"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "number"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "number"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "number"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "number"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "number"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "number"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "number"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "number"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "number"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "number"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "number"
+        },
+        {
+          "key": "Col_29",
+          "label": "Col_29",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          "%abc",
+          "Rótulos de Linha",
+          "2023-03-01T00:00:00",
+          "2023-04-01T00:00:00",
+          "2023-05-01T00:00:00",
+          "2023-06-01T00:00:00",
+          "2023-07-01T00:00:00",
+          "2023-08-01T00:00:00",
+          "2023-09-01T00:00:00",
+          "2023-10-01T00:00:00",
+          "2023-11-01T00:00:00",
+          "2023-12-01T00:00:00",
+          "2024-01-01T00:00:00",
+          "2024-02-01T00:00:00",
+          "2024-03-01T00:00:00",
+          "2024-04-01T00:00:00",
+          "(vazio)",
+          "2024-05-01T00:00:00",
+          "2024-06-01T00:00:00",
+          "2024-07-01T00:00:00",
+          "2024-08-01T00:00:00",
+          "2024-09-01T00:00:00",
+          "2024-10-01T00:00:00",
+          "2024-11-01T00:00:00",
+          "2024-12-01T00:00:00",
+          "2025-01-01T00:00:00",
+          "2025-02-01T00:00:00",
+          "2025-03-01T00:00:00",
+          "2025-04-01T00:00:00",
+          "2025-05-01T00:00:00"
+        ],
+        [
+          "#REF!",
+          "ENGARRAFADORA ESTIVA LTDA",
+          null,
+          null,
+          2583.23,
+          null,
+          null,
+          2365.44,
+          2820.01,
+          null,
+          3072.1800000000003,
+          507,
+          null,
+          23428.9,
+          151918.62,
+          2369.14,
+          null,
+          20393.1,
+          64868.64,
+          87311.48000000001,
+          1982.88,
+          166247.86000000002,
+          3930,
+          753,
+          20209.08,
+          71050.18000000001,
+          58377.47,
+          39500.98,
+          84347.96,
+          101059.22
+        ],
+        [
+          "#REF!",
+          "CACHACA VALE DA CANASTRA LTDA",
+          9707.32,
+          null,
+          23521.1,
+          227927.58000000002,
+          66960.25,
+          68809.6,
+          121476.09999999999,
+          19686.9,
+          37664.200000000004,
+          58381.59999999999,
+          57222.81,
+          48877.770000000004,
+          171,
+          94166.19,
+          null,
+          189267.22000000003,
+          39441.38999999999,
+          34409.799999999996,
+          31781.640000000007,
+          102378.74000000002,
+          7308,
+          1160,
+          null,
+          2201,
+          null,
+          null,
+          4032,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Plan7",
+      "rowCount": 215,
+      "columns": [
+        {
+          "key": "GARRAFAS PREMIUM",
+          "label": "GARRAFAS PREMIUM",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "number"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "number"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "ROLHAS",
+          "label": "ROLHAS",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "number"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "PRODUTO",
+          "TOTAL 11 MÊSES",
+          "MÉDIA MÊS",
+          "ESTOQUE ",
+          null,
+          "PRODUTO",
+          "TOTAL 11 MÊSES",
+          "MÉDIA MÊS",
+          "ESTOQUE ",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "GARRAFA DELTA 750 ML TRA",
+          51784,
+          4707.636363636364,
+          39774,
+          null,
+          "ROLHA SINTÉTICA SIMPLES CREME 19,29MM REF>LITRO- UND",
+          293897,
+          26717.909090909092,
+          "#REF!",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "GARRAFA MUNICH 750 ML TRA",
+          27134,
+          2466.7272727272725,
+          46614,
+          null,
+          "ROLHA SINTÉTICA SIMPLES CREME 19,28MM REF>600ML- UND",
+          186503,
+          16954.81818181818,
+          "#REF!",
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 16,
+      "name": "MAPA VENDEDORES",
+      "rowCount": 80,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "number"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "number"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "number"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "number"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "number"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        },
+        {
+          "key": "Col_20",
+          "label": "Col_20",
+          "type": "string"
+        },
+        {
+          "key": "Col_21",
+          "label": "Col_21",
+          "type": "string"
+        },
+        {
+          "key": "Col_22",
+          "label": "Col_22",
+          "type": "string"
+        },
+        {
+          "key": "Col_23",
+          "label": "Col_23",
+          "type": "string"
+        },
+        {
+          "key": "Col_24",
+          "label": "Col_24",
+          "type": "string"
+        },
+        {
+          "key": "Col_25",
+          "label": "Col_25",
+          "type": "string"
+        },
+        {
+          "key": "Col_26",
+          "label": "Col_26",
+          "type": "string"
+        },
+        {
+          "key": "Col_27",
+          "label": "Col_27",
+          "type": "string"
+        },
+        {
+          "key": "Col_28",
+          "label": "Col_28",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "VOLUME DE VENDAS",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          "VOLUME ALVO",
+          "JAN",
+          "FEV",
+          "MAR",
+          "MÉDIA",
+          "ABR",
+          "MAI",
+          "JUN",
+          "MÉDIA",
+          "MÉDIA 1SM",
+          "JUL",
+          "AGO",
+          "SET",
+          "MÉDIA",
+          "OUT",
+          "MAI",
+          "JUN",
+          "MÉDIA",
+          "MÉDIA 1SM",
+          "NOV",
+          "DEZ",
+          "MÉDIA",
+          "MÉDIA 2SM",
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "THIAGO",
+          80,
+          70,
+          95,
+          101,
+          88.66666666666667,
+          119,
+          124,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 17,
+      "name": "RESUMO COMERCIAL",
+      "rowCount": 80,
+      "columns": [
+        {
+          "key": "INDICADORES DE ESTOQUE",
+          "label": "INDICADORES DE ESTOQUE",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "date"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "date"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "date"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "date"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        },
+        {
+          "key": "Col_17",
+          "label": "Col_17",
+          "type": "string"
+        },
+        {
+          "key": "Col_18",
+          "label": "Col_18",
+          "type": "string"
+        },
+        {
+          "key": "Col_19",
+          "label": "Col_19",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          "DATA",
+          null,
+          "2025-04-03T00:00:00",
+          "2025-05-03T00:00:00",
+          "2025-06-03T00:00:00",
+          "2025-07-03T00:00:00",
+          "2025-08-03T00:00:00",
+          "%Evol",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "CUSTO ESTOQUE - CMV",
+          null,
+          7012707.160259451,
+          null,
+          null,
+          null,
+          null,
+          "#DIV/0!",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "* Valores aproximados ",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "id": 18,
+      "name": "FAT. MÊS ATUAL",
+      "rowCount": 10,
+      "columns": [
+        {
+          "key": "META",
+          "label": "META",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "number"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "number"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "number"
+        },
+        {
+          "key": "DIAS VENDA TOTAIS",
+          "label": "DIAS VENDA TOTAIS",
+          "type": "number"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "21",
+          "label": "21",
+          "type": "number"
+        },
+        {
+          "key": "DIAS DE VENDAS ATUAIS",
+          "label": "DIAS DE VENDAS ATUAIS",
+          "type": "number"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "number"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "number"
+        },
+        {
+          "key": "15",
+          "label": "15",
+          "type": "number"
+        },
+        {
+          "key": "PREV FECHAMENTO",
+          "label": "PREV FECHAMENTO",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          "VENDEDOR",
+          "VALOR",
+          "SEMANA",
+          "DIA",
+          null,
+          "01ºSM",
+          "02ºSM",
+          "03ºSM",
+          "04ºSM",
+          "TOTAL VAL. REAL",
+          "MÉDIA DIA",
+          "VOL. VEND",
+          "TICKET",
+          "PERF. %",
+          null
+        ],
+        [
+          "Alef Santos",
+          220000,
+          55000,
+          10476.190476190477,
+          null,
+          85661.12999999999,
+          27825.37,
+          9396.5,
+          null,
+          122882.99999999999,
+          8192.199999999999,
+          36,
+          3413.416666666666,
+          -0.2180172727272729,
+          172036.19999999998
+        ],
+        [
+          "Alessandro Gomes",
+          600000,
+          150000,
+          28571.428571428572,
+          null,
+          137436.7,
+          91576.70999999999,
+          288482.8299999999,
+          null,
+          517496.2399999999,
+          34499.749333333326,
+          61,
+          8483.544918032785,
+          0.20749122666666636,
+          724494.7359999998
+        ]
+      ]
+    },
+    {
+      "id": 19,
+      "name": "GABARITO",
+      "rowCount": 629,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "number"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "string"
+        },
+        {
+          "key": "Col_8",
+          "label": "Col_8",
+          "type": "string"
+        },
+        {
+          "key": "Col_9",
+          "label": "Col_9",
+          "type": "string"
+        },
+        {
+          "key": "Col_10",
+          "label": "Col_10",
+          "type": "string"
+        },
+        {
+          "key": "Col_11",
+          "label": "Col_11",
+          "type": "string"
+        },
+        {
+          "key": "Col_12",
+          "label": "Col_12",
+          "type": "string"
+        },
+        {
+          "key": "Col_13",
+          "label": "Col_13",
+          "type": "string"
+        },
+        {
+          "key": "Col_14",
+          "label": "Col_14",
+          "type": "string"
+        },
+        {
+          "key": "Col_15",
+          "label": "Col_15",
+          "type": "string"
+        },
+        {
+          "key": "Col_16",
+          "label": "Col_16",
+          "type": "string"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          "UNIT",
+          1,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "PESO"
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          "NameState",
+          "ICMS",
+          "REGIÃO",
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          "GARRAFA ICE 275 ML TRA ROSCA",
+          null
+        ],
+        [
+          null,
+          "Nº do item",
+          "Sub-Nome",
+          null,
+          null,
+          "Acre",
+          "ICMS07",
+          "NORTE",
+          null,
+          null,
+          null,
+          null,
+          "A",
+          "B",
+          null,
+          "GARRAFA LITRO.GIN 980 ML TRA CONTA.GOTAS",
+          null
+        ]
+      ]
+    },
+    {
+      "id": 20,
+      "name": "VLR. ESTOQUE",
+      "rowCount": 657,
+      "columns": [
+        {
+          "key": "Col_0",
+          "label": "Col_0",
+          "type": "string"
+        },
+        {
+          "key": "Col_1",
+          "label": "Col_1",
+          "type": "string"
+        },
+        {
+          "key": "Col_2",
+          "label": "Col_2",
+          "type": "string"
+        },
+        {
+          "key": "Col_3",
+          "label": "Col_3",
+          "type": "string"
+        },
+        {
+          "key": "Col_4",
+          "label": "Col_4",
+          "type": "string"
+        },
+        {
+          "key": "Col_5",
+          "label": "Col_5",
+          "type": "string"
+        },
+        {
+          "key": "Col_6",
+          "label": "Col_6",
+          "type": "string"
+        },
+        {
+          "key": "Col_7",
+          "label": "Col_7",
+          "type": "number"
+        }
+      ],
+      "sampleRows": [
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          "Nº do item",
+          null,
+          null,
+          null,
+          null,
+          null,
+          "GN0000022",
+          1.8287484116899617
+        ],
+        [
+          "AR00000001",
+          null,
+          null,
+          null,
+          null,
+          null,
+          "PO0000077",
+          0.8506670902160102
+        ]
+      ]
+    }
+  ]
+}
