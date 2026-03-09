@@ -65,8 +65,8 @@ const PRESETS: Record<Exclude<PresetKey, "custom">, { label: string; rangeFn: ()
 const DateRangeContext = createContext<DateRangeContextValue | null>(null);
 
 export function DateRangeProvider({ children }: { children: ReactNode }) {
-  const [preset, setPresetState] = useState<PresetKey>("last_3m");
-  const [customFrom, setCustomFrom] = useState<Date>(startOfMonth(subMonths(new Date(), 2)));
+  const [preset, setPresetState] = useState<PresetKey>("all");
+  const [customFrom, setCustomFrom] = useState<Date>(new Date(2023, 2, 1));
   const [customTo, setCustomTo] = useState<Date>(new Date());
 
   const range = useMemo<DateRange>(() => {
