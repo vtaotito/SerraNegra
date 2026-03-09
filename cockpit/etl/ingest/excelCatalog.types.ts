@@ -25,12 +25,34 @@ export interface SheetInfo {
   category: SheetCategory;
   rowCount: number;
   columns: ColumnDef[];
+  primaryKeyHint?: string[];
+  notes?: string;
   /** Primeiras linhas para preview na UI (opcional) */
   sampleRows?: unknown[][];
+}
+
+export interface SidebarItem {
+  sheetId: number;
+  label: string;
+  path: string;
+}
+
+export interface FilterField {
+  key: string;
+  label: string;
+  type: ColumnType;
+  sheet: string;
+}
+
+export interface Navigation {
+  sidebar: SidebarItem[];
+  globalFiltersFromSheets: string[];
+  filterFields: FilterField[];
 }
 
 export interface ExcelCatalog {
   source: string;
   extractedAt: string;
   sheets: SheetInfo[];
+  navigation: Navigation;
 }

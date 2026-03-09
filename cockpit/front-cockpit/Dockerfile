@@ -34,6 +34,6 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=5 \
-  CMD curl -fsS http://localhost:3000/ || exit 1
+  CMD curl -fsS http://localhost:3000/cockpit || exit 1
 
 CMD ["node", "server.js"]

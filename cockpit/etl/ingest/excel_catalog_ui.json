@@ -17,7 +17,7 @@
         { "key": "Data de lançamento", "label": "Data de lançamento", "type": "date", "filterable": true },
         { "key": "Data de vencimento", "label": "Data de vencimento", "type": "date" },
         { "key": "Data do documento", "label": "Data do documento", "type": "date", "keyField": true, "filterable": true },
-        { "key": "MÊS", "label": "Mês", "type": "number", "filterable": true },
+        { "key": "MÊS", "label": "Mês", "type": "date", "filterable": true },
         { "key": "Cód da cond de pgto", "label": "Cód. cond. pgto", "type": "number" },
         { "key": "Forma de pagamento", "label": "Forma de pagamento", "type": "string", "filterable": true },
         { "key": "Código do cliente/fornecedor", "label": "Código cliente", "type": "string", "keyField": true, "filterable": true },
@@ -163,7 +163,7 @@
         { "key": "Col_2", "label": "Data/Valor", "type": "number" },
         { "key": "Col_3", "label": "Data 1", "type": "date" },
         { "key": "Col_4", "label": "Data 2", "type": "date" },
-        { "key": "%Evol", "label": "% Evol", "type": "string" }
+        { "key": "Col_7", "label": "% Evol (dados linha 1)", "type": "string" }
       ],
       "notes": "Usado para reconciliação: totais por período (ex.: CUSTO ESTOQUE - CMV, DATA). 20 colunas."
     },
@@ -177,8 +177,8 @@
         { "key": "Col_0", "label": "Rótulo", "type": "string" },
         { "key": "GRUPO", "label": "Grupo", "type": "string", "filterable": true },
         { "key": "(Vários itens)", "label": "Mês/Período", "type": "date" },
-        { "key": "CMV GERAL", "label": "CMV Geral", "type": "string" },
-        { "key": "CMV A", "label": "CMV A", "type": "string" }
+        { "key": "Col_3", "label": "CMV Geral (dados linha 1)", "type": "string" },
+        { "key": "Col_4", "label": "CMV A (dados linha 1)", "type": "string" }
       ],
       "notes": "13 colunas; layout pivot (grupo, mês, CMV)."
     },
@@ -237,10 +237,42 @@
     {
       "id": 14,
       "name": "GABARITO",
-      "displayName": "Gabarito",
-      "category": "other",
-      "rowCount": 0,
-      "columns": []
+      "displayName": "Gabarito (auxiliar)",
+      "category": "dimension",
+      "rowCount": 629,
+      "columns": [
+        { "key": "Col_0", "label": "Nº do item", "type": "string", "keyField": true },
+        { "key": "Col_1", "label": "Sub-Nome", "type": "string" },
+        { "key": "Col_2", "label": "NameState", "type": "string" },
+        { "key": "Col_3", "label": "ICMS", "type": "string" },
+        { "key": "Col_4", "label": "REGIÃO", "type": "string", "filterable": true },
+        { "key": "Col_5", "label": "PESO", "type": "number" }
+      ],
+      "notes": "17 colunas; tabela auxiliar com dados de item (Sub-Nome, NameState, ICMS, REGIÃO, PESO). Alimenta DimProduto e DimDomínios."
+    },
+    {
+      "id": 15,
+      "name": "FAT. MÊS ATUAL",
+      "displayName": "Faturamento Mês Atual",
+      "category": "fact",
+      "rowCount": 10,
+      "columns": [
+        { "key": "META", "label": "Vendedor", "type": "string", "keyField": true },
+        { "key": "Col_1", "label": "Meta (R$)", "type": "number" },
+        { "key": "Col_2", "label": "Meta semanal", "type": "number" },
+        { "key": "Col_3", "label": "Meta diária", "type": "number" },
+        { "key": "Col_5", "label": "01ª Semana", "type": "number" },
+        { "key": "DIAS VENDA TOTAIS", "label": "02ª Semana", "type": "number" },
+        { "key": "Col_7", "label": "03ª Semana", "type": "number" },
+        { "key": "Col_8", "label": "04ª Semana", "type": "string" },
+        { "key": "21", "label": "Total val. real", "type": "number" },
+        { "key": "DIAS DE VENDAS ATUAIS", "label": "Média dia", "type": "number" },
+        { "key": "Col_11", "label": "Vol. vendido", "type": "number" },
+        { "key": "Col_12", "label": "Ticket", "type": "number" },
+        { "key": "15", "label": "Perf. %", "type": "number" },
+        { "key": "PREV FECHAMENTO", "label": "Prev. fechamento", "type": "number" }
+      ],
+      "notes": "Meta vs real por vendedor. Headers reais estão em sampleRows[0]: VENDEDOR, VALOR, SEMANA, DIA, 01ºSM..04ºSM, TOTAL VAL. REAL, MÉDIA DIA, VOL. VEND, TICKET, PERF. %, PREV FECHAMENTO."
     }
   ],
   "navigation": {
@@ -251,7 +283,8 @@
       { "sheetId": 6, "label": "Carteira", "path": "/carteira" },
       { "sheetId": 7, "label": "Vendedores", "path": "/vendedores" },
       { "sheetId": 9, "label": "CMV / Margens", "path": "/margens" },
-      { "sheetId": 8, "label": "Resumo Comercial", "path": "/resumo" }
+      { "sheetId": 8, "label": "Resumo Comercial", "path": "/resumo" },
+      { "sheetId": 15, "label": "Fat. Mês Atual", "path": "/faturamento" }
     ],
     "globalFiltersFromSheets": ["DADOS"],
     "filterFields": [
@@ -260,7 +293,9 @@
       { "key": "Nº do item", "label": "Produto", "type": "string", "sheet": "DADOS" },
       { "key": "Forma de pagamento", "label": "Forma pagamento", "type": "string", "sheet": "DADOS" },
       { "key": "Nome do grupo", "label": "Grupo cliente", "type": "string", "sheet": "DADOS" },
-      { "key": "DescriptionUsage", "label": "Uso/Venda", "type": "string", "sheet": "DADOS" }
+      { "key": "DescriptionUsage", "label": "Uso/Venda", "type": "string", "sheet": "DADOS" },
+      { "key": "Cancelado", "label": "Cancelado", "type": "string", "sheet": "DADOS" },
+      { "key": "COD", "label": "Categoria (COD)", "type": "string", "sheet": "DADOS" }
     ]
   }
 }
