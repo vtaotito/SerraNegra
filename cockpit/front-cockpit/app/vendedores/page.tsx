@@ -48,12 +48,12 @@ export default function VendedoresPage() {
 
   const { data: invData, loading: l1, error: e1, refetch: r1 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
   const { data: spData, loading: l2, error: e2, refetch: r2 } = useFetch(() => fetchSalesPersons(), []);
-  const loading = l1 || l2;
-  const error = e1 || e2;
+  const loading = l2;
+  const hasInvError = !!e1;
 
   const rows = useMemo(() => {
-    if (!invData?.items || !spData?.items) return [];
-    return buildRows(invData.items, spData.items);
+    if (!spData?.items) return [];
+    return buildRows(invData?.items ?? [], spData.items);
   }, [invData, spData]);
 
   const [search, setSearch] = useState("");
@@ -64,7 +64,7 @@ export default function VendedoresPage() {
   const ativos = filtered.filter((r) => r.active).length;
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Vendedores</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
-  if (error) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Vendedores</h1></div><ErrorState message={error} onRetry={() => { r1(); r2(); }} /></div>;
+  if (e2) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Vendedores</h1></div><ErrorState message={e2} onRetry={r2} /></div>;
 
   return (
     <div className="space-y-6">

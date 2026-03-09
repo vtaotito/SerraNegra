@@ -20,8 +20,8 @@ export default function ResumoPage() {
   const { data: invoiceData, loading: l4, error: e4, refetch: r4 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
   const { data: spData, loading: l5, error: e5, refetch: r5 } = useFetch(() => fetchSalesPersons(), []);
 
-  const loading = l1 || l2 || l3 || l4 || l5;
-  const error = e1 || e2 || e3 || e4 || e5;
+  const loading = l1 && l2 && l3 && l5;
+  const coreError = e1 || e2 || e3 || e5;
 
   const stats = useMemo(() => {
     const invoices = invoiceData?.items ?? [];
@@ -74,7 +74,7 @@ export default function ResumoPage() {
   ];
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Resumo Comercial</h1><p className="text-cockpit-muted mt-1">Consolidando dados...</p></div><LoadingSkeleton /></div>;
-  if (error) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Resumo Comercial</h1></div><ErrorState message={error} onRetry={() => { r1(); r2(); r3(); r4(); r5(); }} /></div>;
+  if (coreError) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Resumo Comercial</h1></div><ErrorState message={coreError} onRetry={() => { r1(); r2(); r3(); r5(); }} /></div>;
 
   return (
     <div className="space-y-6">

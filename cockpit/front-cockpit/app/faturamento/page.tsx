@@ -55,12 +55,12 @@ export default function FaturamentoPage() {
   const { data: spData, loading: loadSp, error: errSp, refetch: rSp } =
     useFetch(() => fetchSalesPersons(), []);
 
-  const loading = loadInv || loadSp;
-  const error = errInv || errSp;
+  const loading = loadInv && loadSp;
+  const hasInvError = !!errInv;
 
   const vendedores = useMemo(() => {
-    if (!invData?.items || !spData?.items) return [];
-    return aggregate(invData.items, spData.items);
+    if (!spData?.items) return [];
+    return aggregate(invData?.items ?? [], spData.items);
   }, [invData, spData]);
 
   const [search, setSearch] = useState("");
@@ -86,7 +86,7 @@ export default function FaturamentoPage() {
   ];
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Faturamento</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
-  if (error) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Faturamento</h1></div><ErrorState message={error} onRetry={() => { rInv(); rSp(); }} /></div>;
+  if (errSp) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Faturamento</h1></div><ErrorState message={errSp} onRetry={rSp} /></div>;
 
   return (
     <div className="space-y-6">
