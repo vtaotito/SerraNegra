@@ -11,11 +11,12 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${GATEWAY}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const opts: RequestInit = { method: "POST" };
+  if (body !== undefined) {
+    opts.headers = { "content-type": "application/json" };
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${GATEWAY}${path}`, opts);
   if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
   return res.json();
 }
