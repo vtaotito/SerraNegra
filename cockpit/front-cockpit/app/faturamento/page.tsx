@@ -1,8 +1,9 @@
 "use client";
 
-import { TrendingUp, Target, DollarSign, CalendarDays } from "lucide-react";
+import { useState, useMemo } from "react";
+import { TrendingUp, Target, DollarSign, CalendarDays, Search } from "lucide-react";
 
-const vendedores = [
+const ALL_VENDEDORES = [
   { nome: "Alef Santos", meta: 220000, real: 122883, vol: 36, ticket: 3413.42, perf: -21.8, prev: 172036 },
   { nome: "Alessandro Gomes", meta: 600000, real: 517496, vol: 61, ticket: 8483.54, perf: 20.7, prev: 724495 },
   { nome: "Debora Silva", meta: 520000, real: 530724, vol: 245, ticket: 2166.22, perf: 42.9, prev: 743013 },
@@ -12,15 +13,6 @@ const vendedores = [
   { nome: "Ana", meta: 400000, real: 295684, vol: 137, ticket: 2138.43, perf: 20.1, prev: 413957 },
 ];
 
-const totais = {
-  meta: vendedores.reduce((s, v) => s + v.meta, 0),
-  real: vendedores.reduce((s, v) => s + v.real, 0),
-  vol: vendedores.reduce((s, v) => s + v.vol, 0),
-  prev: vendedores.reduce((s, v) => s + v.prev, 0),
-};
-
-const atingimento = ((totais.real / totais.meta) * 100).toFixed(1);
-
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
 }
@@ -29,14 +21,35 @@ function fmtTicket(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
 }
 
-const kpis = [
-  { label: "Meta Total", value: fmt(totais.meta), icon: Target, color: "text-cockpit-muted" },
-  { label: "Real Total", value: fmt(totais.real), icon: DollarSign, color: "text-cockpit-accent" },
-  { label: "% Atingimento", value: `${atingimento}%`, icon: TrendingUp, color: "text-amber-400" },
-  { label: "Previsão", value: fmt(totais.prev), icon: CalendarDays, color: "text-sky-400" },
-];
-
 export default function FaturamentoPage() {
+  const [search, setSearch] = useState("");
+  const [perfFilter, setPerfFilter] = useState<"all" | "positive" | "negative">("all");
+
+  const filtered = useMemo(() => {
+    return ALL_VENDEDORES.filter((v) => {
+      const matchSearch = v.nome.toLowerCase().includes(search.toLowerCase());
+      const matchPerf =
+        perfFilter === "all" ? true : perfFilter === "positive" ? v.perf >= 0 : v.perf < 0;
+      return matchSearch && matchPerf;
+    });
+  }, [search, perfFilter]);
+
+  const totais = useMemo(() => ({
+    meta: filtered.reduce((s, v) => s + v.meta, 0),
+    real: filtered.reduce((s, v) => s + v.real, 0),
+    vol: filtered.reduce((s, v) => s + v.vol, 0),
+    prev: filtered.reduce((s, v) => s + v.prev, 0),
+  }), [filtered]);
+
+  const atingimento = totais.meta > 0 ? ((totais.real / totais.meta) * 100).toFixed(1) : "0.0";
+
+  const kpis = [
+    { label: "Meta Total", value: fmt(totais.meta), icon: Target, color: "text-cockpit-muted" },
+    { label: "Real Total", value: fmt(totais.real), icon: DollarSign, color: "text-cockpit-accent" },
+    { label: "% Atingimento", value: `${atingimento}%`, icon: TrendingUp, color: "text-amber-400" },
+    { label: "Previsão", value: fmt(totais.prev), icon: CalendarDays, color: "text-sky-400" },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
@@ -44,6 +57,38 @@ export default function FaturamentoPage() {
         <p className="text-cockpit-muted mt-1">
           Meta vs realizado por vendedor — 21 dias de venda totais | 15 dias de vendas atuais
         </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar vendedor..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+          />
+        </div>
+        <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
+          {(["all", "positive", "negative"] as const).map((opt) => {
+            const labels = { all: "Todos", positive: "Acima", negative: "Abaixo" };
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setPerfFilter(opt)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  perfFilter === opt
+                    ? "bg-cockpit-accent/20 text-cockpit-accent"
+                    : "text-cockpit-muted hover:text-white"
+                }`}
+              >
+                {labels[opt]}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -77,64 +122,72 @@ export default function FaturamentoPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
-              {vendedores.map((v) => {
-                const pct = Math.min((v.real / v.meta) * 100, 100);
-                return (
-                  <tr key={v.nome} className="hover:bg-white/5 text-gray-300">
-                    <td className="px-4 py-3 font-medium text-white">{v.nome}</td>
-                    <td className="px-4 py-3 text-right">{fmt(v.meta)}</td>
-                    <td className="px-4 py-3 text-right">{fmt(v.real)}</td>
-                    <td className="px-4 py-3 text-right">{v.vol}</td>
-                    <td className="px-4 py-3 text-right">{fmtTicket(v.ticket)}</td>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-8 text-center text-cockpit-muted">
+                    Nenhum vendedor encontrado para os filtros selecionados
+                  </td>
+                </tr>
+              ) : (
+                <>
+                  {filtered.map((v) => {
+                    const pct = Math.min((v.real / v.meta) * 100, 100);
+                    return (
+                      <tr key={v.nome} className="hover:bg-white/5 text-gray-300">
+                        <td className="px-4 py-3 font-medium text-white">{v.nome}</td>
+                        <td className="px-4 py-3 text-right">{fmt(v.meta)}</td>
+                        <td className="px-4 py-3 text-right">{fmt(v.real)}</td>
+                        <td className="px-4 py-3 text-right">{v.vol}</td>
+                        <td className="px-4 py-3 text-right">{fmtTicket(v.ticket)}</td>
+                        <td
+                          className={`px-4 py-3 text-right font-semibold ${
+                            v.perf >= 0 ? "text-emerald-400" : "text-red-400"
+                          }`}
+                        >
+                          {v.perf >= 0 ? "+" : ""}{v.perf.toFixed(1)}%
+                        </td>
+                        <td className="px-4 py-3 text-right">{fmt(v.prev)}</td>
+                        <td className="px-4 py-3">
+                          <div className="h-2 w-full rounded-full bg-cockpit-bg">
+                            <div
+                              className={`h-2 rounded-full ${v.perf >= 0 ? "bg-emerald-500" : "bg-red-500"}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-cockpit-bg/60 text-white font-bold">
+                    <td className="px-4 py-3">TOTAL ({filtered.length}/{ALL_VENDEDORES.length})</td>
+                    <td className="px-4 py-3 text-right">{fmt(totais.meta)}</td>
+                    <td className="px-4 py-3 text-right">{fmt(totais.real)}</td>
+                    <td className="px-4 py-3 text-right">{totais.vol}</td>
+                    <td className="px-4 py-3 text-right">—</td>
                     <td
                       className={`px-4 py-3 text-right font-semibold ${
-                        v.perf >= 0 ? "text-emerald-400" : "text-red-400"
+                        totais.real >= totais.meta ? "text-emerald-400" : "text-amber-400"
                       }`}
                     >
-                      {v.perf >= 0 ? "+" : ""}
-                      {v.perf.toFixed(1)}%
+                      {atingimento}%
                     </td>
-                    <td className="px-4 py-3 text-right">{fmt(v.prev)}</td>
+                    <td className="px-4 py-3 text-right">{fmt(totais.prev)}</td>
                     <td className="px-4 py-3">
                       <div className="h-2 w-full rounded-full bg-cockpit-bg">
                         <div
-                          className={`h-2 rounded-full ${v.perf >= 0 ? "bg-emerald-500" : "bg-red-500"}`}
-                          style={{ width: `${pct}%` }}
+                          className="h-2 rounded-full bg-amber-500"
+                          style={{ width: `${totais.meta > 0 ? Math.min((totais.real / totais.meta) * 100, 100) : 0}%` }}
                         />
                       </div>
                     </td>
                   </tr>
-                );
-              })}
-
-              <tr className="bg-cockpit-bg/60 text-white font-bold">
-                <td className="px-4 py-3">TOTAL</td>
-                <td className="px-4 py-3 text-right">{fmt(totais.meta)}</td>
-                <td className="px-4 py-3 text-right">{fmt(totais.real)}</td>
-                <td className="px-4 py-3 text-right">{totais.vol}</td>
-                <td className="px-4 py-3 text-right">—</td>
-                <td
-                  className={`px-4 py-3 text-right font-semibold ${
-                    totais.real >= totais.meta ? "text-emerald-400" : "text-amber-400"
-                  }`}
-                >
-                  {atingimento}%
-                </td>
-                <td className="px-4 py-3 text-right">{fmt(totais.prev)}</td>
-                <td className="px-4 py-3">
-                  <div className="h-2 w-full rounded-full bg-cockpit-bg">
-                    <div
-                      className="h-2 rounded-full bg-amber-500"
-                      style={{ width: `${Math.min((totais.real / totais.meta) * 100, 100)}%` }}
-                    />
-                  </div>
-                </td>
-              </tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>
         <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
-          Dados reais — aba FAT. MÊS ATUAL do Excel
+          Exibindo {filtered.length} de {ALL_VENDEDORES.length} vendedores — dados aba FAT. MÊS ATUAL
         </div>
       </div>
     </div>

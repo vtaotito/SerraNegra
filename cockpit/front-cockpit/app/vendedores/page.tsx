@@ -1,19 +1,12 @@
 "use client";
 
-import {
-  Users,
-  TrendingUp,
-  Target,
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { Users, TrendingUp, Target, Search } from "lucide-react";
 
 const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 0,
-  });
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
 
-const vendedores = [
+const ALL_VENDEDORES = [
   { nome: "ALEF", alvo: 50, real: 36, posit: 85, prosp: 12, recup: 8, ticket: 3413, metas: "2/6" },
   { nome: "ALESSANDRO", alvo: 80, real: 61, posit: 142, prosp: 18, recup: 15, ticket: 8484, metas: "4/6" },
   { nome: "DEBORA", alvo: 175, real: 245, posit: 310, prosp: 25, recup: 22, ticket: 2166, metas: "6/6" },
@@ -35,19 +28,35 @@ function AtingBadge({ real, alvo }: { real: number; alvo: number }) {
   );
 }
 
-const totalVendedores = vendedores.length;
-const mediaVolMensal = Math.round(
-  vendedores.reduce((s, v) => s + v.real, 0) / totalVendedores
-);
-const metaGlobal = vendedores.reduce((s, v) => s + v.alvo, 0);
-
-const kpis = [
-  { label: "Total Vendedores", value: String(totalVendedores), icon: Users, color: "text-cockpit-accent" },
-  { label: "Média Vol. Mensal", value: mediaVolMensal.toLocaleString("pt-BR"), icon: TrendingUp, color: "text-blue-400" },
-  { label: "Meta Global", value: metaGlobal.toLocaleString("pt-BR"), icon: Target, color: "text-yellow-400" },
-];
+type SortKey = "real" | "posit" | "prosp" | "ticket";
 
 export default function VendedoresPage() {
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("real");
+  const [atingFilter, setAtingFilter] = useState<"all" | "above" | "below">("all");
+
+  const filtered = useMemo(() => {
+    const list = ALL_VENDEDORES.filter((v) => {
+      const matchSearch = v.nome.toLowerCase().includes(search.toLowerCase());
+      const pct = (v.real / v.alvo) * 100;
+      const matchAting =
+        atingFilter === "all" ? true : atingFilter === "above" ? pct >= 100 : pct < 100;
+      return matchSearch && matchAting;
+    });
+    return [...list].sort((a, b) => b[sortBy] - a[sortBy]);
+  }, [search, sortBy, atingFilter]);
+
+  const kpis = useMemo(() => {
+    const count = filtered.length;
+    const mediaVol = count > 0 ? Math.round(filtered.reduce((s, v) => s + v.real, 0) / count) : 0;
+    const metaGlobal = filtered.reduce((s, v) => s + v.alvo, 0);
+    return [
+      { label: "Vendedores", value: String(count), icon: Users, color: "text-cockpit-accent" },
+      { label: "Média Vol. Mensal", value: mediaVol.toLocaleString("pt-BR"), icon: TrendingUp, color: "text-blue-400" },
+      { label: "Meta Global", value: metaGlobal.toLocaleString("pt-BR"), icon: Target, color: "text-yellow-400" },
+    ];
+  }, [filtered]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -55,6 +64,49 @@ export default function VendedoresPage() {
         <p className="text-cockpit-muted mt-1">
           Scorecard com métricas de performance — volume, positivações, prospecções.
         </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar vendedor..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+          />
+        </div>
+        <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
+          {(["all", "above", "below"] as const).map((opt) => {
+            const labels = { all: "Todos", above: "Meta batida", below: "Abaixo meta" };
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setAtingFilter(opt)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  atingFilter === opt
+                    ? opt === "below" ? "bg-red-500/20 text-red-400"
+                      : "bg-cockpit-accent/20 text-cockpit-accent"
+                    : "text-cockpit-muted hover:text-white"
+                }`}
+              >
+                {labels[opt]}
+              </button>
+            );
+          })}
+        </div>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+        >
+          <option value="real">Ordenar: Volume</option>
+          <option value="posit">Ordenar: Positivações</option>
+          <option value="prosp">Ordenar: Prospecções</option>
+          <option value="ticket">Ordenar: Ticket</option>
+        </select>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -65,9 +117,7 @@ export default function VendedoresPage() {
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">
-                {k.label}
-              </span>
+              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
             </div>
             <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
           </div>
@@ -76,7 +126,7 @@ export default function VendedoresPage() {
 
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
         <h2 className="text-lg font-semibold text-white mb-4">
-          Performance Semestral (Jan–Jun)
+          Performance Semestral ({filtered.length} vendedores)
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -94,34 +144,38 @@ export default function VendedoresPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
-              {vendedores.map((v) => (
-                <tr key={v.nome} className="hover:bg-white/5 transition-colors">
-                  <td className="py-3 pr-4 font-medium text-white">{v.nome}</td>
-                  <td className="py-3 pr-4 text-right text-cockpit-muted">{v.alvo}</td>
-                  <td className="py-3 pr-4 text-right text-white">{v.real}</td>
-                  <td className="py-3 pr-4 text-center">
-                    <AtingBadge real={v.real} alvo={v.alvo} />
-                  </td>
-                  <td className="py-3 pr-4 text-right text-white">{v.posit}</td>
-                  <td className="py-3 pr-4 text-right text-white">{v.prosp}</td>
-                  <td className="py-3 pr-4 text-right text-white">{v.recup}</td>
-                  <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">
-                    {fmt(v.ticket)}
-                  </td>
-                  <td className="py-3 text-center">
-                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white">
-                      {v.metas}
-                    </span>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-cockpit-muted">
+                    Nenhum vendedor encontrado para os filtros selecionados
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((v) => (
+                  <tr key={v.nome} className="hover:bg-white/5 transition-colors">
+                    <td className="py-3 pr-4 font-medium text-white">{v.nome}</td>
+                    <td className="py-3 pr-4 text-right text-cockpit-muted">{v.alvo}</td>
+                    <td className="py-3 pr-4 text-right text-white">{v.real}</td>
+                    <td className="py-3 pr-4 text-center">
+                      <AtingBadge real={v.real} alvo={v.alvo} />
+                    </td>
+                    <td className="py-3 pr-4 text-right text-white">{v.posit}</td>
+                    <td className="py-3 pr-4 text-right text-white">{v.prosp}</td>
+                    <td className="py-3 pr-4 text-right text-white">{v.recup}</td>
+                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmt(v.ticket)}</td>
+                    <td className="py-3 text-center">
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white">{v.metas}</span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
       <p className="text-xs text-cockpit-muted text-center">
-        Dados: aba MAPA VENDEDORES — Semestre 1/2025
+        Exibindo {filtered.length} de {ALL_VENDEDORES.length} vendedores — aba MAPA VENDEDORES
       </p>
     </div>
   );

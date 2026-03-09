@@ -1,32 +1,20 @@
 "use client";
 
-import {
-  DollarSign,
-  Clock,
-  Layers,
-  MapPin,
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { DollarSign, Clock, Layers, MapPin, Search } from "lucide-react";
 
 const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 0,
-  });
+  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
 
-const kpis = [
-  { label: "CMV Total Estoque", value: fmt(7012707), icon: DollarSign, color: "text-cockpit-accent" },
-  { label: "Tempo Médio Estoque", value: "2,8 meses (GN)", icon: Clock, color: "text-yellow-400" },
-  { label: "Categorias Analisadas", value: "5", icon: Layers, color: "text-blue-400" },
+const ALL_CATEGORIAS = [
+  { nome: "Garrafa Nacional (GN)", tempo: 2.8, status: "Normal" as const, cmv: 2850000 },
+  { nome: "Garrafa Importada (GI)", tempo: 4.1, status: "Alto" as const, cmv: 1420000 },
+  { nome: "Garrafão + Artesanal", tempo: 1.9, status: "OK" as const, cmv: 980000 },
+  { nome: "Pote Alimentício", tempo: 3.5, status: "Alto" as const, cmv: 890000 },
+  { nome: "Tampas Rolhas e Lacres", tempo: 1.2, status: "OK" as const, cmv: 872707 },
 ];
 
-const categorias = [
-  { nome: "Garrafa Nacional (GN)", tempo: 2.8, status: "Normal" },
-  { nome: "Garrafa Importada (GI)", tempo: 4.1, status: "Alto" },
-  { nome: "Garrafão + Artesanal", tempo: 1.9, status: "OK" },
-  { nome: "Pote Alimentício", tempo: 3.5, status: "Alto" },
-  { nome: "Tampas Rolhas e Lacres", tempo: 1.2, status: "OK" },
-];
+type StatusType = "OK" | "Normal" | "Alto";
 
 function tempoColor(t: number) {
   if (t <= 2) return "text-green-400";
@@ -34,20 +22,36 @@ function tempoColor(t: number) {
   return "text-red-400";
 }
 
-function statusBadge(status: string) {
-  const colors: Record<string, string> = {
-    OK: "bg-green-500/20 text-green-400",
-    Normal: "bg-yellow-500/20 text-yellow-400",
-    Alto: "bg-red-500/20 text-red-400",
-  };
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[status] ?? "text-cockpit-muted"}`}>
-      {status}
-    </span>
-  );
-}
+const statusColors: Record<StatusType, string> = {
+  OK: "bg-green-500/20 text-green-400",
+  Normal: "bg-yellow-500/20 text-yellow-400",
+  Alto: "bg-red-500/20 text-red-400",
+};
 
 export default function MargensPage() {
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusType | "ALL">("ALL");
+
+  const filtered = useMemo(() => {
+    return ALL_CATEGORIAS.filter((c) => {
+      const matchSearch = c.nome.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === "ALL" || c.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [search, statusFilter]);
+
+  const kpis = useMemo(() => {
+    const totalCmv = filtered.reduce((s, c) => s + c.cmv, 0);
+    const avgTempo = filtered.length > 0
+      ? filtered.reduce((s, c) => s + c.tempo, 0) / filtered.length
+      : 0;
+    return [
+      { label: "CMV Total Estoque", value: fmt(totalCmv), icon: DollarSign, color: "text-cockpit-accent" },
+      { label: "Tempo Médio Estoque", value: `${avgTempo.toFixed(1)} meses`, icon: Clock, color: "text-yellow-400" },
+      { label: "Categorias Exibidas", value: String(filtered.length), icon: Layers, color: "text-blue-400" },
+    ];
+  }, [filtered]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -55,6 +59,38 @@ export default function MargensPage() {
         <p className="text-cockpit-muted mt-1">
           Análise de custos — tempo de estoque por categoria, CMV por região.
         </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar categoria..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+          />
+        </div>
+        <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
+          {(["ALL", "OK", "Normal", "Alto"] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setStatusFilter(opt)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                statusFilter === opt
+                  ? opt === "Alto" ? "bg-red-500/20 text-red-400"
+                    : opt === "Normal" ? "bg-yellow-500/20 text-yellow-400"
+                    : opt === "OK" ? "bg-green-500/20 text-green-400"
+                    : "bg-cockpit-accent/20 text-cockpit-accent"
+                  : "text-cockpit-muted hover:text-white"
+              }`}
+            >
+              {opt === "ALL" ? "Todos" : opt}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -65,9 +101,7 @@ export default function MargensPage() {
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">
-                {k.label}
-              </span>
+              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
             </div>
             <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
           </div>
@@ -76,36 +110,48 @@ export default function MargensPage() {
 
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
         <h2 className="text-lg font-semibold text-white mb-4">
-          Tempo Médio de Estoque por Categoria
+          Tempo Médio de Estoque por Categoria ({filtered.length})
         </h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b border-cockpit-border text-cockpit-muted">
                 <th className="py-3 pr-4">Categoria</th>
+                <th className="py-3 pr-4 text-right">CMV</th>
                 <th className="py-3 pr-4 text-right">Tempo Médio (meses)</th>
                 <th className="py-3 text-center">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
-              {categorias.map((c) => (
-                <tr key={c.nome} className="hover:bg-white/5 transition-colors">
-                  <td className="py-3 pr-4 font-medium text-white">{c.nome}</td>
-                  <td className={`py-3 pr-4 text-right font-bold ${tempoColor(c.tempo)}`}>
-                    {c.tempo.toLocaleString("pt-BR", { minimumFractionDigits: 1 })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-cockpit-muted">
+                    Nenhuma categoria encontrada para os filtros selecionados
                   </td>
-                  <td className="py-3 text-center">{statusBadge(c.status)}</td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((c) => (
+                  <tr key={c.nome} className="hover:bg-white/5 transition-colors">
+                    <td className="py-3 pr-4 font-medium text-white">{c.nome}</td>
+                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmt(c.cmv)}</td>
+                    <td className={`py-3 pr-4 text-right font-bold ${tempoColor(c.tempo)}`}>
+                      {c.tempo.toLocaleString("pt-BR", { minimumFractionDigits: 1 })}
+                    </td>
+                    <td className="py-3 text-center">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusColors[c.status]}`}>
+                        {c.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Dados CMV por Região
-        </h2>
+        <h2 className="text-lg font-semibold text-white mb-4">Dados CMV por Região</h2>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-cockpit-accent" />
@@ -119,7 +165,7 @@ export default function MargensPage() {
       </div>
 
       <p className="text-xs text-cockpit-muted text-center">
-        Dados: abas CMV + ESTUDO DE MARGENS + RESUMO COMERCIAL
+        Exibindo {filtered.length} de {ALL_CATEGORIAS.length} categorias — abas CMV + ESTUDO DE MARGENS
       </p>
     </div>
   );

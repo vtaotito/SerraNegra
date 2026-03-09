@@ -1,17 +1,14 @@
 "use client";
 
-import { FileText, Filter, Download } from "lucide-react";
+import { useState, useMemo } from "react";
+import { FileText, Filter, Download, Search, X } from "lucide-react";
 
 const formasPgto = [
   "Cartão Crédito", "Cartão Débito", "Dinheiro", "Transf. Banco",
   "Transf. Bradesco", "Vale",
 ];
 
-const grupos = ["Cliente Alcoólicos", "Cliente Alimentício", "Cliente Revendedor"];
-
-const categorias = ["AR", "GF", "GI", "GN", "IS", "LA", "PO", "RO", "TA", "TMG", "TMP", "TP"];
-
-const dados = [
+const ALL_DADOS = [
   { doc: 448, data: "01/03/2023", cliente: "C00700", vendedor: "Matheus Henrique", item: "GN0000116", desc: "CACHAÇA OURO 670ML", qtd: 96, total: 371.75, pgto: "Cartão Crédito", cancelado: "Não" },
   { doc: 448, data: "01/03/2023", cliente: "C00700", vendedor: "Matheus Henrique", item: "TA0000010", desc: "TAMPA METÁLICA 28MM", qtd: 100, total: 50.00, pgto: "Cartão Crédito", cancelado: "Não" },
   { doc: 449, data: "01/03/2023", cliente: "C00527", vendedor: "Matheus Henrique", item: "GN0000116", desc: "CACHAÇA OURO 670ML", qtd: 120, total: 464.59, pgto: "Transf. Banco", cancelado: "Não" },
@@ -24,14 +21,46 @@ const dados = [
   { doc: 456, data: "05/03/2023", cliente: "C00700", vendedor: "Alef Santos", item: "GN0000116", desc: "CACHAÇA OURO 670ML", qtd: 48, total: 185.88, pgto: "Cartão Crédito", cancelado: "Sim" },
 ];
 
-const totalQtd = dados.reduce((s, d) => s + d.qtd, 0);
-const totalValor = dados.reduce((s, d) => s + d.total, 0);
+const VENDEDORES = [...new Set(ALL_DADOS.map((d) => d.vendedor))].sort();
 
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default function ComercialDadosPage() {
+  const [search, setSearch] = useState("");
+  const [vendedorFilter, setVendedorFilter] = useState("ALL");
+  const [pgtoFilter, setPgtoFilter] = useState("ALL");
+  const [canceladoFilter, setCanceladoFilter] = useState<"ALL" | "Não" | "Sim">("ALL");
+
+  const filtered = useMemo(() => {
+    return ALL_DADOS.filter((row) => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        row.cliente.toLowerCase().includes(q) ||
+        row.item.toLowerCase().includes(q) ||
+        row.desc.toLowerCase().includes(q) ||
+        row.vendedor.toLowerCase().includes(q) ||
+        String(row.doc).includes(q);
+      const matchVendedor = vendedorFilter === "ALL" || row.vendedor === vendedorFilter;
+      const matchPgto = pgtoFilter === "ALL" || row.pgto === pgtoFilter;
+      const matchCanc = canceladoFilter === "ALL" || row.cancelado === canceladoFilter;
+      return matchSearch && matchVendedor && matchPgto && matchCanc;
+    });
+  }, [search, vendedorFilter, pgtoFilter, canceladoFilter]);
+
+  const totalQtd = useMemo(() => filtered.reduce((s, d) => s + d.qtd, 0), [filtered]);
+  const totalValor = useMemo(() => filtered.reduce((s, d) => s + d.total, 0), [filtered]);
+
+  const hasFilters = search || vendedorFilter !== "ALL" || pgtoFilter !== "ALL" || canceladoFilter !== "ALL";
+
+  function clearFilters() {
+    setSearch("");
+    setVendedorFilter("ALL");
+    setPgtoFilter("ALL");
+    setCanceladoFilter("ALL");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -53,35 +82,90 @@ export default function ComercialDadosPage() {
         </button>
       </div>
 
-      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Filter className="w-4 h-4 text-cockpit-muted" />
-          <span className="text-sm font-medium text-cockpit-muted">Filtros disponíveis</span>
+      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-cockpit-muted" />
+            <span className="text-sm font-medium text-cockpit-muted">Filtros</span>
+          </div>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-cockpit-muted hover:text-white transition-colors"
+            >
+              <X className="w-3 h-3" /> Limpar
+            </button>
+          )}
         </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <span className="px-2.5 py-1 rounded-md bg-cockpit-accent/20 text-cockpit-accent">
-            Mar 2023 — Ago 2025
-          </span>
-          {formasPgto.map((f) => (
-            <span key={f} className="px-2.5 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-gray-400">
-              {f}
-            </span>
-          ))}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar doc, cliente, item, vendedor..."
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+            />
+          </div>
+          <select
+            value={vendedorFilter}
+            onChange={(e) => setVendedorFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+          >
+            <option value="ALL">Todos vendedores</option>
+            {VENDEDORES.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+          <select
+            value={pgtoFilter}
+            onChange={(e) => setPgtoFilter(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+          >
+            <option value="ALL">Todas formas pgto</option>
+            {formasPgto.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
+            {(["ALL", "Não", "Sim"] as const).map((opt) => {
+              const labels = { ALL: "Todos", Não: "Ativos", Sim: "Cancelados" };
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => setCanceladoFilter(opt)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    canceladoFilter === opt
+                      ? opt === "Sim" ? "bg-red-500/20 text-red-400"
+                        : "bg-cockpit-accent/20 text-cockpit-accent"
+                      : "text-cockpit-muted hover:text-white"
+                  }`}
+                >
+                  {labels[opt]}
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs mt-2">
-          {grupos.map((g) => (
-            <span key={g} className="px-2.5 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-gray-400">
-              {g}
-            </span>
-          ))}
-          {categorias.slice(0, 6).map((c) => (
-            <span key={c} className="px-2.5 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-gray-400 font-mono">
-              {c}
-            </span>
-          ))}
-          <span className="px-2.5 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-cockpit-muted">
-            +{categorias.length - 6} categorias
-          </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4">
+          <p className="text-xs text-cockpit-muted uppercase">Documentos</p>
+          <p className="text-xl font-bold text-white mt-1">{filtered.length}</p>
+        </div>
+        <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4">
+          <p className="text-xs text-cockpit-muted uppercase">Qtd Total</p>
+          <p className="text-xl font-bold text-white mt-1">{totalQtd.toLocaleString("pt-BR")}</p>
+        </div>
+        <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4">
+          <p className="text-xs text-cockpit-muted uppercase">Valor Total</p>
+          <p className="text-xl font-bold text-cockpit-accent mt-1">{fmt(totalValor)}</p>
+        </div>
+        <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4">
+          <p className="text-xs text-cockpit-muted uppercase">Ticket Médio</p>
+          <p className="text-xl font-bold text-white mt-1">
+            {filtered.length > 0 ? fmt(totalValor / filtered.length) : "—"}
+          </p>
         </div>
       </div>
 
@@ -103,43 +187,52 @@ export default function ComercialDadosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border/50">
-              {dados.map((row, i) => (
-                <tr
-                  key={i}
-                  className={`hover:bg-white/5 ${row.cancelado === "Sim" ? "opacity-50" : ""}`}
-                >
-                  <td className="py-3 px-4 text-gray-200 font-medium">{row.doc}</td>
-                  <td className="py-3 px-4 text-gray-300">{row.data}</td>
-                  <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.cliente}</td>
-                  <td className="py-3 px-4 text-gray-300">{row.vendedor}</td>
-                  <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.item}</td>
-                  <td className="py-3 px-4 text-gray-300 max-w-[200px] truncate">{row.desc}</td>
-                  <td className="py-3 px-4 text-right text-gray-300">{row.qtd.toLocaleString("pt-BR")}</td>
-                  <td className="py-3 px-4 text-right text-cockpit-accent font-medium">{fmt(row.total)}</td>
-                  <td className="py-3 px-4 text-gray-400">{row.pgto}</td>
-                  <td className="py-3 px-4 text-center">
-                    {row.cancelado === "Sim" ? (
-                      <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-red-500/15 text-red-400">Sim</span>
-                    ) : (
-                      <span className="text-cockpit-muted">—</span>
-                    )}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-8 text-center text-cockpit-muted">
+                    Nenhum documento encontrado para os filtros selecionados
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((row, i) => (
+                  <tr
+                    key={`${row.doc}-${row.item}-${i}`}
+                    className={`hover:bg-white/5 ${row.cancelado === "Sim" ? "opacity-50" : ""}`}
+                  >
+                    <td className="py-3 px-4 text-gray-200 font-medium">{row.doc}</td>
+                    <td className="py-3 px-4 text-gray-300">{row.data}</td>
+                    <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.cliente}</td>
+                    <td className="py-3 px-4 text-gray-300">{row.vendedor}</td>
+                    <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.item}</td>
+                    <td className="py-3 px-4 text-gray-300 max-w-[200px] truncate">{row.desc}</td>
+                    <td className="py-3 px-4 text-right text-gray-300">{row.qtd.toLocaleString("pt-BR")}</td>
+                    <td className="py-3 px-4 text-right text-cockpit-accent font-medium">{fmt(row.total)}</td>
+                    <td className="py-3 px-4 text-gray-400">{row.pgto}</td>
+                    <td className="py-3 px-4 text-center">
+                      {row.cancelado === "Sim" ? (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-red-500/15 text-red-400">Sim</span>
+                      ) : (
+                        <span className="text-cockpit-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
-            <tfoot>
-              <tr className="bg-cockpit-bg/60 text-white font-bold border-t border-cockpit-border">
-                <td className="py-3 px-4" colSpan={6}>TOTAL (amostra)</td>
-                <td className="py-3 px-4 text-right">{totalQtd.toLocaleString("pt-BR")}</td>
-                <td className="py-3 px-4 text-right text-cockpit-accent">{fmt(totalValor)}</td>
-                <td className="py-3 px-4" colSpan={2} />
-              </tr>
-            </tfoot>
+            {filtered.length > 0 && (
+              <tfoot>
+                <tr className="bg-cockpit-bg/60 text-white font-bold border-t border-cockpit-border">
+                  <td className="py-3 px-4" colSpan={6}>TOTAL ({filtered.length} linhas)</td>
+                  <td className="py-3 px-4 text-right">{totalQtd.toLocaleString("pt-BR")}</td>
+                  <td className="py-3 px-4 text-right text-cockpit-accent">{fmt(totalValor)}</td>
+                  <td className="py-3 px-4" colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
-        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted flex justify-between">
-          <span>Amostra de 10 linhas — dados completos via API (1M+ registos na aba DADOS)</span>
-          <span>Vendedores encontrados: Matheus Henrique, Debora Silva, Alessandro Gomes, Thiago Lopes, Ana, Tatiana Fernandes, Isabela Batista, Alef Santos</span>
+        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
+          Exibindo {filtered.length} de {ALL_DADOS.length} linhas (amostra) — dados completos via API (1M+ registos na aba DADOS)
         </div>
       </div>
     </div>
