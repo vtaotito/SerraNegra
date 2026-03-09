@@ -235,11 +235,13 @@ export class SapEntitiesService {
     if (opts.dateFrom) dateFilter += ` and DocDate ge '${opts.dateFrom}'`;
     if (opts.dateTo) dateFilter += ` and DocDate le '${opts.dateTo}'`;
 
+    const noExpand = "";
     const candidates = [
       { select: fullSelect, expand: expandFull, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
       { select: fullSelect, expand: expandMin, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
       { select: minSelect, expand: expandMin, filter: dateFilter ? `&$filter=${dateFilter.replace(' and ', '')}` : "" },
-      { select: minSelect, expand: expandMin, filter: "" },
+      { select: minSelect, expand: noExpand,   filter: dateFilter ? `&$filter=${dateFilter.replace(' and ', '')}` : "" },
+      { select: minSelect, expand: noExpand,   filter: "" },
     ];
 
     let lastError: unknown;
@@ -250,8 +252,9 @@ export class SapEntitiesService {
         const pageSize = 20;
         let skip = 0;
 
+        const expandPart = expand ? `&$expand=${expand}` : "";
         while (all.length < maxItems) {
-          const url = `/Invoices?$select=${select}&$expand=${expand}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=DocDate desc`;
+          const url = `/Invoices?$select=${select}${expandPart}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=DocDate desc`;
           const res = await this.client.get<{ value: SapInvoiceRow[] }>(url, { correlationId });
           const page = res.data.value || [];
           if (page.length === 0) break;
@@ -264,8 +267,12 @@ export class SapEntitiesService {
         console.log(`[listInvoices] Candidato #${ci + 1} OK - ${all.length} notas fiscais`);
         return all.slice(0, maxItems);
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const status = err instanceof SapHttpError ? err.status : 0;
+        console.warn(`[listInvoices] Candidato #${ci + 1} falhou (status=${status}): ${errMsg}`);
         lastError = err;
-        if (err instanceof SapHttpError && err.status === 400) continue;
+        if (status === 400 || status === 500 || status === 502 || status === 504) continue;
+        if (errMsg.includes("timeout") || errMsg.includes("abort")) continue;
         throw err;
       }
     }

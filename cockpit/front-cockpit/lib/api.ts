@@ -17,7 +17,14 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     opts.body = JSON.stringify(body);
   }
   const res = await fetch(`${GATEWAY}${path}`, opts);
-  if (!res.ok) throw new Error(`POST ${path} → ${res.status}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = j.detail || j.message || "";
+    } catch { /* ignore */ }
+    throw new Error(`POST ${path} → ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
   return res.json();
 }
 

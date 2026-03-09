@@ -1056,9 +1056,13 @@ export async function registerSapRoutes(app: FastifyInstance) {
         items: invoices,
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
+    } catch (error: any) {
       const message = error instanceof Error ? error.message : "Erro";
-      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+      const detail = error?.responseBodyText
+        ? error.responseBodyText.slice(0, 500)
+        : error?.status ? `SAP status ${error.status}` : undefined;
+      console.error(`[sync/invoices] ${message}`, detail ?? "");
+      reply.code(500).send({ ok: false, message, detail, timestamp: new Date().toISOString() });
     }
   });
 
