@@ -26,17 +26,33 @@ function flattenInvoices(invoices: SapInvoice[]): DocRow[] {
   const rows: DocRow[] = [];
   for (const inv of invoices) {
     const isCancelled = inv.Cancelled === "tYES";
-    for (const line of inv.DocumentLines ?? []) {
+    const lines = inv.DocumentLines ?? [];
+    if (lines.length > 0) {
+      for (const line of lines) {
+        rows.push({
+          doc: inv.DocNum,
+          data: inv.DocDate,
+          cliente: inv.CardCode,
+          clienteNome: inv.CardName,
+          vendedorCode: inv.SalesPersonCode,
+          item: line.ItemCode ?? "",
+          desc: line.ItemDescription ?? "",
+          qtd: line.Quantity ?? 0,
+          total: line.LineTotal ?? 0,
+          cancelado: isCancelled,
+        });
+      }
+    } else {
       rows.push({
         doc: inv.DocNum,
         data: inv.DocDate,
         cliente: inv.CardCode,
         clienteNome: inv.CardName,
         vendedorCode: inv.SalesPersonCode,
-        item: line.ItemCode,
-        desc: line.ItemDescription,
-        qtd: line.Quantity,
-        total: line.LineTotal,
+        item: "—",
+        desc: "(nota fiscal sem detalhamento de linhas)",
+        qtd: 1,
+        total: inv.DocTotal,
         cancelado: isCancelled,
       });
     }
