@@ -1,65 +1,73 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DollarSign, TrendingUp, Target, BarChart3, Search, CalendarDays } from "lucide-react";
+import { DollarSign, TrendingUp, Target, Users, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { fetchInvoices, fetchSalesPersons, type SapInvoice, type SapSalesPerson } from "@/lib/api";
+import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { LoadingSkeleton, ErrorState } from "@/components/DataState";
+import { format } from "date-fns";
 
-const ALL_CARTEIRA = [
-  { vendedor: "ALEF", total: 620, perdidos: 310, atencao: 186, pareto: 84, gold: 21, ticket: 6200, fatMes: 310000 },
-  { vendedor: "ALESSANDRO", total: 890, perdidos: 445, atencao: 267, pareto: 120, gold: 30, ticket: 9800, fatMes: 480000 },
-  { vendedor: "DEBORA", total: 780, perdidos: 390, atencao: 234, pareto: 105, gold: 26, ticket: 7500, fatMes: 410000 },
-  { vendedor: "ISABELA", total: 350, perdidos: 175, atencao: 105, pareto: 47, gold: 12, ticket: 4200, fatMes: 120000 },
-  { vendedor: "TATIANA", total: 520, perdidos: 260, atencao: 156, pareto: 70, gold: 17, ticket: 5800, fatMes: 280000 },
-  { vendedor: "THIAGO", total: 680, perdidos: 340, atencao: 204, pareto: 92, gold: 23, ticket: 6900, fatMes: 350000 },
-  { vendedor: "ANA", total: 802, perdidos: 448, atencao: 261, pareto: 111, gold: 25, ticket: 8100, fatMes: 557000 },
-];
+interface CarteiraRow {
+  nome: string;
+  code: number;
+  clientes: number;
+  fat: number;
+  notas: number;
+  ticket: number;
+}
 
-function PctBadge({ perdidos, total }: { perdidos: number; total: number }) {
-  const pct = Math.round((perdidos / total) * 100);
-  const color = pct > 50 ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400";
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>
-      {pct}%
-    </span>
-  );
+function buildCarteira(invoices: SapInvoice[], persons: SapSalesPerson[]): CarteiraRow[] {
+  const pMap = new Map(persons.map((p) => [p.SalesEmployeeCode, p.SalesEmployeeName]));
+  const agg = new Map<number, { fat: number; notas: number; clients: Set<string> }>();
+
+  for (const inv of invoices) {
+    if (inv.Cancelled === "tYES") continue;
+    const c = inv.SalesPersonCode;
+    const cur = agg.get(c) ?? { fat: 0, notas: 0, clients: new Set<string>() };
+    cur.fat += inv.DocTotal;
+    cur.notas += 1;
+    cur.clients.add(inv.CardCode);
+    agg.set(c, cur);
+  }
+
+  return Array.from(agg.entries())
+    .map(([code, { fat, notas, clients }]) => ({
+      nome: pMap.get(code) ?? `Vendedor ${code}`,
+      code,
+      clientes: clients.size,
+      fat,
+      notas,
+      ticket: notas > 0 ? fat / notas : 0,
+    }))
+    .sort((a, b) => b.fat - a.fat);
 }
 
 export default function CarteiraPage() {
-  const { label: periodoLabel } = useDateRange();
+  const { label: periodoLabel, range } = useDateRange();
+  const dateFrom = format(range.from, "yyyy-MM-dd");
+  const dateTo = format(range.to, "yyyy-MM-dd");
+
+  const { data: invData, loading: l1, error: e1, refetch: r1 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: spData, loading: l2, error: e2, refetch: r2 } = useFetch(() => fetchSalesPersons(), []);
+  const loading = l1 || l2;
+  const error = e1 || e2;
+
+  const rows = useMemo(() => {
+    if (!invData?.items || !spData?.items) return [];
+    return buildCarteira(invData.items, spData.items);
+  }, [invData, spData]);
+
   const [search, setSearch] = useState("");
-  const [metricSort, setMetricSort] = useState<"fatMes" | "total" | "perdidos" | "gold">("fatMes");
+  const filtered = useMemo(() => rows.filter((r) => r.nome.toLowerCase().includes(search.toLowerCase())), [rows, search]);
 
-  const filtered = useMemo(() => {
-    const list = ALL_CARTEIRA.filter((row) =>
-      row.vendedor.toLowerCase().includes(search.toLowerCase())
-    );
-    return [...list].sort((a, b) => b[metricSort] - a[metricSort]);
-  }, [search, metricSort]);
+  const totalClientes = new Set(filtered.flatMap(() => [])).size || filtered.reduce((s, r) => s + r.clientes, 0);
+  const totalFat = filtered.reduce((s, r) => s + r.fat, 0);
+  const totalNotas = filtered.reduce((s, r) => s + r.notas, 0);
 
-  const kpis = useMemo(() => {
-    const totalFat = filtered.reduce((s, r) => s + r.fatMes, 0);
-    const avgFat = filtered.length > 0 ? totalFat / filtered.length : 0;
-    const avgPosit = filtered.length > 0
-      ? filtered.reduce((s, r) => s + (r.total - r.perdidos - r.atencao), 0) / filtered.length
-      : 0;
-    const avgSku = filtered.length > 0
-      ? (filtered.reduce((s, r) => s + r.pareto, 0) / filtered.length * 0.094).toFixed(2)
-      : "0";
-    return [
-      { label: "Fat. 90 Dias Total", value: fmtBRL(totalFat * 3), icon: DollarSign, color: "text-cockpit-accent" },
-      { label: "Média Fat./Mês", value: fmtBRL(avgFat), icon: TrendingUp, color: "text-blue-400" },
-      { label: "Média Positivações", value: avgPosit.toFixed(0), icon: Target, color: "text-yellow-400" },
-      { label: "Média SKU/Cliente", value: avgSku, icon: BarChart3, color: "text-purple-400" },
-    ];
-  }, [filtered]);
-
-  const sortOptions = [
-    { value: "fatMes", label: "Fat. Mês" },
-    { value: "total", label: "Total Clientes" },
-    { value: "perdidos", label: "Perdidos" },
-    { value: "gold", label: "Gold" },
-  ] as const;
+  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Carteira</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
+  if (error) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Carteira</h1></div><ErrorState message={error} onRetry={() => { r1(); r2(); }} /></div>;
 
   return (
     <div className="space-y-6">
@@ -69,104 +77,60 @@ export default function CarteiraPage() {
           <CalendarDays className="w-3.5 h-3.5" />
           <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
-          <span>Faturamento, ticket, positivações por vendedor</span>
+          <span>Clientes por vendedor</span>
         </p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
-          />
-        </div>
-        <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
-          {sortOptions.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setMetricSort(opt.value)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                metricSort === opt.value
-                  ? "bg-cockpit-accent/20 text-cockpit-accent"
-                  : "text-cockpit-muted hover:text-white"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+        <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
+          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((k) => (
-          <div
-            key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
-          >
-            <div className="flex items-center gap-2">
-              <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
-            </div>
-            <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
+        {[
+          { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-cockpit-accent" },
+          { label: "Clientes Únicos", value: String(totalClientes), icon: Target, color: "text-blue-400" },
+          { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-400" },
+          { label: "Ticket Médio", value: totalNotas > 0 ? fmtBRL(totalFat / totalNotas) : "—", icon: TrendingUp, color: "text-amber-400" },
+        ].map((k) => (
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
+            <div className="flex items-center gap-2"><k.icon className={`h-4 w-4 ${k.color}`} /><span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span></div>
+            <span className="text-xl font-bold text-white">{k.value}</span>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Carteira por Vendedor ({filtered.length})
-        </h2>
+      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead>
-              <tr className="border-b border-cockpit-border text-cockpit-muted">
-                <th scope="col" className="py-3 pr-4">Vendedor</th>
-                <th scope="col" className="py-3 pr-4 text-right">Total</th>
-                <th scope="col" className="py-3 pr-4 text-right">Perdidos 90d</th>
-                <th scope="col" className="py-3 pr-4 text-right">Atenção</th>
-                <th scope="col" className="py-3 pr-4 text-right">80/20</th>
-                <th scope="col" className="py-3 pr-4 text-right">Gold</th>
-                <th scope="col" className="py-3 pr-4 text-right">Ticket Médio</th>
-                <th scope="col" className="py-3 text-right">Fat. Mês</th>
+            <thead className="bg-cockpit-bg text-cockpit-muted uppercase text-xs">
+              <tr>
+                <th scope="col" className="px-4 py-3">Vendedor</th>
+                <th scope="col" className="px-4 py-3 text-right">Clientes</th>
+                <th scope="col" className="px-4 py-3 text-right">Faturamento</th>
+                <th scope="col" className="px-4 py-3 text-right">Notas</th>
+                <th scope="col" className="px-4 py-3 text-right">Ticket</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-cockpit-muted">
-                    Nenhum vendedor encontrado
-                  </td>
+                <tr><td colSpan={5} className="py-8 text-center text-cockpit-muted">Nenhum vendedor</td></tr>
+              ) : filtered.map((r) => (
+                <tr key={r.code} className="hover:bg-white/5">
+                  <td className="px-4 py-3 font-medium text-white">{r.nome}</td>
+                  <td className="px-4 py-3 text-right text-blue-400 font-medium">{r.clientes}</td>
+                  <td className="px-4 py-3 text-right text-cockpit-accent font-medium">{fmtBRL(r.fat)}</td>
+                  <td className="px-4 py-3 text-right text-gray-300">{r.notas}</td>
+                  <td className="px-4 py-3 text-right text-gray-300">{fmtBRL(r.ticket, 2)}</td>
                 </tr>
-              ) : (
-                filtered.map((row) => (
-                  <tr key={row.vendedor} className="hover:bg-white/5 transition-colors">
-                    <td className="py-3 pr-4 font-medium text-white">{row.vendedor}</td>
-                    <td className="py-3 pr-4 text-right text-white">{row.total.toLocaleString("pt-BR")}</td>
-                    <td className="py-3 pr-4 text-right">
-                      <span className="text-red-400 mr-2">{row.perdidos.toLocaleString("pt-BR")}</span>
-                      <PctBadge perdidos={row.perdidos} total={row.total} />
-                    </td>
-                    <td className="py-3 pr-4 text-right text-yellow-400">{row.atencao.toLocaleString("pt-BR")}</td>
-                    <td className="py-3 pr-4 text-right text-blue-400">{row.pareto.toLocaleString("pt-BR")}</td>
-                    <td className="py-3 pr-4 text-right text-yellow-400">{row.gold.toLocaleString("pt-BR")}</td>
-                    <td className="py-3 pr-4 text-right text-white">{fmtBRL(row.ticket)}</td>
-                    <td className="py-3 text-right text-cockpit-accent font-medium">{fmtBRL(row.fatMes)}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
+        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">{filtered.length} vendedores — SAP B1</div>
       </div>
-
-      <p className="text-xs text-cockpit-muted text-center">
-        Exibindo {filtered.length} de {ALL_CARTEIRA.length} vendedores — dados aba CARTEIRA GERAL
-      </p>
     </div>
   );
 }

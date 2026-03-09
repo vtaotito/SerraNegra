@@ -3,63 +3,79 @@
 import { useState, useMemo } from "react";
 import { Users, UserMinus, AlertTriangle, PieChart, Crown, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { fetchCustomers, type CustomerRow } from "@/lib/api";
+import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
-
-
-const ramos = [
-  "Cachaça", "Cerveja", "Gin", "Licor", "Azeite", "Conserva",
-  "Doce", "Geleia", "Kombucha", "Revenda", "Alimentício", "Destilado",
-];
-
-const ALL_CLIENTES = [
-  { cliente: "DISTRIBUIDORA ABC", ramo: "Cachaça", perfil: "GRANDE" as const, fat: 285000, ticket: 12400, sku: 15 },
-  { cliente: "BAR DO ZECA", ramo: "Cerveja", perfil: "GRANDE" as const, fat: 198000, ticket: 9200, sku: 12 },
-  { cliente: "EMPÓRIO SERRA", ramo: "Alimentício", perfil: "MÉDIO" as const, fat: 156000, ticket: 7800, sku: 9 },
-  { cliente: "ADEGA PREMIUM", ramo: "Gin", perfil: "GRANDE" as const, fat: 142000, ticket: 11300, sku: 8 },
-  { cliente: "MERCADO CENTRAL", ramo: "Revenda", perfil: "MÉDIO" as const, fat: 128000, ticket: 6400, sku: 11 },
-  { cliente: "CASA DO DESTILADO", ramo: "Destilado", perfil: "GRANDE" as const, fat: 115000, ticket: 9580, sku: 7 },
-  { cliente: "PADARIA DELÍCIA", ramo: "Alimentício", perfil: "PEQUENO" as const, fat: 89000, ticket: 4450, sku: 6 },
-  { cliente: "BAR TROPICAL", ramo: "Cerveja", perfil: "MÉDIO" as const, fat: 78000, ticket: 5200, sku: 10 },
-  { cliente: "LICORES FINOS", ramo: "Licor", perfil: "MÉDIO" as const, fat: 72000, ticket: 7200, sku: 5 },
-  { cliente: "DOCES DA SERRA", ramo: "Doce", perfil: "PEQUENO" as const, fat: 45000, ticket: 3000, sku: 4 },
-];
-
-type Perfil = "GRANDE" | "MÉDIO" | "PEQUENO";
+import { LoadingSkeleton, ErrorState } from "@/components/DataState";
 
 export default function ClientesPage() {
   const { label: periodoLabel } = useDateRange();
+
+  const { data: customerData, loading, error, refetch } = useFetch(
+    () => fetchCustomers({ limit: 200 }),
+    []
+  );
+
+  const allClientes = useMemo(() => {
+    if (!customerData) return [];
+    return customerData.data.map((c: CustomerRow) => ({
+      cliente: c.card_name,
+      codigo: c.card_code,
+      tipo: c.card_type === "cCustomer" ? "Cliente" : c.card_type === "cSupplier" ? "Fornecedor" : c.card_type,
+      cidade: c.city ?? "—",
+      estado: c.state ?? "—",
+      telefone: c.phone ?? "—",
+      email: c.email ?? "—",
+      ativo: c.is_active,
+    }));
+  }, [customerData]);
+
   const [search, setSearch] = useState("");
-  const [ramoFilter, setRamoFilter] = useState<string>("ALL");
-  const [perfilFilter, setPerfilFilter] = useState<Perfil | "ALL">("ALL");
+  const [tipoFilter, setTipoFilter] = useState<string>("ALL");
+  const [estadoFilter, setEstadoFilter] = useState<string>("ALL");
+
+  const uniqueEstados = useMemo(() =>
+    [...new Set(allClientes.map((c) => c.estado).filter((e) => e !== "—"))].sort(),
+  [allClientes]);
 
   const filtered = useMemo(() => {
-    return ALL_CLIENTES.filter((c) => {
+    return allClientes.filter((c) => {
       const q = search.toLowerCase();
-      const matchSearch = c.cliente.toLowerCase().includes(q) || c.ramo.toLowerCase().includes(q);
-      const matchRamo = ramoFilter === "ALL" || c.ramo === ramoFilter;
-      const matchPerfil = perfilFilter === "ALL" || c.perfil === perfilFilter;
-      return matchSearch && matchRamo && matchPerfil;
+      const matchSearch = c.cliente.toLowerCase().includes(q) || c.codigo.toLowerCase().includes(q) ||
+        c.cidade.toLowerCase().includes(q);
+      const matchTipo = tipoFilter === "ALL" || c.tipo === tipoFilter;
+      const matchEstado = estadoFilter === "ALL" || c.estado === estadoFilter;
+      return matchSearch && matchTipo && matchEstado;
     });
-  }, [search, ramoFilter, perfilFilter]);
+  }, [allClientes, search, tipoFilter, estadoFilter]);
 
   const kpis = useMemo(() => {
-    const totalFat = filtered.reduce((s, c) => s + c.fat, 0);
-    const avgTicket = filtered.length > 0 ? totalFat / filtered.length : 0;
-    const avgSku = filtered.length > 0 ? filtered.reduce((s, c) => s + c.sku, 0) / filtered.length : 0;
-    const grandes = filtered.filter((c) => c.perfil === "GRANDE").length;
+    const ativos = filtered.filter((c) => c.ativo).length;
+    const inativos = filtered.filter((c) => !c.ativo).length;
     return [
       { label: "Clientes Exibidos", value: String(filtered.length), icon: Users, color: "text-cockpit-accent" },
-      { label: "Fat. Total", value: fmtBRL(totalFat), icon: PieChart, color: "text-blue-400" },
-      { label: "Ticket Médio", value: fmtBRL(avgTicket), icon: Crown, color: "text-yellow-400" },
-      { label: "Perfil Grande", value: String(grandes), icon: UserMinus, color: "text-emerald-400" },
-      { label: "Média SKU", value: avgSku.toFixed(1), icon: AlertTriangle, color: "text-purple-400" },
+      { label: "Ativos", value: String(ativos), icon: Crown, color: "text-emerald-400" },
+      { label: "Inativos", value: String(inativos), icon: UserMinus, color: "text-red-400" },
+      { label: "Total na Base", value: String(customerData?.total ?? 0), icon: PieChart, color: "text-blue-400" },
     ];
-  }, [filtered]);
+  }, [filtered, customerData]);
 
-  const ramosUsados = useMemo(() => {
-    const set = new Set(filtered.map((c) => c.ramo));
-    return ramos.filter((r) => set.has(r));
-  }, [filtered]);
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div><h1 className="text-2xl font-bold text-white">Clientes</h1><p className="text-cockpit-muted mt-1">Carregando dados do SAP B1...</p></div>
+        <LoadingSkeleton rows={6} />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div><h1 className="text-2xl font-bold text-white">Clientes</h1></div>
+        <ErrorState message={error} onRetry={refetch} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -69,54 +85,39 @@ export default function ClientesPage() {
           <CalendarDays className="w-3.5 h-3.5" />
           <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
-          <span>Faturamento, concentração 80/20, clientes em risco</span>
+          <span>{customerData?.total ?? 0} clientes na base SAP B1</span>
         </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar cliente ou ramo..." aria-label="Buscar cliente"
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
-          />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar cliente, código ou cidade..." aria-label="Buscar cliente"
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
         </div>
-        <select
-          value={ramoFilter}
-          onChange={(e) => setRamoFilter(e.target.value)}
-          aria-label="Filtrar por ramo"
-          className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
-        >
-          <option value="ALL">Todos os ramos</option>
-          {ramos.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
-          {(["ALL", "GRANDE", "MÉDIO", "PEQUENO"] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => setPerfilFilter(opt)}
+        <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Filtrar por tipo">
+          {["ALL", "Cliente", "Fornecedor"].map((opt) => (
+            <button key={opt} type="button" onClick={() => setTipoFilter(opt)}
+              aria-pressed={tipoFilter === opt}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                perfilFilter === opt
-                  ? "bg-cockpit-accent/20 text-cockpit-accent"
-                  : "text-cockpit-muted hover:text-white"
-              }`}
-            >
-              {opt === "ALL" ? "Todos" : opt}
-            </button>
+                tipoFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
+              }`}>{opt === "ALL" ? "Todos" : opt}</button>
           ))}
         </div>
+        {uniqueEstados.length > 1 && (
+          <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)}
+            aria-label="Filtrar por estado"
+            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50">
+            <option value="ALL">Todos os estados</option>
+            {uniqueEstados.map((e) => <option key={e} value={e}>{e}</option>)}
+          </select>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="KPIs clientes">
         {kpis.map((k) => (
-          <div
-            key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
-          >
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -126,84 +127,53 @@ export default function ClientesPage() {
         ))}
       </div>
 
-      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Ramos de Atuação ({ramosUsados.length})</h2>
-        <div className="flex flex-wrap gap-2">
-          {ramos.map((r) => {
-            const active = ramosUsados.includes(r);
-            return (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRamoFilter(ramoFilter === r ? "ALL" : r)}
-                className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                  ramoFilter === r
-                    ? "border-cockpit-accent bg-cockpit-accent/20 text-cockpit-accent"
-                    : active
-                    ? "border-cockpit-border bg-white/5 text-white hover:border-cockpit-accent/50"
-                    : "border-cockpit-border bg-white/5 text-cockpit-muted opacity-50"
-                }`}
-              >
-                {r}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">
-          Top Clientes ({filtered.length})
-        </h2>
+      <div className="rounded-xl border border-cockpit-border bg-cockpit-surface overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
-              <tr className="border-b border-cockpit-border text-cockpit-muted">
-                <th scope="col" className="py-3 pr-4">#</th>
-                <th scope="col" className="py-3 pr-4">Cliente</th>
-                <th scope="col" className="py-3 pr-4">Ramo</th>
-                <th scope="col" className="py-3 pr-4">Perfil</th>
-                <th scope="col" className="py-3 pr-4 text-right">Fat. 90d</th>
-                <th scope="col" className="py-3 pr-4 text-right">Ticket</th>
-                <th scope="col" className="py-3 text-right">SKU</th>
+              <tr className="border-b border-cockpit-border bg-cockpit-bg text-cockpit-muted uppercase text-xs">
+                <th scope="col" className="py-3 px-4">#</th>
+                <th scope="col" className="py-3 px-4">Código</th>
+                <th scope="col" className="py-3 px-4">Nome</th>
+                <th scope="col" className="py-3 px-4">Tipo</th>
+                <th scope="col" className="py-3 px-4">Cidade</th>
+                <th scope="col" className="py-3 px-4">UF</th>
+                <th scope="col" className="py-3 px-4">Telefone</th>
+                <th scope="col" className="py-3 px-4 text-center">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-cockpit-border">
+            <tbody className="divide-y divide-cockpit-border/50">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-cockpit-muted">
-                    Nenhum cliente encontrado para os filtros selecionados
-                  </td>
-                </tr>
+                <tr><td colSpan={8} className="py-8 text-center text-cockpit-muted">Nenhum cliente encontrado</td></tr>
               ) : (
                 filtered.map((row, i) => (
-                  <tr key={row.cliente} className="hover:bg-white/5 transition-colors">
-                    <td className="py-3 pr-4 text-cockpit-muted">{i + 1}</td>
-                    <td className="py-3 pr-4 font-medium text-white">{row.cliente}</td>
-                    <td className="py-3 pr-4 text-cockpit-muted">{row.ramo}</td>
-                    <td className="py-3 pr-4">
+                  <tr key={row.codigo} className="hover:bg-white/5 transition-colors">
+                    <td className="py-3 px-4 text-cockpit-muted">{i + 1}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-300">{row.codigo}</td>
+                    <td className="py-3 px-4 font-medium text-white max-w-[200px] truncate">{row.cliente}</td>
+                    <td className="py-3 px-4">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${
-                        row.perfil === "GRANDE" ? "bg-emerald-500/20 text-emerald-400"
-                        : row.perfil === "MÉDIO" ? "bg-blue-500/20 text-blue-400"
-                        : "bg-white/10 text-white"
-                      }`}>
-                        {row.perfil}
-                      </span>
+                        row.tipo === "Cliente" ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"
+                      }`}>{row.tipo}</span>
                     </td>
-                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmtBRL(row.fat)}</td>
-                    <td className="py-3 pr-4 text-right text-white">{fmtBRL(row.ticket)}</td>
-                    <td className="py-3 text-right text-white">{row.sku}</td>
+                    <td className="py-3 px-4 text-gray-300">{row.cidade}</td>
+                    <td className="py-3 px-4 text-gray-400">{row.estado}</td>
+                    <td className="py-3 px-4 text-gray-400">{row.telefone}</td>
+                    <td className="py-3 px-4 text-center">
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
+                        row.ativo ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
+                      }`}>{row.ativo ? "Ativo" : "Inativo"}</span>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
+          Exibindo {filtered.length} de {allClientes.length} clientes — dados SAP B1 BusinessPartners
+        </div>
       </div>
-
-      <p className="text-xs text-cockpit-muted text-center">
-        Exibindo {filtered.length} de {ALL_CLIENTES.length} clientes (amostra) — 4.642 clientes totais
-      </p>
     </div>
   );
 }
