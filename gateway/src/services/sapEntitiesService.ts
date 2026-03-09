@@ -20,8 +20,8 @@ export class SapEntitiesService {
   ): Promise<SapItemRow[]> {
     const maxItems = opts.limit ?? 5000;
 
-    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate";
-    const packSelect = "ItemCode,ItemName,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,Valid,Frozen,ItemsGroupCode,BarCode";
+    const fullSelect = "ItemCode,ItemName,InventoryItem,SalesItem,PurchaseItem,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,Valid,Frozen,ItemsGroupCode,BarCode,UpdateDate,U_COD,U_UNIT,U_EMBALA,U_SubNome,MinInventory,SWeight1";
+    const packSelect = "ItemCode,ItemName,InventoryUOM,SalesUnit,SalesPackagingUnit,SalesQtyPerPackUnit,SalesItemsPerUnit,QuantityOnStock,Valid,Frozen,ItemsGroupCode,BarCode,U_COD,MinInventory";
     const minSelect = "ItemCode,ItemName,InventoryUOM,QuantityOnStock,Valid,Frozen,ItemsGroupCode";
     const bareSelect = "ItemCode,ItemName";
 
@@ -190,7 +190,7 @@ export class SapEntitiesService {
 
     const candidates: string[] = [];
 
-    const fullSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen,UpdateDate";
+    const fullSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen,UpdateDate,GroupCode,U_REGIAO";
     const minSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress";
     const bareSelect = "CardCode,CardName,FederalTaxID";
 
@@ -214,6 +214,139 @@ export class SapEntitiesService {
       }
     }
     throw lastError instanceof Error ? lastError : new Error("Erro ao listar parceiros do SAP.");
+  }
+
+  // ========================================
+  // INVOICES (Notas Fiscais / Documentos de Venda)
+  // ========================================
+
+  async listInvoices(
+    opts: { limit?: number; dateFrom?: string; dateTo?: string } = {},
+    correlationId?: string
+  ): Promise<SapInvoiceRow[]> {
+    const maxItems = opts.limit ?? 5000;
+
+    const fullSelect = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocumentStatus,Cancelled,DocTotal,PaymentMethod,PaymentGroupCode,SalesPersonCode";
+    const minSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode";
+    const expandFull = "DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal,DiscountPercent,UnitPrice,Price,CFOPCode,Usage)";
+    const expandMin = "DocumentLines($select=ItemCode,Quantity,LineTotal)";
+
+    let dateFilter = "";
+    if (opts.dateFrom) dateFilter += ` and DocDate ge '${opts.dateFrom}'`;
+    if (opts.dateTo) dateFilter += ` and DocDate le '${opts.dateTo}'`;
+
+    const candidates = [
+      { select: fullSelect, expand: expandFull, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
+      { select: fullSelect, expand: expandMin, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
+      { select: minSelect, expand: expandMin, filter: dateFilter ? `&$filter=${dateFilter.replace(' and ', '')}` : "" },
+      { select: minSelect, expand: expandMin, filter: "" },
+    ];
+
+    let lastError: unknown;
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const { select, expand, filter } = candidates[ci];
+      try {
+        const all: SapInvoiceRow[] = [];
+        const pageSize = 20;
+        let skip = 0;
+
+        while (all.length < maxItems) {
+          const url = `/Invoices?$select=${select}&$expand=${expand}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=DocDate desc`;
+          const res = await this.client.get<{ value: SapInvoiceRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          all.push(...page);
+          console.log(`[listInvoices] Candidato #${ci + 1} - skip=${skip}, recebidos ${page.length}, total ${all.length}`);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listInvoices] Candidato #${ci + 1} OK - ${all.length} notas fiscais`);
+        return all.slice(0, maxItems);
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Erro ao listar notas fiscais do SAP.");
+  }
+
+  // ========================================
+  // SALES PERSONS (Vendedores)
+  // ========================================
+
+  async listSalesPersons(
+    correlationId?: string
+  ): Promise<SapSalesPersonRow[]> {
+    const candidates = [
+      "$select=SalesEmployeeCode,SalesEmployeeName,Active",
+      "$select=SalesEmployeeCode,SalesEmployeeName",
+      "",
+    ];
+
+    let lastError: unknown;
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const sel = candidates[ci];
+      try {
+        const all: SapSalesPersonRow[] = [];
+        const pageSize = 20;
+        let skip = 0;
+
+        while (all.length < 200) {
+          const selPart = sel ? `${sel}&` : "";
+          const url = `/SalesPersons?${selPart}$top=${pageSize}&$skip=${skip}`;
+          const res = await this.client.get<{ value: SapSalesPersonRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          all.push(...page);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listSalesPersons] Candidato #${ci + 1} OK - ${all.length} vendedores`);
+        return all;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    console.log("[listSalesPersons] Nenhum candidato funcionou - retornando vazio");
+    return [];
+  }
+
+  // ========================================
+  // BUSINESS PARTNER GROUPS (Grupos de Clientes)
+  // ========================================
+
+  async listBusinessPartnerGroups(
+    correlationId?: string
+  ): Promise<SapBPGroupRow[]> {
+    const candidates = [
+      "$select=Code,Name,Type",
+      "$select=Code,Name",
+      "",
+    ];
+
+    let lastError: unknown;
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const sel = candidates[ci];
+      try {
+        const selPart = sel ? `${sel}&` : "";
+        const url = `/BusinessPartnerGroups?${selPart}$top=100`;
+        const res = await this.client.get<{ value: SapBPGroupRow[] }>(url, { correlationId });
+        const groups = res.data.value || [];
+        console.log(`[listBPGroups] Candidato #${ci + 1} OK - ${groups.length} grupos`);
+        return groups;
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    console.log("[listBPGroups] Nenhum candidato funcionou - retornando vazio");
+    return [];
   }
 }
 
@@ -284,5 +417,50 @@ export type SapBusinessPartnerRow = {
 export type SapItemGroupRow = {
   Number: number;
   GroupName: string;
+  [key: string]: unknown;
+};
+
+export type SapInvoiceRow = {
+  DocEntry?: number;
+  DocNum?: number;
+  DocDate?: string;
+  DocDueDate?: string;
+  TaxDate?: string;
+  CardCode?: string;
+  CardName?: string;
+  DocumentStatus?: string;
+  Cancelled?: string;
+  DocTotal?: number;
+  PaymentMethod?: string;
+  PaymentGroupCode?: number;
+  SalesPersonCode?: number;
+  DocumentLines?: SapInvoiceLine[];
+  [key: string]: unknown;
+};
+
+export type SapInvoiceLine = {
+  ItemCode?: string;
+  ItemDescription?: string;
+  Quantity?: number;
+  LineTotal?: number;
+  DiscountPercent?: number;
+  UnitPrice?: number;
+  Price?: number;
+  CFOPCode?: string;
+  Usage?: number;
+  [key: string]: unknown;
+};
+
+export type SapSalesPersonRow = {
+  SalesEmployeeCode: number;
+  SalesEmployeeName?: string;
+  Active?: string;
+  [key: string]: unknown;
+};
+
+export type SapBPGroupRow = {
+  Code: number;
+  Name?: string;
+  Type?: string;
   [key: string]: unknown;
 };

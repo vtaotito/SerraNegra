@@ -271,8 +271,33 @@ export default function HomePage() {
         </div>
       </section>
 
+      <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
+        <h2 className="text-lg font-semibold text-white mb-4">Integração SAP B1</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
+            <p className="text-xs text-cockpit-muted">Notas Fiscais</p>
+            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/invoices</p>
+          </div>
+          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
+            <p className="text-xs text-cockpit-muted">Vendedores</p>
+            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/salespersons</p>
+          </div>
+          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
+            <p className="text-xs text-cockpit-muted">Estoque + UDFs</p>
+            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/inventory</p>
+          </div>
+          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
+            <p className="text-xs text-cockpit-muted">Sync Completo</p>
+            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/cockpit</p>
+          </div>
+        </div>
+        <p className="text-xs text-cockpit-muted mt-3">
+          Endpoints disponíveis para automação — substitui dados estáticos do Excel por dados em tempo real do SAP B1 Service Layer
+        </p>
+      </section>
+
       <footer className="text-center text-xs text-cockpit-muted py-4 border-t border-cockpit-border">
-        Dados: VOLUME COMERCIAL 10.12.xlsx — última extração: Mar 2026
+        Dados: VOLUME COMERCIAL 10.12.xlsx — última extração: Mar 2026 · Integração SAP B1 disponível
       </footer>
     </div>
   );

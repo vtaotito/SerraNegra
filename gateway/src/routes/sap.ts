@@ -1026,5 +1026,215 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
-  app.log.info("Rotas SAP registradas (com cache, store, session management e sync de entidades)");
+  // ========================================
+  // COCKPIT BI: Sync de entidades para análise
+  // ========================================
+
+  /**
+   * POST /api/sap/sync/invoices
+   * Sincroniza Notas Fiscais (Invoices) do SAP para análise no Cockpit.
+   */
+  app.post("/sap/sync/invoices", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as any;
+
+    try {
+      const entSvc = getEntitiesService();
+      const invoices = await entSvc.listInvoices(
+        {
+          limit: Number(query.limit) || 5000,
+          dateFrom: query.dateFrom as string | undefined,
+          dateTo: query.dateTo as string | undefined,
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        ok: true,
+        message: `${invoices.length} notas fiscais obtidas do SAP`,
+        count: invoices.length,
+        items: invoices,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/salespersons
+   * Sincroniza Vendedores do SAP.
+   */
+  app.post("/sap/sync/salespersons", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      const entSvc = getEntitiesService();
+      const persons = await entSvc.listSalesPersons(correlationId);
+
+      reply.code(200).send({
+        ok: true,
+        message: `${persons.length} vendedores obtidos do SAP`,
+        count: persons.length,
+        items: persons,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/bp-groups
+   * Sincroniza Grupos de Parceiros de Negócios do SAP.
+   */
+  app.post("/sap/sync/bp-groups", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      const entSvc = getEntitiesService();
+      const groups = await entSvc.listBusinessPartnerGroups(correlationId);
+
+      reply.code(200).send({
+        ok: true,
+        message: `${groups.length} grupos de parceiros obtidos do SAP`,
+        count: groups.length,
+        items: groups,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/cockpit
+   * Sincroniza TODAS as entidades necessárias para o Cockpit BI:
+   * Invoices + SalesPersons + Items (com UDFs) + Inventory + Customers + BP Groups
+   */
+  app.post("/sap/sync/cockpit", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+    const query = req.query as any;
+    const results: Record<string, { ok: boolean; count: number; message: string }> = {};
+
+    const entSvc = getEntitiesService();
+
+    // 1. Vendedores
+    try {
+      const persons = await entSvc.listSalesPersons(correlationId);
+      results.salesPersons = { ok: true, count: persons.length, message: `${persons.length} vendedores` };
+    } catch (error) {
+      results.salesPersons = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 2. Grupos de BP
+    try {
+      const groups = await entSvc.listBusinessPartnerGroups(correlationId);
+      results.bpGroups = { ok: true, count: groups.length, message: `${groups.length} grupos` };
+    } catch (error) {
+      results.bpGroups = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 3. Produtos (com UDFs)
+    try {
+      const items = await entSvc.listItems({ limit: 1000 }, correlationId);
+      const productsBulk = items.map((item) => ({
+        sku: item.ItemCode,
+        description: item.ItemName || item.ItemCode,
+        ean: item.BarCode || null,
+        category: item.ItemsGroupCode ? `Grupo ${item.ItemsGroupCode}` : null,
+        unit_of_measure: item.InventoryUOM || "UN",
+        is_active: item.Valid === "tYES" && item.Frozen !== "tYES",
+        is_inventory_item: item.InventoryItem === "tYES",
+        is_sales_item: item.SalesItem === "tYES",
+        sap_item_code: item.ItemCode,
+        sap_update_date: item.UpdateDate || null,
+      }));
+
+      const bulkRes = await fetch(`${coreUrl}/v1/catalog/items/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: productsBulk }),
+      });
+      const bulkResult = bulkRes.ok ? await bulkRes.json() : null;
+      results.products = {
+        ok: bulkRes.ok,
+        count: bulkResult?.upserted ?? 0,
+        message: `${bulkResult?.created ?? 0} novos, ${bulkResult?.updated ?? 0} atualizados`,
+      };
+    } catch (error) {
+      results.products = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 4. Estoque
+    try {
+      const inv = await entSvc.listInventory({ limit: 2000 }, correlationId);
+      if (inv.length > 0) {
+        const invBulk = inv.map((r) => ({
+          sku: r.ItemCode, warehouse_code: r.WarehouseCode,
+          on_hand: r.InStock, committed: r.Committed, ordered: r.Ordered,
+        }));
+        const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+          body: JSON.stringify({ items: invBulk }),
+        });
+        const result = res.ok ? await res.json() : null;
+        results.inventory = { ok: res.ok, count: result?.upserted ?? 0, message: `${result?.created ?? 0} novos, ${result?.updated ?? 0} atualizados` };
+      } else {
+        results.inventory = { ok: true, count: 0, message: "Sem dados de estoque" };
+      }
+    } catch (error) {
+      results.inventory = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 5. Clientes (com U_REGIAO)
+    try {
+      const bps = await entSvc.listBusinessPartners({ limit: 1000 }, correlationId);
+      const custBulk = bps.map((bp) => ({
+        card_code: bp.CardCode, card_name: bp.CardName || bp.CardCode,
+        card_type: bp.CardType === "cSupplier" ? "S" : "C",
+        phone: bp.Phone1 || null, email: bp.EmailAddress || null,
+        address: bp.Address || null, city: bp.City || null, state: bp.State || null,
+        is_active: bp.Valid !== "tNO" && bp.Frozen !== "tYES",
+        sap_update_date: bp.UpdateDate || null,
+      }));
+      const res = await fetch(`${coreUrl}/v1/customers/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items: custBulk }),
+      });
+      const result = res.ok ? await res.json() : null;
+      results.customers = { ok: res.ok, count: result?.upserted ?? 0, message: `${result?.created ?? 0} novos, ${result?.updated ?? 0} atualizados` };
+    } catch (error) {
+      results.customers = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    // 6. Notas Fiscais
+    try {
+      const invoices = await entSvc.listInvoices(
+        { limit: Number(query.limit) || 5000, dateFrom: query.dateFrom, dateTo: query.dateTo },
+        correlationId
+      );
+      results.invoices = { ok: true, count: invoices.length, message: `${invoices.length} notas fiscais` };
+    } catch (error) {
+      results.invoices = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
+    const allOk = Object.values(results).every((r) => r.ok);
+    const totalCount = Object.values(results).reduce((acc, r) => acc + r.count, 0);
+
+    reply.code(200).send({
+      ok: allOk,
+      message: `Cockpit sync completo: ${totalCount} registros processados`,
+      results,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades e cockpit)");
 }
