@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DollarSign, TrendingUp, Target, BarChart3, Search } from "lucide-react";
+import { DollarSign, TrendingUp, Target, BarChart3, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_CARTEIRA = [
   { vendedor: "ALEF", total: 620, perdidos: 310, atencao: 186, pareto: 84, gold: 21, ticket: 6200, fatMes: 310000 },
@@ -25,6 +26,7 @@ function PctBadge({ perdidos, total }: { perdidos: number; total: number }) {
 }
 
 export default function CarteiraPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [metricSort, setMetricSort] = useState<"fatMes" | "total" | "perdidos" | "gold">("fatMes");
 
@@ -63,8 +65,11 @@ export default function CarteiraPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Carteira Geral</h1>
-        <p className="text-cockpit-muted mt-1">
-          Dashboard por vendedor — pipeline, ticket médio, segmentação.
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>Faturamento, ticket, positivações por vendedor</span>
         </p>
       </div>
 

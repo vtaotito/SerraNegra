@@ -7,6 +7,7 @@ import {
   CartesianGrid, Legend, Cell,
 } from "recharts";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_VENDEDORES = [
   { nome: "Alef Santos", meta: 220000, real: 122883, vol: 36, ticket: 3413.42, perf: -21.8, prev: 172036 },
@@ -19,6 +20,7 @@ const ALL_VENDEDORES = [
 ];
 
 export default function FaturamentoPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [perfFilter, setPerfFilter] = useState<"all" | "positive" | "negative">("all");
 
@@ -59,7 +61,12 @@ export default function FaturamentoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Faturamento Mês Atual</h1>
-        <p className="text-cockpit-muted mt-1">Meta vs realizado por vendedor — 21 dias de venda totais | 15 dias de vendas atuais</p>
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>21 dias de venda totais | 15 dias de vendas atuais</span>
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

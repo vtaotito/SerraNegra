@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Users, UserMinus, AlertTriangle, PieChart, Crown, Search } from "lucide-react";
+import { Users, UserMinus, AlertTriangle, PieChart, Crown, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 
 const ramos = [
@@ -26,6 +27,7 @@ const ALL_CLIENTES = [
 type Perfil = "GRANDE" | "MÉDIO" | "PEQUENO";
 
 export default function ClientesPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [ramoFilter, setRamoFilter] = useState<string>("ALL");
   const [perfilFilter, setPerfilFilter] = useState<Perfil | "ALL">("ALL");
@@ -63,8 +65,11 @@ export default function ClientesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Clientes</h1>
-        <p className="text-cockpit-muted mt-1">
-          Análise de base de clientes — faturamento, concentração 80/20, clientes em risco.
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>Faturamento, concentração 80/20, clientes em risco</span>
         </p>
       </div>
 

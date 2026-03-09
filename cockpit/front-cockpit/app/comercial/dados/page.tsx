@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { FileText, Filter, Download, Search, X } from "lucide-react";
+import { FileText, Filter, Download, Search, X, CalendarDays } from "lucide-react";
 import { fmtBRL, exportCSV } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const formasPgto = [
   "Cartão Crédito", "Cartão Débito", "Dinheiro", "Transf. Banco",
@@ -25,6 +26,7 @@ const ALL_DADOS = [
 const VENDEDORES = [...new Set(ALL_DADOS.map((d) => d.vendedor))].sort();
 
 export default function ComercialDadosPage() {
+  const { isInRange, label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [vendedorFilter, setVendedorFilter] = useState("ALL");
   const [pgtoFilter, setPgtoFilter] = useState("ALL");
@@ -32,6 +34,7 @@ export default function ComercialDadosPage() {
 
   const filtered = useMemo(() => {
     return ALL_DADOS.filter((row) => {
+      if (!isInRange(row.data)) return false;
       const q = search.toLowerCase();
       const matchSearch = row.cliente.toLowerCase().includes(q) || row.item.toLowerCase().includes(q) ||
         row.desc.toLowerCase().includes(q) || row.vendedor.toLowerCase().includes(q) || String(row.doc).includes(q);
@@ -40,7 +43,7 @@ export default function ComercialDadosPage() {
       const matchCanc = canceladoFilter === "ALL" || row.cancelado === canceladoFilter;
       return matchSearch && matchVendedor && matchPgto && matchCanc;
     });
-  }, [search, vendedorFilter, pgtoFilter, canceladoFilter]);
+  }, [search, vendedorFilter, pgtoFilter, canceladoFilter, isInRange]);
 
   const totalQtd = useMemo(() => filtered.reduce((s, d) => s + d.qtd, 0), [filtered]);
   const totalValor = useMemo(() => filtered.reduce((s, d) => s + d.total, 0), [filtered]);
@@ -69,7 +72,12 @@ export default function ComercialDadosPage() {
             <FileText className="w-6 h-6 text-cockpit-accent" />
             Documentos / Vendas
           </h1>
-          <p className="text-cockpit-muted mt-1">1M+ linhas — range Mar/2023 a Ago/2025 — 30 meses de histórico</p>
+          <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+            <span className="text-cockpit-border">·</span>
+            <span>1M+ linhas de histórico</span>
+          </p>
         </div>
         <button type="button" onClick={handleExport}
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-white hover:border-cockpit-accent/40 transition-colors"
@@ -163,7 +171,7 @@ export default function ComercialDadosPage() {
             </thead>
             <tbody className="divide-y divide-cockpit-border/50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={10} className="py-8 text-center text-cockpit-muted">Nenhum documento encontrado</td></tr>
+                <tr><td colSpan={10} className="py-8 text-center text-cockpit-muted">Nenhum documento no período selecionado</td></tr>
               ) : (
                 filtered.map((row, i) => (
                   <tr key={`${row.doc}-${row.item}-${i}`}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Package, Boxes, BadgeDollarSign, AlertTriangle, Search } from "lucide-react";
+import { Package, Boxes, BadgeDollarSign, AlertTriangle, Search, CalendarDays } from "lucide-react";
 import { fmtNum, fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 type Status = "OK" | "ABAIXO" | "RUPTURA";
 
@@ -40,6 +41,7 @@ const statusStyles: Record<Status, { bg: string; text: string }> = {
 const UNIQUE_CODS = [...new Set(ALL_ITENS.map((i) => i.cod))].sort();
 
 export default function EstoquePage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "ALL">("ALL");
   const [codFilter, setCodFilter] = useState<string>("ALL");
@@ -72,8 +74,11 @@ export default function EstoquePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Estoque</h1>
-        <p className="text-cockpit-muted mt-1">
-          Posição por item — disponível, mínimo, unidade. Fonte: aba ESTOQUE do Excel.
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>Posição por item — disponível, mínimo, unidade</span>
         </p>
       </div>
 

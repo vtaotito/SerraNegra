@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Users, TrendingUp, Target, Search } from "lucide-react";
+import { Users, TrendingUp, Target, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_VENDEDORES = [
   { nome: "ALEF", alvo: 50, real: 36, posit: 85, prosp: 12, recup: 8, ticket: 3413, metas: "2/6" },
@@ -29,6 +30,7 @@ function AtingBadge({ real, alvo }: { real: number; alvo: number }) {
 type SortKey = "real" | "posit" | "prosp" | "ticket";
 
 export default function VendedoresPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("real");
   const [atingFilter, setAtingFilter] = useState<"all" | "above" | "below">("all");
@@ -59,8 +61,11 @@ export default function VendedoresPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Mapa de Vendedores</h1>
-        <p className="text-cockpit-muted mt-1">
-          Scorecard com métricas de performance — volume, positivações, prospecções.
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>Meta x realizado, atingimento, evolução</span>
         </p>
       </div>
 

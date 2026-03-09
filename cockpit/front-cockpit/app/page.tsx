@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import {
   DollarSign, Package, Users, TrendingUp, TrendingDown,
   Wallet, AlertTriangle, Target, BarChart3, Search,
-  Loader2, CheckCircle2, XCircle, Zap,
+  Loader2, CheckCircle2, XCircle, Zap, CalendarDays,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { fmtBRL } from "@/lib/format";
 import { syncSAP } from "@/lib/api";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_VENDEDORES = [
   { nome: "Alef Santos", meta: 220_000, real: 122_883, perf: -21.8 },
@@ -42,6 +43,7 @@ const SYNC_ENDPOINTS = [
 ];
 
 export default function HomePage() {
+  const { label: periodoLabel, monthsInRange } = useDateRange();
   const [vendedorSearch, setVendedorSearch] = useState("");
   const [perfFilter, setPerfFilter] = useState<"all" | "positive" | "negative">("all");
   const [syncStates, setSyncStates] = useState<Record<string, "idle" | "loading" | "ok" | "error">>({});
@@ -70,13 +72,13 @@ export default function HomePage() {
   [filtered]);
 
   const kpis = useMemo(() => [
-    { title: "Faturamento 90d", value: fmtBRL(totais.real * 3.71), icon: DollarSign, color: "text-cockpit-accent" },
+    { title: `Fat. ${monthsInRange}m`, value: fmtBRL(totais.real * (monthsInRange / 3)), icon: DollarSign, color: "text-cockpit-accent" },
     { title: "Volume Mês", value: String(Math.round(843 * filtered.length / Math.max(ALL_VENDEDORES.length, 1))), icon: Package, color: "text-sky-400" },
     { title: "Ticket Médio", value: filtered.length > 0 ? fmtBRL(totais.real / filtered.length) : "—", icon: Target, color: "text-amber-400" },
     { title: "Estoque CMV", value: fmtBRL(7_012_707), icon: Wallet, color: "text-cockpit-accent" },
     { title: "Total Clientes", value: "4.642", icon: Users, color: "text-blue-400" },
     { title: "Perdidos 90d", value: "2.368", icon: TrendingDown, color: "text-cockpit-danger" },
-  ], [totais, filtered]);
+  ], [totais, filtered, monthsInRange]);
 
   const bestPerf = useMemo(() => {
     if (filtered.length === 0) return null;
@@ -128,8 +130,9 @@ export default function HomePage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Visão executiva</h1>
-        <p className="text-cockpit-muted mt-1 text-sm">
-          Panorama comercial e operacional — Serra Negra
+        <p className="text-cockpit-muted mt-1 text-sm flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          Serra Negra · <span className="text-gray-300">{periodoLabel}</span>
         </p>
       </div>
 

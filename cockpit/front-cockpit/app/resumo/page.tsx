@@ -3,9 +3,10 @@
 import { useState, useMemo } from "react";
 import {
   DollarSign, Users, TrendingUp, Star, AlertCircle,
-  Truck, PackageX, CreditCard, Search, ChevronDown, ChevronUp,
+  Truck, PackageX, CreditCard, Search, ChevronDown, ChevronUp, CalendarDays,
 } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_INDICADORES = [
   { indicador: "Total Clientes Ativos", valor: 4642, evolucao: null, danger: false, cat: "clientes" },
@@ -27,6 +28,7 @@ const observacoes = [
 type Cat = "all" | "clientes" | "vendas" | "estoque";
 
 export default function ResumoPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<Cat>("all");
   const [obsExpanded, setObsExpanded] = useState(true);
@@ -58,7 +60,12 @@ export default function ResumoPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Resumo Comercial</h1>
-        <p className="text-cockpit-muted mt-1">Reconciliação e indicadores consolidados — estoque, custo, evolução.</p>
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>Indicadores consolidados — estoque, custo, evolução</span>
+        </p>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

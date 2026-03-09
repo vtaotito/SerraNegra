@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DollarSign, Clock, Layers, MapPin, Search } from "lucide-react";
+import { DollarSign, Clock, Layers, MapPin, Search, CalendarDays } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const ALL_CATEGORIAS = [
   { nome: "Garrafa Nacional (GN)", tempo: 2.8, status: "Normal" as const, cmv: 2850000 },
@@ -27,6 +28,7 @@ const statusColors: Record<StatusType, string> = {
 };
 
 export default function MargensPage() {
+  const { label: periodoLabel } = useDateRange();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusType | "ALL">("ALL");
 
@@ -54,8 +56,11 @@ export default function MargensPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">CMV / Margens</h1>
-        <p className="text-cockpit-muted mt-1">
-          Análise de custos — tempo de estoque por categoria, CMV por região.
+        <p className="text-cockpit-muted mt-1 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" />
+          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span className="text-cockpit-border">·</span>
+          <span>CMV, giro de estoque e tempo médio por categoria</span>
         </p>
       </div>
 
