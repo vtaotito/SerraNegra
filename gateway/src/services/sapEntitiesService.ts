@@ -227,29 +227,28 @@ export class SapEntitiesService {
     const maxItems = opts.limit ?? 5000;
 
     const fullSelect = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocumentStatus,Cancelled,DocTotal,PaymentMethod,PaymentGroupCode,SalesPersonCode";
-    const minSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode";
+    const minSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled";
     const expandFull = "DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal,DiscountPercent,UnitPrice,Price,CFOPCode,Usage)";
-    const expandMin = "DocumentLines($select=ItemCode,Quantity,LineTotal)";
+    const expandMin = "DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal)";
 
     let dateFilter = "";
     if (opts.dateFrom) dateFilter += ` and DocDate ge '${opts.dateFrom}'`;
     if (opts.dateTo) dateFilter += ` and DocDate le '${opts.dateTo}'`;
+    const dateFilterClean = dateFilter.replace(/^ and /, "");
 
-    const noExpand = "";
     const candidates = [
-      { select: fullSelect, expand: expandFull, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
-      { select: fullSelect, expand: expandMin, filter: `&$filter=Cancelled eq 'tNO'${dateFilter}` },
-      { select: minSelect, expand: expandMin, filter: dateFilter ? `&$filter=${dateFilter.replace(' and ', '')}` : "" },
-      { select: minSelect, expand: noExpand,   filter: dateFilter ? `&$filter=${dateFilter.replace(' and ', '')}` : "" },
-      { select: minSelect, expand: noExpand,   filter: "" },
+      { select: minSelect, expand: expandMin, filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 50 },
+      { select: minSelect, expand: expandMin, filter: "", pageSize: 50 },
+      { select: fullSelect, expand: expandFull, filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 20 },
+      { select: minSelect, expand: "",         filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 100 },
+      { select: minSelect, expand: "",         filter: "", pageSize: 100 },
     ];
 
     let lastError: unknown;
     for (let ci = 0; ci < candidates.length; ci++) {
-      const { select, expand, filter } = candidates[ci];
+      const { select, expand, filter, pageSize } = candidates[ci];
       try {
         const all: SapInvoiceRow[] = [];
-        const pageSize = 20;
         let skip = 0;
 
         const expandPart = expand ? `&$expand=${expand}` : "";
@@ -259,12 +258,12 @@ export class SapEntitiesService {
           const page = res.data.value || [];
           if (page.length === 0) break;
           all.push(...page);
-          console.log(`[listInvoices] Candidato #${ci + 1} - skip=${skip}, recebidos ${page.length}, total ${all.length}`);
+          console.log(`[listInvoices] #${ci + 1} skip=${skip} +${page.length} = ${all.length}`);
           if (page.length < pageSize) break;
           skip += pageSize;
         }
 
-        console.log(`[listInvoices] Candidato #${ci + 1} OK - ${all.length} notas fiscais`);
+        console.log(`[listInvoices] Candidato #${ci + 1} OK - ${all.length} notas (expand=${expand ? "sim" : "nao"})`);
         return all.slice(0, maxItems);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
