@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Package, Boxes, BadgeDollarSign, AlertTriangle, Search } from "lucide-react";
+import { fmtNum, fmtBRL } from "@/lib/format";
 
 type Status = "OK" | "ABAIXO" | "RUPTURA";
 
@@ -35,8 +36,6 @@ const statusStyles: Record<Status, { bg: string; text: string }> = {
   RUPTURA: { bg: "bg-red-500/15", text: "text-red-400" },
 };
 
-function fmtNum(v: number) { return v.toLocaleString("pt-BR"); }
-function fmtBRL(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }); }
 
 const UNIQUE_CODS = [...new Set(ALL_ITENS.map((i) => i.cod))].sort();
 
@@ -85,13 +84,14 @@ export default function EstoquePage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por código, item ou descrição..."
+            placeholder="Buscar por código, item ou descrição..." aria-label="Buscar item de estoque"
             className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
           />
         </div>
         <select
           value={codFilter}
           onChange={(e) => setCodFilter(e.target.value)}
+          aria-label="Filtrar por código"
           className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
         >
           <option value="ALL">Todos os CODs</option>
@@ -124,11 +124,11 @@ export default function EstoquePage() {
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 flex flex-col gap-2"
+            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
+              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
             <span className="text-xl font-bold text-white">{k.value}</span>
           </div>
@@ -155,14 +155,14 @@ export default function EstoquePage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-cockpit-border bg-cockpit-bg text-cockpit-muted uppercase text-xs">
-                <th className="text-left py-3 px-4">COD</th>
-                <th className="text-left py-3 px-4">Nº do Item</th>
-                <th className="text-left py-3 px-4">Descrição</th>
-                <th className="text-right py-3 px-4">Em Estoque</th>
-                <th className="text-right py-3 px-4">Disponível</th>
-                <th className="text-right py-3 px-4">Mínimo</th>
-                <th className="text-left py-3 px-4">Und</th>
-                <th className="text-center py-3 px-4">Status</th>
+                <th scope="col" className="text-left py-3 px-4">COD</th>
+                <th scope="col" className="text-left py-3 px-4">Nº do Item</th>
+                <th scope="col" className="text-left py-3 px-4">Descrição</th>
+                <th scope="col" className="text-right py-3 px-4">Em Estoque</th>
+                <th scope="col" className="text-right py-3 px-4">Disponível</th>
+                <th scope="col" className="text-right py-3 px-4">Mínimo</th>
+                <th scope="col" className="text-left py-3 px-4">Und</th>
+                <th scope="col" className="text-center py-3 px-4">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border/50">

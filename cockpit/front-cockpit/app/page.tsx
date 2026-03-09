@@ -1,21 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
-  DollarSign,
-  Package,
-  Users,
-  TrendingUp,
-  TrendingDown,
-  Wallet,
-  AlertTriangle,
-  Target,
-  BarChart3,
-  Search,
+  DollarSign, Package, Users, TrendingUp, TrendingDown,
+  Wallet, AlertTriangle, Target, BarChart3, Search,
+  Loader2, CheckCircle2, XCircle, Zap,
 } from "lucide-react";
-
-const BRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, Legend, Cell,
+} from "recharts";
+import { fmtBRL } from "@/lib/format";
+import { syncSAP } from "@/lib/api";
 
 const ALL_VENDEDORES = [
   { nome: "Alef Santos", meta: 220_000, real: 122_883, perf: -21.8 },
@@ -27,7 +23,7 @@ const ALL_VENDEDORES = [
   { nome: "Ana", meta: 400_000, real: 295_684, perf: 20.1 },
 ];
 
-const ALL_CARTEIRA = [
+const CARTEIRA = [
   { label: "Clientes 80/20", value: 629 },
   { label: "Clientes Gold", value: 154 },
   { label: "Clientes Atenção", value: 1413 },
@@ -36,11 +32,21 @@ const ALL_CARTEIRA = [
   { label: "Média fat./mês", value: 2_507_150.56 },
 ];
 
+const SYNC_ENDPOINTS = [
+  { key: "cockpit" as const, label: "Sync Completo", desc: "Todas entidades" },
+  { key: "invoices" as const, label: "Notas Fiscais", desc: "A/R Invoices" },
+  { key: "products" as const, label: "Produtos", desc: "Items + UDFs" },
+  { key: "inventory" as const, label: "Estoque", desc: "Warehouse info" },
+  { key: "customers" as const, label: "Clientes", desc: "BusinessPartners" },
+  { key: "salespersons" as const, label: "Vendedores", desc: "SalesPersons" },
+];
+
 export default function HomePage() {
   const [vendedorSearch, setVendedorSearch] = useState("");
   const [perfFilter, setPerfFilter] = useState<"all" | "positive" | "negative">("all");
+  const [syncStates, setSyncStates] = useState<Record<string, "idle" | "loading" | "ok" | "error">>({});
 
-  const filteredVendedores = useMemo(() => {
+  const filtered = useMemo(() => {
     return ALL_VENDEDORES.filter((v) => {
       const matchSearch = v.nome.toLowerCase().includes(vendedorSearch.toLowerCase());
       const matchPerf =
@@ -50,87 +56,93 @@ export default function HomePage() {
   }, [vendedorSearch, perfFilter]);
 
   const totais = useMemo(() => ({
-    meta: filteredVendedores.reduce((s, v) => s + v.meta, 0),
-    real: filteredVendedores.reduce((s, v) => s + v.real, 0),
-  }), [filteredVendedores]);
+    meta: filtered.reduce((s, v) => s + v.meta, 0),
+    real: filtered.reduce((s, v) => s + v.real, 0),
+  }), [filtered]);
+
+  const chartData = useMemo(() =>
+    filtered.map((v) => ({
+      name: v.nome.split(" ")[0],
+      Meta: v.meta,
+      Real: v.real,
+      perf: v.perf,
+    })),
+  [filtered]);
 
   const kpis = useMemo(() => [
-    { title: "Faturamento", value: BRL(totais.real * 3.71), sub: "VLT. FAT. 90 DIAS (proporcional)", icon: DollarSign, color: "text-cockpit-accent" },
-    { title: "Volume", value: String(filteredVendedores.length > 0 ? Math.round(843 * filteredVendedores.length / ALL_VENDEDORES.length) : 0), sub: "vendas mês atual", icon: Package, color: "text-cockpit-accent" },
-    { title: "Margem %", value: "—", sub: "aguardando ETL completo", icon: TrendingUp, color: "text-cockpit-muted" },
-    { title: "Ticket Médio", value: filteredVendedores.length > 0 ? BRL(totais.real / filteredVendedores.length) : "—", sub: "por vendedor selecionado", icon: Target, color: "text-cockpit-accent" },
-    { title: "Valor Estoque CMV", value: BRL(7_012_707), sub: "custo mercadoria", icon: Wallet, color: "text-cockpit-accent" },
-    { title: "Total Clientes", value: "4.642", sub: "carteira geral", icon: Users, color: "text-cockpit-accent" },
-    { title: "Clientes Perdidos 90d", value: "2.368", sub: "51% da carteira", icon: TrendingDown, color: "text-cockpit-danger" },
-  ], [totais, filteredVendedores]);
-
-  const maxVal = Math.max(...filteredVendedores.flatMap((v) => [v.meta, v.real]), 1);
+    { title: "Faturamento 90d", value: fmtBRL(totais.real * 3.71), icon: DollarSign, color: "text-cockpit-accent" },
+    { title: "Volume Mês", value: String(Math.round(843 * filtered.length / Math.max(ALL_VENDEDORES.length, 1))), icon: Package, color: "text-sky-400" },
+    { title: "Ticket Médio", value: filtered.length > 0 ? fmtBRL(totais.real / filtered.length) : "—", icon: Target, color: "text-amber-400" },
+    { title: "Estoque CMV", value: fmtBRL(7_012_707), icon: Wallet, color: "text-cockpit-accent" },
+    { title: "Total Clientes", value: "4.642", icon: Users, color: "text-blue-400" },
+    { title: "Perdidos 90d", value: "2.368", icon: TrendingDown, color: "text-cockpit-danger" },
+  ], [totais, filtered]);
 
   const bestPerf = useMemo(() => {
-    if (filteredVendedores.length === 0) return null;
-    return filteredVendedores.reduce((best, v) => v.perf > best.perf ? v : best);
-  }, [filteredVendedores]);
+    if (filtered.length === 0) return null;
+    return filtered.reduce((best, v) => v.perf > best.perf ? v : best);
+  }, [filtered]);
 
   const worstPerf = useMemo(() => {
-    if (filteredVendedores.length === 0) return null;
-    return filteredVendedores.reduce((worst, v) => v.perf < worst.perf ? v : worst);
-  }, [filteredVendedores]);
+    if (filtered.length === 0) return null;
+    return filtered.reduce((worst, v) => v.perf < worst.perf ? v : worst);
+  }, [filtered]);
 
   const insights = useMemo(() => {
     const list: Array<{ text: string; border: string; badge: string; badgeBg: string; icon: typeof AlertTriangle }> = [];
     list.push({
       text: "51% dos clientes foram perdidos nos últimos 90 dias (2.368 de 4.642)",
-      border: "border-cockpit-danger",
-      badge: "Alerta",
-      badgeBg: "bg-cockpit-danger/20 text-cockpit-danger",
-      icon: AlertTriangle,
+      border: "border-cockpit-danger", badge: "Alerta",
+      badgeBg: "bg-cockpit-danger/20 text-cockpit-danger", icon: AlertTriangle,
     });
     if (bestPerf && bestPerf.perf > 0) {
       list.push({
-        text: `${bestPerf.nome} atingiu ${(100 + bestPerf.perf).toFixed(1)}% da meta mensal — melhor performance`,
-        border: "border-cockpit-accent",
-        badge: "Destaque",
-        badgeBg: "bg-cockpit-accent/20 text-cockpit-accent",
-        icon: TrendingUp,
+        text: `${bestPerf.nome} atingiu ${(100 + bestPerf.perf).toFixed(1)}% da meta — melhor performance`,
+        border: "border-cockpit-accent", badge: "Destaque",
+        badgeBg: "bg-cockpit-accent/20 text-cockpit-accent", icon: TrendingUp,
       });
     }
     if (worstPerf && worstPerf.perf < 0) {
       list.push({
         text: `${worstPerf.nome} está ${Math.abs(worstPerf.perf).toFixed(1)}% abaixo da meta — requer atenção`,
-        border: "border-cockpit-gold",
-        badge: "Atenção",
-        badgeBg: "bg-cockpit-gold/20 text-cockpit-gold",
-        icon: Target,
+        border: "border-cockpit-gold", badge: "Atenção",
+        badgeBg: "bg-cockpit-gold/20 text-cockpit-gold", icon: Target,
       });
     }
     return list;
   }, [bestPerf, worstPerf]);
+
+  const handleSync = useCallback(async (endpoint: typeof SYNC_ENDPOINTS[number]["key"]) => {
+    setSyncStates((prev) => ({ ...prev, [endpoint]: "loading" }));
+    try {
+      await syncSAP(endpoint);
+      setSyncStates((prev) => ({ ...prev, [endpoint]: "ok" }));
+      setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 3000);
+    } catch {
+      setSyncStates((prev) => ({ ...prev, [endpoint]: "error" }));
+      setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 5000);
+    }
+  }, []);
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Visão executiva</h1>
         <p className="text-cockpit-muted mt-1 text-sm">
-          Panorama comercial e operacional — Serra Negra · Março 2026
+          Panorama comercial e operacional — Serra Negra
         </p>
       </div>
 
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" aria-label="Indicadores principais">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <div
-              key={kpi.title}
-              className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 flex flex-col gap-2"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium uppercase tracking-wide text-cockpit-muted">
-                  {kpi.title}
-                </span>
-                <Icon className={`w-4 h-4 ${kpi.color}`} />
+            <div key={kpi.title} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-colors">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">{kpi.title}</span>
+                <Icon className={`w-3.5 h-3.5 ${kpi.color}`} />
               </div>
-              <span className="text-xl font-bold text-white leading-tight">{kpi.value}</span>
-              <span className="text-xs text-cockpit-muted">{kpi.sub}</span>
+              <span className="text-lg font-bold text-white leading-tight">{kpi.value}</span>
             </div>
           );
         })}
@@ -141,7 +153,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-cockpit-accent" />
             <h2 className="text-lg font-semibold text-white">
-              Meta vs Real — Vendedores ({filteredVendedores.length})
+              Meta vs Real ({filtered.length})
             </h2>
           </div>
           <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
@@ -152,87 +164,58 @@ export default function HomePage() {
                 value={vendedorSearch}
                 onChange={(e) => setVendedorSearch(e.target.value)}
                 placeholder="Filtrar vendedor..."
-                className="w-full sm:w-48 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+                aria-label="Filtrar vendedores"
+                className="w-full sm:w-44 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
               />
             </div>
-            <div className="flex gap-1 rounded-lg border border-cockpit-border bg-cockpit-bg p-1">
+            <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Filtrar por performance">
               {(["all", "positive", "negative"] as const).map((opt) => {
                 const labels = { all: "Todos", positive: "Acima", negative: "Abaixo" };
                 return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => setPerfFilter(opt)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  <button key={opt} type="button" onClick={() => setPerfFilter(opt)}
+                    aria-pressed={perfFilter === opt}
+                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                       perfFilter === opt
                         ? "bg-cockpit-accent/20 text-cockpit-accent"
                         : "text-cockpit-muted hover:text-white"
                     }`}
-                  >
-                    {labels[opt]}
-                  </button>
+                  >{labels[opt]}</button>
                 );
               })}
             </div>
           </div>
         </div>
 
-        <div className="space-y-4">
-          {filteredVendedores.length === 0 ? (
-            <p className="text-center text-cockpit-muted py-8">Nenhum vendedor encontrado</p>
-          ) : (
-            filteredVendedores.map((v) => {
-              const metaW = (v.meta / maxVal) * 100;
-              const realW = (v.real / maxVal) * 100;
-              const isPositive = v.perf >= 0;
-
-              return (
-                <div key={v.nome} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300 font-medium">{v.nome}</span>
-                    <span
-                      className={`font-semibold tabular-nums ${
-                        isPositive ? "text-cockpit-accent" : "text-cockpit-danger"
-                      }`}
-                    >
-                      {isPositive ? "+" : ""}{v.perf.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="relative h-5 rounded bg-cockpit-bg overflow-hidden">
-                    <div
-                      className="absolute inset-y-0 left-0 rounded bg-cockpit-accent/25"
-                      style={{ width: `${metaW}%` }}
-                    />
-                    <div
-                      className="absolute inset-y-0 left-0 rounded bg-cockpit-accent"
-                      style={{ width: `${realW}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-cockpit-muted">
-                    <span>Meta: {v.meta.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</span>
-                    <span>Real: {v.real.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}</span>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div className="flex items-center gap-4 mt-6 pt-4 border-t border-cockpit-border text-xs text-cockpit-muted">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-cockpit-accent/25" />
-            Meta
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-cockpit-accent" />
-            Real
-          </span>
-          <span className="ml-auto">
-            {filteredVendedores.length < ALL_VENDEDORES.length &&
-              `Filtrado: ${filteredVendedores.length}/${ALL_VENDEDORES.length} vendedores`
-            }
-          </span>
-        </div>
+        {filtered.length === 0 ? (
+          <p className="text-center text-cockpit-muted py-12">Nenhum vendedor encontrado</p>
+        ) : (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 12 }} axisLine={{ stroke: "#30363d" }} />
+                <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={{ stroke: "#30363d" }}
+                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                <Tooltip
+                  contentStyle={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, color: "#e6edf3" }}
+                  formatter={(value: number) => fmtBRL(value)}
+                  labelStyle={{ color: "#8b949e" }}
+                />
+                <Legend wrapperStyle={{ color: "#8b949e", fontSize: 12 }} />
+                <Bar dataKey="Meta" radius={[4, 4, 0, 0]} opacity={0.35}>
+                  {chartData.map((_, i) => (
+                    <Cell key={i} fill="#238636" />
+                  ))}
+                </Bar>
+                <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.perf >= 0 ? "#238636" : "#da3633"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -242,14 +225,11 @@ export default function HomePage() {
             <h2 className="text-lg font-semibold text-white">Carteira de Clientes</h2>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {ALL_CARTEIRA.map((c) => (
-              <div
-                key={c.label}
-                className="rounded-lg border border-cockpit-border bg-cockpit-bg p-4"
-              >
+            {CARTEIRA.map((c) => (
+              <div key={c.label} className="rounded-lg border border-cockpit-border bg-cockpit-bg p-4 hover:border-cockpit-accent/30 transition-colors">
                 <p className="text-xs text-cockpit-muted mb-1">{c.label}</p>
                 <p className="text-base font-bold text-white">
-                  {c.label.includes("fat.") ? BRL(c.value) : c.value.toLocaleString("pt-BR")}
+                  {c.label.includes("fat.") ? fmtBRL(c.value) : c.value.toLocaleString("pt-BR")}
                 </p>
               </div>
             ))}
@@ -259,7 +239,7 @@ export default function HomePage() {
         <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
           <div className="flex items-center gap-2 mb-5">
             <AlertTriangle className="w-5 h-5 text-cockpit-gold" />
-            <h2 className="text-lg font-semibold text-white">Insights para hoje</h2>
+            <h2 className="text-lg font-semibold text-white">Insights</h2>
           </div>
           <div className="space-y-3">
             {insights.length === 0 ? (
@@ -268,17 +248,10 @@ export default function HomePage() {
               insights.map((ins) => {
                 const Icon = ins.icon;
                 return (
-                  <div
-                    key={ins.text}
-                    className={`rounded-lg border ${ins.border} bg-cockpit-bg p-4 flex items-start gap-3`}
-                  >
+                  <div key={ins.text} className={`rounded-lg border ${ins.border} bg-cockpit-bg p-4 flex items-start gap-3`}>
                     <Icon className="w-4 h-4 mt-0.5 shrink-0 opacity-80" />
                     <div className="flex-1 min-w-0">
-                      <span
-                        className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full mb-2 ${ins.badgeBg}`}
-                      >
-                        {ins.badge}
-                      </span>
+                      <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full mb-1.5 ${ins.badgeBg}`}>{ins.badge}</span>
                       <p className="text-sm text-gray-300 leading-relaxed">{ins.text}</p>
                     </div>
                   </div>
@@ -290,32 +263,42 @@ export default function HomePage() {
       </section>
 
       <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Integração SAP B1</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
-            <p className="text-xs text-cockpit-muted">Notas Fiscais</p>
-            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/invoices</p>
-          </div>
-          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
-            <p className="text-xs text-cockpit-muted">Vendedores</p>
-            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/salespersons</p>
-          </div>
-          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
-            <p className="text-xs text-cockpit-muted">Estoque + UDFs</p>
-            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/inventory</p>
-          </div>
-          <div className="rounded-lg bg-cockpit-bg p-3 border border-cockpit-border">
-            <p className="text-xs text-cockpit-muted">Sync Completo</p>
-            <p className="text-sm font-medium text-cockpit-accent">POST /sap/sync/cockpit</p>
-          </div>
+        <div className="flex items-center gap-2 mb-5">
+          <Zap className="w-5 h-5 text-cockpit-accent" />
+          <h2 className="text-lg font-semibold text-white">Integração SAP B1</h2>
+          <span className="ml-auto text-[10px] text-cockpit-muted uppercase tracking-wider">Service Layer</span>
         </div>
-        <p className="text-xs text-cockpit-muted mt-3">
-          Endpoints disponíveis para automação — substitui dados estáticos do Excel por dados em tempo real do SAP B1 Service Layer
-        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {SYNC_ENDPOINTS.map((ep) => {
+            const state = syncStates[ep.key] || "idle";
+            return (
+              <button
+                key={ep.key}
+                type="button"
+                onClick={() => handleSync(ep.key)}
+                disabled={state === "loading"}
+                className={`rounded-lg p-3 border text-left transition-all ${
+                  state === "ok" ? "border-cockpit-accent bg-cockpit-accent/10"
+                  : state === "error" ? "border-cockpit-danger bg-cockpit-danger/10"
+                  : "border-cockpit-border bg-cockpit-bg hover:border-cockpit-accent/40 hover:bg-cockpit-accent/5"
+                } disabled:opacity-60`}
+                aria-label={`Sincronizar ${ep.label}`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-xs font-medium text-white">{ep.label}</p>
+                  {state === "loading" && <Loader2 className="w-3.5 h-3.5 text-cockpit-accent animate-spin" />}
+                  {state === "ok" && <CheckCircle2 className="w-3.5 h-3.5 text-cockpit-accent" />}
+                  {state === "error" && <XCircle className="w-3.5 h-3.5 text-cockpit-danger" />}
+                </div>
+                <p className="text-[10px] text-cockpit-muted">{ep.desc}</p>
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <footer className="text-center text-xs text-cockpit-muted py-4 border-t border-cockpit-border">
-        Dados: VOLUME COMERCIAL 10.12.xlsx — última extração: Mar 2026 · Integração SAP B1 disponível
+        Dados: SAP B1 Service Layer + VOLUME COMERCIAL 10.12.xlsx
       </footer>
     </div>
   );

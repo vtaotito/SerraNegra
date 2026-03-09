@@ -42,6 +42,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
@@ -50,9 +51,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           "fixed inset-y-0 left-0 z-50 w-60 border-r border-cockpit-border bg-cockpit-surface flex flex-col transition-transform duration-200 lg:relative lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full"
         )}
+        role="navigation"
+        aria-label="Menu principal"
       >
         <div className="p-4 border-b border-cockpit-border flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2" aria-label="Cockpit BI - Página inicial">
             <div className="w-8 h-8 rounded-lg bg-cockpit-accent flex items-center justify-center">
               <BarChart3 className="w-4 h-4 text-white" />
             </div>
@@ -62,11 +65,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             type="button"
             onClick={onClose}
             className="p-1 rounded text-cockpit-muted hover:text-white lg:hidden"
+            aria-label="Fechar menu"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-xs text-cockpit-muted px-4 pt-2">Serra Negra</p>
+        <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-widest px-4 pt-3 pb-1">
+          Serra Negra
+        </p>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(({ label, path, icon: Icon }) => {
             const isActive =
@@ -76,11 +82,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 key={path}
                 href={path}
                 onClick={onClose}
+                aria-current={isActive ? "page" : undefined}
                 className={clsx(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive
                     ? "bg-cockpit-accent/20 text-cockpit-accent border border-cockpit-accent/30"
-                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200 border border-transparent"
                 )}
               >
                 <Icon className="w-4 h-4 shrink-0" />
@@ -89,10 +96,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             );
           })}
         </nav>
-        <div className="p-3 border-t border-cockpit-border">
-          <p className="text-xs text-cockpit-muted">
-            Fonte: Volume Comercial 10.12
+        <div className="p-3 border-t border-cockpit-border space-y-1">
+          <p className="text-[10px] text-cockpit-muted">
+            Fonte: SAP B1 + Volume Comercial 10.12
           </p>
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-cockpit-accent animate-pulse" />
+            <span className="text-[10px] text-cockpit-muted">v0.2.0</span>
+          </div>
         </div>
       </aside>
     </>

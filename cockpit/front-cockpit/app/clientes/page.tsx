@@ -2,9 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { Users, UserMinus, AlertTriangle, PieChart, Crown, Search } from "lucide-react";
+import { fmtBRL } from "@/lib/format";
 
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
 
 const ramos = [
   "Cachaça", "Cerveja", "Gin", "Licor", "Azeite", "Conserva",
@@ -48,8 +47,8 @@ export default function ClientesPage() {
     const grandes = filtered.filter((c) => c.perfil === "GRANDE").length;
     return [
       { label: "Clientes Exibidos", value: String(filtered.length), icon: Users, color: "text-cockpit-accent" },
-      { label: "Fat. Total", value: fmt(totalFat), icon: PieChart, color: "text-blue-400" },
-      { label: "Ticket Médio", value: fmt(avgTicket), icon: Crown, color: "text-yellow-400" },
+      { label: "Fat. Total", value: fmtBRL(totalFat), icon: PieChart, color: "text-blue-400" },
+      { label: "Ticket Médio", value: fmtBRL(avgTicket), icon: Crown, color: "text-yellow-400" },
       { label: "Perfil Grande", value: String(grandes), icon: UserMinus, color: "text-emerald-400" },
       { label: "Média SKU", value: avgSku.toFixed(1), icon: AlertTriangle, color: "text-purple-400" },
     ];
@@ -76,13 +75,14 @@ export default function ClientesPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar cliente ou ramo..."
+            placeholder="Buscar cliente ou ramo..." aria-label="Buscar cliente"
             className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
           />
         </div>
         <select
           value={ramoFilter}
           onChange={(e) => setRamoFilter(e.target.value)}
+          aria-label="Filtrar por ramo"
           className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
         >
           <option value="ALL">Todos os ramos</option>
@@ -110,11 +110,11 @@ export default function ClientesPage() {
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6 flex flex-col gap-2"
+            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
+              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
             <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
           </div>
@@ -154,13 +154,13 @@ export default function ClientesPage() {
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b border-cockpit-border text-cockpit-muted">
-                <th className="py-3 pr-4">#</th>
-                <th className="py-3 pr-4">Cliente</th>
-                <th className="py-3 pr-4">Ramo</th>
-                <th className="py-3 pr-4">Perfil</th>
-                <th className="py-3 pr-4 text-right">Fat. 90d</th>
-                <th className="py-3 pr-4 text-right">Ticket</th>
-                <th className="py-3 text-right">SKU</th>
+                <th scope="col" className="py-3 pr-4">#</th>
+                <th scope="col" className="py-3 pr-4">Cliente</th>
+                <th scope="col" className="py-3 pr-4">Ramo</th>
+                <th scope="col" className="py-3 pr-4">Perfil</th>
+                <th scope="col" className="py-3 pr-4 text-right">Fat. 90d</th>
+                <th scope="col" className="py-3 pr-4 text-right">Ticket</th>
+                <th scope="col" className="py-3 text-right">SKU</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
@@ -185,8 +185,8 @@ export default function ClientesPage() {
                         {row.perfil}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmt(row.fat)}</td>
-                    <td className="py-3 pr-4 text-right text-white">{fmt(row.ticket)}</td>
+                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmtBRL(row.fat)}</td>
+                    <td className="py-3 pr-4 text-right text-white">{fmtBRL(row.ticket)}</td>
                     <td className="py-3 text-right text-white">{row.sku}</td>
                   </tr>
                 ))

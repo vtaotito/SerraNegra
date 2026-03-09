@@ -2,9 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { Users, TrendingUp, Target, Search } from "lucide-react";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
+import { fmtBRL } from "@/lib/format";
 
 const ALL_VENDEDORES = [
   { nome: "ALEF", alvo: 50, real: 36, posit: 85, prosp: 12, recup: 8, ticket: 3413, metas: "2/6" },
@@ -73,7 +71,7 @@ export default function VendedoresPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar vendedor..."
+            placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
             className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
           />
         </div>
@@ -100,6 +98,7 @@ export default function VendedoresPage() {
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortKey)}
+          aria-label="Ordenar por"
           className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
         >
           <option value="real">Ordenar: Volume</option>
@@ -113,11 +112,11 @@ export default function VendedoresPage() {
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6 flex flex-col gap-2"
+            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
+              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
             <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
           </div>
@@ -162,7 +161,7 @@ export default function VendedoresPage() {
                     <td className="py-3 pr-4 text-right text-white">{v.posit}</td>
                     <td className="py-3 pr-4 text-right text-white">{v.prosp}</td>
                     <td className="py-3 pr-4 text-right text-white">{v.recup}</td>
-                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmt(v.ticket)}</td>
+                    <td className="py-3 pr-4 text-right text-cockpit-accent font-medium">{fmtBRL(v.ticket)}</td>
                     <td className="py-3 text-center">
                       <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white">{v.metas}</span>
                     </td>

@@ -2,9 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { DollarSign, TrendingUp, Target, BarChart3, Search } from "lucide-react";
-
-const fmt = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 });
+import { fmtBRL } from "@/lib/format";
 
 const ALL_CARTEIRA = [
   { vendedor: "ALEF", total: 620, perdidos: 310, atencao: 186, pareto: 84, gold: 21, ticket: 6200, fatMes: 310000 },
@@ -47,8 +45,8 @@ export default function CarteiraPage() {
       ? (filtered.reduce((s, r) => s + r.pareto, 0) / filtered.length * 0.094).toFixed(2)
       : "0";
     return [
-      { label: "Fat. 90 Dias Total", value: fmt(totalFat * 3), icon: DollarSign, color: "text-cockpit-accent" },
-      { label: "Média Fat./Mês", value: fmt(avgFat), icon: TrendingUp, color: "text-blue-400" },
+      { label: "Fat. 90 Dias Total", value: fmtBRL(totalFat * 3), icon: DollarSign, color: "text-cockpit-accent" },
+      { label: "Média Fat./Mês", value: fmtBRL(avgFat), icon: TrendingUp, color: "text-blue-400" },
       { label: "Média Positivações", value: avgPosit.toFixed(0), icon: Target, color: "text-yellow-400" },
       { label: "Média SKU/Cliente", value: avgSku, icon: BarChart3, color: "text-purple-400" },
     ];
@@ -77,7 +75,7 @@ export default function CarteiraPage() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar vendedor..."
+            placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
             className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
           />
         </div>
@@ -103,11 +101,11 @@ export default function CarteiraPage() {
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6 flex flex-col gap-2"
+            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2"
           >
             <div className="flex items-center gap-2">
               <k.icon className={`h-5 w-5 ${k.color}`} />
-              <span className="text-xs text-cockpit-muted uppercase tracking-wide">{k.label}</span>
+              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
             <span className={`text-2xl font-bold ${k.color}`}>{k.value}</span>
           </div>
@@ -122,14 +120,14 @@ export default function CarteiraPage() {
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b border-cockpit-border text-cockpit-muted">
-                <th className="py-3 pr-4">Vendedor</th>
-                <th className="py-3 pr-4 text-right">Total</th>
-                <th className="py-3 pr-4 text-right">Perdidos 90d</th>
-                <th className="py-3 pr-4 text-right">Atenção</th>
-                <th className="py-3 pr-4 text-right">80/20</th>
-                <th className="py-3 pr-4 text-right">Gold</th>
-                <th className="py-3 pr-4 text-right">Ticket Médio</th>
-                <th className="py-3 text-right">Fat. Mês</th>
+                <th scope="col" className="py-3 pr-4">Vendedor</th>
+                <th scope="col" className="py-3 pr-4 text-right">Total</th>
+                <th scope="col" className="py-3 pr-4 text-right">Perdidos 90d</th>
+                <th scope="col" className="py-3 pr-4 text-right">Atenção</th>
+                <th scope="col" className="py-3 pr-4 text-right">80/20</th>
+                <th scope="col" className="py-3 pr-4 text-right">Gold</th>
+                <th scope="col" className="py-3 pr-4 text-right">Ticket Médio</th>
+                <th scope="col" className="py-3 text-right">Fat. Mês</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-cockpit-border">
@@ -151,8 +149,8 @@ export default function CarteiraPage() {
                     <td className="py-3 pr-4 text-right text-yellow-400">{row.atencao.toLocaleString("pt-BR")}</td>
                     <td className="py-3 pr-4 text-right text-blue-400">{row.pareto.toLocaleString("pt-BR")}</td>
                     <td className="py-3 pr-4 text-right text-yellow-400">{row.gold.toLocaleString("pt-BR")}</td>
-                    <td className="py-3 pr-4 text-right text-white">{fmt(row.ticket)}</td>
-                    <td className="py-3 text-right text-cockpit-accent font-medium">{fmt(row.fatMes)}</td>
+                    <td className="py-3 pr-4 text-right text-white">{fmtBRL(row.ticket)}</td>
+                    <td className="py-3 text-right text-cockpit-accent font-medium">{fmtBRL(row.fatMes)}</td>
                   </tr>
                 ))
               )}
