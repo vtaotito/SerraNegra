@@ -67,8 +67,8 @@ export default function HomePage() {
     useFetch(() => fetchSalesPersons(), []);
   const { data: custData } = useFetch(() => fetchCustomers({ limit: 1 }), []);
 
-  const loading = loadInv || loadSp;
-  const error = errInv || errSp;
+  const loading = loadInv && loadSp;
+  const hasInvoiceError = !!errInv;
 
   const vendedores = useMemo(() => {
     if (!invData?.items || !spData?.items) return [];
@@ -141,15 +141,6 @@ export default function HomePage() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="space-y-8">
-        <div><h1 className="text-2xl font-bold text-white">Visão executiva</h1></div>
-        <ErrorState message={error} onRetry={() => { refetchInv(); refetchSp(); }} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-8">
       <div>
@@ -159,6 +150,18 @@ export default function HomePage() {
           Serra Negra · <span className="text-gray-300">{periodoLabel}</span>
         </p>
       </div>
+
+      {hasInvoiceError && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-400">Não foi possível carregar notas fiscais do SAP</p>
+            <p className="text-xs text-cockpit-muted mt-1">{errInv}</p>
+            <p className="text-xs text-cockpit-muted mt-1">Use os botões de Sincronização abaixo para forçar uma nova tentativa, ou mude o período.</p>
+          </div>
+          <button type="button" onClick={refetchInv} className="text-xs text-amber-400 hover:text-white transition-colors">Tentar novamente</button>
+        </div>
+      )}
 
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" aria-label="Indicadores principais">
         {kpis.map((kpi) => {
@@ -175,57 +178,59 @@ export default function HomePage() {
         })}
       </section>
 
-      <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-cockpit-accent" />
-            <h2 className="text-lg font-semibold text-white">Faturamento por Vendedor ({filtered.length})</h2>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
-              <input type="text" value={vendedorSearch} onChange={(e) => setVendedorSearch(e.target.value)}
-                placeholder="Filtrar vendedor..." aria-label="Filtrar vendedores"
-                className="w-full sm:w-44 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+      {!hasInvoiceError && (
+        <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-cockpit-accent" />
+              <h2 className="text-lg font-semibold text-white">Faturamento por Vendedor ({filtered.length})</h2>
             </div>
-            <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Performance">
-              {(["all", "top", "bottom"] as const).map((opt) => {
-                const labels = { all: "Todos", top: "Top", bottom: "Abaixo" };
-                return (
-                  <button key={opt} type="button" onClick={() => setPerfFilter(opt)}
-                    aria-pressed={perfFilter === opt}
-                    className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                      perfFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
-                    }`}>{labels[opt]}</button>
-                );
-              })}
+            <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+                <input type="text" value={vendedorSearch} onChange={(e) => setVendedorSearch(e.target.value)}
+                  placeholder="Filtrar vendedor..." aria-label="Filtrar vendedores"
+                  className="w-full sm:w-44 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+              </div>
+              <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Performance">
+                {(["all", "top", "bottom"] as const).map((opt) => {
+                  const labels = { all: "Todos", top: "Top", bottom: "Abaixo" };
+                  return (
+                    <button key={opt} type="button" onClick={() => setPerfFilter(opt)}
+                      aria-pressed={perfFilter === opt}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        perfFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
+                      }`}>{labels[opt]}</button>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </div>
 
-        {filtered.length === 0 ? (
-          <p className="text-center text-cockpit-muted py-12">Nenhum vendedor encontrado</p>
-        ) : (
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} barCategoryGap="20%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
-                <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 12 }} axisLine={{ stroke: "#30363d" }} />
-                <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={{ stroke: "#30363d" }}
-                  tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, color: "#e6edf3" }}
-                  formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#8b949e" }} />
-                <Legend wrapperStyle={{ color: "#8b949e", fontSize: 12 }} />
-                <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.aboveMedian ? "#238636" : "#da3633"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </section>
+          {filtered.length === 0 ? (
+            <p className="text-center text-cockpit-muted py-12">Nenhum vendedor encontrado</p>
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} barCategoryGap="20%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 12 }} axisLine={{ stroke: "#30363d" }} />
+                  <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={{ stroke: "#30363d" }}
+                    tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, color: "#e6edf3" }}
+                    formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#8b949e" }} />
+                  <Legend wrapperStyle={{ color: "#8b949e", fontSize: 12 }} />
+                  <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.aboveMedian ? "#238636" : "#da3633"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
         <div className="flex items-center gap-2 mb-5">
