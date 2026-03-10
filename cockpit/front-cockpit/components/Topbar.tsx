@@ -119,7 +119,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   return (
     <header
-      className="h-14 border-b border-cockpit-border bg-cockpit-surface/80 backdrop-blur flex items-center justify-between px-4 md:px-6 shrink-0"
+      className="h-14 border-b border-cockpit-border bg-cockpit-surface/80 backdrop-blur flex items-center justify-between px-4 md:px-6 shrink-0 relative z-50"
       role="banner"
     >
       <div className="flex items-center gap-3">
