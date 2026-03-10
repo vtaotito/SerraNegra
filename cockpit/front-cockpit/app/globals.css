@@ -3,10 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --cockpit-bg: #0d1117;
-  --cockpit-surface: #161b22;
-  --cockpit-border: #30363d;
-  --cockpit-accent: #238636;
+  --cockpit-bg: #100c0e;
+  --cockpit-surface: #1a1517;
+  --cockpit-border: #33292c;
+  --cockpit-accent: #A81C2C;
   --cockpit-gold: #d4a853;
 }
 
@@ -32,7 +32,7 @@ body {
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #484f58;
+  background: #4a3e42;
 }
 
 /* Smooth transitions */
@@ -52,7 +52,7 @@ tr {
 
 /* Focus visible for accessibility */
 :focus-visible {
-  outline: 2px solid #238636;
+  outline: 2px solid #A81C2C;
   outline-offset: 2px;
 }
 

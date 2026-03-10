@@ -9,14 +9,14 @@ export default {
     extend: {
       colors: {
         cockpit: {
-          bg: "#0d1117",
-          surface: "#161b22",
-          border: "#30363d",
-          muted: "#8b949e",
-          accent: "#238636",
-          accentHover: "#2ea043",
+          bg: "#100c0e",
+          surface: "#1a1517",
+          border: "#33292c",
+          muted: "#948a8d",
+          accent: "#A81C2C",
+          accentHover: "#c42538",
           gold: "#d4a853",
-          danger: "#da3633",
+          danger: "#e5484d",
         },
       },
       fontFamily: {

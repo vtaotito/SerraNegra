@@ -213,16 +213,16 @@ export default function HomePage() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} barCategoryGap="20%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
-                  <XAxis dataKey="name" tick={{ fill: "#8b949e", fontSize: 12 }} axisLine={{ stroke: "#30363d" }} />
-                  <YAxis tick={{ fill: "#8b949e", fontSize: 11 }} axisLine={{ stroke: "#30363d" }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#33292c" />
+                  <XAxis dataKey="name" tick={{ fill: "#948a8d", fontSize: 12 }} axisLine={{ stroke: "#33292c" }} />
+                  <YAxis tick={{ fill: "#948a8d", fontSize: 11 }} axisLine={{ stroke: "#33292c" }}
                     tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ background: "#161b22", border: "1px solid #30363d", borderRadius: 8, color: "#e6edf3" }}
-                    formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#8b949e" }} />
-                  <Legend wrapperStyle={{ color: "#8b949e", fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: "#1a1517", border: "1px solid #33292c", borderRadius: 8, color: "#e6edf3" }}
+                    formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#948a8d" }} />
+                  <Legend wrapperStyle={{ color: "#948a8d", fontSize: 12 }} />
                   <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.aboveMedian ? "#238636" : "#da3633"} />
+                      <Cell key={i} fill={entry.aboveMedian ? "#A81C2C" : "#e5484d"} />
                     ))}
                   </Bar>
                 </BarChart>

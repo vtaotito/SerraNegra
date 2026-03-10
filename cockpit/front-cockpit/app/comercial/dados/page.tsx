@@ -462,8 +462,8 @@ export default function ComercialDadosPage() {
                 style={{
                   width: `${progressPct}%`,
                   background: progressPct >= 100
-                    ? "#238636"
-                    : "linear-gradient(90deg, #238636, #d4a853)",
+                    ? "#A81C2C"
+                    : "linear-gradient(90deg, #A81C2C, #d4a853)",
                 }}
               />
             </div>
