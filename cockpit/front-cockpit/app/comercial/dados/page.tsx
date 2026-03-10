@@ -56,7 +56,7 @@ function groupInvoices(invoices: SapInvoice[]): GroupedDoc[] {
   });
 }
 
-const PAGE_SIZES = [10, 25, 50, 100] as const;
+const PAGE_SIZES = [5, 10, 25, 50, 100] as const;
 
 function buildPageNumbers(current: number, total: number): (number | "...")[] {
   if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
@@ -280,7 +280,7 @@ export default function ComercialDadosPage() {
   const [canceladoFilter, setCanceladoFilter] = useState<"ALL" | "active" | "cancelled">("ALL");
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
 
   const clientesUnicos = useMemo(() =>
     [...new Set(allDocs.map((d) => d.cardName))].sort(),
