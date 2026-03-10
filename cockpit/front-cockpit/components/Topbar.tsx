@@ -133,7 +133,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         </button>
 
         {/* Period picker */}
-        <div className="relative" ref={pickerRef}>
+        <div className="relative z-[60]" ref={pickerRef}>
           <button
             type="button"
             onClick={() => setPickerOpen(!pickerOpen)}
