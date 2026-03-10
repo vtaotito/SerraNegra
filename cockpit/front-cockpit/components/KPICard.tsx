@@ -38,7 +38,7 @@ export function KPICard({
           </div>
         )}
       </div>
-      <p className="mt-2 text-2xl font-bold text-white tabular-nums">{value}</p>
+      <p className="mt-2 text-2xl font-bold text-gray-900 tabular-nums">{value}</p>
       {(variation !== undefined || variationLabel) && (
         <div className="mt-2 flex items-center gap-2">
           {trend === "up" && (

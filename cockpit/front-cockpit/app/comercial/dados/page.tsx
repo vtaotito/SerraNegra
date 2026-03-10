@@ -68,7 +68,7 @@ function DocDetailPanel({ lines }: { lines: SapInvoiceLine[] }) {
 
   return (
     <div className="px-4 py-3">
-      <div className="rounded-lg border border-cockpit-border/60 bg-cockpit-bg/50 overflow-hidden">
+      <div className="rounded-lg border border-cockpit-border/60 bg-cockpit-bg/60 overflow-hidden">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b border-cockpit-border/40 text-cockpit-muted uppercase tracking-wider">
@@ -80,22 +80,22 @@ function DocDetailPanel({ lines }: { lines: SapInvoiceLine[] }) {
               <th className="text-right py-2.5 px-4 font-semibold">Total Linha</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-cockpit-border/30">
+          <tbody className="divide-y divide-cockpit-border/40">
             {lines.map((line, idx) => (
-              <tr key={`${line.ItemCode}-${idx}`} className="hover:bg-white/[0.03]">
+              <tr key={`${line.ItemCode}-${idx}`} className="hover:bg-black/[0.02]">
                 <td className="py-2 px-4 text-cockpit-muted">{idx + 1}</td>
                 <td className="py-2 px-4">
-                  <span className="inline-flex items-center gap-1 font-mono text-blue-400/80 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                  <span className="inline-flex items-center gap-1 font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
                     {line.ItemCode || "—"}
                   </span>
                 </td>
-                <td className="py-2 px-4 text-gray-300 max-w-[280px] truncate" title={line.ItemDescription}>
+                <td className="py-2 px-4 text-gray-600 max-w-[280px] truncate" title={line.ItemDescription}>
                   {line.ItemDescription || "—"}
                 </td>
-                <td className="py-2 px-4 text-right text-gray-200 font-medium">
+                <td className="py-2 px-4 text-right text-gray-700 font-medium">
                   {(line.Quantity ?? 0).toLocaleString("pt-BR")}
                 </td>
-                <td className="py-2 px-4 text-right text-gray-400">
+                <td className="py-2 px-4 text-right text-gray-500">
                   {line.UnitPrice != null ? fmtBRL(line.UnitPrice, 2) : "—"}
                 </td>
                 <td className="py-2 px-4 text-right text-cockpit-accent font-medium">
@@ -105,7 +105,7 @@ function DocDetailPanel({ lines }: { lines: SapInvoiceLine[] }) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-cockpit-border/50 bg-cockpit-bg/80 font-semibold text-white">
+            <tr className="border-t border-cockpit-border/40 bg-cockpit-bg/80 font-semibold text-gray-900">
               <td className="py-2.5 px-4" colSpan={3}>Total ({lines.length} itens)</td>
               <td className="py-2.5 px-4 text-right">
                 {lines.reduce((s, l) => s + (l.Quantity ?? 0), 0).toLocaleString("pt-BR")}
@@ -260,7 +260,7 @@ export default function ComercialDadosPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <FileText className="w-6 h-6 text-cockpit-accent" />Documentos / Vendas
           </h1>
           <p className="text-cockpit-muted mt-1">Carregando notas fiscais do SAP B1...</p>
@@ -274,7 +274,7 @@ export default function ComercialDadosPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <FileText className="w-6 h-6 text-cockpit-accent" />Documentos / Vendas
           </h1>
         </div>
@@ -289,19 +289,19 @@ export default function ComercialDadosPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <FileText className="w-6 h-6 text-cockpit-accent" />
             Documentos / Vendas
           </h1>
           <p className="text-cockpit-muted mt-1 flex items-center gap-2">
             <CalendarDays className="w-3.5 h-3.5" />
-            <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+            <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
             <span className="text-cockpit-border">·</span>
             <span>{filtered.length} documentos · {totalLinhas} itens</span>
           </p>
         </div>
         <button type="button" onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-white hover:border-cockpit-accent/40 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-gray-900 hover:border-cockpit-accent/40 transition-colors"
           aria-label="Exportar dados filtrados em CSV">
           <Download className="w-4 h-4" />
           <span className="hidden sm:inline">Exportar CSV</span>
@@ -317,7 +317,7 @@ export default function ComercialDadosPage() {
           </div>
           {hasFilters && (
             <button type="button" onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-cockpit-muted hover:text-white transition-colors"
+              className="flex items-center gap-1 text-xs text-cockpit-muted hover:text-gray-900 transition-colors"
               aria-label="Limpar filtros">
               <X className="w-3 h-3" /> Limpar
             </button>
@@ -329,12 +329,12 @@ export default function ComercialDadosPage() {
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar nº doc, cliente, item, código..."
               aria-label="Busca"
-              className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
           </div>
           {clientesUnicos.length > 1 && (
             <select value={clienteFilter} onChange={(e) => setClienteFilter(e.target.value)}
               aria-label="Filtrar por cliente"
-              className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 max-w-[200px] [color-scheme:dark]">
+              className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 max-w-[200px]">
               <option value="ALL">Todos clientes</option>
               {clientesUnicos.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
@@ -348,7 +348,7 @@ export default function ComercialDadosPage() {
                   className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     canceladoFilter === opt
                       ? opt === "cancelled" ? "bg-red-500/20 text-red-400" : "bg-cockpit-accent/20 text-cockpit-accent"
-                      : "text-cockpit-muted hover:text-white"
+                      : "text-cockpit-muted hover:text-gray-900"
                   }`}>{labels[opt]}</button>
               );
             })}
@@ -366,18 +366,18 @@ export default function ComercialDadosPage() {
         ].map((k) => (
           <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-colors">
             <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</p>
-            <p className={`text-xl font-bold mt-1 ${k.accent ? "text-cockpit-accent" : "text-white"}`}>{k.value}</p>
+            <p className={`text-xl font-bold mt-1 ${k.accent ? "text-cockpit-accent" : "text-gray-900"}`}>{k.value}</p>
           </div>
         ))}
       </div>
 
       {/* Tabela com load more */}
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-cockpit-border bg-cockpit-bg/50">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-cockpit-border bg-cockpit-bg/60">
           <p className="text-xs text-cockpit-muted">
             Exibindo{" "}
             <span className="text-cockpit-gold font-semibold">{visibleDocs.length}</span>{" "}
-            de <span className="text-gray-200 font-medium">{filtered.length}</span> documentos
+            de <span className="text-gray-700 font-medium">{filtered.length}</span> documentos
             <span className="hidden sm:inline"> — clique em uma linha para ver itens</span>
           </p>
           <div className="flex gap-3 items-center">
@@ -429,7 +429,7 @@ export default function ComercialDadosPage() {
             </tbody>
             {visibleDocs.length > 0 && (
               <tfoot>
-                <tr className="bg-cockpit-bg/60 text-white font-bold border-t border-cockpit-border">
+                <tr className="bg-cockpit-bg/50 text-gray-900 font-bold border-t border-cockpit-border">
                   <td className="py-3 px-2" />
                   <td className="py-3 px-3" colSpan={3}>
                     Subtotal exibido ({visibleDocs.length} doc{visibleDocs.length > 1 ? "s" : ""})
@@ -456,7 +456,7 @@ export default function ComercialDadosPage() {
                 {Math.round(progressPct)}%
               </span>
             </div>
-            <div className="w-full h-1.5 rounded-full bg-cockpit-border/50 overflow-hidden">
+            <div className="w-full h-1.5 rounded-full bg-cockpit-border/40 overflow-hidden">
               <div
                 className="h-full rounded-full transition-all duration-500 ease-out"
                 style={{
@@ -480,7 +480,7 @@ export default function ComercialDadosPage() {
                   w-full sm:flex-1 flex items-center justify-center gap-2.5 py-3 px-6
                   rounded-lg font-semibold text-sm
                   bg-gradient-to-r from-cockpit-accent to-cockpit-accentHover
-                  text-white shadow-lg shadow-cockpit-accent/20
+                  text-gray-900 shadow-lg shadow-cockpit-accent/20
                   hover:shadow-cockpit-accent/40 hover:brightness-110
                   active:scale-[0.98]
                   disabled:opacity-60 disabled:cursor-wait
@@ -541,8 +541,8 @@ function InvoiceRow({ doc, isExpanded, onToggle }: {
       <tr
         onClick={onToggle}
         className={`
-          cursor-pointer border-b border-cockpit-border/50 transition-colors
-          ${isExpanded ? "bg-cockpit-accent/[0.06]" : "hover:bg-white/[0.04]"}
+          cursor-pointer border-b border-cockpit-border/40 transition-colors
+          ${isExpanded ? "bg-cockpit-accent/[0.06]" : "hover:bg-black/[0.03]"}
           ${doc.cancelado ? "opacity-50" : ""}
         `}
       >
@@ -553,19 +553,19 @@ function InvoiceRow({ doc, isExpanded, onToggle }: {
           }
         </td>
         <td className="py-3 px-3">
-          <span className="text-gray-200 font-semibold">{doc.docNum}</span>
+          <span className="text-gray-700 font-semibold">{doc.docNum}</span>
         </td>
-        <td className="py-3 px-3 text-gray-300 whitespace-nowrap">{fmtDate(doc.data)}</td>
-        <td className="py-3 px-3 text-gray-300 max-w-[200px] truncate" title={doc.cardName}>
+        <td className="py-3 px-3 text-gray-600 whitespace-nowrap">{fmtDate(doc.data)}</td>
+        <td className="py-3 px-3 text-gray-600 max-w-[200px] truncate" title={doc.cardName}>
           {doc.cardName}
         </td>
         <td className="py-3 px-3 text-center">
-          <span className="inline-flex items-center gap-1 text-xs font-medium bg-cockpit-border/30 text-gray-300 px-2 py-0.5 rounded-full">
+          <span className="inline-flex items-center gap-1 text-xs font-medium bg-cockpit-border/40 text-gray-600 px-2 py-0.5 rounded-full">
             <Hash className="w-3 h-3" />
             {doc.totalItens > 0 ? doc.totalItens : "—"}
           </span>
         </td>
-        <td className="py-3 px-3 text-right text-gray-300 font-medium">
+        <td className="py-3 px-3 text-right text-gray-600 font-medium">
           {doc.totalQtd > 0 ? doc.totalQtd.toLocaleString("pt-BR") : "—"}
         </td>
         <td className="py-3 px-3 text-right text-cockpit-accent font-semibold">
@@ -573,13 +573,13 @@ function InvoiceRow({ doc, isExpanded, onToggle }: {
         </td>
         <td className="py-3 px-3 text-center">
           {doc.cancelado
-            ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-red-500/15 text-red-400 font-medium">Cancelado</span>
-            : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-400 font-medium">Ativo</span>
+            ? <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-red-50 text-red-600 font-medium">Cancelado</span>
+            : <span className="inline-block px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">Ativo</span>
           }
         </td>
       </tr>
       {isExpanded && (
-        <tr className="bg-cockpit-bg/30">
+        <tr className="bg-cockpit-bg/40">
           <td colSpan={8} className="p-0">
             <DocDetailPanel lines={doc.lines} />
           </td>

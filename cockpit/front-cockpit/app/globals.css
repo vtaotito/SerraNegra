@@ -3,15 +3,15 @@
 @tailwind utilities;
 
 :root {
-  --cockpit-bg: #100c0e;
-  --cockpit-surface: #1a1517;
-  --cockpit-border: #33292c;
+  --cockpit-bg: #f7f4f5;
+  --cockpit-surface: #ffffff;
+  --cockpit-border: #e5dfe1;
   --cockpit-accent: #A81C2C;
-  --cockpit-gold: #d4a853;
+  --cockpit-gold: #a07828;
 }
 
 body {
-  @apply bg-cockpit-bg text-gray-100 antialiased;
+  @apply bg-cockpit-bg text-gray-800 antialiased;
 }
 
 /* Scrollbar minimal */
@@ -32,7 +32,7 @@ body {
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #4a3e42;
+  background: #c9c0c3;
 }
 
 /* Smooth transitions */

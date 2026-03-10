@@ -44,7 +44,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
       <div className="flex flex-col items-center gap-4 text-center max-w-md">
         <AlertTriangle className="w-10 h-10 text-cockpit-gold" />
         <div>
-          <p className="text-white font-medium mb-1">Erro ao carregar dados</p>
+          <p className="text-gray-900 font-medium mb-1">Erro ao carregar dados</p>
           <p className="text-sm text-cockpit-muted">{message}</p>
         </div>
         {onRetry && (

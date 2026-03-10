@@ -40,7 +40,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     <>
       {open && (
         <div
-          className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/30 z-40 lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -57,14 +57,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <div className="p-4 border-b border-cockpit-border flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2" aria-label="Cockpit BI - Página inicial">
             <div className="w-8 h-8 rounded-lg bg-cockpit-accent flex items-center justify-center">
-              <BarChart3 className="w-4 h-4 text-white" />
+              <BarChart3 className="w-4 h-4 text-gray-900" />
             </div>
-            <span className="font-semibold text-white">Cockpit BI</span>
+            <span className="font-semibold text-gray-900">Cockpit BI</span>
           </Link>
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded text-cockpit-muted hover:text-white lg:hidden"
+            className="p-1 rounded text-cockpit-muted hover:text-gray-900 lg:hidden"
             aria-label="Fechar menu"
           >
             <X className="w-5 h-5" />
@@ -87,7 +87,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive
                     ? "bg-cockpit-accent/20 text-cockpit-accent border border-cockpit-accent/30"
-                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200 border border-transparent"
+                    : "text-gray-500 hover:bg-black/5 hover:text-gray-700 border border-transparent"
                 )}
               >
                 <Icon className="w-4 h-4 shrink-0" />

@@ -63,7 +63,7 @@ export default function ClientesPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div><h1 className="text-2xl font-bold text-white">Clientes</h1><p className="text-cockpit-muted mt-1">Carregando dados do SAP B1...</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Clientes</h1><p className="text-cockpit-muted mt-1">Carregando dados do SAP B1...</p></div>
         <LoadingSkeleton rows={6} />
       </div>
     );
@@ -71,7 +71,7 @@ export default function ClientesPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <div><h1 className="text-2xl font-bold text-white">Clientes</h1></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Clientes</h1></div>
         <ErrorState message={error} onRetry={refetch} />
       </div>
     );
@@ -80,10 +80,10 @@ export default function ClientesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Clientes</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Clientes</h1>
         <p className="text-cockpit-muted mt-1 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
           <span>{customerData?.total ?? 0} clientes na base SAP B1</span>
         </p>
@@ -94,21 +94,21 @@ export default function ClientesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar cliente, código ou cidade..." aria-label="Buscar cliente"
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
         </div>
         <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Filtrar por tipo">
           {["ALL", "Cliente", "Fornecedor"].map((opt) => (
             <button key={opt} type="button" onClick={() => setTipoFilter(opt)}
               aria-pressed={tipoFilter === opt}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                tipoFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
+                tipoFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-gray-900"
               }`}>{opt === "ALL" ? "Todos" : opt}</button>
           ))}
         </div>
         {uniqueEstados.length > 1 && (
           <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)}
             aria-label="Filtrar por estado"
-            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50">
+            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50">
             <option value="ALL">Todos os estados</option>
             {uniqueEstados.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
@@ -147,21 +147,21 @@ export default function ClientesPage() {
                 <tr><td colSpan={8} className="py-8 text-center text-cockpit-muted">Nenhum cliente encontrado</td></tr>
               ) : (
                 filtered.map((row, i) => (
-                  <tr key={row.codigo} className="hover:bg-white/5 transition-colors">
+                  <tr key={row.codigo} className="hover:bg-black/5 transition-colors">
                     <td className="py-3 px-4 text-cockpit-muted">{i + 1}</td>
-                    <td className="py-3 px-4 font-mono text-xs text-gray-300">{row.codigo}</td>
-                    <td className="py-3 px-4 font-medium text-white max-w-[200px] truncate">{row.cliente}</td>
+                    <td className="py-3 px-4 font-mono text-xs text-gray-600">{row.codigo}</td>
+                    <td className="py-3 px-4 font-medium text-gray-900 max-w-[200px] truncate">{row.cliente}</td>
                     <td className="py-3 px-4">
                       <span className={`rounded-full px-2 py-0.5 text-xs ${
                         row.tipo === "Cliente" ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"
                       }`}>{row.tipo}</span>
                     </td>
-                    <td className="py-3 px-4 text-gray-300">{row.cidade}</td>
-                    <td className="py-3 px-4 text-gray-400">{row.estado}</td>
-                    <td className="py-3 px-4 text-gray-400">{row.telefone}</td>
+                    <td className="py-3 px-4 text-gray-600">{row.cidade}</td>
+                    <td className="py-3 px-4 text-gray-500">{row.estado}</td>
+                    <td className="py-3 px-4 text-gray-500">{row.telefone}</td>
                     <td className="py-3 px-4 text-center">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
-                        row.ativo ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
+                        row.ativo ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
                       }`}>{row.ativo ? "Ativo" : "Inativo"}</span>
                     </td>
                   </tr>

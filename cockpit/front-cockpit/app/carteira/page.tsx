@@ -65,16 +65,16 @@ export default function CarteiraPage() {
   const totalFat = filtered.reduce((s, r) => s + r.fat, 0);
   const totalNotas = filtered.reduce((s, r) => s + r.notas, 0);
 
-  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Carteira</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
-  if (e2) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Carteira</h1></div><ErrorState message={e2} onRetry={r2} /></div>;
+  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Carteira</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
+  if (e2) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Carteira</h1></div><ErrorState message={e2} onRetry={r2} /></div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Carteira Geral</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Carteira Geral</h1>
         <p className="text-cockpit-muted mt-1 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
           <span>Clientes por vendedor</span>
         </p>
@@ -84,7 +84,7 @@ export default function CarteiraPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -96,7 +96,7 @@ export default function CarteiraPage() {
         ].map((k) => (
           <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
             <div className="flex items-center gap-2"><k.icon className={`h-4 w-4 ${k.color}`} /><span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span></div>
-            <span className="text-xl font-bold text-white">{k.value}</span>
+            <span className="text-xl font-bold text-gray-900">{k.value}</span>
           </div>
         ))}
       </div>
@@ -117,12 +117,12 @@ export default function CarteiraPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={5} className="py-8 text-center text-cockpit-muted">Nenhum vendedor</td></tr>
               ) : filtered.map((r) => (
-                <tr key={r.code} className="hover:bg-white/5">
-                  <td className="px-4 py-3 font-medium text-white">{r.nome}</td>
+                <tr key={r.code} className="hover:bg-black/5">
+                  <td className="px-4 py-3 font-medium text-gray-900">{r.nome}</td>
                   <td className="px-4 py-3 text-right text-blue-400 font-medium">{r.clientes}</td>
                   <td className="px-4 py-3 text-right text-cockpit-accent font-medium">{fmtBRL(r.fat)}</td>
-                  <td className="px-4 py-3 text-right text-gray-300">{r.notas}</td>
-                  <td className="px-4 py-3 text-right text-gray-300">{fmtBRL(r.ticket, 2)}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{r.notas}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{fmtBRL(r.ticket, 2)}</td>
                 </tr>
               ))}
             </tbody>

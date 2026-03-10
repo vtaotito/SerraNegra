@@ -22,9 +22,9 @@ interface StockRow {
 }
 
 const statusStyles: Record<Status, { bg: string; text: string }> = {
-  OK: { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+  OK: { bg: "bg-emerald-50", text: "text-emerald-700" },
   ABAIXO: { bg: "bg-amber-500/15", text: "text-amber-400" },
-  RUPTURA: { bg: "bg-red-500/15", text: "text-red-400" },
+  RUPTURA: { bg: "bg-red-50", text: "text-red-600" },
 };
 
 function deriveStatus(onHand: number, free: number, min: number): Status {
@@ -115,7 +115,7 @@ export default function EstoquePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Estoque</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Estoque</h1>
           <p className="text-cockpit-muted mt-1">Carregando dados do SAP B1...</p>
         </div>
         <LoadingSkeleton rows={6} />
@@ -127,7 +127,7 @@ export default function EstoquePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Estoque</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Estoque</h1>
         </div>
         <ErrorState message={error} onRetry={() => { refetchCatalog(); refetchInv(); }} />
       </div>
@@ -137,10 +137,10 @@ export default function EstoquePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Estoque</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Estoque</h1>
         <p className="text-cockpit-muted mt-1 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
           <span>{catalogData?.total ?? 0} itens no catálogo · {invData?.total ?? 0} posições de estoque</span>
         </p>
@@ -151,12 +151,12 @@ export default function EstoquePage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por código, item ou descrição..." aria-label="Buscar item de estoque"
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
         </div>
         {uniqueCods.length > 1 && (
           <select value={codFilter} onChange={(e) => setCodFilter(e.target.value)}
             aria-label="Filtrar por código"
-            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50">
+            className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50">
             <option value="ALL">Todos os CODs</option>
             {uniqueCods.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -171,7 +171,7 @@ export default function EstoquePage() {
                     : opt === "ABAIXO" ? "bg-amber-500/20 text-amber-400"
                     : opt === "OK" ? "bg-emerald-500/20 text-emerald-400"
                     : "bg-cockpit-accent/20 text-cockpit-accent"
-                  : "text-cockpit-muted hover:text-white"
+                  : "text-cockpit-muted hover:text-gray-900"
               }`}>{opt === "ALL" ? "Todos" : opt}</button>
           ))}
         </div>
@@ -184,7 +184,7 @@ export default function EstoquePage() {
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
-            <span className="text-xl font-bold text-white">{k.value}</span>
+            <span className="text-xl font-bold text-gray-900">{k.value}</span>
           </div>
         ))}
       </div>
@@ -217,14 +217,14 @@ export default function EstoquePage() {
                 filtered.map((row) => {
                   const st = statusStyles[row.status];
                   return (
-                    <tr key={row.item} className={`hover:bg-white/5 ${row.status === "RUPTURA" ? "bg-red-500/5" : ""}`}>
-                      <td className="py-3 px-4 text-gray-200 font-medium">{row.cod}</td>
-                      <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.item}</td>
-                      <td className="py-3 px-4 text-gray-300 max-w-[240px] truncate">{row.descricao}</td>
-                      <td className="py-3 px-4 text-right text-gray-300">{fmtNum(row.estoque)}</td>
-                      <td className={`py-3 px-4 text-right font-medium ${row.disp <= 0 ? "text-red-400" : "text-gray-300"}`}>{fmtNum(row.disp)}</td>
+                    <tr key={row.item} className={`hover:bg-black/5 ${row.status === "RUPTURA" ? "bg-red-500/5" : ""}`}>
+                      <td className="py-3 px-4 text-gray-700 font-medium">{row.cod}</td>
+                      <td className="py-3 px-4 text-gray-600 font-mono text-xs">{row.item}</td>
+                      <td className="py-3 px-4 text-gray-600 max-w-[240px] truncate">{row.descricao}</td>
+                      <td className="py-3 px-4 text-right text-gray-600">{fmtNum(row.estoque)}</td>
+                      <td className={`py-3 px-4 text-right font-medium ${row.disp <= 0 ? "text-red-400" : "text-gray-600"}`}>{fmtNum(row.disp)}</td>
                       <td className="py-3 px-4 text-right text-cockpit-muted">{fmtNum(row.min)}</td>
-                      <td className="py-3 px-4 text-gray-400">{row.und}</td>
+                      <td className="py-3 px-4 text-gray-500">{row.und}</td>
                       <td className="py-3 px-4 text-center">
                         <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${st.bg} ${st.text}`}>{row.status}</span>
                       </td>

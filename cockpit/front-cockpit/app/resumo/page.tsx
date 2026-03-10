@@ -73,16 +73,16 @@ export default function ResumoPage() {
     { label: "Ticket Médio", value: fmtBRL(stats.ticketMedio, 2), icon: DollarSign, color: "text-purple-400" },
   ];
 
-  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Resumo Comercial</h1><p className="text-cockpit-muted mt-1">Consolidando dados...</p></div><LoadingSkeleton /></div>;
-  if (coreError) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Resumo Comercial</h1></div><ErrorState message={coreError} onRetry={() => { r1(); r2(); r3(); r5(); }} /></div>;
+  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Resumo Comercial</h1><p className="text-cockpit-muted mt-1">Consolidando dados...</p></div><LoadingSkeleton /></div>;
+  if (coreError) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Resumo Comercial</h1></div><ErrorState message={coreError} onRetry={() => { r1(); r2(); r3(); r5(); }} /></div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Resumo Comercial</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Resumo Comercial</h1>
         <p className="text-cockpit-muted mt-1 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
           <span>Indicadores consolidados SAP B1</span>
         </p>
@@ -93,7 +93,7 @@ export default function ResumoPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar indicador..." aria-label="Buscar indicador"
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+            className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
         </div>
         <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Categoria">
           {(["all", "clientes", "vendas", "estoque"] as const).map((opt) => {
@@ -102,7 +102,7 @@ export default function ResumoPage() {
               <button key={opt} type="button" onClick={() => setCatFilter(opt)}
                 aria-pressed={catFilter === opt}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  catFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
+                  catFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-gray-900"
                 }`}>{labels[opt]}</button>
             );
           })}
@@ -119,16 +119,16 @@ export default function ResumoPage() {
       </div>
 
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-lg font-semibold text-white mb-4">Indicadores ({filteredInd.length})</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Indicadores ({filteredInd.length})</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead><tr className="border-b border-cockpit-border text-cockpit-muted"><th scope="col" className="py-3 pr-4">Indicador</th><th scope="col" className="py-3 pr-4">Categoria</th><th scope="col" className="py-3 text-right">Valor</th></tr></thead>
             <tbody className="divide-y divide-cockpit-border">
               {filteredInd.map((r) => (
-                <tr key={r.indicador} className="hover:bg-white/5">
-                  <td className="py-3 pr-4 font-medium text-white">{r.indicador}</td>
-                  <td className="py-3 pr-4"><span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-cockpit-muted capitalize">{r.cat}</span></td>
-                  <td className="py-3 text-right text-white font-medium">{r.valor}</td>
+                <tr key={r.indicador} className="hover:bg-black/5">
+                  <td className="py-3 pr-4 font-medium text-gray-900">{r.indicador}</td>
+                  <td className="py-3 pr-4"><span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-cockpit-muted capitalize">{r.cat}</span></td>
+                  <td className="py-3 text-right text-gray-900 font-medium">{r.valor}</td>
                 </tr>
               ))}
             </tbody>

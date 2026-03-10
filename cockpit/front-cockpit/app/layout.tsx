@@ -25,7 +25,7 @@ export default function RootLayout({
         <title>Cockpit BI — Serra Negra</title>
         <meta name="description" content="Painel analítico comercial e operacional" />
       </head>
-      <body className="min-h-screen flex bg-cockpit-bg text-gray-200">
+      <body className="min-h-screen flex bg-cockpit-bg text-gray-800">
         <DateRangeProvider>
           <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">

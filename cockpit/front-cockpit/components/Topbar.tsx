@@ -119,14 +119,14 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   return (
     <header
-      className="h-14 border-b border-cockpit-border bg-cockpit-surface/80 backdrop-blur flex items-center justify-between px-4 md:px-6 shrink-0 relative z-50"
+      className="h-14 border-b border-cockpit-border bg-cockpit-surface/90 backdrop-blur flex items-center justify-between px-4 md:px-6 shrink-0 relative z-50"
       role="banner"
     >
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={onMenuClick}
-          className="p-2 rounded-lg text-cockpit-muted hover:bg-white/5 hover:text-gray-300 transition-colors lg:hidden"
+          className="p-2 rounded-lg text-cockpit-muted hover:bg-black/5 hover:text-gray-700 transition-colors lg:hidden"
           aria-label="Abrir menu lateral"
         >
           <Menu className="w-5 h-5" />
@@ -146,8 +146,8 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             aria-expanded={pickerOpen}
           >
             <Calendar className="w-4 h-4 text-cockpit-accent" />
-            <span className="text-sm text-gray-300 capitalize hidden sm:inline">{rangeLabel}</span>
-            <span className="text-sm text-gray-300 sm:hidden">
+            <span className="text-sm text-gray-600 capitalize hidden sm:inline">{rangeLabel}</span>
+            <span className="text-sm text-gray-600 sm:hidden">
               {preset === "custom" ? "Período" : PRESETS.find((p) => p.key === preset)?.label ?? "Período"}
             </span>
             <ChevronDown
@@ -158,17 +158,17 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           </button>
 
           {pickerOpen && (
-            <div className="absolute top-full left-0 sm:left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[420px] rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl shadow-black/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="absolute top-full left-0 sm:left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[420px] rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl shadow-black/10 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-cockpit-border bg-cockpit-bg/50">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-cockpit-accent" />
-                  <span className="text-sm font-semibold text-white">Período de análise</span>
+                  <span className="text-sm font-semibold text-gray-900">Período de análise</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setPickerOpen(false)}
-                  className="p-1 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 transition-colors"
+                  className="p-1 rounded-md text-cockpit-muted hover:text-gray-900 hover:bg-black/5 transition-colors"
                   aria-label="Fechar"
                 >
                   <X className="w-4 h-4" />
@@ -179,9 +179,9 @@ export function Topbar({ onMenuClick }: TopbarProps) {
               <div className="px-4 py-2.5 bg-cockpit-accent/[0.06] border-b border-cockpit-border/50">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-cockpit-muted">Ativo:</span>
-                  <span className="font-medium text-white">{fmtReadable(range.from)}</span>
+                  <span className="font-medium text-gray-900">{fmtReadable(range.from)}</span>
                   <ArrowRight className="w-3 h-3 text-cockpit-muted" />
-                  <span className="font-medium text-white">{fmtReadable(range.to)}</span>
+                  <span className="font-medium text-gray-900">{fmtReadable(range.to)}</span>
                   <span className="text-cockpit-muted ml-auto">({dayCount} dias)</span>
                 </div>
               </div>
@@ -202,7 +202,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                         className={`group flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all ${
                           isActive
                             ? "bg-cockpit-accent/15 border border-cockpit-accent/30 text-cockpit-accent"
-                            : "border border-transparent text-gray-300 hover:bg-white/5 hover:border-cockpit-border"
+                            : "border border-transparent text-gray-600 hover:bg-black/5 hover:border-cockpit-border"
                         }`}
                       >
                         <div>
@@ -236,7 +236,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                         setValidationErr(null);
                       }}
                       max={draftTo}
-                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all [color-scheme:dark]"
+                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data inicial"
                     />
                   </div>
@@ -253,7 +253,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                         setValidationErr(null);
                       }}
                       min={draftFrom}
-                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all [color-scheme:dark]"
+                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data final"
                     />
                   </div>
@@ -268,7 +268,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 <button
                   type="button"
                   onClick={validateAndApply}
-                  className="w-full mt-3 py-2.5 rounded-lg bg-cockpit-accent text-white text-sm font-semibold hover:bg-cockpit-accent/90 active:scale-[0.98] transition-all shadow-lg shadow-cockpit-accent/20"
+                  className="w-full mt-3 py-2.5 rounded-lg bg-cockpit-accent text-gray-900 text-sm font-semibold hover:bg-cockpit-accent/90 active:scale-[0.98] transition-all shadow-lg shadow-cockpit-accent/15"
                 >
                   Aplicar período personalizado
                 </button>
@@ -287,7 +287,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           type="button"
           onClick={handleRefresh}
           disabled={syncing}
-          className="p-2 rounded-lg text-cockpit-muted hover:bg-white/5 hover:text-gray-300 transition-colors disabled:opacity-50"
+          className="p-2 rounded-lg text-cockpit-muted hover:bg-black/5 hover:text-gray-700 transition-colors disabled:opacity-50"
           aria-label="Verificar conexão SAP"
         >
           {syncing ? (
@@ -320,7 +320,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             type="search"
             placeholder="Cliente, produto, documento..."
             aria-label="Busca global"
-            className="w-64 pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent"
+            className="w-64 pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent"
           />
         </div>
         <span className="text-xs text-cockpit-muted hidden lg:inline">

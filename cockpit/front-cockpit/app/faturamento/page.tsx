@@ -85,16 +85,16 @@ export default function FaturamentoPage() {
     { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-blue-400" },
   ];
 
-  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Faturamento</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
-  if (errSp) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-white">Faturamento</h1></div><ErrorState message={errSp} onRetry={rSp} /></div>;
+  if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Faturamento</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
+  if (errSp) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Faturamento</h1></div><ErrorState message={errSp} onRetry={rSp} /></div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Faturamento</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Faturamento</h1>
         <p className="text-cockpit-muted mt-1 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          <span>Período: <span className="text-gray-300">{periodoLabel}</span></span>
+          <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
           <span>{invData?.count ?? 0} notas fiscais</span>
         </p>
@@ -104,7 +104,7 @@ export default function FaturamentoPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar vendedor..." aria-label="Buscar vendedor"
-          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+          className="w-full pl-9 pr-4 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" aria-label="KPIs">
@@ -114,7 +114,7 @@ export default function FaturamentoPage() {
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
             </div>
-            <span className="text-xl font-bold text-white">{k.value}</span>
+            <span className="text-xl font-bold text-gray-900">{k.value}</span>
           </div>
         ))}
       </div>
@@ -125,13 +125,13 @@ export default function FaturamentoPage() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} barCategoryGap="20%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#33292c" />
-                <XAxis dataKey="name" tick={{ fill: "#948a8d", fontSize: 12 }} axisLine={{ stroke: "#33292c" }} />
-                <YAxis tick={{ fill: "#948a8d", fontSize: 11 }} axisLine={{ stroke: "#33292c" }}
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5dfe1" />
+                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 12 }} axisLine={{ stroke: "#e5dfe1" }} />
+                <YAxis tick={{ fill: "#78696c", fontSize: 11 }} axisLine={{ stroke: "#e5dfe1" }}
                   tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                <Tooltip contentStyle={{ background: "#1a1517", border: "1px solid #33292c", borderRadius: 8, color: "#e6edf3" }}
-                  formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#948a8d" }} />
-                <Legend wrapperStyle={{ color: "#948a8d", fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e5dfe1", borderRadius: 8, color: "#1f2937" }}
+                  formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#78696c" }} />
+                <Legend wrapperStyle={{ color: "#78696c", fontSize: 12 }} />
                 <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
                   {chartData.map((_, i) => <Cell key={i} fill="#A81C2C" />)}
                 </Bar>
@@ -158,14 +158,14 @@ export default function FaturamentoPage() {
               ) : (
                 <>
                   {filtered.map((v) => (
-                    <tr key={v.code} className="hover:bg-white/5 text-gray-300">
-                      <td className="px-4 py-3 font-medium text-white">{v.nome}</td>
+                    <tr key={v.code} className="hover:bg-black/5 text-gray-600">
+                      <td className="px-4 py-3 font-medium text-gray-900">{v.nome}</td>
                       <td className="px-4 py-3 text-right text-cockpit-accent font-medium">{fmtBRL(v.real)}</td>
                       <td className="px-4 py-3 text-right">{v.vol}</td>
                       <td className="px-4 py-3 text-right">{fmtBRL(v.ticket, 2)}</td>
                     </tr>
                   ))}
-                  <tr className="bg-cockpit-bg/60 text-white font-bold">
+                  <tr className="bg-cockpit-bg/60 text-gray-900 font-bold">
                     <td className="px-4 py-3">TOTAL ({filtered.length})</td>
                     <td className="px-4 py-3 text-right text-cockpit-accent">{fmtBRL(totais.real)}</td>
                     <td className="px-4 py-3 text-right">{totais.vol}</td>

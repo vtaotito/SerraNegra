@@ -135,7 +135,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="space-y-8">
-        <div><h1 className="text-2xl font-bold text-white">Visão executiva</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados do SAP B1...</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Visão executiva</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados do SAP B1...</p></div>
         <LoadingSkeleton rows={6} />
       </div>
     );
@@ -144,10 +144,10 @@ export default function HomePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white">Visão executiva</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Visão executiva</h1>
         <p className="text-cockpit-muted mt-1 text-sm flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
-          Serra Negra · <span className="text-gray-300">{periodoLabel}</span>
+          Serra Negra · <span className="text-gray-600">{periodoLabel}</span>
         </p>
       </div>
 
@@ -159,7 +159,7 @@ export default function HomePage() {
             <p className="text-xs text-cockpit-muted mt-1">{errInv}</p>
             <p className="text-xs text-cockpit-muted mt-1">Use os botões de Sincronização abaixo para forçar uma nova tentativa, ou mude o período.</p>
           </div>
-          <button type="button" onClick={refetchInv} className="text-xs text-amber-400 hover:text-white transition-colors">Tentar novamente</button>
+          <button type="button" onClick={refetchInv} className="text-xs text-amber-400 hover:text-gray-900 transition-colors">Tentar novamente</button>
         </div>
       )}
 
@@ -172,7 +172,7 @@ export default function HomePage() {
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">{kpi.title}</span>
                 <Icon className={`w-3.5 h-3.5 ${kpi.color}`} />
               </div>
-              <span className="text-lg font-bold text-white leading-tight">{kpi.value}</span>
+              <span className="text-lg font-bold text-gray-900 leading-tight">{kpi.value}</span>
             </div>
           );
         })}
@@ -183,14 +183,14 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-cockpit-accent" />
-              <h2 className="text-lg font-semibold text-white">Faturamento por Vendedor ({filtered.length})</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Faturamento por Vendedor ({filtered.length})</h2>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
                 <input type="text" value={vendedorSearch} onChange={(e) => setVendedorSearch(e.target.value)}
                   placeholder="Filtrar vendedor..." aria-label="Filtrar vendedores"
-                  className="w-full sm:w-44 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
+                  className="w-full sm:w-44 pl-9 pr-4 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50" />
               </div>
               <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5" role="group" aria-label="Performance">
                 {(["all", "top", "bottom"] as const).map((opt) => {
@@ -199,7 +199,7 @@ export default function HomePage() {
                     <button key={opt} type="button" onClick={() => setPerfFilter(opt)}
                       aria-pressed={perfFilter === opt}
                       className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                        perfFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-white"
+                        perfFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent" : "text-cockpit-muted hover:text-gray-900"
                       }`}>{labels[opt]}</button>
                   );
                 })}
@@ -213,13 +213,13 @@ export default function HomePage() {
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData} barCategoryGap="20%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#33292c" />
-                  <XAxis dataKey="name" tick={{ fill: "#948a8d", fontSize: 12 }} axisLine={{ stroke: "#33292c" }} />
-                  <YAxis tick={{ fill: "#948a8d", fontSize: 11 }} axisLine={{ stroke: "#33292c" }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5dfe1" />
+                  <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 12 }} axisLine={{ stroke: "#e5dfe1" }} />
+                  <YAxis tick={{ fill: "#78696c", fontSize: 11 }} axisLine={{ stroke: "#e5dfe1" }}
                     tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ background: "#1a1517", border: "1px solid #33292c", borderRadius: 8, color: "#e6edf3" }}
-                    formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#948a8d" }} />
-                  <Legend wrapperStyle={{ color: "#948a8d", fontSize: 12 }} />
+                  <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e5dfe1", borderRadius: 8, color: "#1f2937" }}
+                    formatter={(value: number) => fmtBRL(value)} labelStyle={{ color: "#78696c" }} />
+                  <Legend wrapperStyle={{ color: "#78696c", fontSize: 12 }} />
                   <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, i) => (
                       <Cell key={i} fill={entry.aboveMedian ? "#A81C2C" : "#e5484d"} />
@@ -235,7 +235,7 @@ export default function HomePage() {
       <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
         <div className="flex items-center gap-2 mb-5">
           <Zap className="w-5 h-5 text-cockpit-accent" />
-          <h2 className="text-lg font-semibold text-white">Integração SAP B1</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Integração SAP B1</h2>
           <span className="ml-auto text-[10px] text-cockpit-muted uppercase tracking-wider">Service Layer</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -251,7 +251,7 @@ export default function HomePage() {
                 } disabled:opacity-60`}
                 aria-label={`Sincronizar ${ep.label}`}>
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-xs font-medium text-white">{ep.label}</p>
+                  <p className="text-xs font-medium text-gray-900">{ep.label}</p>
                   {state === "loading" && <Loader2 className="w-3.5 h-3.5 text-cockpit-accent animate-spin" />}
                   {state === "ok" && <CheckCircle2 className="w-3.5 h-3.5 text-cockpit-accent" />}
                   {state === "error" && <XCircle className="w-3.5 h-3.5 text-cockpit-danger" />}
