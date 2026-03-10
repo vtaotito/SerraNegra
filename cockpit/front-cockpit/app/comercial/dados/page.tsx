@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   FileText, Filter, Download, Search, X, CalendarDays,
-  ChevronDown, ChevronRight, Package, Hash,
+  ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight,
+  Package, Hash,
 } from "lucide-react";
 import { fmtBRL, exportCSV } from "@/lib/format";
 import { fetchInvoices, type SapInvoice, type SapInvoiceLine } from "@/lib/api";
@@ -53,6 +54,145 @@ function groupInvoices(invoices: SapInvoice[]): GroupedDoc[] {
       totalLinhas: lines.reduce((s, l) => s + (l.LineTotal ?? 0), 0),
     };
   });
+}
+
+const PAGE_SIZES = [10, 25, 50, 100] as const;
+
+function buildPageNumbers(current: number, total: number): (number | "...")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+
+  const pages: (number | "...")[] = [1];
+
+  if (current > 3) pages.push("...");
+
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  for (let i = start; i <= end; i++) pages.push(i);
+
+  if (current < total - 2) pages.push("...");
+
+  pages.push(total);
+  return pages;
+}
+
+function Pagination({
+  currentPage,
+  totalPages,
+  pageSize,
+  totalItems,
+  onPageChange,
+  onPageSizeChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  pageSize: number;
+  totalItems: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+}) {
+  const from = (currentPage - 1) * pageSize + 1;
+  const to = Math.min(currentPage * pageSize, totalItems);
+  const pages = buildPageNumbers(currentPage, totalPages);
+
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-cockpit-border bg-cockpit-bg/30">
+      {/* Info + page size selector */}
+      <div className="flex items-center gap-3 text-xs text-cockpit-muted">
+        <span>
+          Exibindo{" "}
+          <span className="font-semibold text-gray-200">{from}</span>–
+          <span className="font-semibold text-gray-200">{to}</span>{" "}
+          de <span className="font-semibold text-gray-200">{totalItems.toLocaleString("pt-BR")}</span> documentos
+        </span>
+        <span className="text-cockpit-border hidden sm:inline">|</span>
+        <div className="flex items-center gap-1.5 hidden sm:flex">
+          <span>Mostrar</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="px-2 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-cockpit-accent/50 [color-scheme:dark]"
+            aria-label="Itens por página"
+          >
+            {PAGE_SIZES.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <span>por página</span>
+        </div>
+      </div>
+
+      {/* Page navigation */}
+      {totalPages > 1 && (
+        <nav className="flex items-center gap-1" aria-label="Paginação">
+          <button
+            type="button"
+            onClick={() => onPageChange(1)}
+            disabled={currentPage === 1}
+            className="p-1.5 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            aria-label="Primeira página"
+            title="Primeira página"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="p-1.5 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            aria-label="Página anterior"
+            title="Página anterior"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <div className="flex items-center gap-0.5 mx-1">
+            {pages.map((p, i) =>
+              p === "..." ? (
+                <span key={`dots-${i}`} className="w-8 text-center text-xs text-cockpit-muted select-none">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => onPageChange(p)}
+                  aria-current={currentPage === p ? "page" : undefined}
+                  className={`min-w-[2rem] h-8 rounded-md text-xs font-medium transition-all ${
+                    currentPage === p
+                      ? "bg-cockpit-accent text-white shadow-md shadow-cockpit-accent/25"
+                      : "text-cockpit-muted hover:text-white hover:bg-white/10"
+                  }`}
+                >
+                  {p}
+                </button>
+              )
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="p-1.5 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            aria-label="Próxima página"
+            title="Próxima página"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange(totalPages)}
+            disabled={currentPage === totalPages}
+            className="p-1.5 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            aria-label="Última página"
+            title="Última página"
+          >
+            <ChevronsRight className="w-4 h-4" />
+          </button>
+        </nav>
+      )}
+    </div>
+  );
 }
 
 function DocDetailPanel({ lines }: { lines: SapInvoiceLine[] }) {
@@ -139,6 +279,8 @@ export default function ComercialDadosPage() {
   const [search, setSearch] = useState("");
   const [canceladoFilter, setCanceladoFilter] = useState<"ALL" | "active" | "cancelled">("ALL");
   const [expandedDocs, setExpandedDocs] = useState<Set<number>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   const clientesUnicos = useMemo(() =>
     [...new Set(allDocs.map((d) => d.cardName))].sort(),
@@ -162,9 +304,31 @@ export default function ComercialDadosPage() {
     });
   }, [allDocs, search, clienteFilter, canceladoFilter]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+    setExpandedDocs(new Set());
+  }, [search, clienteFilter, canceladoFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const safePage = Math.min(currentPage, totalPages);
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const paginatedDocs = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, safePage, pageSize]);
+
   const totalQtd = useMemo(() => filtered.reduce((s, d) => s + d.totalQtd, 0), [filtered]);
   const totalValor = useMemo(() => filtered.reduce((s, d) => s + d.docTotal, 0), [filtered]);
   const totalLinhas = useMemo(() => filtered.reduce((s, d) => s + d.totalItens, 0), [filtered]);
+
+  const pageQtd = useMemo(() => paginatedDocs.reduce((s, d) => s + d.totalQtd, 0), [paginatedDocs]);
+  const pageValor = useMemo(() => paginatedDocs.reduce((s, d) => s + d.docTotal, 0), [paginatedDocs]);
+  const pageLinhas = useMemo(() => paginatedDocs.reduce((s, d) => s + d.totalItens, 0), [paginatedDocs]);
+
   const hasFilters = search || clienteFilter !== "ALL" || canceladoFilter !== "ALL";
 
   const toggleDoc = useCallback((docNum: number) => {
@@ -177,8 +341,8 @@ export default function ComercialDadosPage() {
   }, []);
 
   const expandAll = useCallback(() => {
-    setExpandedDocs(new Set(filtered.map((d) => d.docNum)));
-  }, [filtered]);
+    setExpandedDocs(new Set(paginatedDocs.map((d) => d.docNum)));
+  }, [paginatedDocs]);
 
   const collapseAll = useCallback(() => {
     setExpandedDocs(new Set());
@@ -186,6 +350,18 @@ export default function ComercialDadosPage() {
 
   const clearFilters = useCallback(() => {
     setSearch(""); setClienteFilter("ALL"); setCanceladoFilter("ALL");
+  }, []);
+
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+    setExpandedDocs(new Set());
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const handlePageSizeChange = useCallback((size: number) => {
+    setPageSize(size);
+    setCurrentPage(1);
+    setExpandedDocs(new Set());
   }, []);
 
   const handleExport = useCallback(() => {
@@ -294,7 +470,7 @@ export default function ComercialDadosPage() {
           {clientesUnicos.length > 1 && (
             <select value={clienteFilter} onChange={(e) => setClienteFilter(e.target.value)}
               aria-label="Filtrar por cliente"
-              className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 max-w-[200px]">
+              className="px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 max-w-[200px] [color-scheme:dark]">
               <option value="ALL">Todos clientes</option>
               {clientesUnicos.map((v) => <option key={v} value={v}>{v}</option>)}
             </select>
@@ -316,7 +492,7 @@ export default function ComercialDadosPage() {
         </div>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs - totais gerais filtrados */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Totalizadores">
         {[
           { label: "Documentos", value: filtered.length.toLocaleString("pt-BR"), icon: FileText },
@@ -331,13 +507,27 @@ export default function ComercialDadosPage() {
         ))}
       </div>
 
-      {/* Tabela agrupada */}
+      {/* Tabela agrupada com paginação */}
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-cockpit-border bg-cockpit-bg/50">
           <p className="text-xs text-cockpit-muted">
-            Clique em uma linha para ver os itens detalhados
+            Página <span className="text-gray-200 font-medium">{safePage}</span> de{" "}
+            <span className="text-gray-200 font-medium">{totalPages}</span>
+            <span className="hidden sm:inline"> — clique em uma linha para ver itens</span>
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-3 items-center">
+            <div className="flex items-center gap-1.5 sm:hidden">
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="px-2 py-1 rounded-md bg-cockpit-bg border border-cockpit-border text-gray-200 text-xs focus:outline-none focus:ring-1 focus:ring-cockpit-accent/50 [color-scheme:dark]"
+                aria-label="Itens por página"
+              >
+                {PAGE_SIZES.map((s) => (
+                  <option key={s} value={s}>{s}/pag</option>
+                ))}
+              </select>
+            </div>
             <button type="button" onClick={anyExpanded ? collapseAll : expandAll}
               className="text-xs text-cockpit-muted hover:text-cockpit-accent transition-colors flex items-center gap-1">
               {anyExpanded ? (
@@ -364,14 +554,14 @@ export default function ComercialDadosPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {paginatedDocs.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-cockpit-muted">
                     Nenhum documento no período
                   </td>
                 </tr>
               ) : (
-                filtered.map((doc) => {
+                paginatedDocs.map((doc) => {
                   const isExpanded = expandedDocs.has(doc.docNum);
                   return (
                     <InvoiceRow
@@ -384,16 +574,16 @@ export default function ComercialDadosPage() {
                 })
               )}
             </tbody>
-            {filtered.length > 0 && (
+            {paginatedDocs.length > 0 && (
               <tfoot>
                 <tr className="bg-cockpit-bg/60 text-white font-bold border-t border-cockpit-border">
                   <td className="py-3 px-2" />
                   <td className="py-3 px-3" colSpan={3}>
-                    TOTAL ({filtered.length} documentos)
+                    Subtotal da página ({paginatedDocs.length} doc{paginatedDocs.length > 1 ? "s" : ""})
                   </td>
-                  <td className="py-3 px-3 text-center">{totalLinhas.toLocaleString("pt-BR")}</td>
-                  <td className="py-3 px-3 text-right">{totalQtd.toLocaleString("pt-BR")}</td>
-                  <td className="py-3 px-3 text-right text-cockpit-accent">{fmtBRL(totalValor, 2)}</td>
+                  <td className="py-3 px-3 text-center">{pageLinhas.toLocaleString("pt-BR")}</td>
+                  <td className="py-3 px-3 text-right">{pageQtd.toLocaleString("pt-BR")}</td>
+                  <td className="py-3 px-3 text-right text-cockpit-accent">{fmtBRL(pageValor, 2)}</td>
                   <td className="py-3 px-3" />
                 </tr>
               </tfoot>
@@ -401,9 +591,15 @@ export default function ComercialDadosPage() {
           </table>
         </div>
 
-        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
-          {filtered.length} documentos · {totalLinhas} itens — dados SAP B1 /Invoices
-        </div>
+        {/* Paginação */}
+        <Pagination
+          currentPage={safePage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filtered.length}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+        />
       </div>
     </div>
   );
