@@ -234,73 +234,104 @@ export class SapEntitiesService {
 
     const headerSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled";
 
-    const candidates: Array<{ label: string; buildUrl: (top: number, skip: number) => string; pageSize: number }> = [
+    // --- PHASE 1: Fetch invoice headers (fast, no $expand) ---
+    const headerCandidates: Array<{ label: string; buildUrl: (top: number, skip: number) => string; pageSize: number }> = [
       {
-        label: "expand sem $select + filtro",
-        buildUrl: (top, skip) => `/Invoices?$expand=DocumentLines${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 20,
-      },
-      {
-        label: "expand com $select + filtro",
-        buildUrl: (top, skip) => `/Invoices?$select=${headerSelect}&$expand=DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal,UnitPrice)${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 20,
-      },
-      {
-        label: "expand sem $select, sem filtro",
-        buildUrl: (top, skip) => `/Invoices?$expand=DocumentLines&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 20,
-      },
-      {
-        label: "$select + filtro (rapido, sem lines)",
+        label: "$select + filtro",
         buildUrl: (top, skip) => `/Invoices?$select=${headerSelect}${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
         pageSize: 100,
       },
       {
-        label: "sem $select + filtro (rapido, sem lines)",
+        label: "sem $select + filtro",
         buildUrl: (top, skip) => `/Invoices?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
         pageSize: 100,
       },
       {
-        label: "$select sem filtro (rapido, sem lines)",
+        label: "$select sem filtro",
         buildUrl: (top, skip) => `/Invoices?$select=${headerSelect}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
         pageSize: 100,
       },
     ];
 
+    let invoices: SapInvoiceRow[] = [];
+    let headerOk = false;
     let lastError: unknown;
-    for (let ci = 0; ci < candidates.length; ci++) {
-      const { label, buildUrl, pageSize } = candidates[ci];
+
+    for (let ci = 0; ci < headerCandidates.length; ci++) {
+      const { label, buildUrl, pageSize } = headerCandidates[ci];
       try {
         const all: SapInvoiceRow[] = [];
         let skip = 0;
-
         while (all.length < maxItems) {
           const url = buildUrl(pageSize, skip);
-          console.log(`[listInvoices] #${ci + 1} (${label}) url=${url.substring(0, 140)}...`);
+          console.log(`[listInvoices] HEADERS #${ci + 1} (${label}) skip=${skip}`);
           const res = await this.client.get<{ value: SapInvoiceRow[] }>(url, { correlationId });
           const page = res.data.value || [];
           if (page.length === 0) break;
           all.push(...page);
-          console.log(`[listInvoices] #${ci + 1} skip=${skip} +${page.length} = ${all.length}`);
           if (page.length < pageSize) break;
           skip += pageSize;
         }
-
-        const hasLines = all.length > 0 && Array.isArray(all[0].DocumentLines) && all[0].DocumentLines!.length > 0;
-        console.log(`[listInvoices] #${ci + 1} (${label}) OK - ${all.length} notas, lines=${hasLines ? "sim" : "nao"}`);
-        return all.slice(0, maxItems);
+        console.log(`[listInvoices] HEADERS #${ci + 1} (${label}) OK - ${all.length} notas`);
+        invoices = all.slice(0, maxItems);
+        headerOk = true;
+        break;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         const status = err instanceof SapHttpError ? err.status : 0;
-        const body = (err as any)?.responseBodyText?.slice(0, 300) ?? "";
-        console.warn(`[listInvoices] #${ci + 1} (${label}) falhou (status=${status}): ${errMsg} ${body}`);
+        console.warn(`[listInvoices] HEADERS #${ci + 1} (${label}) falhou (status=${status}): ${errMsg}`);
         lastError = err;
         if (status === 400 || status === 500 || status === 502 || status === 504) continue;
         if (errMsg.includes("timeout") || errMsg.includes("abort")) continue;
         throw err;
       }
     }
-    throw lastError instanceof Error ? lastError : new Error("Erro ao listar notas fiscais do SAP.");
+
+    if (!headerOk) {
+      throw lastError instanceof Error ? lastError : new Error("Erro ao listar notas fiscais do SAP.");
+    }
+
+    if (invoices.length === 0) return invoices;
+
+    // --- PHASE 2: Enrich each invoice with DocumentLines via GET /Invoices({DocEntry}) ---
+    const CONCURRENCY = 5;
+    let enriched = 0;
+    let enrichErrors = 0;
+
+    for (let i = 0; i < invoices.length; i += CONCURRENCY) {
+      const batch = invoices.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (inv) => {
+          const docEntry = inv.DocEntry;
+          if (!docEntry) return null;
+          try {
+            const url = `/Invoices(${docEntry})`;
+            const res = await this.client.get<SapInvoiceRow>(url, { correlationId });
+            return res.data;
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.warn(`[listInvoices] ENRICH DocEntry=${docEntry} falhou: ${errMsg}`);
+            return null;
+          }
+        })
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const result = results[j];
+        if (result.status === "fulfilled" && result.value) {
+          const full = result.value;
+          if (Array.isArray(full.DocumentLines) && full.DocumentLines.length > 0) {
+            invoices[i + j].DocumentLines = full.DocumentLines;
+            enriched++;
+          }
+        } else {
+          enrichErrors++;
+        }
+      }
+    }
+
+    console.log(`[listInvoices] ENRICH completo: ${enriched}/${invoices.length} com DocumentLines, ${enrichErrors} erros`);
+    return invoices;
   }
 
   // ========================================
