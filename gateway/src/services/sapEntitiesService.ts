@@ -226,34 +226,55 @@ export class SapEntitiesService {
   ): Promise<SapInvoiceRow[]> {
     const maxItems = opts.limit ?? 5000;
 
-    const fullSelect = "DocEntry,DocNum,DocDate,DocDueDate,TaxDate,CardCode,CardName,DocumentStatus,Cancelled,DocTotal,PaymentMethod,PaymentGroupCode,SalesPersonCode";
-    const minSelect = "DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled";
-    const expandFull = "DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal,DiscountPercent,UnitPrice,Price,CFOPCode,Usage)";
-    const expandMin = "DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal)";
-
     let dateFilter = "";
     if (opts.dateFrom) dateFilter += ` and DocDate ge '${opts.dateFrom}'`;
     if (opts.dateTo) dateFilter += ` and DocDate le '${opts.dateTo}'`;
     const dateFilterClean = dateFilter.replace(/^ and /, "");
+    const filterPart = dateFilterClean ? `&$filter=${dateFilterClean}` : "";
 
-    const candidates = [
-      { select: minSelect, expand: expandMin, filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 50 },
-      { select: minSelect, expand: expandMin, filter: "", pageSize: 50 },
-      { select: fullSelect, expand: expandFull, filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 20 },
-      { select: minSelect, expand: "",         filter: dateFilterClean ? `&$filter=${dateFilterClean}` : "", pageSize: 100 },
-      { select: minSelect, expand: "",         filter: "", pageSize: 100 },
+    const candidates: Array<{ label: string; buildUrl: (top: number, skip: number) => string; pageSize: number }> = [
+      {
+        label: "expand sem $select + filtro",
+        buildUrl: (top, skip) => `/Invoices?$expand=DocumentLines${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 20,
+      },
+      {
+        label: "expand sem $select, sem filtro",
+        buildUrl: (top, skip) => `/Invoices?$expand=DocumentLines&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 20,
+      },
+      {
+        label: "expand com $select + filtro",
+        buildUrl: (top, skip) => `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled&$expand=DocumentLines($select=ItemCode,ItemDescription,Quantity,LineTotal)${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 20,
+      },
+      {
+        label: "sem expand, sem $select + filtro",
+        buildUrl: (top, skip) => `/Invoices?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 50,
+      },
+      {
+        label: "$select minimo + filtro",
+        buildUrl: (top, skip) => `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 100,
+      },
+      {
+        label: "$select minimo sem filtro",
+        buildUrl: (top, skip) => `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 100,
+      },
     ];
 
     let lastError: unknown;
     for (let ci = 0; ci < candidates.length; ci++) {
-      const { select, expand, filter, pageSize } = candidates[ci];
+      const { label, buildUrl, pageSize } = candidates[ci];
       try {
         const all: SapInvoiceRow[] = [];
         let skip = 0;
 
-        const expandPart = expand ? `&$expand=${expand}` : "";
         while (all.length < maxItems) {
-          const url = `/Invoices?$select=${select}${expandPart}${filter}&$top=${pageSize}&$skip=${skip}&$orderby=DocDate desc`;
+          const url = buildUrl(pageSize, skip);
+          console.log(`[listInvoices] #${ci + 1} (${label}) url=${url.substring(0, 120)}...`);
           const res = await this.client.get<{ value: SapInvoiceRow[] }>(url, { correlationId });
           const page = res.data.value || [];
           if (page.length === 0) break;
@@ -263,12 +284,14 @@ export class SapEntitiesService {
           skip += pageSize;
         }
 
-        console.log(`[listInvoices] Candidato #${ci + 1} OK - ${all.length} notas (expand=${expand ? "sim" : "nao"})`);
+        const hasLines = all.length > 0 && Array.isArray(all[0].DocumentLines) && all[0].DocumentLines!.length > 0;
+        console.log(`[listInvoices] Candidato #${ci + 1} (${label}) OK - ${all.length} notas, DocumentLines=${hasLines ? "sim" : "nao"}`);
         return all.slice(0, maxItems);
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         const status = err instanceof SapHttpError ? err.status : 0;
-        console.warn(`[listInvoices] Candidato #${ci + 1} falhou (status=${status}): ${errMsg}`);
+        const body = (err as any)?.responseBodyText?.slice(0, 300) ?? "";
+        console.warn(`[listInvoices] Candidato #${ci + 1} (${label}) falhou (status=${status}): ${errMsg} ${body}`);
         lastError = err;
         if (status === 400 || status === 500 || status === 502 || status === 504) continue;
         if (errMsg.includes("timeout") || errMsg.includes("abort")) continue;

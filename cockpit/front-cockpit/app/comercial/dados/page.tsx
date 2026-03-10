@@ -7,7 +7,17 @@ import { fetchInvoices, type SapInvoice } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+function fmtDate(raw: string): string {
+  try {
+    const d = raw.includes("T") ? parseISO(raw) : new Date(raw);
+    return format(d, "dd/MM/yyyy", { locale: ptBR });
+  } catch {
+    return raw;
+  }
+}
 
 interface DocRow {
   doc: number;
@@ -67,7 +77,7 @@ export default function ComercialDadosPage() {
   const dateTo = format(range.to, "yyyy-MM-dd");
 
   const { data: invoiceData, loading, error, refetch } = useFetch(
-    () => fetchInvoices({ limit: 5000, dateFrom, dateTo }),
+    () => fetchInvoices({ limit: 10000, dateFrom, dateTo }),
     [dateFrom, dateTo]
   );
 
@@ -227,10 +237,10 @@ export default function ComercialDadosPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={8} className="py-8 text-center text-cockpit-muted">Nenhum documento no período</td></tr>
               ) : (
-                filtered.slice(0, 200).map((row, i) => (
+                filtered.map((row, i) => (
                   <tr key={`${row.doc}-${row.item}-${i}`} className={`hover:bg-white/5 ${row.cancelado ? "opacity-50" : ""}`}>
                     <td className="py-3 px-4 text-gray-200 font-medium">{row.doc}</td>
-                    <td className="py-3 px-4 text-gray-300">{row.data}</td>
+                    <td className="py-3 px-4 text-gray-300 whitespace-nowrap">{fmtDate(row.data)}</td>
                     <td className="py-3 px-4 text-gray-300 max-w-[160px] truncate" title={row.clienteNome}>{row.clienteNome}</td>
                     <td className="py-3 px-4 text-gray-300 font-mono text-xs">{row.item}</td>
                     <td className="py-3 px-4 text-gray-300 max-w-[200px] truncate">{row.desc}</td>
@@ -258,7 +268,7 @@ export default function ComercialDadosPage() {
           </table>
         </div>
         <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
-          {filtered.length > 200 ? `Exibindo 200 de ${filtered.length} linhas` : `${filtered.length} linhas`} — dados SAP B1 /Invoices
+          {filtered.length} linhas — dados SAP B1 /Invoices
         </div>
       </div>
     </div>
