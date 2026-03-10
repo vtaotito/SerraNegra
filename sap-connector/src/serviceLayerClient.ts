@@ -90,7 +90,7 @@ export class SapServiceLayerClient {
     this.baseUrl = options.baseUrl;
     this.credentials = options.credentials;
     this.correlationHeaderName = options.correlationHeaderName ?? "X-Correlation-Id";
-    this.timeoutMs = options.timeoutMs ?? 20_000;
+    this.timeoutMs = options.timeoutMs ?? 120_000;
     this.logger = options.logger ?? {};
 
     this.retry = { ...defaultRetry, ...(options.retry ?? {}) };

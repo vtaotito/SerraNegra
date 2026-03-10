@@ -33,7 +33,7 @@ export function loadSapConfig(): SapConfig {
     companyDb,
     username,
     password,
-    timeoutMs: Number(process.env.SAP_B1_TIMEOUT_MS ?? "20000"),
+    timeoutMs: Number(process.env.SAP_B1_TIMEOUT_MS ?? "120000"),
     maxAttempts: Number(process.env.SAP_B1_MAX_ATTEMPTS ?? "5"),
     maxConcurrent: Number(process.env.SAP_B1_MAX_CONCURRENT ?? "8"),
     maxRps: Number(process.env.SAP_B1_MAX_RPS ?? "10")

@@ -55,7 +55,7 @@ export class SapService {
         password: options.password
       },
       logger: options.logger,
-      timeoutMs: Number(process.env.SAP_B1_TIMEOUT_MS ?? 20000),
+      timeoutMs: Number(process.env.SAP_B1_TIMEOUT_MS ?? 120000),
       retry: {
         maxAttempts: Number(process.env.SAP_B1_MAX_ATTEMPTS ?? 5)
       },
