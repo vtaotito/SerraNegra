@@ -3,9 +3,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Calendar, RefreshCw, Search, Menu, Wifi, WifiOff,
-  Loader2, ChevronDown, Check,
+  Loader2, ChevronDown, Check, ArrowRight, X,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInDays, startOfMonth, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { fmtDate } from "@/lib/format";
 import {
@@ -18,15 +18,26 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
-const PRESETS: { key: PresetKey; label: string }[] = [
-  { key: "current_month", label: "Mês atual" },
-  { key: "last_3m", label: "Últimos 3 meses" },
-  { key: "last_6m", label: "Últimos 6 meses" },
-  { key: "last_12m", label: "Últimos 12 meses" },
-  { key: "ytd", label: "Ano corrente" },
-  { key: "all", label: "Todo período" },
-  { key: "custom", label: "Personalizado" },
+const PRESETS: { key: Exclude<PresetKey, "custom">; label: string; hint: string }[] = [
+  { key: "current_month", label: "Mês atual", hint: "Desde dia 1" },
+  { key: "last_3m", label: "Últimos 3 meses", hint: "90 dias" },
+  { key: "last_6m", label: "Últimos 6 meses", hint: "180 dias" },
+  { key: "last_12m", label: "Últimos 12 meses", hint: "1 ano" },
+  { key: "ytd", label: "Ano corrente", hint: "Desde 01/Jan" },
+  { key: "all", label: "Todo período", hint: "Histórico completo" },
 ];
+
+function fmtShort(d: Date): string {
+  return format(d, "dd MMM yyyy", { locale: ptBR });
+}
+
+function fmtInputVal(d: Date): string {
+  return format(d, "yyyy-MM-dd");
+}
+
+function fmtReadable(d: Date): string {
+  return format(d, "dd/MM/yyyy");
+}
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const [syncing, setSyncing] = useState(false);
@@ -37,12 +48,15 @@ export function Topbar({ onMenuClick }: TopbarProps) {
 
   const { preset, range, setPreset, setCustomRange } = useDateRange();
 
-  const [customFromStr, setCustomFromStr] = useState(
-    format(range.from, "yyyy-MM-dd")
-  );
-  const [customToStr, setCustomToStr] = useState(
-    format(range.to, "yyyy-MM-dd")
-  );
+  const [draftFrom, setDraftFrom] = useState(fmtInputVal(range.from));
+  const [draftTo, setDraftTo] = useState(fmtInputVal(range.to));
+  const [validationErr, setValidationErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDraftFrom(fmtInputVal(range.from));
+    setDraftTo(fmtInputVal(range.to));
+    setValidationErr(null);
+  }, [range]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -55,22 +69,36 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   }, []);
 
   const handlePreset = useCallback(
-    (key: PresetKey) => {
-      if (key === "custom") return;
+    (key: Exclude<PresetKey, "custom">) => {
       setPreset(key);
+      setValidationErr(null);
       setPickerOpen(false);
     },
     [setPreset]
   );
 
-  const handleApplyCustom = useCallback(() => {
-    const from = new Date(customFromStr + "T00:00:00");
-    const to = new Date(customToStr + "T23:59:59");
-    if (!isNaN(from.getTime()) && !isNaN(to.getTime()) && from <= to) {
-      setCustomRange(from, to);
-      setPickerOpen(false);
+  const validateAndApply = useCallback(() => {
+    const from = new Date(draftFrom + "T00:00:00");
+    const to = new Date(draftTo + "T23:59:59");
+
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      setValidationErr("Datas inválidas. Verifique o formato.");
+      return;
     }
-  }, [customFromStr, customToStr, setCustomRange]);
+    if (from > to) {
+      setValidationErr("A data inicial deve ser anterior à data final.");
+      return;
+    }
+    const daysDiff = differenceInDays(to, from);
+    if (daysDiff > 3650) {
+      setValidationErr("O período máximo é 10 anos.");
+      return;
+    }
+
+    setValidationErr(null);
+    setCustomRange(from, to);
+    setPickerOpen(false);
+  }, [draftFrom, draftTo, setCustomRange]);
 
   const handleRefresh = useCallback(async () => {
     setSyncing(true);
@@ -87,6 +115,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
   }, []);
 
   const rangeLabel = formatRangeShort(range);
+  const dayCount = differenceInDays(range.to, range.from) + 1;
 
   return (
     <header
@@ -104,79 +133,151 @@ export function Topbar({ onMenuClick }: TopbarProps) {
         </button>
 
         {/* Period picker */}
-        <div className="relative hidden sm:block" ref={pickerRef}>
+        <div className="relative" ref={pickerRef}>
           <button
             type="button"
             onClick={() => setPickerOpen(!pickerOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border hover:border-cockpit-accent/40 transition-colors"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+              pickerOpen
+                ? "bg-cockpit-accent/10 border-cockpit-accent/40 ring-1 ring-cockpit-accent/20"
+                : "bg-cockpit-bg border-cockpit-border hover:border-cockpit-accent/40"
+            }`}
             aria-label="Selecionar período"
             aria-expanded={pickerOpen}
           >
             <Calendar className="w-4 h-4 text-cockpit-accent" />
-            <span className="text-sm text-gray-300 capitalize">{rangeLabel}</span>
+            <span className="text-sm text-gray-300 capitalize hidden sm:inline">{rangeLabel}</span>
+            <span className="text-sm text-gray-300 sm:hidden">
+              {preset === "custom" ? "Período" : PRESETS.find((p) => p.key === preset)?.label ?? "Período"}
+            </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 text-cockpit-muted transition-transform ${
+              className={`w-3.5 h-3.5 text-cockpit-muted transition-transform duration-200 ${
                 pickerOpen ? "rotate-180" : ""
               }`}
             />
           </button>
 
           {pickerOpen && (
-            <div className="absolute top-full left-0 mt-1.5 w-72 rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-              <div className="p-1.5 border-b border-cockpit-border">
-                <p className="px-2.5 py-1.5 text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">
-                  Período de análise
-                </p>
-                {PRESETS.filter((p) => p.key !== "custom").map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() => handlePreset(p.key)}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-sm transition-colors ${
-                      preset === p.key
-                        ? "bg-cockpit-accent/15 text-cockpit-accent"
-                        : "text-gray-300 hover:bg-white/5"
-                    }`}
-                  >
-                    {p.label}
-                    {preset === p.key && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                ))}
+            <div className="absolute top-full left-0 sm:left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[420px] rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl shadow-black/40 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-cockpit-border bg-cockpit-bg/50">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-cockpit-accent" />
+                  <span className="text-sm font-semibold text-white">Período de análise</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="p-1 rounded-md text-cockpit-muted hover:text-white hover:bg-white/10 transition-colors"
+                  aria-label="Fechar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="p-3 space-y-3">
-                <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">
-                  Personalizado
+              {/* Active range summary */}
+              <div className="px-4 py-2.5 bg-cockpit-accent/[0.06] border-b border-cockpit-border/50">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-cockpit-muted">Ativo:</span>
+                  <span className="font-medium text-white">{fmtReadable(range.from)}</span>
+                  <ArrowRight className="w-3 h-3 text-cockpit-muted" />
+                  <span className="font-medium text-white">{fmtReadable(range.to)}</span>
+                  <span className="text-cockpit-muted ml-auto">({dayCount} dias)</span>
+                </div>
+              </div>
+
+              {/* Presets grid */}
+              <div className="p-3">
+                <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-2 px-1">
+                  Períodos rápidos
                 </p>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {PRESETS.map((p) => {
+                    const isActive = preset === p.key;
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        onClick={() => handlePreset(p.key)}
+                        className={`group flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all ${
+                          isActive
+                            ? "bg-cockpit-accent/15 border border-cockpit-accent/30 text-cockpit-accent"
+                            : "border border-transparent text-gray-300 hover:bg-white/5 hover:border-cockpit-border"
+                        }`}
+                      >
+                        <div>
+                          <span className={`block text-sm font-medium ${isActive ? "text-cockpit-accent" : ""}`}>
+                            {p.label}
+                          </span>
+                          <span className={`block text-[10px] mt-0.5 ${isActive ? "text-cockpit-accent/70" : "text-cockpit-muted"}`}>
+                            {p.hint}
+                          </span>
+                        </div>
+                        {isActive && <Check className="w-4 h-4 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Custom range */}
+              <div className="px-4 pb-4 pt-1 border-t border-cockpit-border">
+                <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-3 pt-3">
+                  Período personalizado
+                </p>
+                <div className="flex items-end gap-2">
                   <div className="flex-1">
-                    <label className="block text-[10px] text-cockpit-muted mb-1">De</label>
+                    <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data inicial</label>
                     <input
                       type="date"
-                      value={customFromStr}
-                      onChange={(e) => setCustomFromStr(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+                      value={draftFrom}
+                      onChange={(e) => {
+                        setDraftFrom(e.target.value);
+                        setValidationErr(null);
+                      }}
+                      max={draftTo}
+                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all [color-scheme:dark]"
                       aria-label="Data inicial"
                     />
                   </div>
+                  <div className="pb-2">
+                    <ArrowRight className="w-4 h-4 text-cockpit-muted" />
+                  </div>
                   <div className="flex-1">
-                    <label className="block text-[10px] text-cockpit-muted mb-1">Até</label>
+                    <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data final</label>
                     <input
                       type="date"
-                      value={customToStr}
-                      onChange={(e) => setCustomToStr(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50"
+                      value={draftTo}
+                      onChange={(e) => {
+                        setDraftTo(e.target.value);
+                        setValidationErr(null);
+                      }}
+                      min={draftFrom}
+                      className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all [color-scheme:dark]"
                       aria-label="Data final"
                     />
                   </div>
                 </div>
+
+                {validationErr && (
+                  <p className="text-xs text-red-400 mt-2 flex items-center gap-1">
+                    <X className="w-3 h-3" /> {validationErr}
+                  </p>
+                )}
+
                 <button
                   type="button"
-                  onClick={handleApplyCustom}
-                  className="w-full py-2 rounded-lg bg-cockpit-accent/20 text-cockpit-accent text-sm font-medium hover:bg-cockpit-accent/30 transition-colors"
+                  onClick={validateAndApply}
+                  className="w-full mt-3 py-2.5 rounded-lg bg-cockpit-accent text-white text-sm font-semibold hover:bg-cockpit-accent/90 active:scale-[0.98] transition-all shadow-lg shadow-cockpit-accent/20"
                 >
-                  Aplicar período
+                  Aplicar período personalizado
                 </button>
+
+                {preset === "custom" && (
+                  <p className="text-[10px] text-cockpit-accent/60 text-center mt-2">
+                    Período personalizado ativo
+                  </p>
+                )}
               </div>
             </div>
           )}
