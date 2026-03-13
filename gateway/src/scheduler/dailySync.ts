@@ -410,7 +410,7 @@ export async function querySalesOrders(opts: {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const limit = opts.limit ?? 500;
+  const limit = opts.limit ?? 50000;
   const offset = opts.offset ?? 0;
 
   const countSql = `SELECT COUNT(*) as total FROM sap_sales_orders o ${where}`;

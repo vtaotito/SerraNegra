@@ -354,6 +354,9 @@ export class SapEntitiesService {
       "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocCurrency,DocStatus,DocumentStatus,SalesPersonCode,Cancelled,Comments";
 
     // --- PHASE 1: Headers (fast, no $expand) ---
+    // SAP Service Layer retorna no máximo 20 registros por request (odata.maxpagesize)
+    const SAP_PAGE = 20;
+
     const headerCandidates: Array<{
       label: string;
       buildUrl: (top: number, skip: number) => string;
@@ -363,19 +366,19 @@ export class SapEntitiesService {
         label: "$select + filtro",
         buildUrl: (top, skip) =>
           `/Orders?$select=${headerSelect}${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 100,
+        pageSize: SAP_PAGE,
       },
       {
         label: "sem $select + filtro",
         buildUrl: (top, skip) =>
           `/Orders?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 100,
+        pageSize: SAP_PAGE,
       },
       {
         label: "$select sem filtro",
         buildUrl: (top, skip) =>
           `/Orders?$select=${headerSelect}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: 100,
+        pageSize: SAP_PAGE,
       },
     ];
 
