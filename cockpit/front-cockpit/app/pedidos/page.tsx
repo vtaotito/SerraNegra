@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { fmtBRL, exportCSV } from "@/lib/format";
 import {
-  fetchSalesOrders, syncSalesOrders,
+  fetchSalesOrders, syncSalesOrders, fetchOrderLines,
   type SalesOrderRow, type SalesOrderLine,
 } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
@@ -203,9 +203,11 @@ export default function PedidosPage() {
     return result;
   }, [orders, statusFilter, clienteFilter, search, sortField, sortDir]);
 
-  // Load-more
+  // Load-more & expansion
   const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [orderLines, setOrderLines] = useState<Record<number, SalesOrderLine[]>>({});
+  const [loadingLines, setLoadingLines] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     setVisibleCount(BATCH_SIZE);
@@ -234,13 +236,31 @@ export default function PedidosPage() {
   const handleLoadMore = useCallback(() => setVisibleCount((c) => c + BATCH_SIZE), []);
   const handleShowAll = useCallback(() => setVisibleCount(filtered.length), [filtered.length]);
 
-  const toggleExpand = useCallback((docEntry: number) => {
+  const toggleExpand = useCallback(async (docEntry: number) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       next.has(docEntry) ? next.delete(docEntry) : next.add(docEntry);
       return next;
     });
-  }, []);
+
+    if (!orderLines[docEntry] && !loadingLines.has(docEntry)) {
+      setLoadingLines((prev) => new Set(prev).add(docEntry));
+      try {
+        const res = await fetchOrderLines(docEntry);
+        if (res.ok && res.lines?.length > 0) {
+          setOrderLines((prev) => ({ ...prev, [docEntry]: res.lines }));
+        }
+      } catch {
+        // silently fail - will show "indisponível"
+      } finally {
+        setLoadingLines((prev) => {
+          const next = new Set(prev);
+          next.delete(docEntry);
+          return next;
+        });
+      }
+    }
+  }, [orderLines, loadingLines]);
 
   const expandAll = useCallback(() => {
     setExpanded(new Set(visibleDocs.map((d) => d.doc_entry)));
@@ -462,7 +482,8 @@ export default function PedidosPage() {
                 const isExpanded = expanded.has(order.doc_entry);
                 const isCancelled = order.cancelled === "Y";
                 const isOpen = order.doc_status === "O" && !isCancelled;
-                const lines = order.lines ?? [];
+                const lines = orderLines[order.doc_entry] ?? order.lines ?? [];
+                const isLoadingLines = loadingLines.has(order.doc_entry);
                 const qty = Number(order.total_quantity) || lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
                 const nLines = lines.length || order.num_lines || 0;
 
@@ -523,7 +544,13 @@ export default function PedidosPage() {
                     {isExpanded && (
                       <tr>
                         <td colSpan={10} className="p-0">
-                          <OrderDetailPanel lines={lines} />
+                          {isLoadingLines ? (
+                            <div className="px-8 py-4 flex items-center gap-2 text-sm text-cockpit-muted bg-gray-50">
+                              <Loader2 className="w-4 h-4 animate-spin" /> Carregando itens do SAP...
+                            </div>
+                          ) : (
+                            <OrderDetailPanel lines={lines} />
+                          )}
                         </td>
                       </tr>
                     )}

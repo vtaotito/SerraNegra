@@ -1373,5 +1373,68 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * GET /api/sap/sales-orders/:docEntry/lines
+   * Busca linhas de um pedido específico do SAP sob demanda.
+   * Se já tiver linhas na base local, retorna. Senão, busca no SAP e salva.
+   */
+  app.get("/sap/sales-orders/:docEntry/lines", async (req, reply) => {
+    const docEntry = Number((req.params as any).docEntry);
+    if (!docEntry) return reply.code(400).send({ ok: false, message: "docEntry inválido" });
+
+    const { getDbPool } = await import("../scheduler/dailySync.js");
+    const db = getDbPool();
+
+    try {
+      const existing = await db.query(
+        `SELECT line_num as "LineNum", item_code as "ItemCode", item_description as "ItemDescription",
+                quantity as "Quantity", unit_price as "UnitPrice", line_total as "LineTotal",
+                discount_percent as "DiscountPercent", warehouse_code as "WarehouseCode"
+         FROM sap_sales_order_lines WHERE doc_entry = $1 ORDER BY line_num`,
+        [docEntry]
+      );
+
+      if (existing.rows.length > 0) {
+        return reply.code(200).send({ ok: true, lines: existing.rows, source: "cache" });
+      }
+
+      const sapClient = getSapClient();
+      const full = await sapClient.get<any>(`/Orders(${docEntry})`, {});
+      const sapLines = full.data?.DocumentLines ?? [];
+
+      if (sapLines.length > 0) {
+        await db.query(`DELETE FROM sap_sales_order_lines WHERE doc_entry = $1`, [docEntry]);
+        for (const l of sapLines) {
+          await db.query(
+            `INSERT INTO sap_sales_order_lines (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [docEntry, l.LineNum, l.ItemCode, l.ItemDescription, l.Quantity ?? 0, l.UnitPrice ?? l.Price ?? 0, l.LineTotal ?? 0, l.DiscountPercent ?? 0, l.WarehouseCode]
+          );
+        }
+
+        await db.query(
+          `UPDATE sap_sales_orders SET num_lines = $1, total_quantity = $2 WHERE doc_entry = $3`,
+          [sapLines.length, sapLines.reduce((s: number, l: any) => s + (l.Quantity ?? 0), 0), docEntry]
+        );
+      }
+
+      const lines = sapLines.map((l: any) => ({
+        LineNum: l.LineNum,
+        ItemCode: l.ItemCode,
+        ItemDescription: l.ItemDescription,
+        Quantity: l.Quantity,
+        UnitPrice: l.UnitPrice ?? l.Price,
+        LineTotal: l.LineTotal,
+        DiscountPercent: l.DiscountPercent,
+        WarehouseCode: l.WarehouseCode,
+      }));
+
+      reply.code(200).send({ ok: true, lines, source: "sap" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message });
+    }
+  });
+
   app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit e pedidos de venda)");
 }

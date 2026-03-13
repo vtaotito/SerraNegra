@@ -262,6 +262,14 @@ export function syncSalesOrders(): Promise<{
   return post("/sap/sales-orders/sync");
 }
 
+export function fetchOrderLines(docEntry: number): Promise<{
+  ok: boolean;
+  lines: SalesOrderLine[];
+  source: "cache" | "sap";
+}> {
+  return get(`/sap/sales-orders/${docEntry}/lines`);
+}
+
 // ─── Sync triggers ────────────────────────────────────────────
 
 type CockpitSyncResult = {

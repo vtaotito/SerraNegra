@@ -403,51 +403,33 @@ export async function runSalesOrdersSync(): Promise<{
   }
 
   try {
-    // STEP 1: Buscar apenas headers (rápido, sem enrich) e salvar no banco
-    console.log("[syncOrders] Phase 1 — buscando headers do SAP...");
+    console.log("[syncOrders] Buscando headers do SAP (sem enriquecimento)...");
     const headers = await svc.listSalesOrders(
       { limit: 50000, skipEnrich: true },
-      `sync-headers-${Date.now()}`
+      `sync-${Date.now()}`
     );
 
     const headersSaved = await upsertOrderHeaders(headers);
-    const headerMs = Date.now() - startMs;
-    console.log(`[syncOrders] Phase 1 OK: ${headers.length} headers salvos em ${(headerMs / 1000).toFixed(1)}s`);
-
-    await db.query(
-      `UPDATE sap_sync_log SET fetched=$1, upserted=$2, message=$3 WHERE id=$4`,
-      [headers.length, headersSaved, `Phase 1 OK: ${headersSaved} headers`, logId]
-    );
-
-    // STEP 2: Enriquecer com DocumentLines e salvar linhas (pode demorar)
-    console.log("[syncOrders] Phase 2 — enriquecendo pedidos com linhas...");
-    const enriched = await svc.listSalesOrders(
-      { limit: 50000 },
-      `sync-enrich-${Date.now()}`
-    );
-
-    const { upsertedOrders, linesWritten } = await upsertOrders(enriched);
     const durationMs = Date.now() - startMs;
     const elapsed = (durationMs / 1000).toFixed(1);
 
-    const msg = `Sync OK: ${headers.length} headers + ${linesWritten} linhas de ${upsertedOrders} pedidos em ${elapsed}s`;
+    const msg = `Sync OK: ${headers.length} pedidos buscados, ${headersSaved} salvos em ${elapsed}s`;
     console.log(`[syncOrders] ${msg}`);
 
     await db.query(
-      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=$3, duration_ms=$4, message=$5 WHERE id=$6`,
-      [headers.length, upsertedOrders, linesWritten, durationMs, msg, logId]
+      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=0, duration_ms=$3, message=$4 WHERE id=$5`,
+      [headers.length, headersSaved, durationMs, msg, logId]
     );
 
-    return { ok: true, fetched: headers.length, upserted: upsertedOrders, linesWritten, message: msg, durationMs };
+    return { ok: true, fetched: headers.length, upserted: headersSaved, linesWritten: 0, message: msg, durationMs };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const durationMs = Date.now() - startMs;
     console.error(`[syncOrders] Erro: ${msg}`);
 
-    // Mesmo com erro na Phase 2, os headers já foram salvos
     await db.query(
-      `UPDATE sap_sync_log SET status='partial', finished_at=NOW(), duration_ms=$1, message=$2, error_detail=$3 WHERE id=$4`,
-      [durationMs, "Headers salvos, erro no enriquecimento", msg.slice(0, 2000), logId]
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), duration_ms=$1, message='Erro na sync', error_detail=$2 WHERE id=$3`,
+      [durationMs, msg.slice(0, 2000), logId]
     ).catch(() => {});
 
     return { ok: false, fetched: 0, upserted: 0, linesWritten: 0, message: msg, durationMs };
