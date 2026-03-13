@@ -209,6 +209,21 @@ function getSapEntitiesService(): SapEntitiesService | null {
   }
 }
 
+// ─── Normalização dos enums SAP ───────────────────────────────
+function normCancelled(raw: unknown): string {
+  const s = String(raw ?? "");
+  if (s === "tYES" || s === "Y") return "Y";
+  return "N";
+}
+function normDocStatus(raw: unknown, docStatus: unknown): string {
+  const ds = String(docStatus ?? "");
+  if (ds === "O" || ds === "C") return ds;
+  const s = String(raw ?? "");
+  if (s.includes("Open")) return "O";
+  if (s.includes("Close")) return "C";
+  return ds || "O";
+}
+
 // ─── Upsert pedidos + linhas ──────────────────────────────────
 async function upsertOrders(orders: SapSalesOrderRow[]) {
   const db = getPool();
@@ -221,6 +236,8 @@ async function upsertOrders(orders: SapSalesOrderRow[]) {
 
     const lines = o.DocumentLines ?? [];
     const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
+    const cancelled = normCancelled(o.Cancelled);
+    const docStatus = normDocStatus(o.DocumentStatus, o.DocStatus);
 
     const orderSql = `
       INSERT INTO sap_sales_orders (
@@ -256,10 +273,10 @@ async function upsertOrders(orders: SapSalesOrderRow[]) {
       o.CardName ?? null,
       o.DocTotal ?? 0,
       o.DocCurrency ?? "BRL",
-      o.DocStatus ?? null,
-      o.DocumentStatus ?? null,
+      docStatus,
+      String(o.DocumentStatus ?? ""),
       o.SalesPersonCode ?? null,
-      o.Cancelled ?? "N",
+      cancelled,
       o.Comments ?? null,
       lines.length,
       totalQty,
