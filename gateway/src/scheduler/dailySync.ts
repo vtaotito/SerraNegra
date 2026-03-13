@@ -27,6 +27,18 @@ export function getDbPool(): pg.Pool {
 async function ensureSchema() {
   const db = getPool();
 
+  // Migração: se tabela antiga existe com schema incompatível, recriar
+  const oldCheck = await db.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'sap_sales_orders' AND column_name = 'sales_person'
+  `);
+  if (oldCheck.rows.length > 0) {
+    console.log("[syncOrders] Migrando tabela antiga sap_sales_orders para novo schema...");
+    await db.query(`DROP TABLE IF EXISTS sap_sales_order_lines CASCADE`);
+    await db.query(`DROP TABLE IF EXISTS sap_sales_orders CASCADE`);
+    await db.query(`DROP TABLE IF EXISTS sap_sync_log CASCADE`);
+  }
+
   await db.query(`
     -- Pedidos de venda (cabeçalho)
     CREATE TABLE IF NOT EXISTS sap_sales_orders (
