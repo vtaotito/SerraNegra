@@ -373,7 +373,9 @@ async function upsertOrderHeaders(orders: SapSalesOrderRow[]) {
   return count;
 }
 
-// ─── Run sync ─────────────────────────────────────────────────
+// ─── Run sync (com mutex) ─────────────────────────────────────
+let syncRunning = false;
+
 export async function runSalesOrdersSync(): Promise<{
   ok: boolean;
   fetched: number;
@@ -382,6 +384,11 @@ export async function runSalesOrdersSync(): Promise<{
   message: string;
   durationMs: number;
 }> {
+  if (syncRunning) {
+    console.log("[syncOrders] Sync já em execução, pulando.");
+    return { ok: true, fetched: 0, upserted: 0, linesWritten: 0, message: "Sync já em execução", durationMs: 0 };
+  }
+  syncRunning = true;
   const startMs = Date.now();
   const db = getPool();
 
@@ -394,6 +401,7 @@ export async function runSalesOrdersSync(): Promise<{
 
   const svc = getSapEntitiesService();
   if (!svc) {
+    syncRunning = false;
     const msg = "SAP client não configurado";
     await db.query(
       `UPDATE sap_sync_log SET status='error', finished_at=NOW(), message=$1, duration_ms=$2 WHERE id=$3`,
@@ -433,6 +441,8 @@ export async function runSalesOrdersSync(): Promise<{
     ).catch(() => {});
 
     return { ok: false, fetched: 0, upserted: 0, linesWritten: 0, message: msg, durationMs };
+  } finally {
+    syncRunning = false;
   }
 }
 

@@ -354,8 +354,9 @@ export class SapEntitiesService {
       "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocCurrency,DocStatus,DocumentStatus,SalesPersonCode,Cancelled,Comments";
 
     // --- PHASE 1: Headers (fast, no $expand) ---
-    // SAP Service Layer retorna no máximo 20 registros por request (odata.maxpagesize)
-    const SAP_PAGE = 20;
+    // SAP Service Layer: tentamos pedir 500 registros por página via Prefer header
+    const SAP_PAGE = 500;
+    const preferHeaders = { "Prefer": "odata.maxpagesize=500" };
 
     const headerCandidates: Array<{
       label: string;
@@ -363,22 +364,22 @@ export class SapEntitiesService {
       pageSize: number;
     }> = [
       {
-        label: "$select + filtro",
-        buildUrl: (top, skip) =>
-          `/Orders?$select=${headerSelect}${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
-        pageSize: SAP_PAGE,
-      },
-      {
-        label: "sem $select + filtro",
+        label: "sem $select + filtro (page 500)",
         buildUrl: (top, skip) =>
           `/Orders?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
         pageSize: SAP_PAGE,
       },
       {
-        label: "$select sem filtro",
+        label: "$select + filtro (page 500)",
         buildUrl: (top, skip) =>
-          `/Orders?$select=${headerSelect}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+          `/Orders?$select=${headerSelect}${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
         pageSize: SAP_PAGE,
+      },
+      {
+        label: "fallback page 20",
+        buildUrl: (top, skip) =>
+          `/Orders?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 20,
       },
     ];
 
@@ -394,12 +395,12 @@ export class SapEntitiesService {
         while (all.length < maxItems) {
           const url = buildUrl(pageSize, skip);
           console.log(`[listSalesOrders] HEADERS #${ci + 1} (${label}) skip=${skip}`);
-          const res = await this.client.get<{ value: SapSalesOrderRow[] }>(url, { correlationId });
+          const res = await this.client.get<{ value: SapSalesOrderRow[] }>(url, { correlationId, headers: preferHeaders });
           const page = res.data.value || [];
           if (page.length === 0) break;
           all.push(...page);
+          skip += page.length;
           if (page.length < pageSize) break;
-          skip += pageSize;
         }
         console.log(`[listSalesOrders] HEADERS #${ci + 1} (${label}) OK - ${all.length} pedidos`);
         orders = all.slice(0, maxItems);
