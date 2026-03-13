@@ -10,6 +10,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${PG_PORT:-5432}:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U wms -d wms"]
@@ -67,6 +69,7 @@ services:
       SAP_B1_MAX_ATTEMPTS: "${SAP_B1_MAX_ATTEMPTS:-5}"
       B2B_DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
       B2B_JWT_SECRET: "${B2B_JWT_SECRET:-b2b-secret-change-me}"
+      SAP_SYNC_CRON: "${SAP_SYNC_CRON:-0 * * * *}"
     depends_on:
       postgres:
         condition: service_healthy

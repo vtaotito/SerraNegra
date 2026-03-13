@@ -220,10 +220,12 @@ export interface SalesOrderRow {
   doc_currency: string;
   doc_status: string;
   document_status: string;
-  sales_person: number | null;
+  sales_person_code: number | null;
   cancelled: string;
   comments: string | null;
-  lines_json: SalesOrderLine[];
+  num_lines: number;
+  total_quantity: number;
+  lines: SalesOrderLine[];
   synced_at: string;
 }
 

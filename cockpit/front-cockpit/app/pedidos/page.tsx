@@ -128,7 +128,7 @@ export default function PedidosPage() {
         String(o.doc_num).includes(q) ||
         (o.card_name ?? "").toLowerCase().includes(q) ||
         (o.card_code ?? "").toLowerCase().includes(q) ||
-        (o.lines_json ?? []).some((l) =>
+        (o.lines ?? []).some((l) =>
           (l.ItemCode ?? "").toLowerCase().includes(q) ||
           (l.ItemDescription ?? "").toLowerCase().includes(q)
         )
@@ -153,7 +153,7 @@ export default function PedidosPage() {
   const totalDocs = filtered.length;
   const totalValue = useMemo(() => filtered.reduce((s, o) => s + (Number(o.doc_total) || 0), 0), [filtered]);
   const totalItems = useMemo(
-    () => filtered.reduce((s, o) => s + (o.lines_json?.length ?? 0), 0),
+    () => filtered.reduce((s, o) => s + (o.lines?.length ?? o.num_lines ?? 0), 0),
     [filtered]
   );
   const ticketMedio = totalDocs > 0 ? totalValue / totalDocs : 0;
@@ -203,7 +203,7 @@ export default function PedidosPage() {
       "Valor Total": Number(o.doc_total) || 0,
       Moeda: o.doc_currency,
       Status: o.cancelled === "Y" ? "Cancelado" : o.doc_status === "O" ? "Aberto" : "Fechado",
-      Itens: o.lines_json?.length ?? 0,
+      Itens: o.lines?.length ?? o.num_lines ?? 0,
     }));
     exportCSV(rows, `pedidos-venda-${dateFrom}-${dateTo}`);
   }, [filtered, dateFrom, dateTo]);
@@ -348,7 +348,7 @@ export default function PedidosPage() {
                 const isExpanded = expanded.has(order.doc_num);
                 const isCancelled = order.cancelled === "Y";
                 const isOpen = order.doc_status === "O" && !isCancelled;
-                const lines = order.lines_json ?? [];
+                const lines = order.lines ?? [];
 
                 return (
                   <Fragment key={order.doc_entry}>

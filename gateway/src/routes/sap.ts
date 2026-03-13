@@ -3,7 +3,7 @@ import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, querySalesOrders } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, querySalesOrders, querySyncHistory, queryDbStats } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1296,7 +1296,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
   /**
    * GET /api/sap/sales-orders
    * Consulta pedidos de venda da base local (sincronizada do SAP).
-   * Query: dateFrom, dateTo, cardCode, limit, offset
+   * Query: dateFrom, dateTo, cardCode, status (open|closed|cancelled),
+   *        salesPerson, search, limit, offset
    */
   app.get("/sap/sales-orders", async (req, reply) => {
     const query = req.query as any;
@@ -1306,6 +1307,9 @@ export async function registerSapRoutes(app: FastifyInstance) {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         cardCode: query.cardCode,
+        status: query.status,
+        salesPerson: query.salesPerson ? Number(query.salesPerson) : undefined,
+        search: query.search,
         limit: query.limit ? Number(query.limit) : undefined,
         offset: query.offset ? Number(query.offset) : undefined,
       });
@@ -1334,6 +1338,35 @@ export async function registerSapRoutes(app: FastifyInstance) {
         ...result,
         timestamp: new Date().toISOString(),
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * GET /api/sap/sales-orders/sync/history
+   * Retorna histórico das últimas sincronizações.
+   */
+  app.get("/sap/sales-orders/sync/history", async (req, reply) => {
+    const query = req.query as any;
+    try {
+      const history = await querySyncHistory(Number(query.limit) || 20);
+      reply.code(200).send({ ok: true, items: history, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * GET /api/sap/sales-orders/stats
+   * Retorna estatísticas da base local de pedidos de venda.
+   */
+  app.get("/sap/sales-orders/stats", async (req, reply) => {
+    try {
+      const stats = await queryDbStats();
+      reply.code(200).send({ ok: true, stats, timestamp: new Date().toISOString() });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
       reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
