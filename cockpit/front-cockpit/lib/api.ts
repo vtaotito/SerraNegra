@@ -195,6 +195,71 @@ export function fetchBPGroups(): Promise<SyncResult<SapBPGroup>> {
   return post("/sap/sync/bp-groups");
 }
 
+// ─── Sales Orders (base local) ─────────────────────────────────
+
+export interface SalesOrderLine {
+  LineNum?: number;
+  ItemCode?: string;
+  ItemDescription?: string;
+  Quantity?: number;
+  Price?: number;
+  LineTotal?: number;
+  WarehouseCode?: string;
+  DiscountPercent?: number;
+  UnitPrice?: number;
+}
+
+export interface SalesOrderRow {
+  doc_entry: number;
+  doc_num: number;
+  doc_date: string;
+  doc_due_date: string | null;
+  card_code: string;
+  card_name: string;
+  doc_total: number;
+  doc_currency: string;
+  doc_status: string;
+  document_status: string;
+  sales_person: number | null;
+  cancelled: string;
+  comments: string | null;
+  lines_json: SalesOrderLine[];
+  synced_at: string;
+}
+
+interface SalesOrdersResult {
+  ok: boolean;
+  total: number;
+  count: number;
+  items: SalesOrderRow[];
+  timestamp: string;
+}
+
+export function fetchSalesOrders(opts?: {
+  dateFrom?: string;
+  dateTo?: string;
+  cardCode?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<SalesOrdersResult> {
+  const p: Record<string, string> = {};
+  if (opts?.dateFrom) p.dateFrom = opts.dateFrom;
+  if (opts?.dateTo) p.dateTo = opts.dateTo;
+  if (opts?.cardCode) p.cardCode = opts.cardCode;
+  if (opts?.limit) p.limit = String(opts.limit);
+  if (opts?.offset) p.offset = String(opts.offset);
+  return get("/sap/sales-orders", p);
+}
+
+export function syncSalesOrders(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  message: string;
+}> {
+  return post("/sap/sales-orders/sync");
+}
+
 // ─── Sync triggers ────────────────────────────────────────────
 
 type CockpitSyncResult = {

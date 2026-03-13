@@ -6,6 +6,7 @@ import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
 import { registerSapRoutes } from "./routes/sap.js";
 import { registerB2BRoutes } from "./routes/b2b.js";
+import { startDailySyncScheduler } from "./scheduler/dailySync.js";
 
 type GatewayEvent =
   | { type: "order.created"; orderId: string; status: string; occurredAt: string; correlationId: string }
@@ -384,4 +385,6 @@ app.post("/internal/events", async (req, reply) => {
 
 await app.listen({ port: GATEWAY_PORT, host: "0.0.0.0" });
 app.log.info(`Gateway online em :${GATEWAY_PORT}`);
+
+startDailySyncScheduler();
 

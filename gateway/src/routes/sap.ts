@@ -3,6 +3,7 @@ import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
+import { runSalesOrdersSync, querySalesOrders } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1091,6 +1092,43 @@ export async function registerSapRoutes(app: FastifyInstance) {
   });
 
   /**
+   * POST /api/sap/sync/sales-orders
+   * Sincroniza Pedidos de Venda (Sales Orders) do SAP para análise no Cockpit.
+   * Query params: dateFrom, dateTo, limit
+   */
+  app.post("/sap/sync/sales-orders", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    const query = req.query as any;
+
+    try {
+      const entSvc = getEntitiesService();
+      const orders = await entSvc.listSalesOrders(
+        {
+          limit: Number(query.limit) || 5000,
+          dateFrom: query.dateFrom as string | undefined,
+          dateTo: query.dateTo as string | undefined,
+        },
+        correlationId
+      );
+
+      reply.code(200).send({
+        ok: true,
+        message: `${orders.length} pedidos de venda obtidos do SAP`,
+        count: orders.length,
+        items: orders,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : "Erro";
+      const detail = error?.responseBodyText
+        ? error.responseBodyText.slice(0, 500)
+        : error?.status ? `SAP status ${error.status}` : undefined;
+      console.error(`[sync/sales-orders] ${message}`, detail ?? "");
+      reply.code(500).send({ ok: false, message, detail, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
    * POST /api/sap/sync/bp-groups
    * Sincroniza Grupos de Parceiros de Negócios do SAP.
    */
@@ -1229,6 +1267,17 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.invoices = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
+    // 7. Pedidos de Venda (Sales Orders)
+    try {
+      const salesOrders = await entSvc.listSalesOrders(
+        { limit: Number(query.limit) || 5000, dateFrom: query.dateFrom, dateTo: query.dateTo },
+        correlationId
+      );
+      results.salesOrders = { ok: true, count: salesOrders.length, message: `${salesOrders.length} pedidos de venda` };
+    } catch (error) {
+      results.salesOrders = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
+    }
+
     const allOk = Object.values(results).every((r) => r.ok);
     const totalCount = Object.values(results).reduce((acc, r) => acc + r.count, 0);
 
@@ -1240,5 +1289,56 @@ export async function registerSapRoutes(app: FastifyInstance) {
     });
   });
 
-  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades e cockpit)");
+  // ========================================
+  // PEDIDOS DE VENDA — base local (PostgreSQL)
+  // ========================================
+
+  /**
+   * GET /api/sap/sales-orders
+   * Consulta pedidos de venda da base local (sincronizada do SAP).
+   * Query: dateFrom, dateTo, cardCode, limit, offset
+   */
+  app.get("/sap/sales-orders", async (req, reply) => {
+    const query = req.query as any;
+
+    try {
+      const result = await querySalesOrders({
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        cardCode: query.cardCode,
+        limit: query.limit ? Number(query.limit) : undefined,
+        offset: query.offset ? Number(query.offset) : undefined,
+      });
+
+      reply.code(200).send({
+        ok: true,
+        total: result.total,
+        count: result.items.length,
+        items: result.items,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sales-orders/sync
+   * Dispara sync manual: busca pedidos do SAP e persiste no PostgreSQL.
+   */
+  app.post("/sap/sales-orders/sync", async (req, reply) => {
+    try {
+      const result = await runSalesOrdersSync();
+      reply.code(result.ok ? 200 : 500).send({
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit e pedidos de venda)");
 }

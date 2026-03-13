@@ -335,6 +335,132 @@ export class SapEntitiesService {
   }
 
   // ========================================
+  // SALES ORDERS (Pedidos de Venda)
+  // ========================================
+
+  async listSalesOrders(
+    opts: { limit?: number; dateFrom?: string; dateTo?: string } = {},
+    correlationId?: string
+  ): Promise<SapSalesOrderRow[]> {
+    const maxItems = opts.limit ?? 5000;
+
+    let dateFilter = "";
+    if (opts.dateFrom) dateFilter += ` and DocDate ge '${opts.dateFrom}'`;
+    if (opts.dateTo) dateFilter += ` and DocDate le '${opts.dateTo}'`;
+    const dateFilterClean = dateFilter.replace(/^ and /, "");
+    const filterPart = dateFilterClean ? `&$filter=${dateFilterClean}` : "";
+
+    const headerSelect =
+      "DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,DocCurrency,DocStatus,DocumentStatus,SalesPersonCode,Cancelled,Comments";
+
+    // --- PHASE 1: Headers (fast, no $expand) ---
+    const headerCandidates: Array<{
+      label: string;
+      buildUrl: (top: number, skip: number) => string;
+      pageSize: number;
+    }> = [
+      {
+        label: "$select + filtro",
+        buildUrl: (top, skip) =>
+          `/Orders?$select=${headerSelect}${filterPart}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 100,
+      },
+      {
+        label: "sem $select + filtro",
+        buildUrl: (top, skip) =>
+          `/Orders?${dateFilterClean ? `$filter=${dateFilterClean}&` : ""}$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 100,
+      },
+      {
+        label: "$select sem filtro",
+        buildUrl: (top, skip) =>
+          `/Orders?$select=${headerSelect}&$top=${top}&$skip=${skip}&$orderby=DocDate desc`,
+        pageSize: 100,
+      },
+    ];
+
+    let orders: SapSalesOrderRow[] = [];
+    let headerOk = false;
+    let lastError: unknown;
+
+    for (let ci = 0; ci < headerCandidates.length; ci++) {
+      const { label, buildUrl, pageSize } = headerCandidates[ci];
+      try {
+        const all: SapSalesOrderRow[] = [];
+        let skip = 0;
+        while (all.length < maxItems) {
+          const url = buildUrl(pageSize, skip);
+          console.log(`[listSalesOrders] HEADERS #${ci + 1} (${label}) skip=${skip}`);
+          const res = await this.client.get<{ value: SapSalesOrderRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          all.push(...page);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+        console.log(`[listSalesOrders] HEADERS #${ci + 1} (${label}) OK - ${all.length} pedidos`);
+        orders = all.slice(0, maxItems);
+        headerOk = true;
+        break;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const status = err instanceof SapHttpError ? err.status : 0;
+        console.warn(`[listSalesOrders] HEADERS #${ci + 1} (${label}) falhou (status=${status}): ${errMsg}`);
+        lastError = err;
+        if (status === 400 || status === 500 || status === 502 || status === 504) continue;
+        if (errMsg.includes("timeout") || errMsg.includes("abort")) continue;
+        throw err;
+      }
+    }
+
+    if (!headerOk) {
+      throw lastError instanceof Error ? lastError : new Error("Erro ao listar pedidos de venda do SAP.");
+    }
+
+    if (orders.length === 0) return orders;
+
+    // --- PHASE 2: Enrich each order with DocumentLines via GET /Orders({DocEntry}) ---
+    const CONCURRENCY = 5;
+    let enriched = 0;
+    let enrichErrors = 0;
+
+    for (let i = 0; i < orders.length; i += CONCURRENCY) {
+      const batch = orders.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (ord) => {
+          const docEntry = ord.DocEntry;
+          if (!docEntry) return null;
+          try {
+            const url = `/Orders(${docEntry})`;
+            const res = await this.client.get<SapSalesOrderRow>(url, { correlationId });
+            return res.data;
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.warn(`[listSalesOrders] ENRICH DocEntry=${docEntry} falhou: ${errMsg}`);
+            return null;
+          }
+        })
+      );
+
+      for (let j = 0; j < batch.length; j++) {
+        const result = results[j];
+        if (result.status === "fulfilled" && result.value) {
+          const full = result.value;
+          if (Array.isArray(full.DocumentLines) && full.DocumentLines.length > 0) {
+            orders[i + j].DocumentLines = full.DocumentLines;
+            enriched++;
+          }
+        } else {
+          enrichErrors++;
+        }
+      }
+    }
+
+    console.log(`[listSalesOrders] ENRICH completo: ${enriched}/${orders.length} com DocumentLines, ${enrichErrors} erros`);
+    return orders;
+  }
+
+  // ========================================
   // SALES PERSONS (Vendedores)
   // ========================================
 
@@ -524,5 +650,36 @@ export type SapBPGroupRow = {
   Code: number;
   Name?: string;
   Type?: string;
+  [key: string]: unknown;
+};
+
+export type SapSalesOrderRow = {
+  DocEntry?: number;
+  DocNum?: number;
+  DocDate?: string;
+  DocDueDate?: string;
+  CardCode?: string;
+  CardName?: string;
+  DocTotal?: number;
+  DocCurrency?: string;
+  DocStatus?: string;
+  DocumentStatus?: string;
+  SalesPersonCode?: number;
+  Cancelled?: string;
+  Comments?: string;
+  DocumentLines?: SapSalesOrderLine[];
+  [key: string]: unknown;
+};
+
+export type SapSalesOrderLine = {
+  LineNum?: number;
+  ItemCode?: string;
+  ItemDescription?: string;
+  Quantity?: number;
+  Price?: number;
+  LineTotal?: number;
+  WarehouseCode?: string;
+  DiscountPercent?: number;
+  UnitPrice?: number;
   [key: string]: unknown;
 };
