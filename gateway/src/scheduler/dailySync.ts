@@ -313,6 +313,66 @@ async function upsertOrders(orders: SapSalesOrderRow[]) {
   return { upsertedOrders, linesWritten };
 }
 
+// ─── Upsert apenas headers (sem linhas) ──────────────────────
+async function upsertOrderHeaders(orders: SapSalesOrderRow[]) {
+  const db = getPool();
+  let count = 0;
+
+  for (const o of orders) {
+    const docEntry = o.DocEntry ?? 0;
+    if (!docEntry) continue;
+
+    const lines = o.DocumentLines ?? [];
+    const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
+    const cancelled = normCancelled(o.Cancelled);
+    const docStatus = normDocStatus(o.DocumentStatus, o.DocStatus);
+
+    await db.query(`
+      INSERT INTO sap_sales_orders (
+        doc_entry, doc_num, doc_date, doc_due_date, card_code, card_name,
+        doc_total, doc_currency, doc_status, document_status, sales_person_code,
+        cancelled, comments, num_lines, total_quantity, raw_json, synced_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+      ON CONFLICT (doc_entry) DO UPDATE SET
+        doc_num = EXCLUDED.doc_num,
+        doc_date = EXCLUDED.doc_date,
+        doc_due_date = EXCLUDED.doc_due_date,
+        card_code = EXCLUDED.card_code,
+        card_name = EXCLUDED.card_name,
+        doc_total = EXCLUDED.doc_total,
+        doc_currency = EXCLUDED.doc_currency,
+        doc_status = EXCLUDED.doc_status,
+        document_status = EXCLUDED.document_status,
+        sales_person_code = EXCLUDED.sales_person_code,
+        cancelled = EXCLUDED.cancelled,
+        comments = EXCLUDED.comments,
+        num_lines = CASE WHEN EXCLUDED.num_lines > 0 THEN EXCLUDED.num_lines ELSE sap_sales_orders.num_lines END,
+        total_quantity = CASE WHEN EXCLUDED.total_quantity > 0 THEN EXCLUDED.total_quantity ELSE sap_sales_orders.total_quantity END,
+        raw_json = EXCLUDED.raw_json,
+        synced_at = NOW()
+    `, [
+      docEntry,
+      o.DocNum ?? null,
+      o.DocDate ?? null,
+      o.DocDueDate ?? null,
+      o.CardCode ?? null,
+      o.CardName ?? null,
+      o.DocTotal ?? 0,
+      o.DocCurrency ?? "BRL",
+      docStatus,
+      String(o.DocumentStatus ?? ""),
+      o.SalesPersonCode ?? null,
+      cancelled,
+      o.Comments ?? null,
+      lines.length,
+      totalQty,
+      JSON.stringify(o),
+    ]);
+    count++;
+  }
+  return count;
+}
+
 // ─── Run sync ─────────────────────────────────────────────────
 export async function runSalesOrdersSync(): Promise<{
   ok: boolean;
@@ -327,7 +387,6 @@ export async function runSalesOrdersSync(): Promise<{
 
   console.log("[syncOrders] Iniciando sync de Pedidos de Venda...");
 
-  // Registrar início no log
   const logRes = await db.query(
     `INSERT INTO sap_sync_log (entity, started_at, status) VALUES ('sales_orders', NOW(), 'running') RETURNING id`
   );
@@ -344,32 +403,51 @@ export async function runSalesOrdersSync(): Promise<{
   }
 
   try {
-    const orders = await svc.listSalesOrders(
-      { limit: 10000 },
-      `sync-${Date.now()}`
+    // STEP 1: Buscar apenas headers (rápido, sem enrich) e salvar no banco
+    console.log("[syncOrders] Phase 1 — buscando headers do SAP...");
+    const headers = await svc.listSalesOrders(
+      { limit: 50000, skipEnrich: true },
+      `sync-headers-${Date.now()}`
     );
 
-    const { upsertedOrders, linesWritten } = await upsertOrders(orders);
+    const headersSaved = await upsertOrderHeaders(headers);
+    const headerMs = Date.now() - startMs;
+    console.log(`[syncOrders] Phase 1 OK: ${headers.length} headers salvos em ${(headerMs / 1000).toFixed(1)}s`);
+
+    await db.query(
+      `UPDATE sap_sync_log SET fetched=$1, upserted=$2, message=$3 WHERE id=$4`,
+      [headers.length, headersSaved, `Phase 1 OK: ${headersSaved} headers`, logId]
+    );
+
+    // STEP 2: Enriquecer com DocumentLines e salvar linhas (pode demorar)
+    console.log("[syncOrders] Phase 2 — enriquecendo pedidos com linhas...");
+    const enriched = await svc.listSalesOrders(
+      { limit: 50000 },
+      `sync-enrich-${Date.now()}`
+    );
+
+    const { upsertedOrders, linesWritten } = await upsertOrders(enriched);
     const durationMs = Date.now() - startMs;
     const elapsed = (durationMs / 1000).toFixed(1);
 
-    const msg = `Sync OK: ${orders.length} buscados, ${upsertedOrders} pedidos upserted, ${linesWritten} linhas em ${elapsed}s`;
+    const msg = `Sync OK: ${headers.length} headers + ${linesWritten} linhas de ${upsertedOrders} pedidos em ${elapsed}s`;
     console.log(`[syncOrders] ${msg}`);
 
     await db.query(
       `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=$3, duration_ms=$4, message=$5 WHERE id=$6`,
-      [orders.length, upsertedOrders, linesWritten, durationMs, msg, logId]
+      [headers.length, upsertedOrders, linesWritten, durationMs, msg, logId]
     );
 
-    return { ok: true, fetched: orders.length, upserted: upsertedOrders, linesWritten, message: msg, durationMs };
+    return { ok: true, fetched: headers.length, upserted: upsertedOrders, linesWritten, message: msg, durationMs };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const durationMs = Date.now() - startMs;
     console.error(`[syncOrders] Erro: ${msg}`);
 
+    // Mesmo com erro na Phase 2, os headers já foram salvos
     await db.query(
-      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), duration_ms=$1, message='Erro na sync', error_detail=$2 WHERE id=$3`,
-      [durationMs, msg.slice(0, 2000), logId]
+      `UPDATE sap_sync_log SET status='partial', finished_at=NOW(), duration_ms=$1, message=$2, error_detail=$3 WHERE id=$4`,
+      [durationMs, "Headers salvos, erro no enriquecimento", msg.slice(0, 2000), logId]
     ).catch(() => {});
 
     return { ok: false, fetched: 0, upserted: 0, linesWritten: 0, message: msg, durationMs };

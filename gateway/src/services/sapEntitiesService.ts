@@ -339,7 +339,7 @@ export class SapEntitiesService {
   // ========================================
 
   async listSalesOrders(
-    opts: { limit?: number; dateFrom?: string; dateTo?: string } = {},
+    opts: { limit?: number; dateFrom?: string; dateTo?: string; skipEnrich?: boolean } = {},
     correlationId?: string
   ): Promise<SapSalesOrderRow[]> {
     const maxItems = opts.limit ?? 5000;
@@ -421,13 +421,17 @@ export class SapEntitiesService {
     }
 
     if (orders.length === 0) return orders;
+    if (opts.skipEnrich) return orders;
 
     // --- PHASE 2: Enrich each order with DocumentLines via GET /Orders({DocEntry}) ---
-    const CONCURRENCY = 5;
+    const CONCURRENCY = 10;
     let enriched = 0;
     let enrichErrors = 0;
 
     for (let i = 0; i < orders.length; i += CONCURRENCY) {
+      if (i > 0 && i % 200 === 0) {
+        console.log(`[listSalesOrders] ENRICH progresso: ${i}/${orders.length} (${enriched} OK, ${enrichErrors} erros)`);
+      }
       const batch = orders.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (ord) => {
