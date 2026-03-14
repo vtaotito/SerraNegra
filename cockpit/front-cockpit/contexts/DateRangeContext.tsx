@@ -8,16 +8,20 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { startOfMonth, subMonths, format, parse, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import {
+  startOfMonth, endOfMonth, subMonths, startOfWeek, subDays,
+  format, parse, isWithinInterval, startOfDay, endOfDay,
+} from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export type PresetKey =
+  | "today"
+  | "current_week"
+  | "last_7d"
   | "current_month"
+  | "last_month"
+  | "two_months_ago"
   | "last_3m"
-  | "last_6m"
-  | "last_12m"
-  | "ytd"
-  | "all"
   | "custom";
 
 export interface DateRange {
@@ -35,38 +39,70 @@ export interface DateRangeContextValue {
   monthsInRange: number;
 }
 
-const PRESETS: Record<Exclude<PresetKey, "custom">, { label: string; rangeFn: () => DateRange }> = {
+const today = () => new Date();
+
+type HintValue = string | (() => string);
+
+const PRESETS: Record<Exclude<PresetKey, "custom">, { label: string; hint: HintValue; rangeFn: () => DateRange }> = {
+  today: {
+    label: "Hoje",
+    hint: "Somente hoje",
+    rangeFn: () => ({ from: startOfDay(today()), to: today() }),
+  },
+  current_week: {
+    label: "Semana corrente",
+    hint: "Seg — Hoje",
+    rangeFn: () => ({ from: startOfWeek(today(), { weekStartsOn: 1 }), to: today() }),
+  },
+  last_7d: {
+    label: "Últimos 7 dias",
+    hint: "7 dias",
+    rangeFn: () => ({ from: subDays(today(), 6), to: today() }),
+  },
   current_month: {
     label: "Mês atual",
-    rangeFn: () => ({ from: startOfMonth(new Date()), to: new Date() }),
+    hint: "Desde dia 1",
+    rangeFn: () => ({ from: startOfMonth(today()), to: today() }),
+  },
+  last_month: {
+    label: "Mês anterior",
+    hint: () => {
+      const m = subMonths(today(), 1);
+      return format(m, "MMMM", { locale: ptBR });
+    },
+    rangeFn: () => {
+      const m = subMonths(today(), 1);
+      return { from: startOfMonth(m), to: endOfMonth(m) };
+    },
+  },
+  two_months_ago: {
+    label: "2 meses atrás",
+    hint: () => {
+      const m = subMonths(today(), 2);
+      return format(m, "MMMM", { locale: ptBR });
+    },
+    rangeFn: () => {
+      const m = subMonths(today(), 2);
+      return { from: startOfMonth(m), to: endOfMonth(m) };
+    },
   },
   last_3m: {
     label: "Últimos 3 meses",
-    rangeFn: () => ({ from: startOfMonth(subMonths(new Date(), 2)), to: new Date() }),
-  },
-  last_6m: {
-    label: "Últimos 6 meses",
-    rangeFn: () => ({ from: startOfMonth(subMonths(new Date(), 5)), to: new Date() }),
-  },
-  last_12m: {
-    label: "Últimos 12 meses",
-    rangeFn: () => ({ from: startOfMonth(subMonths(new Date(), 11)), to: new Date() }),
-  },
-  ytd: {
-    label: "Ano corrente",
-    rangeFn: () => ({ from: new Date(new Date().getFullYear(), 0, 1), to: new Date() }),
-  },
-  all: {
-    label: "Todo período",
-    rangeFn: () => ({ from: new Date(2023, 2, 1), to: new Date() }),
+    hint: "90 dias",
+    rangeFn: () => ({ from: startOfMonth(subMonths(today(), 2)), to: today() }),
   },
 };
+
+function getHint(key: Exclude<PresetKey, "custom">): string {
+  const h = PRESETS[key].hint;
+  return typeof h === "function" ? h() : h;
+}
 
 const DateRangeContext = createContext<DateRangeContextValue | null>(null);
 
 export function DateRangeProvider({ children }: { children: ReactNode }) {
-  const [preset, setPresetState] = useState<PresetKey>("all");
-  const [customFrom, setCustomFrom] = useState<Date>(new Date(2023, 2, 1));
+  const [preset, setPresetState] = useState<PresetKey>("current_month");
+  const [customFrom, setCustomFrom] = useState<Date>(startOfMonth(new Date()));
   const [customTo, setCustomTo] = useState<Date>(new Date());
 
   const range = useMemo<DateRange>(() => {
@@ -127,6 +163,8 @@ export function useDateRange(): DateRangeContextValue {
 }
 
 export function formatRangeShort(range: DateRange): string {
-  const fmtM = (d: Date) => format(d, "MMM yyyy", { locale: ptBR });
+  const fmtM = (d: Date) => format(d, "dd MMM yyyy", { locale: ptBR });
   return `${fmtM(range.from)} — ${fmtM(range.to)}`;
 }
+
+export { PRESETS, getHint };

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DollarSign, Users, TrendingUp, Package, AlertCircle, Search, ChevronDown, ChevronUp, CalendarDays } from "lucide-react";
+import { DollarSign, Users, TrendingUp, Package, Search, CalendarDays, ShoppingCart } from "lucide-react";
 import { fmtBRL, fmtNum } from "@/lib/format";
-import { fetchCatalog, fetchInventory, fetchCustomers, fetchInvoices, fetchSalesPersons } from "@/lib/api";
+import { fetchCatalog, fetchInventory, fetchCustomers, fetchSalesOrders, fetchSalesPersons } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
@@ -17,41 +17,44 @@ export default function ResumoPage() {
   const { data: catData, loading: l1, error: e1, refetch: r1 } = useFetch(() => fetchCatalog({ limit: 1 }), []);
   const { data: invStockData, loading: l2, error: e2, refetch: r2 } = useFetch(() => fetchInventory({ limit: 1 }), []);
   const { data: custData, loading: l3, error: e3, refetch: r3 } = useFetch(() => fetchCustomers({ limit: 1 }), []);
-  const { data: invoiceData, loading: l4, error: e4, refetch: r4 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: ordersData, loading: l4, error: e4, refetch: r4 } = useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
   const { data: spData, loading: l5, error: e5, refetch: r5 } = useFetch(() => fetchSalesPersons(), []);
 
   const loading = l1 && l2 && l3 && l5;
   const coreError = e1 || e2 || e3 || e5;
 
+  const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
+
   const stats = useMemo(() => {
-    const invoices = invoiceData?.items ?? [];
-    const activeInvoices = invoices.filter((i) => i.Cancelled !== "tYES");
-    const totalFat = activeInvoices.reduce((s, i) => s + i.DocTotal, 0);
-    const uniqueClients = new Set(activeInvoices.map((i) => i.CardCode)).size;
+    const activeOrders = orders.filter((o) => o.cancelled !== "Y");
+    const totalFat = activeOrders.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
+    const uniqueClients = new Set(activeOrders.map((o) => o.card_code)).size;
     const activeSp = (spData?.items ?? []).filter((p) => p.Active === "tYES").length;
+    const totalQty = activeOrders.reduce((s, o) => s + (Number(o.total_quantity) || 0), 0);
 
     return {
       totalProdutos: catData?.total ?? 0,
       totalEstoque: invStockData?.total ?? 0,
       totalClientes: custData?.total ?? 0,
-      totalInvoices: invoiceData?.count ?? 0,
+      totalPedidos: activeOrders.length,
       totalFat,
       uniqueClients,
       vendedoresAtivos: activeSp,
-      ticketMedio: activeInvoices.length > 0 ? totalFat / activeInvoices.length : 0,
+      ticketMedio: activeOrders.length > 0 ? totalFat / activeOrders.length : 0,
+      totalQty,
     };
-  }, [catData, invStockData, custData, invoiceData, spData]);
+  }, [catData, invStockData, custData, orders, spData]);
 
   const [search, setSearch] = useState("");
-  const [obsExpanded, setObsExpanded] = useState(true);
 
   const indicadores = useMemo(() => [
     { indicador: "Total Produtos (Catálogo)", valor: fmtNum(stats.totalProdutos), cat: "estoque" },
     { indicador: "Posições de Estoque", valor: fmtNum(stats.totalEstoque), cat: "estoque" },
     { indicador: "Total Clientes (Base)", valor: fmtNum(stats.totalClientes), cat: "clientes" },
     { indicador: "Clientes Ativos (Período)", valor: fmtNum(stats.uniqueClients), cat: "clientes" },
-    { indicador: "Notas Fiscais (Período)", valor: fmtNum(stats.totalInvoices), cat: "vendas" },
+    { indicador: "Pedidos de Venda (Período)", valor: fmtNum(stats.totalPedidos), cat: "vendas" },
     { indicador: "Faturamento (Período)", valor: fmtBRL(stats.totalFat), cat: "vendas" },
+    { indicador: "Qtd Total Vendida", valor: fmtNum(Math.round(stats.totalQty)), cat: "vendas" },
     { indicador: "Vendedores Ativos", valor: String(stats.vendedoresAtivos), cat: "vendas" },
     { indicador: "Ticket Médio", valor: fmtBRL(stats.ticketMedio, 2), cat: "vendas" },
   ], [stats]);
@@ -68,9 +71,9 @@ export default function ResumoPage() {
 
   const kpis = [
     { label: "Produtos", value: fmtNum(stats.totalProdutos), icon: Package, color: "text-cockpit-accent" },
-    { label: "Clientes", value: fmtNum(stats.totalClientes), icon: Users, color: "text-blue-400" },
-    { label: "Faturamento", value: fmtBRL(stats.totalFat), icon: TrendingUp, color: "text-amber-400" },
-    { label: "Ticket Médio", value: fmtBRL(stats.ticketMedio, 2), icon: DollarSign, color: "text-purple-400" },
+    { label: "Clientes", value: fmtNum(stats.totalClientes), icon: Users, color: "text-blue-500" },
+    { label: "Faturamento", value: fmtBRL(stats.totalFat), icon: TrendingUp, color: "text-amber-500" },
+    { label: "Ticket Médio", value: fmtBRL(stats.ticketMedio, 2), icon: DollarSign, color: "text-purple-500" },
   ];
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Resumo Comercial</h1><p className="text-cockpit-muted mt-1">Consolidando dados...</p></div><LoadingSkeleton /></div>;
@@ -84,7 +87,7 @@ export default function ResumoPage() {
           <CalendarDays className="w-3.5 h-3.5" />
           <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
-          <span>Indicadores consolidados SAP B1</span>
+          <span>Indicadores consolidados — Pedidos de Venda SAP B1</span>
         </p>
       </div>
 
@@ -136,7 +139,7 @@ export default function ResumoPage() {
         </div>
       </div>
 
-      <p className="text-xs text-cockpit-muted text-center">{filteredInd.length} de {indicadores.length} indicadores — SAP B1 Service Layer</p>
+      <p className="text-xs text-cockpit-muted text-center">{filteredInd.length} de {indicadores.length} indicadores — Pedidos de Venda SAP B1</p>
     </div>
   );
 }

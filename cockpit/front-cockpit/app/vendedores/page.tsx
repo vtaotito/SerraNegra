@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Users, TrendingUp, DollarSign, Search, CalendarDays, Target } from "lucide-react";
+import { Users, TrendingUp, DollarSign, Search, CalendarDays, Target, ShoppingCart } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
-import { fetchInvoices, fetchSalesPersons, type SapInvoice, type SapSalesPerson } from "@/lib/api";
+import { fetchSalesOrders, fetchSalesPersons, type SalesOrderRow, type SapSalesPerson } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
@@ -13,29 +13,29 @@ interface VendRow {
   nome: string;
   code: number;
   fat: number;
-  notas: number;
+  pedidos: number;
   ticket: number;
   active: boolean;
 }
 
-function buildRows(invoices: SapInvoice[], persons: SapSalesPerson[]): VendRow[] {
-  const agg = new Map<number, { fat: number; notas: number }>();
-  for (const inv of invoices) {
-    if (inv.Cancelled === "tYES") continue;
-    const c = inv.SalesPersonCode;
-    const cur = agg.get(c) ?? { fat: 0, notas: 0 };
-    cur.fat += inv.DocTotal;
-    cur.notas += 1;
+function buildRows(orders: SalesOrderRow[], persons: SapSalesPerson[]): VendRow[] {
+  const agg = new Map<number, { fat: number; pedidos: number }>();
+  for (const o of orders) {
+    if (o.cancelled === "Y") continue;
+    const c = o.sales_person_code ?? -1;
+    const cur = agg.get(c) ?? { fat: 0, pedidos: 0 };
+    cur.fat += Number(o.doc_total) || 0;
+    cur.pedidos += 1;
     agg.set(c, cur);
   }
   return persons.map((p) => {
-    const a = agg.get(p.SalesEmployeeCode) ?? { fat: 0, notas: 0 };
+    const a = agg.get(p.SalesEmployeeCode) ?? { fat: 0, pedidos: 0 };
     return {
       nome: p.SalesEmployeeName,
       code: p.SalesEmployeeCode,
       fat: a.fat,
-      notas: a.notas,
-      ticket: a.notas > 0 ? a.fat / a.notas : 0,
+      pedidos: a.pedidos,
+      ticket: a.pedidos > 0 ? a.fat / a.pedidos : 0,
       active: p.Active === "tYES",
     };
   }).sort((a, b) => b.fat - a.fat);
@@ -46,21 +46,24 @@ export default function VendedoresPage() {
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
-  const { data: invData, loading: l1, error: e1, refetch: r1 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
-  const { data: spData, loading: l2, error: e2, refetch: r2 } = useFetch(() => fetchSalesPersons(), []);
+  const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: spData, loading: l2, error: e2, refetch: r2 } =
+    useFetch(() => fetchSalesPersons(), []);
   const loading = l2;
-  const hasInvError = !!e1;
+
+  const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
 
   const rows = useMemo(() => {
     if (!spData?.items) return [];
-    return buildRows(invData?.items ?? [], spData.items);
-  }, [invData, spData]);
+    return buildRows(orders, spData.items);
+  }, [orders, spData]);
 
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => rows.filter((r) => r.nome.toLowerCase().includes(search.toLowerCase())), [rows, search]);
 
   const totalFat = filtered.reduce((s, r) => s + r.fat, 0);
-  const totalNotas = filtered.reduce((s, r) => s + r.notas, 0);
+  const totalPedidos = filtered.reduce((s, r) => s + r.pedidos, 0);
   const ativos = filtered.filter((r) => r.active).length;
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Vendedores</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
@@ -88,9 +91,9 @@ export default function VendedoresPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-cockpit-accent" },
-          { label: "Ativos", value: String(ativos), icon: Target, color: "text-emerald-400" },
-          { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-400" },
-          { label: "Ticket Médio", value: totalNotas > 0 ? fmtBRL(totalFat / totalNotas) : "—", icon: TrendingUp, color: "text-amber-400" },
+          { label: "Ativos", value: String(ativos), icon: Target, color: "text-emerald-500" },
+          { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-500" },
+          { label: "Ticket Médio", value: totalPedidos > 0 ? fmtBRL(totalFat / totalPedidos) : "—", icon: TrendingUp, color: "text-amber-500" },
         ].map((k) => (
           <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
             <div className="flex items-center gap-2"><k.icon className={`h-4 w-4 ${k.color}`} /><span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span></div>
@@ -107,7 +110,7 @@ export default function VendedoresPage() {
                 <th scope="col" className="px-4 py-3">Código</th>
                 <th scope="col" className="px-4 py-3">Nome</th>
                 <th scope="col" className="px-4 py-3 text-right">Faturamento</th>
-                <th scope="col" className="px-4 py-3 text-right">Notas</th>
+                <th scope="col" className="px-4 py-3 text-right">Pedidos</th>
                 <th scope="col" className="px-4 py-3 text-right">Ticket</th>
                 <th scope="col" className="px-4 py-3 text-center">Status</th>
               </tr>
@@ -120,7 +123,7 @@ export default function VendedoresPage() {
                   <td className="px-4 py-3 text-cockpit-muted font-mono text-xs">{r.code}</td>
                   <td className="px-4 py-3 font-medium text-gray-900">{r.nome}</td>
                   <td className="px-4 py-3 text-right text-cockpit-accent font-medium">{fmtBRL(r.fat)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{r.notas}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{r.pedidos}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{fmtBRL(r.ticket, 2)}</td>
                   <td className="px-4 py-3 text-center">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${r.active ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>{r.active ? "Ativo" : "Inativo"}</span>
@@ -131,7 +134,7 @@ export default function VendedoresPage() {
           </table>
         </div>
         <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
-          {filtered.length} de {rows.length} vendedores — SAP B1
+          {filtered.length} de {rows.length} vendedores — Pedidos de Venda SAP B1
         </div>
       </div>
     </div>

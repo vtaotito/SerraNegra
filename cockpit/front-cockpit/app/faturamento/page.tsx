@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { TrendingUp, Target, DollarSign, CalendarDays, Search, Users } from "lucide-react";
+import { TrendingUp, Target, DollarSign, CalendarDays, Search, Users, ShoppingCart } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, Cell,
 } from "recharts";
 import { fmtBRL } from "@/lib/format";
-import { fetchInvoices, fetchSalesPersons, type SapInvoice, type SapSalesPerson } from "@/lib/api";
+import { fetchSalesOrders, fetchSalesPersons, type SalesOrderRow, type SapSalesPerson } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
@@ -21,15 +21,15 @@ interface VendRow {
   ticket: number;
 }
 
-function aggregate(invoices: SapInvoice[], persons: SapSalesPerson[]): VendRow[] {
+function aggregate(orders: SalesOrderRow[], persons: SapSalesPerson[]): VendRow[] {
   const pMap = new Map(persons.map((p) => [p.SalesEmployeeCode, p.SalesEmployeeName]));
   const agg = new Map<number, { real: number; vol: number }>();
 
-  for (const inv of invoices) {
-    if (inv.Cancelled === "tYES") continue;
-    const code = inv.SalesPersonCode;
+  for (const o of orders) {
+    if (o.cancelled === "Y") continue;
+    const code = o.sales_person_code ?? -1;
     const cur = agg.get(code) ?? { real: 0, vol: 0 };
-    cur.real += inv.DocTotal;
+    cur.real += Number(o.doc_total) || 0;
     cur.vol += 1;
     agg.set(code, cur);
   }
@@ -50,18 +50,19 @@ export default function FaturamentoPage() {
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
-  const { data: invData, loading: loadInv, error: errInv, refetch: rInv } =
-    useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: ordersData, loading: loadOrd, error: errOrd, refetch: rOrd } =
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
   const { data: spData, loading: loadSp, error: errSp, refetch: rSp } =
     useFetch(() => fetchSalesPersons(), []);
 
-  const loading = loadInv && loadSp;
-  const hasInvError = !!errInv;
+  const loading = loadOrd && loadSp;
+
+  const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
 
   const vendedores = useMemo(() => {
     if (!spData?.items) return [];
-    return aggregate(invData?.items ?? [], spData.items);
-  }, [invData, spData]);
+    return aggregate(orders, spData.items);
+  }, [orders, spData]);
 
   const [search, setSearch] = useState("");
 
@@ -80,9 +81,9 @@ export default function FaturamentoPage() {
 
   const kpis = [
     { label: "Real Total", value: fmtBRL(totais.real), icon: DollarSign, color: "text-cockpit-accent" },
-    { label: "Notas", value: String(totais.vol), icon: Target, color: "text-sky-400" },
-    { label: "Ticket Médio", value: totais.vol > 0 ? fmtBRL(totais.real / totais.vol) : "—", icon: TrendingUp, color: "text-amber-400" },
-    { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-blue-400" },
+    { label: "Pedidos", value: String(totais.vol), icon: ShoppingCart, color: "text-sky-500" },
+    { label: "Ticket Médio", value: totais.vol > 0 ? fmtBRL(totais.real / totais.vol) : "—", icon: TrendingUp, color: "text-amber-500" },
+    { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-blue-500" },
   ];
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Faturamento</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
@@ -96,7 +97,7 @@ export default function FaturamentoPage() {
           <CalendarDays className="w-3.5 h-3.5" />
           <span>Período: <span className="text-gray-600">{periodoLabel}</span></span>
           <span className="text-cockpit-border">·</span>
-          <span>{invData?.count ?? 0} notas fiscais</span>
+          <span>{orders.length} pedidos de venda</span>
         </p>
       </div>
 
@@ -148,7 +149,7 @@ export default function FaturamentoPage() {
               <tr>
                 <th scope="col" className="px-4 py-3">Vendedor</th>
                 <th scope="col" className="px-4 py-3 text-right">Faturamento</th>
-                <th scope="col" className="px-4 py-3 text-right">Notas</th>
+                <th scope="col" className="px-4 py-3 text-right">Pedidos</th>
                 <th scope="col" className="px-4 py-3 text-right">Ticket Médio</th>
               </tr>
             </thead>
@@ -177,7 +178,7 @@ export default function FaturamentoPage() {
           </table>
         </div>
         <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">
-          {filtered.length} vendedores — dados SAP B1 /Invoices + /SalesPersons
+          {filtered.length} vendedores — dados Pedidos de Venda SAP B1
         </div>
       </div>
     </div>

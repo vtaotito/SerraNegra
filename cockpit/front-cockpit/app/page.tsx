@@ -2,16 +2,19 @@
 
 import { useState, useMemo, useCallback } from "react";
 import {
-  DollarSign, Package, Users, TrendingUp, TrendingDown,
+  DollarSign, Package, Users, TrendingUp,
   Wallet, AlertTriangle, Target, BarChart3, Search,
-  Loader2, CheckCircle2, XCircle, Zap, CalendarDays,
+  Loader2, CheckCircle2, XCircle, Zap, CalendarDays, ShoppingCart,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, Cell,
 } from "recharts";
 import { fmtBRL } from "@/lib/format";
-import { syncSAP, fetchInvoices, fetchSalesPersons, fetchCustomers, type SapInvoice, type SapSalesPerson } from "@/lib/api";
+import {
+  syncSAP, fetchSalesOrders, fetchSalesPersons, fetchCustomers,
+  type SalesOrderRow, type SapSalesPerson,
+} from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
@@ -24,15 +27,15 @@ interface VendedorAgg {
   volume: number;
 }
 
-function aggregateBySalesPerson(invoices: SapInvoice[], persons: SapSalesPerson[]): VendedorAgg[] {
+function aggregateBySalesPerson(orders: SalesOrderRow[], persons: SapSalesPerson[]): VendedorAgg[] {
   const personMap = new Map(persons.map((p) => [p.SalesEmployeeCode, p.SalesEmployeeName]));
   const agg = new Map<number, { real: number; volume: number }>();
 
-  for (const inv of invoices) {
-    if (inv.Cancelled === "tYES") continue;
-    const code = inv.SalesPersonCode;
+  for (const o of orders) {
+    if (o.cancelled === "Y") continue;
+    const code = o.sales_person_code ?? -1;
     const cur = agg.get(code) ?? { real: 0, volume: 0 };
-    cur.real += inv.DocTotal;
+    cur.real += Number(o.doc_total) || 0;
     cur.volume += 1;
     agg.set(code, cur);
   }
@@ -61,19 +64,21 @@ export default function HomePage() {
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
-  const { data: invData, loading: loadInv, error: errInv, refetch: refetchInv } =
-    useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: ordersData, loading: loadOrd, error: errOrd, refetch: refetchOrd } =
+    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000 }), [dateFrom, dateTo]);
   const { data: spData, loading: loadSp, error: errSp, refetch: refetchSp } =
     useFetch(() => fetchSalesPersons(), []);
   const { data: custData } = useFetch(() => fetchCustomers({ limit: 1 }), []);
 
-  const loading = loadInv && loadSp;
-  const hasInvoiceError = !!errInv;
+  const loading = loadOrd && loadSp;
+  const hasError = !!errOrd;
+
+  const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
 
   const vendedores = useMemo(() => {
-    if (!invData?.items || !spData?.items) return [];
-    return aggregateBySalesPerson(invData.items, spData.items);
-  }, [invData, spData]);
+    if (!spData?.items) return [];
+    return aggregateBySalesPerson(orders, spData.items);
+  }, [orders, spData]);
 
   const [vendedorSearch, setVendedorSearch] = useState("");
   const [perfFilter, setPerfFilter] = useState<"all" | "top" | "bottom">("all");
@@ -94,10 +99,12 @@ export default function HomePage() {
     });
   }, [vendedores, vendedorSearch, perfFilter, mediana]);
 
+  const activeOrders = useMemo(() => orders.filter((o) => o.cancelled !== "Y"), [orders]);
   const totais = useMemo(() => ({
-    real: filtered.reduce((s, v) => s + v.real, 0),
-    volume: filtered.reduce((s, v) => s + v.volume, 0),
-  }), [filtered]);
+    real: activeOrders.reduce((s, o) => s + (Number(o.doc_total) || 0), 0),
+    volume: activeOrders.length,
+    qty: activeOrders.reduce((s, o) => s + (Number(o.total_quantity) || 0), 0),
+  }), [activeOrders]);
 
   const chartData = useMemo(() =>
     filtered.slice(0, 15).map((v) => ({
@@ -108,15 +115,16 @@ export default function HomePage() {
   [filtered, mediana]);
 
   const totalClientes = custData?.total ?? 0;
+  const uniqueClients = useMemo(() => new Set(activeOrders.map((o) => o.card_code)).size, [activeOrders]);
 
   const kpis = useMemo(() => [
-    { title: `Fat. ${monthsInRange}m`, value: fmtBRL(totais.real), icon: DollarSign, color: "text-cockpit-accent" },
-    { title: "Notas no Período", value: String(totais.volume), icon: Package, color: "text-sky-400" },
-    { title: "Ticket Médio", value: totais.volume > 0 ? fmtBRL(totais.real / totais.volume) : "—", icon: Target, color: "text-amber-400" },
-    { title: "Vendedores Ativos", value: String(filtered.length), icon: Users, color: "text-blue-400" },
-    { title: "Total Clientes", value: String(totalClientes), icon: Wallet, color: "text-cockpit-accent" },
-    { title: "NFs no SAP", value: String(invData?.count ?? 0), icon: TrendingUp, color: "text-purple-400" },
-  ], [totais, filtered, totalClientes, invData, monthsInRange]);
+    { title: "Faturamento", value: fmtBRL(totais.real), icon: DollarSign, color: "text-cockpit-accent" },
+    { title: "Pedidos", value: String(totais.volume), icon: ShoppingCart, color: "text-sky-500" },
+    { title: "Ticket Médio", value: totais.volume > 0 ? fmtBRL(totais.real / totais.volume) : "—", icon: Target, color: "text-amber-500" },
+    { title: "Vendedores", value: String(vendedores.length), icon: Users, color: "text-blue-500" },
+    { title: "Clientes Ativos", value: String(uniqueClients), icon: Wallet, color: "text-teal-500" },
+    { title: "Total na Base", value: String(totalClientes), icon: TrendingUp, color: "text-purple-500" },
+  ], [totais, vendedores, uniqueClients, totalClientes]);
 
   const handleSync = useCallback(async (endpoint: typeof SYNC_ENDPOINTS[number]["key"]) => {
     setSyncStates((prev) => ({ ...prev, [endpoint]: "loading" }));
@@ -124,18 +132,18 @@ export default function HomePage() {
       await syncSAP(endpoint);
       setSyncStates((prev) => ({ ...prev, [endpoint]: "ok" }));
       setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 3000);
-      if (endpoint === "cockpit" || endpoint === "invoices") refetchInv();
+      refetchOrd();
       if (endpoint === "cockpit" || endpoint === "salespersons") refetchSp();
     } catch {
       setSyncStates((prev) => ({ ...prev, [endpoint]: "error" }));
       setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 5000);
     }
-  }, [refetchInv, refetchSp]);
+  }, [refetchOrd, refetchSp]);
 
   if (loading) {
     return (
       <div className="space-y-8">
-        <div><h1 className="text-2xl font-bold text-gray-900">Visão executiva</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados do SAP B1...</p></div>
+        <div><h1 className="text-2xl font-bold text-gray-900">Visão executiva</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados...</p></div>
         <LoadingSkeleton rows={6} />
       </div>
     );
@@ -148,18 +156,19 @@ export default function HomePage() {
         <p className="text-cockpit-muted mt-1 text-sm flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5" />
           Serra Negra · <span className="text-gray-600">{periodoLabel}</span>
+          <span className="text-cockpit-border">·</span>
+          <span>{ordersData?.total ?? 0} pedidos sincronizados</span>
         </p>
       </div>
 
-      {hasInvoiceError && (
+      {hasError && (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-400">Não foi possível carregar notas fiscais do SAP</p>
-            <p className="text-xs text-cockpit-muted mt-1">{errInv}</p>
-            <p className="text-xs text-cockpit-muted mt-1">Use os botões de Sincronização abaixo para forçar uma nova tentativa, ou mude o período.</p>
+            <p className="text-sm font-medium text-amber-600">Não foi possível carregar pedidos de venda</p>
+            <p className="text-xs text-cockpit-muted mt-1">{errOrd}</p>
           </div>
-          <button type="button" onClick={refetchInv} className="text-xs text-amber-400 hover:text-gray-900 transition-colors">Tentar novamente</button>
+          <button type="button" onClick={refetchOrd} className="text-xs text-amber-500 hover:text-gray-900 transition-colors">Tentar novamente</button>
         </div>
       )}
 
@@ -178,12 +187,12 @@ export default function HomePage() {
         })}
       </section>
 
-      {!hasInvoiceError && (
+      {!hasError && (
         <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
             <div className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-cockpit-accent" />
-              <h2 className="text-lg font-semibold text-gray-900">Faturamento por Vendedor ({filtered.length})</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Pedidos por Vendedor ({filtered.length})</h2>
             </div>
             <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
               <div className="relative">
@@ -264,7 +273,7 @@ export default function HomePage() {
       </section>
 
       <footer className="text-center text-xs text-cockpit-muted py-4 border-t border-cockpit-border">
-        Dados: SAP B1 Service Layer · {invData?.count ?? 0} invoices · {spData?.count ?? 0} vendedores
+        Dados: Pedidos de Venda SAP B1 · {orders.length} pedidos no período · {spData?.count ?? 0} vendedores
       </footer>
     </div>
   );

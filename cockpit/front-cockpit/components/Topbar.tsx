@@ -5,12 +5,14 @@ import {
   Calendar, RefreshCw, Search, Menu, Wifi, WifiOff,
   Loader2, ChevronDown, Check, ArrowRight, X,
 } from "lucide-react";
-import { format, differenceInDays, startOfMonth, subMonths } from "date-fns";
+import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { fmtDate } from "@/lib/format";
 import {
   useDateRange,
   formatRangeShort,
+  PRESETS,
+  getHint,
   type PresetKey,
 } from "@/contexts/DateRangeContext";
 
@@ -18,18 +20,10 @@ interface TopbarProps {
   onMenuClick?: () => void;
 }
 
-const PRESETS: { key: Exclude<PresetKey, "custom">; label: string; hint: string }[] = [
-  { key: "current_month", label: "Mês atual", hint: "Desde dia 1" },
-  { key: "last_3m", label: "Últimos 3 meses", hint: "90 dias" },
-  { key: "last_6m", label: "Últimos 6 meses", hint: "180 dias" },
-  { key: "last_12m", label: "Últimos 12 meses", hint: "1 ano" },
-  { key: "ytd", label: "Ano corrente", hint: "Desde 01/Jan" },
-  { key: "all", label: "Todo período", hint: "Histórico completo" },
+const PRESET_ORDER: Exclude<PresetKey, "custom">[] = [
+  "today", "current_week", "last_7d", "current_month",
+  "last_month", "two_months_ago", "last_3m",
 ];
-
-function fmtShort(d: Date): string {
-  return format(d, "dd MMM yyyy", { locale: ptBR });
-}
 
 function fmtInputVal(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -132,7 +126,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Period picker */}
         <div className="relative z-[60]" ref={pickerRef}>
           <button
             type="button"
@@ -146,9 +139,11 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             aria-expanded={pickerOpen}
           >
             <Calendar className="w-4 h-4 text-cockpit-accent" />
-            <span className="text-sm text-gray-600 capitalize hidden sm:inline">{rangeLabel}</span>
+            <span className="text-sm text-gray-600 hidden sm:inline">{rangeLabel}</span>
             <span className="text-sm text-gray-600 sm:hidden">
-              {preset === "custom" ? "Período" : PRESETS.find((p) => p.key === preset)?.label ?? "Período"}
+              {preset === "custom"
+                ? "Personalizado"
+                : PRESETS[preset].label}
             </span>
             <ChevronDown
               className={`w-3.5 h-3.5 text-cockpit-muted transition-transform duration-200 ${
@@ -158,8 +153,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
           </button>
 
           {pickerOpen && (
-            <div className="absolute top-full left-0 sm:left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[420px] rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl shadow-black/10 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-              {/* Header */}
+            <div className="absolute top-full left-0 sm:left-0 mt-2 w-[calc(100vw-2rem)] sm:w-[440px] rounded-xl border border-cockpit-border bg-cockpit-surface shadow-2xl shadow-black/10 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="flex items-center justify-between px-4 py-3 border-b border-cockpit-border bg-cockpit-bg/50">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-cockpit-accent" />
@@ -175,30 +169,28 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 </button>
               </div>
 
-              {/* Active range summary */}
-              <div className="px-4 py-2.5 bg-cockpit-accent/[0.06] border-b border-cockpit-border/50">
+              <div className="px-4 py-2.5 bg-cockpit-accent/[0.05] border-b border-cockpit-border/50">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-cockpit-muted">Ativo:</span>
                   <span className="font-medium text-gray-900">{fmtReadable(range.from)}</span>
                   <ArrowRight className="w-3 h-3 text-cockpit-muted" />
                   <span className="font-medium text-gray-900">{fmtReadable(range.to)}</span>
-                  <span className="text-cockpit-muted ml-auto">({dayCount} dias)</span>
+                  <span className="text-cockpit-muted ml-auto">({dayCount} dia{dayCount !== 1 ? "s" : ""})</span>
                 </div>
               </div>
 
-              {/* Presets grid */}
               <div className="p-3">
                 <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-2 px-1">
                   Períodos rápidos
                 </p>
                 <div className="grid grid-cols-2 gap-1.5">
-                  {PRESETS.map((p) => {
-                    const isActive = preset === p.key;
+                  {PRESET_ORDER.map((key) => {
+                    const isActive = preset === key;
                     return (
                       <button
-                        key={p.key}
+                        key={key}
                         type="button"
-                        onClick={() => handlePreset(p.key)}
+                        onClick={() => handlePreset(key)}
                         className={`group flex items-center justify-between px-3 py-2.5 rounded-lg text-left transition-all ${
                           isActive
                             ? "bg-cockpit-accent/15 border border-cockpit-accent/30 text-cockpit-accent"
@@ -207,10 +199,10 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                       >
                         <div>
                           <span className={`block text-sm font-medium ${isActive ? "text-cockpit-accent" : ""}`}>
-                            {p.label}
+                            {PRESETS[key].label}
                           </span>
                           <span className={`block text-[10px] mt-0.5 ${isActive ? "text-cockpit-accent/70" : "text-cockpit-muted"}`}>
-                            {p.hint}
+                            {getHint(key)}
                           </span>
                         </div>
                         {isActive && <Check className="w-4 h-4 shrink-0" />}
@@ -220,7 +212,6 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 </div>
               </div>
 
-              {/* Custom range */}
               <div className="px-4 pb-4 pt-1 border-t border-cockpit-border">
                 <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-3 pt-3">
                   Período personalizado
@@ -231,10 +222,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                     <input
                       type="date"
                       value={draftFrom}
-                      onChange={(e) => {
-                        setDraftFrom(e.target.value);
-                        setValidationErr(null);
-                      }}
+                      onChange={(e) => { setDraftFrom(e.target.value); setValidationErr(null); }}
                       max={draftTo}
                       className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data inicial"
@@ -248,10 +236,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                     <input
                       type="date"
                       value={draftTo}
-                      onChange={(e) => {
-                        setDraftTo(e.target.value);
-                        setValidationErr(null);
-                      }}
+                      onChange={(e) => { setDraftTo(e.target.value); setValidationErr(null); }}
                       min={draftFrom}
                       className="w-full px-3 py-2 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data final"
@@ -260,7 +245,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 </div>
 
                 {validationErr && (
-                  <p className="text-xs text-red-400 mt-2 flex items-center gap-1">
+                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
                     <X className="w-3 h-3" /> {validationErr}
                   </p>
                 )}
@@ -268,13 +253,13 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 <button
                   type="button"
                   onClick={validateAndApply}
-                  className="w-full mt-3 py-2.5 rounded-lg bg-cockpit-accent text-gray-900 text-sm font-semibold hover:bg-cockpit-accent/90 active:scale-[0.98] transition-all shadow-lg shadow-cockpit-accent/15"
+                  className="w-full mt-3 py-2.5 rounded-lg bg-cockpit-accent text-white text-sm font-semibold hover:bg-cockpit-accentHover active:scale-[0.98] transition-all shadow-sm"
                 >
                   Aplicar período personalizado
                 </button>
 
                 {preset === "custom" && (
-                  <p className="text-[10px] text-cockpit-accent/60 text-center mt-2">
+                  <p className="text-[10px] text-cockpit-accent text-center mt-2">
                     Período personalizado ativo
                   </p>
                 )}

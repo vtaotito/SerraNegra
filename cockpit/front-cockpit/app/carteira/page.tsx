@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { DollarSign, TrendingUp, Target, Users, Search, CalendarDays } from "lucide-react";
+import { DollarSign, TrendingUp, Target, Users, Search, CalendarDays, ShoppingCart } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
-import { fetchInvoices, fetchSalesPersons, type SapInvoice, type SapSalesPerson } from "@/lib/api";
+import { fetchSalesOrders, fetchSalesPersons, type SalesOrderRow, type SapSalesPerson } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
@@ -14,32 +14,32 @@ interface CarteiraRow {
   code: number;
   clientes: number;
   fat: number;
-  notas: number;
+  pedidos: number;
   ticket: number;
 }
 
-function buildCarteira(invoices: SapInvoice[], persons: SapSalesPerson[]): CarteiraRow[] {
+function buildCarteira(orders: SalesOrderRow[], persons: SapSalesPerson[]): CarteiraRow[] {
   const pMap = new Map(persons.map((p) => [p.SalesEmployeeCode, p.SalesEmployeeName]));
-  const agg = new Map<number, { fat: number; notas: number; clients: Set<string> }>();
+  const agg = new Map<number, { fat: number; pedidos: number; clients: Set<string> }>();
 
-  for (const inv of invoices) {
-    if (inv.Cancelled === "tYES") continue;
-    const c = inv.SalesPersonCode;
-    const cur = agg.get(c) ?? { fat: 0, notas: 0, clients: new Set<string>() };
-    cur.fat += inv.DocTotal;
-    cur.notas += 1;
-    cur.clients.add(inv.CardCode);
+  for (const o of orders) {
+    if (o.cancelled === "Y") continue;
+    const c = o.sales_person_code ?? -1;
+    const cur = agg.get(c) ?? { fat: 0, pedidos: 0, clients: new Set<string>() };
+    cur.fat += Number(o.doc_total) || 0;
+    cur.pedidos += 1;
+    cur.clients.add(o.card_code);
     agg.set(c, cur);
   }
 
   return Array.from(agg.entries())
-    .map(([code, { fat, notas, clients }]) => ({
+    .map(([code, { fat, pedidos, clients }]) => ({
       nome: pMap.get(code) ?? `Vendedor ${code}`,
       code,
       clientes: clients.size,
       fat,
-      notas,
-      ticket: notas > 0 ? fat / notas : 0,
+      pedidos,
+      ticket: pedidos > 0 ? fat / pedidos : 0,
     }))
     .sort((a, b) => b.fat - a.fat);
 }
@@ -49,21 +49,25 @@ export default function CarteiraPage() {
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
-  const { data: invData, loading: l1, error: e1, refetch: r1 } = useFetch(() => fetchInvoices({ limit: 5000, dateFrom, dateTo }), [dateFrom, dateTo]);
-  const { data: spData, loading: l2, error: e2, refetch: r2 } = useFetch(() => fetchSalesPersons(), []);
+  const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+  const { data: spData, loading: l2, error: e2, refetch: r2 } =
+    useFetch(() => fetchSalesPersons(), []);
   const loading = l2;
+
+  const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
 
   const rows = useMemo(() => {
     if (!spData?.items) return [];
-    return buildCarteira(invData?.items ?? [], spData.items);
-  }, [invData, spData]);
+    return buildCarteira(orders, spData.items);
+  }, [orders, spData]);
 
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => rows.filter((r) => r.nome.toLowerCase().includes(search.toLowerCase())), [rows, search]);
 
-  const totalClientes = new Set(filtered.flatMap(() => [])).size || filtered.reduce((s, r) => s + r.clientes, 0);
+  const totalClientes = filtered.reduce((s, r) => s + r.clientes, 0);
   const totalFat = filtered.reduce((s, r) => s + r.fat, 0);
-  const totalNotas = filtered.reduce((s, r) => s + r.notas, 0);
+  const totalPedidos = filtered.reduce((s, r) => s + r.pedidos, 0);
 
   if (loading) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Carteira</h1><p className="text-cockpit-muted mt-1">Carregando...</p></div><LoadingSkeleton /></div>;
   if (e2) return <div className="space-y-6"><div><h1 className="text-2xl font-bold text-gray-900">Carteira</h1></div><ErrorState message={e2} onRetry={r2} /></div>;
@@ -90,9 +94,9 @@ export default function CarteiraPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Vendedores", value: String(filtered.length), icon: Users, color: "text-cockpit-accent" },
-          { label: "Clientes Únicos", value: String(totalClientes), icon: Target, color: "text-blue-400" },
-          { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-400" },
-          { label: "Ticket Médio", value: totalNotas > 0 ? fmtBRL(totalFat / totalNotas) : "—", icon: TrendingUp, color: "text-amber-400" },
+          { label: "Clientes Únicos", value: String(totalClientes), icon: Target, color: "text-blue-500" },
+          { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-500" },
+          { label: "Ticket Médio", value: totalPedidos > 0 ? fmtBRL(totalFat / totalPedidos) : "—", icon: TrendingUp, color: "text-amber-500" },
         ].map((k) => (
           <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
             <div className="flex items-center gap-2"><k.icon className={`h-4 w-4 ${k.color}`} /><span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span></div>
@@ -109,7 +113,7 @@ export default function CarteiraPage() {
                 <th scope="col" className="px-4 py-3">Vendedor</th>
                 <th scope="col" className="px-4 py-3 text-right">Clientes</th>
                 <th scope="col" className="px-4 py-3 text-right">Faturamento</th>
-                <th scope="col" className="px-4 py-3 text-right">Notas</th>
+                <th scope="col" className="px-4 py-3 text-right">Pedidos</th>
                 <th scope="col" className="px-4 py-3 text-right">Ticket</th>
               </tr>
             </thead>
@@ -119,16 +123,16 @@ export default function CarteiraPage() {
               ) : filtered.map((r) => (
                 <tr key={r.code} className="hover:bg-black/5">
                   <td className="px-4 py-3 font-medium text-gray-900">{r.nome}</td>
-                  <td className="px-4 py-3 text-right text-blue-400 font-medium">{r.clientes}</td>
+                  <td className="px-4 py-3 text-right text-blue-500 font-medium">{r.clientes}</td>
                   <td className="px-4 py-3 text-right text-cockpit-accent font-medium">{fmtBRL(r.fat)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{r.notas}</td>
+                  <td className="px-4 py-3 text-right text-gray-600">{r.pedidos}</td>
                   <td className="px-4 py-3 text-right text-gray-600">{fmtBRL(r.ticket, 2)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">{filtered.length} vendedores — SAP B1</div>
+        <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted">{filtered.length} vendedores — Pedidos de Venda SAP B1</div>
       </div>
     </div>
   );
