@@ -411,25 +411,65 @@ export async function runSalesOrdersSync(): Promise<{
   }
 
   try {
-    console.log("[syncOrders] Buscando headers do SAP (sem enriquecimento)...");
-    const headers = await svc.listSalesOrders(
-      { limit: 50000, skipEnrich: true },
-      `sync-${Date.now()}`
-    );
+    console.log("[syncOrders] Paginando e salvando pedidos em lotes...");
 
-    const headersSaved = await upsertOrderHeaders(headers);
+    const client = svc.getSapClient();
+    const preferHeaders = { "Prefer": "odata.maxpagesize=500" };
+    const PAGE_SIZE = 500;
+    let skip = 0;
+    let totalFetched = 0;
+    let totalSaved = 0;
+    let emptyPages = 0;
+
+    while (true) {
+      const url = `/Orders?$top=${PAGE_SIZE}&$skip=${skip}&$orderby=DocDate desc`;
+      try {
+        const res = await client.get<{ value: SapSalesOrderRow[] }>(url, {
+          correlationId: `sync-${Date.now()}`,
+          headers: preferHeaders,
+        });
+        const page = res.data.value || [];
+
+        if (page.length === 0) {
+          emptyPages++;
+          if (emptyPages >= 2) break;
+          skip += PAGE_SIZE;
+          continue;
+        }
+        emptyPages = 0;
+
+        const saved = await upsertOrderHeaders(page);
+        totalFetched += page.length;
+        totalSaved += saved;
+        skip += page.length;
+
+        if (totalFetched % 2000 === 0 || page.length < PAGE_SIZE) {
+          const elapsed = ((Date.now() - startMs) / 1000).toFixed(0);
+          console.log(`[syncOrders] Progresso: ${totalFetched} buscados, ${totalSaved} salvos (${elapsed}s)`);
+        }
+
+        if (page.length < PAGE_SIZE) break;
+        if (totalFetched >= 50000) break;
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.warn(`[syncOrders] Erro na página skip=${skip}: ${errMsg}`);
+        if (totalFetched > 0) break;
+        throw err;
+      }
+    }
+
     const durationMs = Date.now() - startMs;
     const elapsed = (durationMs / 1000).toFixed(1);
 
-    const msg = `Sync OK: ${headers.length} pedidos buscados, ${headersSaved} salvos em ${elapsed}s`;
+    const msg = `Sync OK: ${totalFetched} pedidos buscados, ${totalSaved} salvos em ${elapsed}s`;
     console.log(`[syncOrders] ${msg}`);
 
     await db.query(
       `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=0, duration_ms=$3, message=$4 WHERE id=$5`,
-      [headers.length, headersSaved, durationMs, msg, logId]
+      [totalFetched, totalSaved, durationMs, msg, logId]
     );
 
-    return { ok: true, fetched: headers.length, upserted: headersSaved, linesWritten: 0, message: msg, durationMs };
+    return { ok: true, fetched: totalFetched, upserted: totalSaved, linesWritten: 0, message: msg, durationMs };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const durationMs = Date.now() - startMs;

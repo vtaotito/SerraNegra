@@ -10,6 +10,10 @@ import { SapHttpError } from "../../../sap-connector/src/errors.js";
 export class SapEntitiesService {
   constructor(private readonly client: SapServiceLayerClient) {}
 
+  getSapClient(): SapServiceLayerClient {
+    return this.client;
+  }
+
   // ========================================
   // ITEMS (Produtos)
   // ========================================
