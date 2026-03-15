@@ -162,6 +162,7 @@ services:
       DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
       PANEL_JWT_SECRET: "${PANEL_JWT_SECRET:-painel-secret-change-me-in-production}"
       NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
       - "3003:3000"
     depends_on:
@@ -169,7 +170,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "-w", "%{http_code}", "http://localhost:3000/login"]
       interval: 10s
       timeout: 3s
       retries: 5
