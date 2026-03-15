@@ -1,11 +1,13 @@
 "use client";
 
 import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
-  ShoppingCart, Filter, Download, Search, X, CalendarDays,
-  ChevronDown, ChevronRight, Package, Hash, Plus, Loader2,
+  ShoppingCart, Download, Search, X, CalendarDays,
+  ChevronDown, ChevronRight, Package, Plus, Loader2,
   RefreshCw, DollarSign, Users, TrendingUp, BarChart3,
-  ArrowUpDown, ArrowUp, ArrowDown,
+  ArrowUpDown, ArrowUp, ArrowDown, ListOrdered,
 } from "lucide-react";
 import { fmtBRL, exportCSV } from "@/lib/format";
 import {
@@ -40,7 +42,8 @@ type SortDir = "asc" | "desc";
 function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
   if (lines.length === 0) {
     return (
-      <div className="px-8 py-4 text-sm text-cockpit-muted italic bg-amber-50/50">
+      <div className="px-6 py-6 text-sm text-cockpit-muted italic bg-gradient-to-b from-amber-50/80 to-white rounded-b-lg border border-t-0 border-cockpit-border/50 flex items-center gap-3">
+        <ListOrdered className="w-5 h-5 text-amber-500/70 shrink-0" />
         Detalhamento de itens indisponível para este pedido.
       </div>
     );
@@ -50,63 +53,78 @@ function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
   const totalVal = lines.reduce((s, l) => s + (l.LineTotal ?? 0), 0);
 
   return (
-    <div className="px-4 py-3 bg-gray-50/80">
-      <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm">
-        <div className="px-4 py-2 bg-cockpit-accent/5 border-b border-cockpit-border/30 flex items-center justify-between">
-          <span className="text-xs font-semibold text-cockpit-accent uppercase tracking-wider">
-            Itens do Pedido ({lines.length})
-          </span>
-          <span className="text-xs text-gray-500">
-            Qtd total: <strong className="text-gray-700">{fmtQty(totalQty)}</strong> &middot; Valor: <strong className="text-cockpit-accent">{fmtBRL(totalVal)}</strong>
-          </span>
+    <div className="order-detail-enter overflow-hidden">
+      <div className="px-4 py-4 bg-gradient-to-b from-gray-50/90 to-white border-x border-b border-cockpit-border/50">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-cockpit-accent/10">
+              <Package className="w-4 h-4 text-cockpit-accent" />
+            </div>
+            <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+              Itens do Pedido
+            </span>
+            <span className="text-xs text-cockpit-muted font-normal">({lines.length} itens)</span>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-600">
+              Qtd total: <strong className="text-gray-900 tabular-nums">{fmtQty(totalQty)}</strong>
+            </span>
+            <span className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(totalVal)}</span>
+          </div>
         </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="border-b border-cockpit-border/30 text-cockpit-muted uppercase tracking-wider text-[10px]">
-              <th className="text-left py-2 px-3 font-semibold w-10">#</th>
-              <th className="text-left py-2 px-3 font-semibold w-28">Código</th>
-              <th className="text-left py-2 px-3 font-semibold">Descrição</th>
-              <th className="text-left py-2 px-3 font-semibold w-16">Depósito</th>
-              <th className="text-right py-2 px-3 font-semibold w-20">Qtd</th>
-              <th className="text-right py-2 px-3 font-semibold w-24">Preço Unit.</th>
-              <th className="text-right py-2 px-3 font-semibold w-16">Desc%</th>
-              <th className="text-right py-2 px-3 font-semibold w-24">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, idx) => (
-              <tr
-                key={`${l.ItemCode}-${l.LineNum ?? idx}`}
-                className="border-b border-cockpit-border/15 last:border-b-0 hover:bg-cockpit-accent/[0.02] transition-colors"
-              >
-                <td className="py-1.5 px-3 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
-                <td className="py-1.5 px-3 font-mono text-xs text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
-                <td className="py-1.5 px-3 text-gray-700 truncate max-w-[300px]" title={l.ItemDescription ?? ""}>
-                  {l.ItemDescription ?? "—"}
-                </td>
-                <td className="py-1.5 px-3 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
-                <td className="py-1.5 px-3 text-right tabular-nums font-semibold text-gray-900">
-                  {fmtQty(l.Quantity ?? 0)}
-                </td>
-                <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">
-                  {l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}
-                </td>
-                <td className="py-1.5 px-3 text-right tabular-nums text-gray-500">
-                  {(l.DiscountPercent ?? 0) > 0 ? `${l.DiscountPercent}%` : "—"}
-                </td>
-                <td className="py-1.5 px-3 text-right tabular-nums font-semibold text-cockpit-accent">
-                  {l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}
-                </td>
+        <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-cockpit-border/40 bg-gray-50/80 text-cockpit-muted uppercase tracking-wider text-[10px]">
+                <th className="text-left py-2.5 px-3 font-semibold w-10">#</th>
+                <th className="text-left py-2.5 px-3 font-semibold w-28">Código</th>
+                <th className="text-left py-2.5 px-3 font-semibold">Descrição</th>
+                <th className="text-left py-2.5 px-3 font-semibold w-16">Depósito</th>
+                <th className="text-right py-2.5 px-3 font-semibold w-20">Qtd</th>
+                <th className="text-right py-2.5 px-3 font-semibold w-24">Preço Unit.</th>
+                <th className="text-right py-2.5 px-3 font-semibold w-16">Desc%</th>
+                <th className="text-right py-2.5 px-3 font-semibold w-24">Total</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lines.map((l, idx) => (
+                <tr
+                  key={`${l.ItemCode}-${l.LineNum ?? idx}`}
+                  className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150"
+                >
+                  <td className="py-2 px-3 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
+                  <td className="py-2 px-3 font-mono text-xs text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
+                  <td className="py-2 px-3 text-gray-700 max-w-[280px]" title={l.ItemDescription ?? ""}>
+                    <span className="line-clamp-2">{l.ItemDescription ?? "—"}</span>
+                  </td>
+                  <td className="py-2 px-3 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
+                  <td className="py-2 px-3 text-right tabular-nums font-semibold text-gray-900">
+                    {fmtQty(l.Quantity ?? 0)}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-gray-600">
+                    {l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums text-gray-500">
+                    {(l.DiscountPercent ?? 0) > 0 ? `${l.DiscountPercent}%` : "—"}
+                  </td>
+                  <td className="py-2 px-3 text-right tabular-nums font-semibold text-cockpit-accent">
+                    {l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
 export default function PedidosPage() {
+  const searchParams = useSearchParams();
+  const cardCodeFromUrl = searchParams.get("cardCode");
+  const clientNameFromUrl = searchParams.get("clientName") ?? undefined;
+
   const { range, label: rangeLabel } = useDateRange();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
@@ -122,10 +140,14 @@ export default function PedidosPage() {
   const orders = useMemo(() => data?.items ?? [], [data]);
   const dbTotal = data?.total ?? 0;
 
-  // Filtros
+  // Filtros (cliente inicial via URL para navegação a partir de Clientes)
   const [search, setSearch] = useState("");
-  const [clienteFilter, setClienteFilter] = useState("");
+  const [clienteFilter, setClienteFilter] = useState(cardCodeFromUrl ?? "");
   const [statusFilter, setStatusFilter] = useState<"all" | "open" | "closed" | "cancelled">("all");
+
+  useEffect(() => {
+    if (cardCodeFromUrl) setClienteFilter(cardCodeFromUrl);
+  }, [cardCodeFromUrl]);
 
   // Ordenação
   const [sortField, setSortField] = useState<SortField>("doc_num");
@@ -352,6 +374,21 @@ export default function PedidosPage() {
         </div>
       )}
 
+      {/* Filtro ativo por cliente (vindo da página Clientes) */}
+      {cardCodeFromUrl && clienteFilter && (
+        <div className="rounded-xl border border-cockpit-accent/30 bg-cockpit-accent/5 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-gray-700">
+            Exibindo pedidos do cliente: <strong className="text-cockpit-accent">{clientNameFromUrl || clienteFilter}</strong>
+          </p>
+          <Link
+            href="/pedidos"
+            className="text-sm font-medium text-cockpit-accent hover:text-cockpit-accent/80 transition-colors flex items-center gap-1.5"
+          >
+            <X className="w-4 h-4" /> Limpar filtro
+          </Link>
+        </div>
+      )}
+
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
@@ -449,8 +486,8 @@ export default function PedidosPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
+          <table className="w-full text-sm table-sticky-head">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50/50 text-[10px] uppercase tracking-wider text-cockpit-muted">
                 <th className="w-8" />
@@ -542,11 +579,11 @@ export default function PedidosPage() {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr>
-                        <td colSpan={10} className="p-0">
+                      <tr className="bg-transparent">
+                        <td colSpan={10} className="p-0 align-top">
                           {isLoadingLines ? (
-                            <div className="px-8 py-4 flex items-center gap-2 text-sm text-cockpit-muted bg-gray-50">
-                              <Loader2 className="w-4 h-4 animate-spin" /> Carregando itens do SAP...
+                            <div className="px-8 py-6 flex items-center gap-2 text-sm text-cockpit-muted bg-gray-50/90 border-x border-b border-cockpit-border/50">
+                              <Loader2 className="w-4 h-4 animate-spin text-cockpit-accent" /> Carregando itens do SAP...
                             </div>
                           ) : (
                             <OrderDetailPanel lines={lines} />

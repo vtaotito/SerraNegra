@@ -14,11 +14,13 @@ import {
   Target,
   ShoppingCart,
   X,
+  Activity,
 } from "lucide-react";
 import clsx from "clsx";
 
 const navItems = [
   { label: "Visão geral", path: "/", icon: LayoutDashboard },
+  { label: "Dashboard Vendas", path: "/vendas-dashboard", icon: Activity },
   { label: "Documentos / Vendas", path: "/comercial/dados", icon: FileText },
   { label: "Pedidos de Venda", path: "/pedidos", icon: ShoppingCart },
   { label: "Estoque", path: "/estoque", icon: Package },
@@ -86,13 +88,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 onClick={onClose}
                 aria-current={isActive ? "page" : undefined}
                 className={clsx(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ease-out",
+                  "border border-transparent",
                   isActive
-                    ? "bg-cockpit-accent/20 text-cockpit-accent border border-cockpit-accent/30"
-                    : "text-gray-500 hover:bg-black/5 hover:text-gray-700 border border-transparent"
+                    ? "nav-link-active bg-cockpit-accent/10 text-cockpit-accent font-semibold"
+                    : "text-gray-500 hover:bg-black/5 hover:text-gray-700 hover:border-cockpit-border/50"
                 )}
               >
-                <Icon className="w-4 h-4 shrink-0" />
+                <Icon className={clsx("w-4 h-4 shrink-0 transition-transform duration-200", isActive && "text-cockpit-accent")} />
                 {label}
               </Link>
             );

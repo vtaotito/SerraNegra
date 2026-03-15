@@ -30,7 +30,9 @@ export default function RootLayout({
           <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
           <div className="flex-1 flex flex-col min-w-0">
             <Topbar onMenuClick={() => setSidebarOpen(true)} />
-            <main className="flex-1 p-4 md:p-6 overflow-auto">{children}</main>
+            <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto min-h-0">
+              <div className="max-w-[1600px] mx-auto w-full">{children}</div>
+            </main>
           </div>
         </DateRangeProvider>
       </body>
