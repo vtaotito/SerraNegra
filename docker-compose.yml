@@ -153,6 +153,27 @@ services:
       timeout: 3s
       retries: 5
 
+  painel:
+    container_name: wms-painel
+    build:
+      context: .
+      dockerfile: painel/Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
+      PANEL_JWT_SECRET: "${PANEL_JWT_SECRET:-painel-secret-change-me-in-production}"
+      NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
+    ports:
+      - "3003:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   nginx:
     container_name: wms-nginx
     build:

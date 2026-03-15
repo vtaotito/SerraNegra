@@ -1,0 +1,210 @@
+"use client";
+
+import { ProtectedLayout } from "@/components/ProtectedLayout";
+import { useAuth } from "@/components/AuthProvider";
+import {
+  Package,
+  BarChart3,
+  ShoppingCart,
+  Users,
+  Activity,
+  Clock,
+  Shield,
+  ExternalLink,
+} from "lucide-react";
+import { ROLE_LABELS } from "@/lib/types";
+import type { PanelModule } from "@/lib/types";
+import { WMS_BASE_URL } from "@/lib/config";
+
+const modules: {
+  key: PanelModule;
+  label: string;
+  description: string;
+  href: string;
+  icon: React.ElementType;
+  gradient: string;
+  features: string[];
+}[] = [
+  {
+    key: "wms",
+    label: "WMS / OMS",
+    description: "Sistema de gestão de pedidos e logística com integração SAP B1",
+    href: WMS_BASE_URL,
+    icon: Package,
+    gradient: "from-blue-500 to-blue-700",
+    features: ["Pedidos", "Estoque", "Produtos", "Integração SAP"],
+  },
+  {
+    key: "cockpit",
+    label: "Cockpit BI",
+    description: "Business Intelligence com dashboards de vendas, faturamento e margens",
+    href: `${WMS_BASE_URL}/cockpit`,
+    icon: BarChart3,
+    gradient: "from-violet-500 to-violet-700",
+    features: ["Faturamento", "Vendedores", "Margens", "Carteira"],
+  },
+  {
+    key: "b2b",
+    label: "Portal B2B",
+    description: "Portal de autoatendimento para clientes com catálogo e pedidos",
+    href: `${WMS_BASE_URL}/b2b`,
+    icon: ShoppingCart,
+    gradient: "from-emerald-500 to-emerald-700",
+    features: ["Catálogo", "Carrinho", "Pedidos", "Admin"],
+  },
+];
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const userModules = modules.filter((m) => user.allowedModules.includes(m.key));
+
+  return (
+    <ProtectedLayout>
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-slate-900">
+            Bem-vindo, {user.displayName.split(" ")[0]}
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Painel administrativo — Garrafaria Serra Negra
+          </p>
+        </div>
+
+        {/* Quick stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+                <Shield className="w-4 h-4 text-blue-600" />
+              </div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                Perfil
+              </span>
+            </div>
+            <p className="text-lg font-semibold text-slate-900">
+              {ROLE_LABELS[user.role]}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg bg-violet-50 flex items-center justify-center">
+                <Activity className="w-4 h-4 text-violet-600" />
+              </div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                Módulos
+              </span>
+            </div>
+            <p className="text-lg font-semibold text-slate-900">
+              {user.allowedModules.length} ativos
+            </p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
+                <Users className="w-4 h-4 text-emerald-600" />
+              </div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                Usuário
+              </span>
+            </div>
+            <p className="text-lg font-semibold text-slate-900">{user.username}</p>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Clock className="w-4 h-4 text-amber-600" />
+              </div>
+              <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                Último acesso
+              </span>
+            </div>
+            <p className="text-sm font-semibold text-slate-900">
+              {user.lastLoginAt
+                ? new Date(user.lastLoginAt).toLocaleDateString("pt-BR", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : "Primeiro acesso"}
+            </p>
+          </div>
+        </div>
+
+        {/* Module cards */}
+        <h2 className="text-lg font-semibold text-slate-900 mb-4">Seus módulos</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {userModules.map((mod) => (
+            <a
+              key={mod.key}
+              href={mod.href}
+              target="_blank"
+              rel="noopener"
+              className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-200"
+            >
+              {/* Card header with gradient */}
+              <div className={`bg-gradient-to-r ${mod.gradient} p-6 relative`}>
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition" />
+                <div className="relative flex items-center justify-between">
+                  <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                    <mod.icon className="w-6 h-6 text-white" />
+                  </div>
+                  <ExternalLink className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                </div>
+                <h3 className="relative text-xl font-bold text-white mt-4">{mod.label}</h3>
+              </div>
+
+              {/* Card body */}
+              <div className="p-5">
+                <p className="text-sm text-slate-500 mb-4">{mod.description}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {mod.features.map((f) => (
+                    <span
+                      key={f}
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600"
+                    >
+                      {f}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+
+        {/* SAP Integration status */}
+        <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-slate-400" />
+            Integração SAP B1
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="p-3 rounded-lg bg-slate-50">
+              <p className="text-xs text-slate-500">Pedidos</p>
+              <p className="text-sm font-semibold text-slate-900 mt-1">Sync ativo</p>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-50">
+              <p className="text-xs text-slate-500">Produtos</p>
+              <p className="text-sm font-semibold text-slate-900 mt-1">Sync ativo</p>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-50">
+              <p className="text-xs text-slate-500">Estoque</p>
+              <p className="text-sm font-semibold text-slate-900 mt-1">Sync ativo</p>
+            </div>
+            <div className="p-3 rounded-lg bg-slate-50">
+              <p className="text-xs text-slate-500">Clientes</p>
+              <p className="text-sm font-semibold text-slate-900 mt-1">Sync ativo</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </ProtectedLayout>
+  );
+}
