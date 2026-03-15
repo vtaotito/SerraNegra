@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useMemo, useCallback, useEffect } from "react";
+import { Fragment, useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -121,6 +121,14 @@ function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
 }
 
 export default function PedidosPage() {
+  return (
+    <Suspense fallback={<LoadingSkeleton rows={8} />}>
+      <PedidosContent />
+    </Suspense>
+  );
+}
+
+function PedidosContent() {
   const searchParams = useSearchParams();
   const cardCodeFromUrl = searchParams.get("cardCode");
   const clientNameFromUrl = searchParams.get("clientName") ?? undefined;
