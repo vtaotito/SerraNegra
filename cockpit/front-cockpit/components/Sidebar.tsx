@@ -14,15 +14,13 @@ import {
   Target,
   ShoppingCart,
   X,
-  Activity,
 } from "lucide-react";
 import clsx from "clsx";
 
 const navItems = [
   { label: "Visão geral", path: "/", icon: LayoutDashboard },
-  { label: "Dashboard Vendas", path: "/vendas-dashboard", icon: Activity },
-  { label: "Documentos / Vendas", path: "/comercial/dados", icon: FileText },
   { label: "Pedidos de Venda", path: "/pedidos", icon: ShoppingCart },
+  { label: "Documentos / Vendas", path: "/comercial/dados", icon: FileText },
   { label: "Estoque", path: "/estoque", icon: Package },
   { label: "Clientes", path: "/clientes", icon: Users },
   { label: "Carteira", path: "/carteira", icon: Wallet },
