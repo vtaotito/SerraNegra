@@ -242,6 +242,7 @@ interface ParsedItem {
   cod: string;
   subNome: string;
   embala: string;
+  embalaQty: number;
   unit: string;
   capacidade: string;
   cor: string;
@@ -257,10 +258,11 @@ const COR_MAP: Record<string, string> = {
 function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedItem {
   const cod = getProductGroup(itemCode);
   const d = (desc ?? "").trim();
-  if (!d) return { cod, subNome: "—", embala: "—", unit: "—", capacidade: "—", cor: "—", fechamento: "—" };
+  if (!d) return { cod, subNome: "—", embala: "—", embalaQty: 1, unit: "—", capacidade: "—", cor: "—", fechamento: "—" };
 
   let subNome = d;
   let embala = "—";
+  let embalaQty = 1;
   let unit = "UND";
 
   const dashIdx = d.lastIndexOf(" - ");
@@ -273,9 +275,12 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
     const packRx = /^(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND$/i;
     const packMatch = packPart.match(packRx);
     if (packMatch) {
-      embala = `${packMatch[1].toUpperCase()} C/${packMatch[2].replace(/\./g, "")}`;
+      const qStr = packMatch[2].replace(/\./g, "").replace(",", ".");
+      embalaQty = parseInt(qStr, 10) || 1;
+      embala = `${packMatch[1].toUpperCase()} C/${embalaQty}`;
     } else if (/^UND$/i.test(packPart.replace(/-/g, "").trim())) {
       embala = "UND";
+      embalaQty = 1;
     } else {
       embala = packPart || "—";
     }
@@ -285,20 +290,23 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
     const i = d.search(/[-–]\s*UND\s*$/i);
     subNome = d.slice(0, i).trim();
     embala = "UND";
+    embalaQty = 1;
   }
   // Caso 3: sem dash, mas EMBALA direto no texto
-  // Ex: "GARRAFA KHLOE 750 ML ROLHA 22.5MM  FARDO C/ 20 UND"
   else {
     const inlineRx = /\s+(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND\s*$/i;
     const inlineMatch = d.match(inlineRx);
     if (inlineMatch) {
       subNome = d.slice(0, inlineMatch.index!).trim();
-      embala = `${inlineMatch[1].toUpperCase()} C/${inlineMatch[2].replace(/\./g, "")}`;
+      const qStr = inlineMatch[2].replace(/\./g, "").replace(",", ".");
+      embalaQty = parseInt(qStr, 10) || 1;
+      embala = `${inlineMatch[1].toUpperCase()} C/${embalaQty}`;
     } else if (/\bUND\s*$/i.test(d)) {
       const undIdx = d.search(/\s+UND\s*$/i);
       if (undIdx > 0) {
         subNome = d.slice(0, undIdx).trim();
         embala = "UND";
+        embalaQty = 1;
       }
     }
   }
@@ -314,7 +322,7 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
   const fechMatch = subNome.match(fechRx);
   const fechamento = fechMatch ? fechMatch[1].replace(/\./g, "-").toUpperCase() : "—";
 
-  return { cod, subNome, embala, unit, capacidade, cor, fechamento };
+  return { cod, subNome, embala, embalaQty, unit, capacidade, cor, fechamento };
 }
 
 // ─── Sort & Types ─────────────────────────────────────────────
@@ -415,9 +423,12 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
     );
   }
 
-  const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
+  const totalEmb = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
   const totalVal = lines.reduce((s, l) => s + (l.LineTotal ?? 0), 0);
-  const qtyBase = orderTotalQty > 0 ? orderTotalQty : totalQty;
+  const totalUnd = lines.reduce((s, l) => {
+    const info = parseItemInfo(l.ItemCode, l.ItemDescription);
+    return s + (l.Quantity ?? 0) * info.embalaQty;
+  }, 0);
 
   return (
     <div className="order-detail-enter overflow-hidden">
@@ -431,7 +442,8 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
             <span className="text-xs text-cockpit-muted font-normal">({lines.length} itens)</span>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-gray-600">Qtd: <strong className="text-gray-900 tabular-nums">{fmtQty(totalQty)}</strong></span>
+            <span className="text-gray-600">Emb: <strong className="text-gray-900 tabular-nums">{fmtQty(totalEmb)}</strong></span>
+            <span className="text-gray-600">UND: <strong className="text-gray-900 tabular-nums">{fmtQty(totalUnd)}</strong></span>
             <span className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(totalVal)}</span>
           </div>
         </div>
@@ -452,33 +464,37 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
         )}
 
         <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm overflow-x-auto">
-          <table className="w-full text-xs min-w-[960px]">
+          <table className="w-full text-xs min-w-[1060px]">
             <thead>
               <tr className="border-b border-cockpit-border/40 bg-gray-50/80 text-cockpit-muted uppercase tracking-wider text-[10px]">
                 <th className="text-left py-2.5 px-2 font-semibold w-7">#</th>
                 <th className="text-left py-2.5 px-2 font-semibold w-9">COD</th>
-                <th className="text-left py-2.5 px-2 font-semibold w-[90px]">Código</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-[86px]">Código</th>
                 <th className="text-left py-2.5 px-2 font-semibold">Sub-Nome</th>
                 <th className="text-center py-2.5 px-2 font-semibold w-14">Capac.</th>
                 <th className="text-center py-2.5 px-2 font-semibold w-20">Embala</th>
-                <th className="text-center py-2.5 px-2 font-semibold w-10">Unit</th>
-                <th className="text-left py-2.5 px-2 font-semibold w-10">Dep.</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-12">Qtd</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-12">% Qtd</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[72px]">Preço</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-11">Desc%</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-12">Armazém</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-12">Emb.</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-14">Qtd UND</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-11">% Qtd</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[68px]">R$/Emb</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[62px]">R$/UND</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-10">Desc%</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[72px]">Total</th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l, idx) => {
                 const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-                const qty = l.Quantity ?? 0;
-                const pctQty = qtyBase > 0 ? (qty / qtyBase) * 100 : 0;
+                const qtyEmb = l.Quantity ?? 0;
+                const qtyUnd = qtyEmb * info.embalaQty;
+                const pctQty = totalUnd > 0 ? (qtyUnd / totalUnd) * 100 : 0;
                 const disc = l.DiscountPercent ?? 0;
+                const precoEmb = l.UnitPrice ?? l.Price ?? 0;
+                const precoUnd = info.embalaQty > 1 ? precoEmb / info.embalaQty : precoEmb;
 
                 return (
-                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150 group">
+                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
                     <td className="py-1.5 px-2 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
                     <td className="py-1.5 px-2">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{info.cod}</span>
@@ -507,15 +523,25 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                         }`}>{info.embala}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">{info.unit}</td>
-                    <td className="py-1.5 px-2 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-gray-900">{fmtQty(qty)}</td>
+                    <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">{l.WarehouseCode ?? "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtQty(qtyEmb)}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-gray-900">
+                      {fmtQty(qtyUnd)}
+                      {info.embalaQty > 1 && (
+                        <span className="block text-[9px] text-gray-400 font-normal">×{info.embalaQty}</span>
+                      )}
+                    </td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
                       <span className={`text-[10px] font-medium ${pctQty >= 30 ? "text-cockpit-accent font-bold" : pctQty >= 10 ? "text-gray-700" : "text-gray-400"}`}>
                         {pctQty.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{precoEmb > 0 ? fmtBRL(precoEmb) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">
+                      {precoUnd > 0 ? (
+                        <span className={`text-[10px] ${info.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-500"}`}>{fmtBRL(precoUnd)}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
                       {disc > 0 ? (
                         <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc}%</span>
