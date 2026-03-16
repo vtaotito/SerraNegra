@@ -13,6 +13,7 @@ import {
   BarChart3,
   Target,
   ShoppingCart,
+  Tag,
   X,
 } from "lucide-react";
 import clsx from "clsx";
@@ -21,6 +22,7 @@ const navItems = [
   { label: "Visão geral", path: "/", icon: LayoutDashboard },
   { label: "Pedidos de Venda", path: "/pedidos", icon: ShoppingCart },
   { label: "Documentos / Vendas", path: "/comercial/dados", icon: FileText },
+  { label: "Produtos", path: "/produtos", icon: Tag },
   { label: "Estoque", path: "/estoque", icon: Package },
   { label: "Clientes", path: "/clientes", icon: Users },
   { label: "Carteira", path: "/carteira", icon: Wallet },
