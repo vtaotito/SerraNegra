@@ -555,6 +555,20 @@ export async function querySalesOrders(opts: {
           'Price', l.price, 'CFOPCode', l.cfop_code, 'Weight', l.weight
         ) ORDER BY l.line_num)
         FROM sap_sales_order_lines l WHERE l.doc_entry = o.doc_entry),
+        (SELECT json_agg(json_build_object(
+          'LineNum', (dl->>'LineNum')::int,
+          'ItemCode', dl->>'ItemCode',
+          'ItemDescription', dl->>'ItemDescription',
+          'Quantity', (dl->>'Quantity')::numeric,
+          'UnitPrice', (dl->>'UnitPrice')::numeric,
+          'LineTotal', (dl->>'LineTotal')::numeric,
+          'DiscountPercent', (dl->>'DiscountPercent')::numeric,
+          'WarehouseCode', dl->>'WarehouseCode',
+          'Price', (dl->>'Price')::numeric,
+          'CFOPCode', dl->>'CFOPCode',
+          'Weight', (dl->>'Weight1')::numeric
+        ) ORDER BY (dl->>'LineNum')::int)
+        FROM jsonb_array_elements(o.raw_json->'DocumentLines') dl),
         '[]'::json
       ) AS lines
     FROM sap_sales_orders o ${where}
