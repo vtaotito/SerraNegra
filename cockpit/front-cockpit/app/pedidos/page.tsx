@@ -9,7 +9,7 @@ import {
   RefreshCw, DollarSign, Users, TrendingUp, BarChart3,
   ArrowUpDown, ArrowUp, ArrowDown, ListOrdered,
   PieChart as PieChartIcon, Clock, Activity, Hash,
-  Calendar, Briefcase, Minus, Equal,
+  Calendar, Briefcase, Minus, Equal, MapPin,
 } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
@@ -20,10 +20,12 @@ import {
 import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
 import {
   fetchSalesOrders, syncSalesOrders, fetchOrderLines,
+  fetchSalesPersons, fetchCustomers,
   type SalesOrderRow, type SalesOrderLine,
 } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
+import { getProductGroup } from "@/lib/format";
 import {
   format, parseISO, startOfDay, startOfMonth, subDays, subMonths,
   getDay, differenceInCalendarDays,
@@ -177,7 +179,7 @@ function aggregateByWeekday(orders: SalesOrderRow[]): { dia: string; idx: number
   }).filter((d) => d.pedidos > 0);
 }
 
-function aggregateBySalesPerson(orders: SalesOrderRow[]): { vendedor: string; valor: number; pedidos: number; mediana: number; ticket: number }[] {
+function aggregateBySalesPerson(orders: SalesOrderRow[], pMap?: Map<number, string>): { vendedor: string; valor: number; pedidos: number; mediana: number; ticket: number }[] {
   const active = orders.filter((o) => o.cancelled !== "Y" && o.sales_person_code != null);
   const byPerson = new Map<number, number[]>();
   for (const o of active) {
@@ -188,7 +190,7 @@ function aggregateBySalesPerson(orders: SalesOrderRow[]): { vendedor: string; va
   }
   return Array.from(byPerson.entries())
     .map(([code, vals]) => ({
-      vendedor: `Vend. ${code}`,
+      vendedor: pMap?.get(code) ?? `Vend. ${code}`,
       valor: vals.reduce((s, v) => s + v, 0),
       pedidos: vals.length,
       mediana: median(vals),
@@ -228,6 +230,30 @@ function leadTimeData(orders: SalesOrderRow[]): { dias: number; count: number }[
   return Array.from(ltMap.entries())
     .map(([dias, count]) => ({ dias, count }))
     .sort((a, b) => a.dias - b.dias);
+}
+
+// ─── Item description parser ──────────────────────────────────
+
+function parseItemInfo(itemCode?: string | null, desc?: string | null) {
+  const cod = getProductGroup(itemCode);
+  const d = (desc ?? "").trim();
+
+  const embalaRx = /\b(CX|PCT|FD|KIT|DZ|CT|EMB|BDJ|PAR|JG)\s*(\d+)\s*$/i;
+  const embalaMatch = d.match(embalaRx);
+  const embala = embalaMatch ? embalaMatch[0].trim().toUpperCase() : "—";
+
+  const unitRx = /\b(\d+(?:[.,]\d+)?)\s*(ML|LT|L|KG|GR|G|CM|MM|M|M2|M3|UN|PC|PÇ|PÇS|UND|CJ)\b/i;
+  const unitMatch = d.match(unitRx);
+  const unit = unitMatch ? unitMatch[0].trim().toUpperCase() : "—";
+
+  const subNome = d
+    .replace(embalaRx, "")
+    .replace(/\b\d+(?:[.,]\d+)?\s*(ML|LT|L|KG|GR|G|CM|MM|M|UN|PC|PÇ)\b/gi, "")
+    .replace(/[-–—]+\s*$/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim() || d;
+
+  return { cod, embala, unit, subNome };
 }
 
 // ─── Sort & Types ─────────────────────────────────────────────
@@ -311,7 +337,14 @@ function BoxPlotVisual({ min, p25, med, p75, max, mean }: { min: number; p25: nu
 
 // ─── OrderDetailPanel ─────────────────────────────────────────
 
-function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
+interface OrderDetailPanelProps {
+  lines: SalesOrderLine[];
+  orderTotalQty: number;
+  vendorName?: string;
+  location?: string;
+}
+
+function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderDetailPanelProps) {
   if (lines.length === 0) {
     return (
       <div className="px-6 py-6 text-sm text-cockpit-muted italic bg-gradient-to-b from-amber-50/80 to-white rounded-b-lg border border-t-0 border-cockpit-border/50 flex items-center gap-3">
@@ -323,11 +356,12 @@ function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
 
   const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
   const totalVal = lines.reduce((s, l) => s + (l.LineTotal ?? 0), 0);
+  const qtyBase = orderTotalQty > 0 ? orderTotalQty : totalQty;
 
   return (
     <div className="order-detail-enter overflow-hidden">
       <div className="px-4 py-4 bg-gradient-to-b from-gray-50/90 to-white border-x border-b border-cockpit-border/50">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-md bg-cockpit-accent/10">
               <Package className="w-4 h-4 text-cockpit-accent" />
@@ -340,33 +374,82 @@ function OrderDetailPanel({ lines }: { lines: SalesOrderLine[] }) {
             <span className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(totalVal)}</span>
           </div>
         </div>
-        <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm">
+
+        {(vendorName || location) && (
+          <div className="flex flex-wrap gap-4 mb-3 text-xs text-gray-600">
+            {vendorName && vendorName !== "—" && (
+              <span className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md font-medium">
+                <Briefcase className="w-3 h-3" /> {vendorName}
+              </span>
+            )}
+            {location && location !== "—" && (
+              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md font-medium">
+                <MapPin className="w-3 h-3" /> {location}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-cockpit-border/40 bg-gray-50/80 text-cockpit-muted uppercase tracking-wider text-[10px]">
-                <th className="text-left py-2.5 px-3 font-semibold w-10">#</th>
-                <th className="text-left py-2.5 px-3 font-semibold w-28">Código</th>
-                <th className="text-left py-2.5 px-3 font-semibold">Descrição</th>
-                <th className="text-left py-2.5 px-3 font-semibold w-16">Dep.</th>
-                <th className="text-right py-2.5 px-3 font-semibold w-20">Qtd</th>
-                <th className="text-right py-2.5 px-3 font-semibold w-24">Preço Unit.</th>
-                <th className="text-right py-2.5 px-3 font-semibold w-16">Desc%</th>
-                <th className="text-right py-2.5 px-3 font-semibold w-24">Total</th>
+                <th className="text-left py-2.5 px-2.5 font-semibold w-8">#</th>
+                <th className="text-left py-2.5 px-2.5 font-semibold w-10">COD</th>
+                <th className="text-left py-2.5 px-2.5 font-semibold w-24">Código</th>
+                <th className="text-left py-2.5 px-2.5 font-semibold">Sub-Nome</th>
+                <th className="text-center py-2.5 px-2.5 font-semibold w-14">Embala</th>
+                <th className="text-center py-2.5 px-2.5 font-semibold w-14">Unit</th>
+                <th className="text-left py-2.5 px-2.5 font-semibold w-12">Dep.</th>
+                <th className="text-right py-2.5 px-2.5 font-semibold w-14">Qtd</th>
+                <th className="text-right py-2.5 px-2.5 font-semibold w-12">% Qtd</th>
+                <th className="text-right py-2.5 px-2.5 font-semibold w-20">Preço</th>
+                <th className="text-right py-2.5 px-2.5 font-semibold w-12">Desc%</th>
+                <th className="text-right py-2.5 px-2.5 font-semibold w-20">Total</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((l, idx) => (
-                <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
-                  <td className="py-2 px-3 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
-                  <td className="py-2 px-3 font-mono text-xs text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
-                  <td className="py-2 px-3 text-gray-700 max-w-[280px]"><span className="line-clamp-2">{l.ItemDescription ?? "—"}</span></td>
-                  <td className="py-2 px-3 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
-                  <td className="py-2 px-3 text-right tabular-nums font-semibold text-gray-900">{fmtQty(l.Quantity ?? 0)}</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-gray-600">{l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}</td>
-                  <td className="py-2 px-3 text-right tabular-nums text-gray-500">{(l.DiscountPercent ?? 0) > 0 ? `${l.DiscountPercent}%` : "—"}</td>
-                  <td className="py-2 px-3 text-right tabular-nums font-semibold text-cockpit-accent">{l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}</td>
-                </tr>
-              ))}
+              {lines.map((l, idx) => {
+                const info = parseItemInfo(l.ItemCode, l.ItemDescription);
+                const qty = l.Quantity ?? 0;
+                const pctQty = qtyBase > 0 ? (qty / qtyBase) * 100 : 0;
+                const disc = l.DiscountPercent ?? 0;
+
+                return (
+                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
+                    <td className="py-2 px-2.5 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
+                    <td className="py-2 px-2.5">
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{info.cod}</span>
+                    </td>
+                    <td className="py-2 px-2.5 font-mono text-[11px] text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
+                    <td className="py-2 px-2.5 text-gray-700 max-w-[220px]"><span className="line-clamp-1" title={l.ItemDescription ?? ""}>{info.subNome}</span></td>
+                    <td className="py-2 px-2.5 text-center">
+                      {info.embala !== "—" ? (
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700">{info.embala}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-2 px-2.5 text-center">
+                      {info.unit !== "—" ? (
+                        <span className="text-[10px] font-medium text-gray-600">{info.unit}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-2 px-2.5 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
+                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-gray-900">{fmtQty(qty)}</td>
+                    <td className="py-2 px-2.5 text-right tabular-nums">
+                      <span className={`text-[10px] font-medium ${pctQty >= 30 ? "text-cockpit-accent font-bold" : pctQty >= 10 ? "text-gray-700" : "text-gray-400"}`}>
+                        {pctQty.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="py-2 px-2.5 text-right tabular-nums text-gray-600">{l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}</td>
+                    <td className="py-2 px-2.5 text-right tabular-nums">
+                      {disc > 0 ? (
+                        <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc}%</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-cockpit-accent">{l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -416,11 +499,32 @@ function PedidosContent() {
     [dateFrom, dateTo]
   );
 
+  const { data: spData } = useFetch(() => fetchSalesPersons(), []);
+  const { data: custData } = useFetch(() => fetchCustomers({ limit: 50000 }), []);
+
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const orders = useMemo(() => data?.items ?? [], [data]);
   const activeOrders = useMemo(() => orders.filter((o) => o.cancelled !== "Y"), [orders]);
+
+  const spMap = useMemo(() => {
+    const m = new Map<number, string>();
+    if (spData?.items) {
+      for (const sp of spData.items) m.set(sp.SalesEmployeeCode, sp.SalesEmployeeName);
+    }
+    return m;
+  }, [spData]);
+
+  const custMap = useMemo(() => {
+    const m = new Map<string, { city: string; state: string }>();
+    if (custData?.data) {
+      for (const c of custData.data) {
+        if (c.card_code) m.set(c.card_code, { city: c.city ?? "", state: c.state ?? "" });
+      }
+    }
+    return m;
+  }, [custData]);
 
   // ─── Chart tab ───
   const [chartTab, setChartTab] = useState<ChartTab>("overview");
@@ -524,7 +628,7 @@ function PedidosContent() {
   const dailyMedian = useMemo(() => median(chartByDay.map((d) => d.valor)), [chartByDay]);
   const histData = useMemo(() => histogramBins(orderValues), [orderValues]);
   const weekdayData = useMemo(() => aggregateByWeekday(orders), [orders]);
-  const salesPersonData = useMemo(() => aggregateBySalesPerson(orders), [orders]);
+  const salesPersonData = useMemo(() => aggregateBySalesPerson(orders, spMap), [orders, spMap]);
   const cumulativeData = useMemo(() => cumulativeByDay(chartByDay), [chartByDay]);
   const scatter = useMemo(() => scatterData(orders), [orders]);
   const leadTime = useMemo(() => leadTimeData(orders), [orders]);
@@ -570,15 +674,21 @@ function PedidosContent() {
   }, [refetch]);
 
   const handleExportCSV = useCallback(() => {
-    const rows = filtered.map((o) => ({
-      "Nº Pedido": o.doc_num, "Data Pedido": fmtDateShort(o.doc_date), "Data Entrega": fmtDateShort(o.doc_due_date),
-      "Cód. Cliente": o.card_code, "Cliente": o.card_name, "Valor Total": Number(o.doc_total) || 0,
-      "Moeda": o.doc_currency, "Status": o.cancelled === "Y" ? "Cancelado" : o.doc_status === "O" ? "Aberto" : "Fechado",
-      "Itens": o.lines?.length ?? o.num_lines ?? 0, "Qtd Total": Number(o.total_quantity) || 0,
-      "Vendedor": o.sales_person_code ?? "", "Observações": o.comments ?? "",
-    }));
+    const rows = filtered.map((o) => {
+      const vName = o.sales_person_code != null ? (spMap.get(o.sales_person_code) ?? `Cód ${o.sales_person_code}`) : "";
+      const cust = custMap.get(o.card_code ?? "");
+      const loc = cust ? [cust.city, cust.state].filter(Boolean).join("/") : (o.address2 || "");
+      return {
+        "Nº Pedido": o.doc_num, "Data Pedido": fmtDateShort(o.doc_date), "Data Entrega": fmtDateShort(o.doc_due_date),
+        "Cód. Cliente": o.card_code, "Cliente": o.card_name, "Localização": loc,
+        "Valor Total": Number(o.doc_total) || 0,
+        "Moeda": o.doc_currency, "Status": o.cancelled === "Y" ? "Cancelado" : o.doc_status === "O" ? "Aberto" : "Fechado",
+        "Itens": o.lines?.length ?? o.num_lines ?? 0, "Qtd Total": Number(o.total_quantity) || 0,
+        "Vendedor": vName, "Observações": o.comments ?? "",
+      };
+    });
     exportCSV(rows, `pedidos-venda-${dateFrom}-${dateTo}`);
-  }, [filtered, dateFrom, dateTo]);
+  }, [filtered, dateFrom, dateTo, spMap, custMap]);
 
   function SortIcon({ field }: { field: SortField }) {
     if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-30" />;
@@ -1255,9 +1365,9 @@ function PedidosContent() {
                   <span className="inline-flex items-center gap-1">Nº <SortIcon field="doc_num" /></span></th>
                 <th className="text-left py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_date")}>
                   <span className="inline-flex items-center gap-1">Data <SortIcon field="doc_date" /></span></th>
-                <th className="text-left py-2.5 px-3 font-semibold">Cód. PN</th>
                 <th className="text-left py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("card_name")}>
                   <span className="inline-flex items-center gap-1">Parceiro de Negócios <SortIcon field="card_name" /></span></th>
+                <th className="text-left py-2.5 px-3 font-semibold">Localização</th>
                 <th className="text-center py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("num_lines")}>
                   <span className="inline-flex items-center gap-1">Itens <SortIcon field="num_lines" /></span></th>
                 <th className="text-right py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("total_quantity")}>
@@ -1265,7 +1375,7 @@ function PedidosContent() {
                 <th className="text-right py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_total")}>
                   <span className="inline-flex items-center gap-1 justify-end">Valor (BRL) <SortIcon field="doc_total" /></span></th>
                 <th className="text-center py-2.5 px-3 font-semibold">Status</th>
-                <th className="text-center py-2.5 px-3 font-semibold">Vend.</th>
+                <th className="text-left py-2.5 px-3 font-semibold">Vendedor</th>
               </tr>
             </thead>
             <tbody>
@@ -1277,6 +1387,9 @@ function PedidosContent() {
                 const isLoadingLines = loadingLines.has(order.doc_entry);
                 const qty = Number(order.total_quantity) || lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
                 const nLines = lines.length || order.num_lines || 0;
+                const vendorName = order.sales_person_code != null ? (spMap.get(order.sales_person_code) ?? `Cód ${order.sales_person_code}`) : "—";
+                const cust = custMap.get(order.card_code ?? "");
+                const loc = cust ? [cust.city, cust.state].filter(Boolean).join("/") : (order.address2 || "—");
 
                 return (
                   <Fragment key={order.doc_entry}>
@@ -1287,8 +1400,15 @@ function PedidosContent() {
                       </td>
                       <td className="py-2.5 px-3 font-bold text-gray-900 tabular-nums text-sm">{order.doc_num}</td>
                       <td className="py-2.5 px-3 text-gray-600 tabular-nums whitespace-nowrap">{fmtDateShort(order.doc_date)}</td>
-                      <td className="py-2.5 px-3 text-gray-500 font-mono text-xs">{order.card_code}</td>
-                      <td className="py-2.5 px-3 text-gray-800 max-w-[200px] truncate font-medium" title={order.card_name}>{order.card_name || order.card_code}</td>
+                      <td className="py-2.5 px-3 text-gray-800 max-w-[180px] truncate font-medium" title={`${order.card_name} (${order.card_code})`}>
+                        <span>{order.card_name || order.card_code}</span>
+                        <span className="block text-[10px] text-gray-400 font-mono">{order.card_code}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-xs text-gray-500 max-w-[120px] truncate" title={loc}>
+                        {loc && loc !== "—" ? (
+                          <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-gray-400 shrink-0" />{loc}</span>
+                        ) : "—"}
+                      </td>
                       <td className="py-2.5 px-3 text-center">
                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 tabular-nums">{nLines}</span>
                       </td>
@@ -1301,7 +1421,7 @@ function PedidosContent() {
                           {isCancelled ? "Cancelado" : isOpen ? "Aberto" : "Fechado"}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-center tabular-nums text-xs text-gray-500">{order.sales_person_code ?? "—"}</td>
+                      <td className="py-2.5 px-3 text-xs text-gray-600 max-w-[120px] truncate" title={vendorName}>{vendorName}</td>
                     </tr>
                     {isExpanded && (
                       <tr className="bg-transparent">
@@ -1310,7 +1430,14 @@ function PedidosContent() {
                             <div className="px-8 py-6 flex items-center gap-2 text-sm text-cockpit-muted bg-gray-50/90 border-x border-b border-cockpit-border/50">
                               <Loader2 className="w-4 h-4 animate-spin text-cockpit-accent" /> Carregando itens do SAP...
                             </div>
-                          ) : <OrderDetailPanel lines={lines} />}
+                          ) : (
+                            <OrderDetailPanel
+                              lines={lines}
+                              orderTotalQty={qty}
+                              vendorName={vendorName}
+                              location={loc}
+                            />
+                          )}
                         </td>
                       </tr>
                     )}
