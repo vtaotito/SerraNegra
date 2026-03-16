@@ -382,7 +382,7 @@ function ProdutosContent() {
           { label: "Faturamento", value: fmtBRL(totalFat), icon: DollarSign, color: "text-emerald-600" },
           { label: "Qtd UND", value: fmtNum(totalUnd), sub: `${fmtNum(totalEmb)} embalagens`, icon: Package, color: "text-blue-600" },
           { label: "Ticket/SKU", value: fmtBRL(ticketMedioSku), icon: TrendingUp, color: "text-violet-600" },
-          { label: "R$/UND Mediana", value: fmtBRL(medianUndPrice), icon: Hash, color: "text-teal-600" },
+          { label: "R$/UND Mediana", value: fmtBRL(medianUndPrice, 2), icon: Hash, color: "text-teal-600" },
           { label: "Tipo Embala", value: String(embalaTypes.length), sub: embalaTypes.join(", "), icon: Layers, color: "text-amber-600" },
         ].map((kpi) => (
           <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 transition-all duration-200 group">
@@ -427,7 +427,7 @@ function ProdutosContent() {
                         <p className="font-semibold text-gray-800">{d.cod} — {d.name}</p>
                         <p className="text-cockpit-accent font-bold">{fmtBRL(d.faturamento)}</p>
                         <p className="text-gray-500">{fmtNum(d.skus)} SKUs · {fmtNum(d.vendas)} vendas</p>
-                        <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · R$/UND: {fmtBRL(d.precoUndMedio)}</p>
+                        <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · R$/UND: {fmtBRL(d.precoUndMedio, 2)}</p>
                       </ChartTooltip>
                     );
                   }} />
@@ -530,7 +530,7 @@ function ProdutosContent() {
                       <p className="text-gray-600 text-[11px] mb-1">{d.subNome}</p>
                       <p className="text-cockpit-accent font-bold">{fmtBRL(d.faturamento)}</p>
                       <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · {d.embala} · {fmtNum(d.vendas)} vendas</p>
-                      <p className="text-teal-700">R$/UND: {fmtBRL(d.precoUndMedio)}</p>
+                      <p className="text-teal-700">R$/UND: {fmtBRL(d.precoUndMedio, 2)}</p>
                     </ChartTooltip>
                   );
                 }} />
@@ -578,30 +578,23 @@ function ProdutosContent() {
         </div>
 
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-xs min-w-[1100px]">
+          <table className="w-full text-xs min-w-[760px]">
             <thead>
-              <tr className="border-b border-cockpit-border bg-gray-50/50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
-                <th className="text-left py-2.5 px-2.5 font-semibold w-10 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("cod")}>
+              <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
+                <th className="text-left py-2.5 px-2 font-semibold w-[44px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("cod")}>
                   <span className="inline-flex items-center gap-1">COD <SortIcon field="cod" /></span></th>
-                <th className="text-left py-2.5 px-2.5 font-semibold w-[86px] cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("itemCode")}>
-                  <span className="inline-flex items-center gap-1">Código <SortIcon field="itemCode" /></span></th>
-                <th className="text-left py-2.5 px-2.5 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("subNome")}>
+                <th className="text-left py-2.5 px-2 font-semibold cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("subNome")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="subNome" /></span></th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-14">Capac.</th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-20">Embala</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-14 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("qtdEmb")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Emb. <SortIcon field="qtdEmb" /></span></th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-16 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("qtdUnd")}>
-                  <span className="inline-flex items-center gap-1 justify-end">UND <SortIcon field="qtdUnd" /></span></th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-[68px]">R$/Emb</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-[62px] cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("precoUndMedio")}>
+                <th className="text-center py-2.5 px-2 font-semibold w-[72px] bg-gray-50">Embala</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[70px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdUnd")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Qtd <SortIcon field="qtdUnd" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[68px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("precoUndMedio")}>
                   <span className="inline-flex items-center gap-1 justify-end">R$/UND <SortIcon field="precoUndMedio" /></span></th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-[78px] cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("faturamento")}>
+                <th className="text-right py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}>
                   <span className="inline-flex items-center gap-1 justify-end">Faturamento <SortIcon field="faturamento" /></span></th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-10">%</th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-10 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("vendas")}>
+                <th className="text-center py-2.5 px-2 font-semibold w-[40px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("vendas")}>
                   <span className="inline-flex items-center gap-1">Vnd <SortIcon field="vendas" /></span></th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-10 cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("clientes")}>
+                <th className="text-center py-2.5 px-2 font-semibold w-[36px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("clientes")}>
                   <span className="inline-flex items-center gap-1">Cli <SortIcon field="clientes" /></span></th>
               </tr>
             </thead>
@@ -610,49 +603,46 @@ function ProdutosContent() {
                 const pctFat = totalFat > 0 ? (p.faturamento / totalFat * 100) : 0;
                 return (
                   <tr key={p.itemCode} className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                    <td className="py-2 px-2.5">
+                    <td className="py-2 px-2 align-top">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: (COD_COLORS[p.cod] ?? "#A81C2C") + "18", color: COD_COLORS[p.cod] ?? "#A81C2C" }}>
                         {p.cod}
                       </span>
                     </td>
-                    <td className="py-2 px-2.5 font-mono text-[10px] text-blue-700 font-medium">{p.itemCode}</td>
-                    <td className="py-2 px-2.5 text-gray-700 max-w-[200px]">
-                      <span className="line-clamp-1 font-medium" title={p.subNome}>{p.subNome}</span>
-                      <div className="flex gap-1.5 mt-0.5">
+                    <td className="py-2 px-2 text-gray-700 max-w-[260px] align-top">
+                      <span className="line-clamp-1 font-medium text-[11px]" title={`${p.itemCode} · ${p.subNome}`}>{p.subNome}</span>
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
+                        <span className="font-mono text-[9px] text-blue-600">{p.itemCode}</span>
+                        {p.capacidade !== "—" && <span className="text-[9px] font-semibold text-sky-700">{p.capacidade}</span>}
                         {p.cor !== "—" && <span className="text-[9px] text-gray-400">{p.cor}</span>}
                         {p.fechamento !== "—" && <span className="text-[9px] text-violet-500">{p.fechamento}</span>}
                       </div>
                     </td>
-                    <td className="py-2 px-2.5 text-center">
-                      {p.capacidade !== "—" ? <span className="text-[10px] font-semibold text-sky-700">{p.capacidade}</span> : <span className="text-gray-300">—</span>}
+                    <td className="py-2 px-2 text-center align-top">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${p.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>{p.embala}</span>
                     </td>
-                    <td className="py-2 px-2.5 text-center">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${p.embala === "UND" ? "bg-gray-50 text-gray-500" : "bg-amber-50 text-amber-700"}`}>{p.embala}</span>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="font-semibold text-gray-900">{fmtNum(p.qtdUnd)}</span>
+                      {p.embalaQty > 1 && (
+                        <span className="block text-[9px] text-gray-400 font-normal">{fmtNum(p.qtdEmb)} emb ×{p.embalaQty}</span>
+                      )}
                     </td>
-                    <td className="py-2 px-2.5 text-right tabular-nums text-gray-600">{fmtNum(p.qtdEmb)}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-gray-900">
-                      {fmtNum(p.qtdUnd)}
-                      {p.embalaQty > 1 && <span className="block text-[9px] text-gray-400 font-normal">×{p.embalaQty}</span>}
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className={`text-[11px] ${p.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-600"}`}>{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio, 2) : "—"}</span>
+                      {p.embalaQty > 1 && p.precoEmbMedio > 0 && (
+                        <span className="block text-[9px] text-gray-400">{fmtBRL(p.precoEmbMedio, 2)}/emb</span>
+                      )}
                     </td>
-                    <td className="py-2 px-2.5 text-right tabular-nums text-gray-600 text-[11px]">{p.precoEmbMedio > 0 ? fmtBRL(p.precoEmbMedio) : "—"}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums">
-                      <span className={`text-[11px] ${p.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-500"}`}>{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio) : "—"}</span>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="font-semibold text-cockpit-accent">{fmtBRL(p.faturamento)}</span>
+                      <span className={`block text-[9px] ${pctFat >= 10 ? "text-cockpit-accent font-bold" : pctFat >= 3 ? "text-gray-600" : "text-gray-400"}`}>{pctFat.toFixed(1)}%</span>
                     </td>
-                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-cockpit-accent">{fmtBRL(p.faturamento)}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums">
-                      <span className={`text-[10px] ${pctFat >= 10 ? "text-cockpit-accent font-bold" : pctFat >= 3 ? "text-gray-700" : "text-gray-400"}`}>{pctFat.toFixed(1)}%</span>
-                    </td>
-                    <td className="py-2 px-2.5 text-center tabular-nums text-gray-600">{p.vendas}</td>
-                    <td className="py-2 px-2.5 text-center">
-                      <span className="inline-flex items-center gap-0.5 text-xs tabular-nums">
-                        <Users className="w-3 h-3 text-gray-400" /> {p.clientes}
-                      </span>
-                    </td>
+                    <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.vendas}</td>
+                    <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.clientes}</td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={13} className="text-center py-12 text-cockpit-muted">
+                <tr><td colSpan={8} className="text-center py-12 text-cockpit-muted">
                   <Tag className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum produto encontrado</p>
                 </td></tr>
@@ -664,9 +654,9 @@ function ProdutosContent() {
         {filtered.length > 0 && (
           <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs">
             <span className="text-cockpit-muted">Total ({filtered.length} produtos)</span>
-            <div className="flex items-center gap-6 tabular-nums">
-              <span className="text-gray-600">Emb: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdEmb, 0))}</strong></span>
+            <div className="flex items-center gap-5 tabular-nums">
               <span className="text-gray-600">UND: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdUnd, 0))}</strong></span>
+              <span className="text-gray-600">Emb: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdEmb, 0))}</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, p) => s + p.faturamento, 0))}</span>
             </div>
           </div>
