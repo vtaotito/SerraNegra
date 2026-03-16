@@ -693,5 +693,9 @@ export type SapSalesOrderLine = {
   WarehouseCode?: string;
   DiscountPercent?: number;
   UnitPrice?: number;
+  CFOPCode?: string;
+  Weight1?: number;
+  TaxCode?: string;
+  Usage?: number;
   [key: string]: unknown;
 };

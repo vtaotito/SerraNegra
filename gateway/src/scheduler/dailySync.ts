@@ -103,6 +103,13 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_sol_item_code    ON sap_sales_order_lines (item_code);
     CREATE INDEX IF NOT EXISTS idx_sync_log_entity  ON sap_sync_log (entity, started_at DESC);
 
+    -- Colunas enriquecidas (linhas) — adicionadas via migração
+    ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS price NUMERIC(18,4) DEFAULT 0;
+    ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS cfop_code TEXT;
+    ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS weight NUMERIC(18,4) DEFAULT 0;
+    ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS tax_code TEXT;
+    ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS usage_code INTEGER;
+
     -- Views úteis para trabalhar sobre a base
     CREATE OR REPLACE VIEW vw_pedidos_resumo AS
     SELECT
@@ -291,8 +298,8 @@ async function upsertOrders(orders: SapSalesOrderRow[]) {
       for (const l of lines) {
         await db.query(
           `INSERT INTO sap_sales_order_lines
-            (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code, price, cfop_code, weight, tax_code, usage_code)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
           [
             docEntry,
             l.LineNum ?? null,
@@ -303,6 +310,11 @@ async function upsertOrders(orders: SapSalesOrderRow[]) {
             l.LineTotal ?? 0,
             l.DiscountPercent ?? 0,
             l.WarehouseCode ?? null,
+            l.Price ?? 0,
+            (l as any).CFOPCode ?? null,
+            (l as any).Weight1 ?? 0,
+            (l as any).TaxCode ?? null,
+            (l as any).Usage ?? null,
           ]
         );
         linesWritten++;
@@ -525,15 +537,26 @@ export async function querySalesOrders(opts: {
 
   const countSql = `SELECT COUNT(*) as total FROM sap_sales_orders o ${where}`;
   const dataSql = `
-    SELECT o.*, COALESCE(
-      (SELECT json_agg(json_build_object(
-        'LineNum', l.line_num, 'ItemCode', l.item_code, 'ItemDescription', l.item_description,
-        'Quantity', l.quantity, 'UnitPrice', l.unit_price, 'LineTotal', l.line_total,
-        'DiscountPercent', l.discount_percent, 'WarehouseCode', l.warehouse_code
-      ) ORDER BY l.line_num)
-      FROM sap_sales_order_lines l WHERE l.doc_entry = o.doc_entry),
-      '[]'::json
-    ) AS lines
+    SELECT
+      o.doc_entry, o.doc_num, o.doc_date, o.doc_due_date, o.card_code, o.card_name,
+      o.doc_total, o.doc_currency, o.doc_status, o.document_status, o.sales_person_code,
+      o.cancelled, o.comments, o.num_lines, o.total_quantity, o.synced_at,
+      o.raw_json->>'PaymentMethod' AS payment_method,
+      (o.raw_json->>'PaymentGroupCode')::int AS payment_group_code,
+      o.raw_json->>'ShipToCode' AS ship_to_code,
+      o.raw_json->>'TaxDate' AS tax_date,
+      o.raw_json->>'Address' AS address,
+      o.raw_json->>'Address2' AS address2,
+      COALESCE(
+        (SELECT json_agg(json_build_object(
+          'LineNum', l.line_num, 'ItemCode', l.item_code, 'ItemDescription', l.item_description,
+          'Quantity', l.quantity, 'UnitPrice', l.unit_price, 'LineTotal', l.line_total,
+          'DiscountPercent', l.discount_percent, 'WarehouseCode', l.warehouse_code,
+          'Price', l.price, 'CFOPCode', l.cfop_code, 'Weight', l.weight
+        ) ORDER BY l.line_num)
+        FROM sap_sales_order_lines l WHERE l.doc_entry = o.doc_entry),
+        '[]'::json
+      ) AS lines
     FROM sap_sales_orders o ${where}
     ORDER BY o.doc_date DESC, o.doc_num DESC
     LIMIT ${limit} OFFSET ${offset}

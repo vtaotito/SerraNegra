@@ -207,6 +207,10 @@ export interface SalesOrderLine {
   WarehouseCode?: string;
   DiscountPercent?: number;
   UnitPrice?: number;
+  CFOPCode?: string;
+  Weight?: number;
+  TaxCode?: string;
+  Usage?: number;
 }
 
 export interface SalesOrderRow {
@@ -227,6 +231,12 @@ export interface SalesOrderRow {
   total_quantity: number;
   lines: SalesOrderLine[];
   synced_at: string;
+  payment_method?: string | null;
+  payment_group_code?: number | null;
+  ship_to_code?: string | null;
+  tax_date?: string | null;
+  address?: string | null;
+  address2?: string | null;
 }
 
 interface SalesOrdersResult {

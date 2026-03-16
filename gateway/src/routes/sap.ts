@@ -1389,7 +1389,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
       const existing = await db.query(
         `SELECT line_num as "LineNum", item_code as "ItemCode", item_description as "ItemDescription",
                 quantity as "Quantity", unit_price as "UnitPrice", line_total as "LineTotal",
-                discount_percent as "DiscountPercent", warehouse_code as "WarehouseCode"
+                discount_percent as "DiscountPercent", warehouse_code as "WarehouseCode",
+                price as "Price", cfop_code as "CFOPCode", weight as "Weight", tax_code as "TaxCode", usage_code as "Usage"
          FROM sap_sales_order_lines WHERE doc_entry = $1 ORDER BY line_num`,
         [docEntry]
       );
@@ -1406,9 +1407,9 @@ export async function registerSapRoutes(app: FastifyInstance) {
         await db.query(`DELETE FROM sap_sales_order_lines WHERE doc_entry = $1`, [docEntry]);
         for (const l of sapLines) {
           await db.query(
-            `INSERT INTO sap_sales_order_lines (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-            [docEntry, l.LineNum, l.ItemCode, l.ItemDescription, l.Quantity ?? 0, l.UnitPrice ?? l.Price ?? 0, l.LineTotal ?? 0, l.DiscountPercent ?? 0, l.WarehouseCode]
+            `INSERT INTO sap_sales_order_lines (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code, price, cfop_code, weight, tax_code, usage_code)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+            [docEntry, l.LineNum, l.ItemCode, l.ItemDescription, l.Quantity ?? 0, l.UnitPrice ?? l.Price ?? 0, l.LineTotal ?? 0, l.DiscountPercent ?? 0, l.WarehouseCode, l.Price ?? 0, l.CFOPCode ?? null, l.Weight1 ?? 0, l.TaxCode ?? null, l.Usage ?? null]
           );
         }
 
@@ -1427,6 +1428,11 @@ export async function registerSapRoutes(app: FastifyInstance) {
         LineTotal: l.LineTotal,
         DiscountPercent: l.DiscountPercent,
         WarehouseCode: l.WarehouseCode,
+        Price: l.Price,
+        CFOPCode: l.CFOPCode,
+        Weight: l.Weight1,
+        TaxCode: l.TaxCode,
+        Usage: l.Usage,
       }));
 
       reply.code(200).send({ ok: true, lines, source: "sap" });
