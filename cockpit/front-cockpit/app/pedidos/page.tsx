@@ -423,11 +423,12 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
     );
   }
 
-  const totalEmb = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
-  const totalVal = lines.reduce((s, l) => s + (l.LineTotal ?? 0), 0);
+  const n = (v: unknown) => Number(v) || 0;
+  const totalEmb = lines.reduce((s, l) => s + n(l.Quantity), 0);
+  const totalVal = lines.reduce((s, l) => s + n(l.LineTotal), 0);
   const totalUnd = lines.reduce((s, l) => {
     const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-    return s + (l.Quantity ?? 0) * info.embalaQty;
+    return s + n(l.Quantity) * info.embalaQty;
   }, 0);
 
   return (
@@ -442,8 +443,8 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
             <span className="text-xs text-cockpit-muted font-normal">({lines.length} itens)</span>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-gray-600">Emb: <strong className="text-gray-900 tabular-nums">{fmtQty(totalEmb)}</strong></span>
-            <span className="text-gray-600">UND: <strong className="text-gray-900 tabular-nums">{fmtQty(totalUnd)}</strong></span>
+            <span className="text-gray-600">Emb: <strong className="text-gray-900 tabular-nums">{fmtNum(totalEmb)}</strong></span>
+            <span className="text-gray-600">UND: <strong className="text-gray-900 tabular-nums">{fmtNum(totalUnd)}</strong></span>
             <span className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(totalVal)}</span>
           </div>
         </div>
@@ -456,8 +457,8 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
               </span>
             )}
             {location && location !== "—" && (
-              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md font-medium">
-                <MapPin className="w-3 h-3" /> {location}
+              <span className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-md font-medium max-w-[320px] truncate" title={location}>
+                <MapPin className="w-3 h-3 shrink-0" /> {location}
               </span>
             )}
           </div>
@@ -486,12 +487,13 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
             <tbody>
               {lines.map((l, idx) => {
                 const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-                const qtyEmb = l.Quantity ?? 0;
+                const qtyEmb = n(l.Quantity);
                 const qtyUnd = qtyEmb * info.embalaQty;
                 const pctQty = totalUnd > 0 ? (qtyUnd / totalUnd) * 100 : 0;
-                const disc = l.DiscountPercent ?? 0;
-                const precoEmb = l.UnitPrice ?? l.Price ?? 0;
+                const disc = n(l.DiscountPercent);
+                const precoEmb = n(l.UnitPrice) || n(l.Price);
                 const precoUnd = info.embalaQty > 1 ? precoEmb / info.embalaQty : precoEmb;
+                const lineTotal = n(l.LineTotal);
 
                 return (
                   <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
@@ -524,9 +526,9 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                       ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">{l.WarehouseCode ?? "—"}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtQty(qtyEmb)}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtNum(qtyEmb)}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-gray-900">
-                      {fmtQty(qtyUnd)}
+                      {fmtNum(qtyUnd)}
                       {info.embalaQty > 1 && (
                         <span className="block text-[9px] text-gray-400 font-normal">×{info.embalaQty}</span>
                       )}
@@ -536,18 +538,18 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                         {pctQty.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{precoEmb > 0 ? fmtBRL(precoEmb) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600 text-[11px]">{precoEmb > 0 ? fmtBRL(precoEmb) : "—"}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
                       {precoUnd > 0 ? (
-                        <span className={`text-[10px] ${info.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-500"}`}>{fmtBRL(precoUnd)}</span>
+                        <span className={`text-[11px] ${info.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-500"}`}>{fmtBRL(precoUnd)}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
                       {disc > 0 ? (
-                        <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc}%</span>
+                        <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc.toFixed(1)}%</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-cockpit-accent">{l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-cockpit-accent">{lineTotal > 0 ? fmtBRL(lineTotal) : "—"}</td>
                   </tr>
                 );
               })}
@@ -1490,7 +1492,14 @@ function PedidosContent() {
                 const nLines = lines.length || order.num_lines || 0;
                 const vendorName = order.sales_person_code != null ? (spMap.get(order.sales_person_code) ?? `Cód ${order.sales_person_code}`) : "—";
                 const cust = custMap.get(order.card_code ?? "");
-                const loc = cust ? [cust.city, cust.state].filter(Boolean).join("/") : (order.address2 || "—");
+                let loc = "—";
+                if (cust && (cust.city || cust.state)) {
+                  loc = [cust.city, cust.state].filter(Boolean).join("/");
+                } else if (order.address2) {
+                  const a2 = order.address2;
+                  const stateMatch = a2.match(/[-–]\s*([A-Z]{2})\s/);
+                  loc = stateMatch ? a2.slice(0, a2.indexOf(stateMatch[0]) + stateMatch[0].length).replace(/^\d+\s*/, "").trim() : a2.slice(0, 40);
+                }
 
                 return (
                   <Fragment key={order.doc_entry}>
