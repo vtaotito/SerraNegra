@@ -233,27 +233,68 @@ function leadTimeData(orders: SalesOrderRow[]): { dias: number; count: number }[
 }
 
 // ─── Item description parser ──────────────────────────────────
+// Padrão real: "{SUB-NOME} - {EMBALAGEM} C/ {QTY} UND" ou "... - UND"
+// Ex: "GARRAFA BURDEOS 750 ML TRA ROSCA 29MM - FARDO C/ 24 UND"
+//     "POTE CONSERVA 600 ML TRA TWIST-OFF 74MM - CAIXA C/ 15 UND"
+//     "TAMPA ALUMÍNIO ROSCA DOURADA 29MM LISA REF>GRF - UND"
 
-function parseItemInfo(itemCode?: string | null, desc?: string | null) {
+interface ParsedItem {
+  cod: string;
+  subNome: string;
+  embala: string;
+  unit: string;
+  capacidade: string;
+  cor: string;
+  fechamento: string;
+}
+
+const COR_MAP: Record<string, string> = {
+  TRA: "Transparente", AMB: "Âmbar",
+  BRANCA: "Branca", PRETA: "Preta", DOURADA: "Dourada", PRATA: "Prata",
+  CREME: "Creme", MARROM: "Marrom", VERMELHA: "Vermelha",
+};
+
+function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedItem {
   const cod = getProductGroup(itemCode);
   const d = (desc ?? "").trim();
+  if (!d) return { cod, subNome: "—", embala: "—", unit: "—", capacidade: "—", cor: "—", fechamento: "—" };
 
-  const embalaRx = /\b(CX|PCT|FD|KIT|DZ|CT|EMB|BDJ|PAR|JG)\s*(\d+)\s*$/i;
-  const embalaMatch = d.match(embalaRx);
-  const embala = embalaMatch ? embalaMatch[0].trim().toUpperCase() : "—";
+  const dashIdx = d.lastIndexOf(" - ");
+  let subNome = d;
+  let embala = "—";
+  let unit = "UND";
 
-  const unitRx = /\b(\d+(?:[.,]\d+)?)\s*(ML|LT|L|KG|GR|G|CM|MM|M|M2|M3|UN|PC|PÇ|PÇS|UND|CJ)\b/i;
-  const unitMatch = d.match(unitRx);
-  const unit = unitMatch ? unitMatch[0].trim().toUpperCase() : "—";
+  if (dashIdx > 0) {
+    subNome = d.slice(0, dashIdx).trim();
+    const packPart = d.slice(dashIdx + 3).trim();
 
-  const subNome = d
-    .replace(embalaRx, "")
-    .replace(/\b\d+(?:[.,]\d+)?\s*(ML|LT|L|KG|GR|G|CM|MM|M|UN|PC|PÇ)\b/gi, "")
-    .replace(/[-–—]+\s*$/, "")
-    .replace(/\s{2,}/g, " ")
-    .trim() || d;
+    const packRx = /^(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND$/i;
+    const packMatch = packPart.match(packRx);
+    if (packMatch) {
+      embala = `${packMatch[1].toUpperCase()} C/${packMatch[2].replace(/\./g, "")}`;
+    } else if (/^UND$/i.test(packPart.replace(/-/g, "").trim())) {
+      embala = "UND";
+    } else {
+      embala = packPart || "—";
+    }
+  } else if (d.endsWith("- UND") || d.endsWith("-UND") || d.endsWith("- UND ")) {
+    const i = d.lastIndexOf("-");
+    subNome = d.slice(0, i).trim();
+    embala = "UND";
+  }
 
-  return { cod, embala, unit, subNome };
+  const capMatch = subNome.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
+  const capacidade = capMatch ? `${capMatch[1]} ${capMatch[2].toUpperCase()}` : "—";
+
+  const corRx = /\b(TRA|AMB|BRANCA|PRETA|DOURADA|PRATA|CREME|MARROM|VERMELHA|BORDO\.FOSCO|PRETO\.FOSCO|TRANSPARENTE)\b/i;
+  const corMatch = subNome.match(corRx);
+  const cor = corMatch ? (COR_MAP[corMatch[1].toUpperCase()] ?? corMatch[1]) : "—";
+
+  const fechRx = /\b(ROLHA|ROSCA|TWIST[.-]OFF|FLIP[.-]TOP|CONTA[.-]GOTAS|COROA[.-]PRY[.-]OFF|COROA[.-]TWIST[.-]OFF)\b/i;
+  const fechMatch = subNome.match(fechRx);
+  const fechamento = fechMatch ? fechMatch[1].replace(/\./g, "-").toUpperCase() : "—";
+
+  return { cod, subNome, embala, unit, capacidade, cor, fechamento };
 }
 
 // ─── Sort & Types ─────────────────────────────────────────────
@@ -391,21 +432,22 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
         )}
 
         <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-xs min-w-[960px]">
             <thead>
               <tr className="border-b border-cockpit-border/40 bg-gray-50/80 text-cockpit-muted uppercase tracking-wider text-[10px]">
-                <th className="text-left py-2.5 px-2.5 font-semibold w-8">#</th>
-                <th className="text-left py-2.5 px-2.5 font-semibold w-10">COD</th>
-                <th className="text-left py-2.5 px-2.5 font-semibold w-24">Código</th>
-                <th className="text-left py-2.5 px-2.5 font-semibold">Sub-Nome</th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-14">Embala</th>
-                <th className="text-center py-2.5 px-2.5 font-semibold w-14">Unit</th>
-                <th className="text-left py-2.5 px-2.5 font-semibold w-12">Dep.</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-14">Qtd</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-12">% Qtd</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-20">Preço</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-12">Desc%</th>
-                <th className="text-right py-2.5 px-2.5 font-semibold w-20">Total</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-7">#</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-9">COD</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-[90px]">Código</th>
+                <th className="text-left py-2.5 px-2 font-semibold">Sub-Nome</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-14">Capac.</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-20">Embala</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-10">Unit</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-10">Dep.</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-12">Qtd</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-12">% Qtd</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[72px]">Preço</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-11">Desc%</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[72px]">Total</th>
               </tr>
             </thead>
             <tbody>
@@ -416,37 +458,50 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                 const disc = l.DiscountPercent ?? 0;
 
                 return (
-                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
-                    <td className="py-2 px-2.5 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
-                    <td className="py-2 px-2.5">
+                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150 group">
+                    <td className="py-1.5 px-2 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
+                    <td className="py-1.5 px-2">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{info.cod}</span>
                     </td>
-                    <td className="py-2 px-2.5 font-mono text-[11px] text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
-                    <td className="py-2 px-2.5 text-gray-700 max-w-[220px]"><span className="line-clamp-1" title={l.ItemDescription ?? ""}>{info.subNome}</span></td>
-                    <td className="py-2 px-2.5 text-center">
+                    <td className="py-1.5 px-2 font-mono text-[10px] text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
+                    <td className="py-1.5 px-2 text-gray-700 max-w-[200px]">
+                      <span className="line-clamp-1 font-medium" title={l.ItemDescription ?? ""}>{info.subNome}</span>
+                      <div className="flex gap-1.5 mt-0.5">
+                        {info.cor !== "—" && (
+                          <span className="text-[9px] text-gray-400">{info.cor}</span>
+                        )}
+                        {info.fechamento !== "—" && (
+                          <span className="text-[9px] text-violet-500">{info.fechamento}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-2 text-center">
+                      {info.capacidade !== "—" ? (
+                        <span className="text-[10px] font-semibold text-sky-700">{info.capacidade}</span>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-1.5 px-2 text-center">
                       {info.embala !== "—" ? (
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700">{info.embala}</span>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          info.embala === "UND" ? "bg-gray-50 text-gray-500" : "bg-amber-50 text-amber-700"
+                        }`}>{info.embala}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-2 px-2.5 text-center">
-                      {info.unit !== "—" ? (
-                        <span className="text-[10px] font-medium text-gray-600">{info.unit}</span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="py-2 px-2.5 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-gray-900">{fmtQty(qty)}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums">
+                    <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">{info.unit}</td>
+                    <td className="py-1.5 px-2 text-gray-500 font-mono text-[10px]">{l.WarehouseCode ?? "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-gray-900">{fmtQty(qty)}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">
                       <span className={`text-[10px] font-medium ${pctQty >= 30 ? "text-cockpit-accent font-bold" : pctQty >= 10 ? "text-gray-700" : "text-gray-400"}`}>
                         {pctQty.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-2 px-2.5 text-right tabular-nums text-gray-600">{l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}</td>
-                    <td className="py-2 px-2.5 text-right tabular-nums">
+                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{l.UnitPrice != null ? fmtBRL(l.UnitPrice) : l.Price != null ? fmtBRL(l.Price) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums">
                       {disc > 0 ? (
                         <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc}%</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-2 px-2.5 text-right tabular-nums font-semibold text-cockpit-accent">{l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-cockpit-accent">{l.LineTotal != null ? fmtBRL(l.LineTotal) : "—"}</td>
                   </tr>
                 );
               })}
