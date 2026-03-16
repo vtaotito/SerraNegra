@@ -259,11 +259,13 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
   const d = (desc ?? "").trim();
   if (!d) return { cod, subNome: "—", embala: "—", unit: "—", capacidade: "—", cor: "—", fechamento: "—" };
 
-  const dashIdx = d.lastIndexOf(" - ");
   let subNome = d;
   let embala = "—";
   let unit = "UND";
 
+  const dashIdx = d.lastIndexOf(" - ");
+
+  // Caso 1: separador " - " presente (maioria)
   if (dashIdx > 0) {
     subNome = d.slice(0, dashIdx).trim();
     const packPart = d.slice(dashIdx + 3).trim();
@@ -277,10 +279,28 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
     } else {
       embala = packPart || "—";
     }
-  } else if (d.endsWith("- UND") || d.endsWith("-UND") || d.endsWith("- UND ")) {
-    const i = d.lastIndexOf("-");
+  }
+  // Caso 2: dash colado "REF>LITRO- UND" / "REF>LITRO-UND"
+  else if (/[-–]\s*UND\s*$/i.test(d)) {
+    const i = d.search(/[-–]\s*UND\s*$/i);
     subNome = d.slice(0, i).trim();
     embala = "UND";
+  }
+  // Caso 3: sem dash, mas EMBALA direto no texto
+  // Ex: "GARRAFA KHLOE 750 ML ROLHA 22.5MM  FARDO C/ 20 UND"
+  else {
+    const inlineRx = /\s+(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND\s*$/i;
+    const inlineMatch = d.match(inlineRx);
+    if (inlineMatch) {
+      subNome = d.slice(0, inlineMatch.index!).trim();
+      embala = `${inlineMatch[1].toUpperCase()} C/${inlineMatch[2].replace(/\./g, "")}`;
+    } else if (/\bUND\s*$/i.test(d)) {
+      const undIdx = d.search(/\s+UND\s*$/i);
+      if (undIdx > 0) {
+        subNome = d.slice(0, undIdx).trim();
+        embala = "UND";
+      }
+    }
   }
 
   const capMatch = subNome.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
