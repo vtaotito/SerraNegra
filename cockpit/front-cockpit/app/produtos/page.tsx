@@ -11,10 +11,12 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   ReferenceLine, ComposedChart, Line,
 } from "recharts";
+import { format } from "date-fns";
 import { fmtBRL, fmtNum, exportCSV, getProductGroup } from "@/lib/format";
 import { fetchSalesOrders, type SalesOrderRow, type SalesOrderLine } from "@/lib/api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/DataState";
+import { useDateRange } from "@/contexts/DateRangeContext";
 
 const COD_NAMES: Record<string, string> = {
   GN: "Garrafa Normal",
@@ -250,9 +252,13 @@ export default function ProdutosPage() {
 }
 
 function ProdutosContent() {
+  const { label: periodoLabel, range } = useDateRange();
+  const dateFrom = format(range.from, "yyyy-MM-dd");
+  const dateTo = format(range.to, "yyyy-MM-dd");
+
   const { data, loading, error, refetch } = useFetch(
-    () => fetchSalesOrders({ limit: 50000 }),
-    []
+    () => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }),
+    [dateFrom, dateTo]
   );
 
   const [search, setSearch] = useState("");
@@ -335,7 +341,7 @@ function ProdutosContent() {
       "Faturamento": p.faturamento.toFixed(2), "Desc% Médio": p.descMedio.toFixed(1),
       "Nº Vendas": p.vendas, "Clientes": p.clientes,
     }));
-    exportCSV(rows, "catalogo-produtos");
+    exportCSV(rows, `catalogo-produtos-${dateFrom}-${dateTo}`);
   };
 
   if (loading) return (
@@ -359,7 +365,7 @@ function ProdutosContent() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Catálogo de Produtos</h1>
             <p className="text-sm text-cockpit-muted mt-0.5">
-              <strong className="text-gray-700">{products.length}</strong> SKUs em <strong className="text-gray-700">{codGroups.length}</strong> grupos
+              <strong className="text-gray-700">{products.length}</strong> SKUs em <strong className="text-gray-700">{codGroups.length}</strong> grupos · {periodoLabel}
             </p>
           </div>
         </div>
