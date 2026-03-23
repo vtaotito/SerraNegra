@@ -5,6 +5,7 @@ const config: Config = {
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./contexts/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
@@ -37,6 +38,16 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        cockpit: {
+          bg: "#f7f4f5",
+          surface: "#ffffff",
+          border: "#e5dfe1",
+          muted: "#78696c",
+          accent: "#A81C2C",
+          accentHover: "#c42538",
+          gold: "#a07828",
+          danger: "#d32f2f",
         },
       },
       borderRadius: {

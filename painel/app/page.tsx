@@ -11,7 +11,9 @@ import {
   Clock,
   Shield,
   ExternalLink,
+  ArrowRight,
 } from "lucide-react";
+import Link from "next/link";
 import { ROLE_LABELS } from "@/lib/types";
 import type { PanelModule } from "@/lib/types";
 import { WMS_BASE_URL } from "@/lib/config";
@@ -24,6 +26,7 @@ const modules: {
   icon: React.ElementType;
   gradient: string;
   features: string[];
+  internal?: boolean;
 }[] = [
   {
     key: "wms",
@@ -36,12 +39,13 @@ const modules: {
   },
   {
     key: "cockpit",
-    label: "Cockpit BI",
-    description: "Business Intelligence com dashboards de vendas, faturamento e margens",
-    href: `${WMS_BASE_URL}/cockpit`,
+    label: "Business Intelligence",
+    description: "Dashboards de vendas, faturamento, margens e análise de clientes",
+    href: "/bussiness-inteligence",
     icon: BarChart3,
     gradient: "from-violet-500 to-violet-700",
     features: ["Faturamento", "Vendedores", "Margens", "Carteira"],
+    internal: true,
   },
   {
     key: "b2b",
@@ -141,42 +145,52 @@ export default function DashboardPage() {
         {/* Module cards */}
         <h2 className="text-lg font-semibold text-slate-900 mb-4">Seus módulos</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {userModules.map((mod) => (
-            <a
-              key={mod.key}
-              href={mod.href}
-              target="_blank"
-              rel="noopener"
-              className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-200"
-            >
-              {/* Card header with gradient */}
-              <div className={`bg-gradient-to-r ${mod.gradient} p-6 relative`}>
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition" />
-                <div className="relative flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
-                    <mod.icon className="w-6 h-6 text-white" />
+          {userModules.map((mod) => {
+            const cardContent = (
+              <>
+                <div className={`bg-gradient-to-r ${mod.gradient} p-6 relative`}>
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition" />
+                  <div className="relative flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center">
+                      <mod.icon className="w-6 h-6 text-white" />
+                    </div>
+                    {mod.internal ? (
+                      <ArrowRight className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                    ) : (
+                      <ExternalLink className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                    )}
                   </div>
-                  <ExternalLink className="w-4 h-4 text-white/60 group-hover:text-white/90 transition" />
+                  <h3 className="relative text-xl font-bold text-white mt-4">{mod.label}</h3>
                 </div>
-                <h3 className="relative text-xl font-bold text-white mt-4">{mod.label}</h3>
-              </div>
+                <div className="p-5">
+                  <p className="text-sm text-slate-500 mb-4">{mod.description}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {mod.features.map((f) => (
+                      <span key={f} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </>
+            );
 
-              {/* Card body */}
-              <div className="p-5">
-                <p className="text-sm text-slate-500 mb-4">{mod.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {mod.features.map((f) => (
-                    <span
-                      key={f}
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600"
-                    >
-                      {f}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </a>
-          ))}
+            if (mod.internal) {
+              return (
+                <Link key={mod.key} href={mod.href}
+                  className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-200">
+                  {cardContent}
+                </Link>
+              );
+            }
+
+            return (
+              <a key={mod.key} href={mod.href} target="_blank" rel="noopener"
+                className="group bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-200">
+                {cardContent}
+              </a>
+            );
+          })}
         </div>
 
         {/* SAP Integration status */}

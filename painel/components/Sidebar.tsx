@@ -23,13 +23,13 @@ import { WMS_BASE_URL } from "@/lib/config";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
+  { href: "/bussiness-inteligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
   { href: "/perfil", label: "Meu Perfil", icon: UserCircle, roles: null },
 ];
 
 const moduleLinks = [
   { href: WMS_BASE_URL, label: "WMS / OMS", icon: Package, module: "wms" as const },
-  { href: `${WMS_BASE_URL}/cockpit`, label: "Cockpit BI", icon: BarChart3, module: "cockpit" as const },
   { href: `${WMS_BASE_URL}/b2b`, label: "Portal B2B", icon: ShoppingCart, module: "b2b" as const },
 ];
 
@@ -41,9 +41,12 @@ export function Sidebar() {
 
   if (!user) return null;
 
-  const filteredNav = navItems.filter(
-    (item) => item.roles === null || item.roles.includes(user.role)
-  );
+  const filteredNav = navItems.filter((item) => {
+    if ("module" in item && item.module) {
+      if (!user.allowedModules.includes(item.module)) return false;
+    }
+    return item.roles === null || item.roles.includes(user.role);
+  });
 
   const filteredModules = moduleLinks.filter((item) =>
     user.allowedModules.includes(item.module)
@@ -74,7 +77,9 @@ export function Sidebar() {
           )}
         </div>
         {filteredNav.map((item) => {
-          const active = pathname === item.href;
+          const active = item.href === "/"
+            ? pathname === "/"
+            : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}

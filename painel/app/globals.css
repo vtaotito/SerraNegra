@@ -53,3 +53,71 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Cockpit BI styles ──────────────────────────────── */
+
+:root {
+  --cockpit-bg: #f7f4f5;
+  --cockpit-surface: #ffffff;
+  --cockpit-border: #e5dfe1;
+  --cockpit-accent: #A81C2C;
+  --cockpit-gold: #a07828;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cockpit-border) transparent;
+}
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: var(--cockpit-border); border-radius: 3px; }
+*::-webkit-scrollbar-thumb:hover { background: #c9c0c3; }
+
+* { scroll-behavior: smooth; }
+
+tr { transition: background-color 150ms ease; }
+
+:focus-visible {
+  outline: 2px solid #A81C2C;
+  outline-offset: 2px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 1200px; }
+}
+
+@keyframes slideInFromRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.table-sticky-head thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 1px 0 var(--cockpit-border);
+}
+
+.order-detail-enter {
+  animation: slideDown 280ms ease-out forwards;
+}
+
+.drawer-overlay {
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(2px);
+  animation: fadeIn 200ms ease-out;
+}
+
+.nav-link-active {
+  border-left: 3px solid var(--cockpit-accent);
+  padding-left: calc(0.75rem - 3px);
+}
