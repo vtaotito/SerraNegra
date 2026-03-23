@@ -1,8 +1,6 @@
-import { WMS_BASE_URL } from "./config";
-
 const GATEWAY =
   typeof window !== "undefined"
-    ? `${WMS_BASE_URL}/api`
+    ? "/api"
     : "http://localhost:4000/api";
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {

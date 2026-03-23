@@ -16,7 +16,6 @@ import {
   getHint,
   type PresetKey,
 } from "@/contexts/DateRangeContext";
-import { WMS_BASE_URL } from "@/lib/config";
 
 const PRESET_ORDER: Exclude<PresetKey, "custom">[] = [
   "today", "current_week", "last_7d", "current_month",
@@ -95,7 +94,7 @@ export function BITopbar() {
   const handleRefresh = useCallback(async () => {
     setSyncing(true);
     try {
-      const res = await fetch(`${WMS_BASE_URL}/api/sap/health`);
+      const res = await fetch("/api/sap/health");
       const data = await res.json();
       setSapOk(data.sap_connected === true);
       setLastSync(fmtDate(new Date()));
