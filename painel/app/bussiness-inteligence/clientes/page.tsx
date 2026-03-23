@@ -104,14 +104,14 @@ function buildClientAnalytics(
 
   const agg = new Map<string, {
     fat: number; pedidos: number; qtd: number; first: string; last: string;
-    vendor: number | null; uf: string | null; city: string | null;
+    vendor: number | null; uf: string | null; city: string | null; name: string | null;
   }>();
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
     const cur = agg.get(o.card_code) ?? {
       fat: 0, pedidos: 0, qtd: 0, first: o.doc_date, last: o.doc_date,
-      vendor: null, uf: null, city: null,
+      vendor: null, uf: null, city: null, name: null,
     };
     cur.fat += Number(o.doc_total) || 0;
     cur.pedidos += 1;
@@ -119,6 +119,7 @@ function buildClientAnalytics(
     if (o.doc_date < cur.first) cur.first = o.doc_date;
     if (o.doc_date > cur.last) cur.last = o.doc_date;
     if (o.sales_person_code) cur.vendor = o.sales_person_code;
+    if (!cur.name && o.card_name) cur.name = o.card_name;
     if (!cur.uf) {
       cur.uf = extractUF(o.address) || extractUF(o.address2);
       const cityMatch = (o.address || "").match(/\d{5}-?\d{3}-([^-\r\n]+)-[A-Z]{2}/);
@@ -136,7 +137,7 @@ function buildClientAnalytics(
       const city = cust?.city || a.city || "—";
       return {
         cardCode: code,
-        cardName: cust?.card_name ?? code,
+        cardName: cust?.card_name || a.name || code,
         city,
         state: st,
         region: STATE_TO_REGION[st] ?? "Outro",
@@ -902,7 +903,7 @@ export default function ClientesPage() {
                     <td className="py-2.5 px-4 text-cockpit-muted text-xs">{i + 1}</td>
                     <td className="py-2.5 px-4 max-w-[260px]">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-gray-900 truncate group-hover:text-cockpit-accent transition-colors" title={r.cardName}>{r.cardName}</span>
+                        <span className="font-bold text-gray-900 truncate group-hover:text-cockpit-accent transition-colors" title={r.cardName}>{r.cardName}</span>
                         <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                       </div>
                       <div className="text-[10px] text-cockpit-muted font-mono mt-0.5">{r.cardCode}{r.city !== "—" ? ` · ${r.city}` : ""}</div>
