@@ -17,7 +17,8 @@ export function fmtPct(v: number, decimals = 1): string {
 
 export function fmtDateShort(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
-  const d = new Date(dateStr + "T00:00:00");
+  const clean = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+  const d = new Date(clean + "T00:00:00");
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("pt-BR");
 }
