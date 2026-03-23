@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import {
   Users, DollarSign, ShoppingCart, TrendingUp, Search, CalendarDays,
-  Crown, Clock, X, MapPin,
+  Crown, Clock, X, MapPin, ChevronRight,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -188,6 +188,231 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
+function ClientModal({
+  client,
+  orders,
+  persons,
+  onClose,
+}: {
+  client: ClientAgg;
+  orders: SalesOrderRow[];
+  persons: SapSalesPerson[];
+  onClose: () => void;
+}) {
+  const pMap = new Map(persons.map((p) => [p.SalesEmployeeCode, p.SalesEmployeeName]));
+
+  const clientOrders = useMemo(
+    () =>
+      orders
+        .filter((o) => o.card_code === client.cardCode)
+        .sort((a, b) => (b.doc_date > a.doc_date ? 1 : -1)),
+    [orders, client.cardCode]
+  );
+
+  const activeOrders = useMemo(
+    () => clientOrders.filter((o) => o.cancelled !== "Y"),
+    [clientOrders]
+  );
+
+  const cancelledCount = clientOrders.length - activeOrders.length;
+
+  const topProducts = useMemo(() => {
+    const map = new Map<string, { desc: string; qty: number; total: number }>();
+    for (const o of activeOrders) {
+      if (!o.lines) continue;
+      for (const l of o.lines) {
+        const code = l.ItemCode ?? "?";
+        const cur = map.get(code) ?? { desc: l.ItemDescription ?? code, qty: 0, total: 0 };
+        cur.qty += Number(l.Quantity) || 0;
+        cur.total += Number(l.LineTotal) || 0;
+        map.set(code, cur);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([code, v]) => ({ code, ...v }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }, [activeOrders]);
+
+  const monthlyData = useMemo(() => {
+    const map = new Map<string, { fat: number; pedidos: number }>();
+    for (const o of activeOrders) {
+      const key = o.doc_date.substring(0, 7);
+      const cur = map.get(key) ?? { fat: 0, pedidos: 0 };
+      cur.fat += Number(o.doc_total) || 0;
+      cur.pedidos += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.entries())
+      .map(([month, v]) => ({
+        month: month.substring(2).replace("-", "/"),
+        fat: v.fat,
+        pedidos: v.pedidos,
+      }))
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .slice(-12);
+  }, [activeOrders]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-2xl border border-cockpit-border w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col mx-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-cockpit-border bg-cockpit-bg/50">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-gray-900 truncate">{client.cardName}</h2>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="font-mono text-xs text-cockpit-accent bg-cockpit-accent/10 px-2 py-0.5 rounded-md font-semibold">{client.cardCode}</span>
+              {client.state !== "—" && (
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">{client.city !== "—" ? `${client.city} — ` : ""}{client.state}</span>
+              )}
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                client.classe === "A" ? "bg-cockpit-accent/15 text-cockpit-accent" :
+                client.classe === "B" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"
+              }`}>Classe {client.classe}</span>
+              <span className="text-xs text-cockpit-muted">{client.vendorName}</span>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
+            <X className="w-5 h-5 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Faturamento", value: fmtBRL(client.fat), icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+              { label: "Pedidos", value: String(activeOrders.length), sub: cancelledCount > 0 ? `(${cancelledCount} canc.)` : undefined, icon: ShoppingCart, color: "text-sky-600", bg: "bg-sky-50" },
+              { label: "Ticket Médio", value: fmtBRL(client.ticket, 2), icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-50" },
+              { label: "Recência", value: client.daysInactive === 0 ? "Hoje" : `${client.daysInactive}d`, icon: Clock, color: client.daysInactive <= 7 ? "text-emerald-600" : client.daysInactive <= 30 ? "text-amber-600" : "text-red-600", bg: client.daysInactive <= 7 ? "bg-emerald-50" : client.daysInactive <= 30 ? "bg-amber-50" : "bg-red-50" },
+            ].map((k) => (
+              <div key={k.label} className="rounded-xl border border-cockpit-border p-3">
+                <div className="flex items-center gap-1.5">
+                  <div className={`p-1 rounded-md ${k.bg}`}><k.icon className={`w-3.5 h-3.5 ${k.color}`} /></div>
+                  <span className="text-[10px] font-semibold text-cockpit-muted uppercase">{k.label}</span>
+                </div>
+                <span className={`text-lg font-bold ${k.color} block mt-1`}>{k.value}</span>
+                {k.sub && <span className="text-[10px] text-cockpit-muted">{k.sub}</span>}
+              </div>
+            ))}
+          </div>
+
+          {/* Período */}
+          <div className="flex items-center gap-4 text-xs text-cockpit-muted">
+            <span>Primeiro pedido: <strong className="text-gray-700">{fmtDateShort(client.firstOrder)}</strong></span>
+            <span className="text-cockpit-border">·</span>
+            <span>Último pedido: <strong className="text-gray-700">{fmtDateShort(client.lastOrder)}</strong></span>
+            <span className="text-cockpit-border">·</span>
+            <span>Qtd total: <strong className="text-gray-700">{fmtNum(client.qtd)} un</strong></span>
+          </div>
+
+          {/* Faturamento mensal */}
+          {monthlyData.length > 1 && (
+            <div>
+              <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Faturamento Mensal</h4>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={monthlyData} margin={{ left: 0, right: 5, top: 5, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5dfe1" />
+                    <XAxis dataKey="month" tick={{ fill: "#78696c", fontSize: 10 }} axisLine={{ stroke: "#e5dfe1" }} />
+                    <YAxis tick={{ fill: "#78696c", fontSize: 10 }} tickFormatter={(v) => Number(v) >= 1000 ? `${(Number(v) / 1000).toFixed(0)}k` : String(v)} width={50} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Bar dataKey="fat" name="Faturamento" fill="#A81C2C" radius={[3, 3, 0, 0]} barSize={20} />
+                    <Line dataKey="pedidos" name="Pedidos" type="monotone" stroke="#2563eb" strokeWidth={2} dot={{ r: 2.5 }} yAxisId={0} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Top produtos */}
+          {topProducts.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Top Produtos</h4>
+              <div className="space-y-1.5">
+                {topProducts.map((p, i) => (
+                  <div key={p.code} className="flex items-center gap-3 text-xs bg-cockpit-bg/50 rounded-lg px-3 py-2 border border-cockpit-border/50">
+                    <span className="w-5 h-5 rounded-full bg-cockpit-accent/10 text-cockpit-accent font-bold text-[10px] flex items-center justify-center shrink-0">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-gray-800 truncate">{p.desc}</p>
+                      <p className="text-cockpit-muted font-mono text-[10px]">{p.code}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-semibold text-cockpit-accent">{fmtBRL(p.total)}</p>
+                      <p className="text-cockpit-muted">{fmtNum(p.qty)} un</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Lista de pedidos */}
+          <div>
+            <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">
+              Histórico de Pedidos ({clientOrders.length})
+            </h4>
+            <div className="rounded-lg border border-cockpit-border overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-cockpit-bg text-cockpit-muted uppercase text-[10px] border-b border-cockpit-border">
+                    <th className="py-2 px-3">Nº Doc</th>
+                    <th className="py-2 px-3">Data</th>
+                    <th className="py-2 px-3 text-right">Valor</th>
+                    <th className="py-2 px-3 text-right">Qtd</th>
+                    <th className="py-2 px-3 text-center">Status</th>
+                    <th className="py-2 px-3">Vendedor</th>
+                    <th className="py-2 px-3">Obs</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cockpit-border/50">
+                  {clientOrders.map((o) => {
+                    const isCancelled = o.cancelled === "Y";
+                    return (
+                      <tr key={o.doc_entry} className={`${isCancelled ? "opacity-50" : "hover:bg-cockpit-accent/[0.03]"} transition-colors`}>
+                        <td className="py-2 px-3 font-mono font-medium text-gray-700">{o.doc_num}</td>
+                        <td className="py-2 px-3 text-gray-600">{fmtDateShort(o.doc_date)}</td>
+                        <td className="py-2 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(Number(o.doc_total))}</td>
+                        <td className="py-2 px-3 text-right text-gray-600">{fmtNum(Number(o.total_quantity))}</td>
+                        <td className="py-2 px-3 text-center">
+                          {isCancelled ? (
+                            <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-600 font-semibold text-[10px]">Cancelado</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 font-semibold text-[10px]">
+                              {o.doc_status === "O" ? "Aberto" : "Fechado"}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3 text-gray-500">{o.sales_person_code ? (pMap.get(o.sales_person_code) ?? `Vend. ${o.sales_person_code}`) : "—"}</td>
+                        <td className="py-2 px-3 max-w-[180px]">
+                          {o.comments ? (
+                            <span className="text-gray-400 truncate block" title={o.comments}>{o.comments.substring(0, 60)}{o.comments.length > 60 ? "…" : ""}</span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-cockpit-border bg-cockpit-bg/50 text-xs text-cockpit-muted flex items-center justify-between">
+          <span>{clientOrders.length} pedidos · {fmtBRL(client.fat)} faturados · % do total: {client.pctFat.toFixed(2)}%</span>
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 transition-colors">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientesPage() {
   const { label: periodoLabel, range } = useDateRange();
   const dateFrom = format(range.from, "yyyy-MM-dd");
@@ -218,6 +443,7 @@ export default function ClientesPage() {
   const [tab, setTab] = useState<"carteira" | "geo" | "pareto">("carteira");
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [geoMetric, setGeoMetric] = useState<"fat" | "count">("fat");
+  const [modalClient, setModalClient] = useState<ClientAgg | null>(null);
 
   const uniqueEstados = useMemo(
     () => [...new Set(allClients.map((c) => c.state).filter((e) => e !== "—"))].sort(),
@@ -671,11 +897,15 @@ export default function ClientesPage() {
                 <tr><td colSpan={10} className="py-12 text-center text-cockpit-muted">Nenhum cliente encontrado</td></tr>
               ) : (
                 filtered.map((r, i) => (
-                  <tr key={r.cardCode} className="hover:bg-cockpit-accent/[0.04] transition-colors">
+                  <tr key={r.cardCode} onClick={() => setModalClient(r)}
+                    className="hover:bg-cockpit-accent/[0.04] transition-colors cursor-pointer group">
                     <td className="py-2.5 px-4 text-cockpit-muted text-xs">{i + 1}</td>
-                    <td className="py-2.5 px-4 max-w-[240px]">
-                      <div className="font-medium text-gray-900 truncate" title={r.cardName}>{r.cardName}</div>
-                      <div className="text-[10px] text-cockpit-muted font-mono">{r.cardCode}{r.city !== "—" ? ` · ${r.city}` : ""}</div>
+                    <td className="py-2.5 px-4 max-w-[260px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-gray-900 truncate group-hover:text-cockpit-accent transition-colors" title={r.cardName}>{r.cardName}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                      </div>
+                      <div className="text-[10px] text-cockpit-muted font-mono mt-0.5">{r.cardCode}{r.city !== "—" ? ` · ${r.city}` : ""}</div>
                     </td>
                     <td className="py-2.5 px-4">
                       {r.state !== "—" ? (
@@ -710,8 +940,19 @@ export default function ClientesPage() {
         </div>
         <div className="px-4 py-3 border-t border-cockpit-border text-xs text-cockpit-muted bg-cockpit-bg/50">
           {filtered.length} de {allClients.length} clientes · Faturamento total: {fmtBRL(kpis.fat)} — Pedidos de Venda SAP B1
+          <span className="ml-2 text-cockpit-accent/60">· Clique em um cliente para ver detalhes</span>
         </div>
       </div>
+
+      {/* Client Detail Modal */}
+      {modalClient && (
+        <ClientModal
+          client={modalClient}
+          orders={orders}
+          persons={persons}
+          onClose={() => setModalClient(null)}
+        />
+      )}
     </div>
   );
 }
