@@ -141,18 +141,6 @@ services:
       timeout: 3s
       retries: 5
 
-  cockpit:
-    container_name: wms-cockpit
-    build:
-      context: .
-      dockerfile: cockpit/front-cockpit/Dockerfile
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/cockpit"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-
   painel:
     container_name: wms-painel
     build:
@@ -186,8 +174,6 @@ services:
       gateway:
         condition: service_started
       portalb2b:
-        condition: service_started
-      cockpit:
         condition: service_started
     ports:
       - "${WEB_PORT:-8080}:80"
