@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -17,6 +18,8 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
+
+const GSN_LOGO = "https://garrafariaserranegra.com.br/wp-content/uploads/2021/03/cropped-gsn-logo2021.png";
 
 const navItems = [
   { label: "Visão geral", path: "/", icon: LayoutDashboard },
@@ -59,11 +62,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         aria-label="Menu principal"
       >
         <div className="p-4 border-b border-cockpit-border flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2" aria-label="Cockpit BI - Página inicial">
-            <div className="w-8 h-8 rounded-lg bg-cockpit-accent flex items-center justify-center">
-              <BarChart3 className="w-4 h-4 text-gray-900" />
+          <Link href="/" className="flex items-center gap-2.5" aria-label="Cockpit BI - Página inicial">
+            <div className="w-8 h-8 rounded-lg bg-cockpit-accent/10 flex items-center justify-center overflow-hidden">
+              <Image src={GSN_LOGO} alt="GSN" width={24} height={24} className="object-contain" unoptimized />
             </div>
-            <span className="font-semibold text-gray-900">Cockpit BI</span>
+            <div>
+              <span className="font-semibold text-gray-900 block text-sm leading-tight">Cockpit BI</span>
+              <span className="text-[10px] text-cockpit-muted leading-none">Serra Negra</span>
+            </div>
           </Link>
           <button
             type="button"
@@ -75,7 +81,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
         <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-widest px-4 pt-3 pb-1">
-          Serra Negra
+          Navegação
         </p>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
           {navItems.map(({ label, path, icon: Icon }) => {

@@ -63,7 +63,7 @@ export default function UsuariosPage() {
     return (
       <ProtectedLayout>
         <div className="flex items-center justify-center h-64">
-          <p className="text-slate-500">Sem permissão para acessar esta página.</p>
+          <p className="text-gray-500">Sem permissão para acessar esta página.</p>
         </div>
       </ProtectedLayout>
     );
@@ -170,7 +170,7 @@ export default function UsuariosPage() {
   };
 
   const roleBadgeColor: Record<UserRole, string> = {
-    admin: "bg-red-100 text-red-700",
+    admin: "bg-gsn-100 text-gsn-800",
     supervisor: "bg-purple-100 text-purple-700",
     operador: "bg-blue-100 text-blue-700",
     comercial: "bg-emerald-100 text-emerald-700",
@@ -182,18 +182,18 @@ export default function UsuariosPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-              <Users className="w-6 h-6 text-slate-400" />
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+              <Users className="w-6 h-6 text-gsn-400" />
               Usuários
             </h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="text-sm text-gray-500 mt-1">
               {users.length} usuário{users.length !== 1 ? "s" : ""} cadastrado{users.length !== 1 ? "s" : ""}
             </p>
           </div>
           {isAdmin && (
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition shadow-sm shadow-gsn-700/25"
             >
               <Plus className="w-4 h-4" />
               Novo Usuário
@@ -201,26 +201,24 @@ export default function UsuariosPage() {
           )}
         </div>
 
-        {/* Search */}
         <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Buscar por nome, usuário ou email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none bg-white"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
           />
         </div>
 
-        {/* Table */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center h-40">
-              <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+              <Loader2 className="w-6 h-6 animate-spin text-gsn-400" />
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="flex items-center justify-center h-40 text-sm text-slate-500">
+            <div className="flex items-center justify-center h-40 text-sm text-gray-500">
               Nenhum usuário encontrado
             </div>
           ) : (
@@ -228,23 +226,23 @@ export default function UsuariosPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                       Usuário
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                       Perfil
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                       Módulos
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                       Status
                     </th>
-                    <th className="text-left text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                       Último acesso
                     </th>
                     {isAdmin && (
-                      <th className="text-right text-xs font-medium text-slate-500 uppercase tracking-wider px-6 py-3">
+                      <th className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3">
                         Ações
                       </th>
                     )}
@@ -252,10 +250,10 @@ export default function UsuariosPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition">
+                    <tr key={u.id} className="border-b border-gray-50 hover:bg-gsn-50/30 transition">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600">
+                          <div className="w-8 h-8 rounded-full bg-gsn-100 flex items-center justify-center text-xs font-medium text-gsn-700">
                             {u.displayName
                               .split(" ")
                               .slice(0, 2)
@@ -264,8 +262,8 @@ export default function UsuariosPage() {
                               .toUpperCase()}
                           </div>
                           <div>
-                            <p className="text-sm font-medium text-slate-900">{u.displayName}</p>
-                            <p className="text-xs text-slate-500">{u.username} &middot; {u.email}</p>
+                            <p className="text-sm font-medium text-gray-900">{u.displayName}</p>
+                            <p className="text-xs text-gray-500">{u.username} &middot; {u.email}</p>
                           </div>
                         </div>
                       </td>
@@ -285,7 +283,7 @@ export default function UsuariosPage() {
                           {u.allowedModules.map((m) => (
                             <span
                               key={m}
-                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600 uppercase"
+                              className="px-2 py-0.5 rounded text-[10px] font-medium bg-gsn-50 text-gsn-700 uppercase"
                             >
                               {m}
                             </span>
@@ -308,7 +306,7 @@ export default function UsuariosPage() {
                           {u.isActive ? "Ativo" : "Inativo"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">
+                      <td className="px-6 py-4 text-xs text-gray-500">
                         {u.lastLoginAt
                           ? new Date(u.lastLoginAt).toLocaleDateString("pt-BR", {
                               day: "2-digit",
@@ -324,7 +322,7 @@ export default function UsuariosPage() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => openEdit(u)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition"
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gsn-700 hover:bg-gsn-50 transition"
                               title="Editar"
                             >
                               <Pencil className="w-4 h-4" />
@@ -332,7 +330,7 @@ export default function UsuariosPage() {
                             {u.id !== user.id && (
                               <button
                                 onClick={() => handleDelete(u)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
                                 title="Excluir"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -350,17 +348,16 @@ export default function UsuariosPage() {
         </div>
       </div>
 
-      {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-semibold text-slate-900">
+              <h3 className="text-lg font-semibold text-gray-900">
                 {editingUser ? "Editar Usuário" : "Novo Usuário"}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100"
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -368,7 +365,7 @@ export default function UsuariosPage() {
 
             <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Nome completo
                 </label>
                 <input
@@ -376,13 +373,13 @@ export default function UsuariosPage() {
                   required
                   value={form.displayName}
                   onChange={(e) => setForm((p) => ({ ...p, displayName: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
                 />
               </div>
 
               {!editingUser && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Nome de usuário
                   </label>
                   <input
@@ -390,25 +387,25 @@ export default function UsuariosPage() {
                     required
                     value={form.username}
                     onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
                     placeholder="nome.sobrenome"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Email</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                 <input
                   type="email"
                   required
                   value={form.email}
                   onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   {editingUser ? "Nova senha (deixe vazio para manter)" : "Senha"}
                 </label>
                 <div className="relative">
@@ -417,13 +414,13 @@ export default function UsuariosPage() {
                     required={!editingUser}
                     value={form.password}
                     onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-                    className="w-full px-3.5 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none"
+                    className="w-full px-3.5 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
                     placeholder="Mín. 8 caracteres"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -431,11 +428,11 @@ export default function UsuariosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Perfil</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Perfil</label>
                 <select
                   value={form.role}
                   onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as UserRole }))}
-                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-slate-900 focus:border-transparent outline-none bg-white"
+                  className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
                 >
                   {Object.entries(ROLE_LABELS).map(([key, label]) => (
                     <option key={key} value={key}>
@@ -446,7 +443,7 @@ export default function UsuariosPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Módulos permitidos
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -459,8 +456,8 @@ export default function UsuariosPage() {
                         className={cn(
                           "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition",
                           form.allowedModules.includes(key)
-                            ? "bg-slate-900 text-white border-slate-900"
-                            : "bg-white text-slate-600 border-gray-300 hover:border-slate-400"
+                            ? "bg-gsn-700 text-white border-gsn-700"
+                            : "bg-white text-gray-600 border-gray-300 hover:border-gsn-300"
                         )}
                       >
                         {form.allowedModules.includes(key) && <Check className="w-3 h-3" />}
@@ -473,7 +470,7 @@ export default function UsuariosPage() {
 
               {editingUser && (
                 <div className="flex items-center gap-3">
-                  <label className="text-sm font-medium text-slate-700">Status:</label>
+                  <label className="text-sm font-medium text-gray-700">Status:</label>
                   <button
                     type="button"
                     onClick={() => setForm((p) => ({ ...p, isActive: !p.isActive }))}
@@ -489,7 +486,7 @@ export default function UsuariosPage() {
                       )}
                     />
                   </button>
-                  <span className="text-sm text-slate-500">
+                  <span className="text-sm text-gray-500">
                     {form.isActive ? "Ativo" : "Inativo"}
                   </span>
                 </div>
@@ -499,13 +496,13 @@ export default function UsuariosPage() {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-slate-700 bg-gray-100 hover:bg-gray-200 transition"
+                  className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-slate-900 hover:bg-slate-800 transition"
+                  className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition shadow-sm shadow-gsn-700/25"
                 >
                   {editingUser ? "Salvar" : "Criar"}
                 </button>

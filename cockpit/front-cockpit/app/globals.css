@@ -6,7 +6,7 @@
   --cockpit-bg: #f7f4f5;
   --cockpit-surface: #ffffff;
   --cockpit-border: #e5dfe1;
-  --cockpit-accent: #A81C2C;
+  --cockpit-accent: #AA1A1B;
   --cockpit-gold: #a07828;
 }
 
@@ -52,7 +52,7 @@ tr {
 
 /* Focus visible for accessibility */
 :focus-visible {
-  outline: 2px solid #A81C2C;
+  outline: 2px solid #AA1A1B;
   outline-offset: 2px;
 }
 

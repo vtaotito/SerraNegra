@@ -9,12 +9,12 @@ export default {
     extend: {
       colors: {
         cockpit: {
-          bg: "#f7f4f5",
+          bg: "#faf7f7",
           surface: "#ffffff",
-          border: "#e5dfe1",
+          border: "#e8e0e1",
           muted: "#78696c",
-          accent: "#A81C2C",
-          accentHover: "#c42538",
+          accent: "#AA1A1B",
+          accentHover: "#d42b2c",
           gold: "#a07828",
           danger: "#d32f2f",
         },

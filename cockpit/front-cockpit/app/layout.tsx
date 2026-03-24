@@ -22,8 +22,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={font.variable}>
       <head>
-        <title>Cockpit BI — Serra Negra</title>
-        <meta name="description" content="Painel analítico comercial e operacional" />
+        <title>Cockpit BI — Garrafaria Serra Negra</title>
+        <meta name="description" content="Painel analítico comercial e operacional — Garrafaria Serra Negra" />
+        <link rel="icon" href="/cockpit/favicon.png" />
       </head>
       <body className="min-h-screen flex bg-cockpit-bg text-gray-800">
         <DateRangeProvider>

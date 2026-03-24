@@ -231,7 +231,7 @@ export default function HomePage() {
                   <Legend wrapperStyle={{ color: "#78696c", fontSize: 12 }} />
                   <Bar dataKey="Real" radius={[4, 4, 0, 0]}>
                     {chartData.map((entry, i) => (
-                      <Cell key={i} fill={entry.aboveMedian ? "#A81C2C" : "#e5484d"} />
+                      <Cell key={i} fill={entry.aboveMedian ? "#AA1A1B" : "#e5484d"} />
                     ))}
                   </Bar>
                 </BarChart>
