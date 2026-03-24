@@ -211,6 +211,16 @@ function leadTimeData(orders: SalesOrderRow[]): { dias: number; count: number }[
     .sort((a, b) => a.dias - b.dias);
 }
 
+// ─── Base product name (same logic as stock page) ─────────────
+
+function getBaseProductName(desc: string): string {
+  return (desc ?? "")
+    .replace(/\s*[-–]\s*(CAIXA|FARDO|PALETE)\s+C\s*\/\s*[\d.,]+\s*UND\s*$/i, "")
+    .replace(/\s*[-–]\s*UND\s*$/i, "")
+    .trim()
+    .toUpperCase();
+}
+
 // ─── Item description parser ──────────────────────────────────
 
 interface ParsedItem {
@@ -385,6 +395,83 @@ interface OrderDetailPanelProps {
   location?: string;
 }
 
+interface GroupedOrderLine {
+  baseName: string;
+  undItemCode: string;
+  subNome: string;
+  capacidade: string;
+  cor: string;
+  fechamento: string;
+  cod: string;
+  totalEmb: number;
+  totalUnd: number;
+  totalVal: number;
+  avgPriceUnd: number;
+  maxDiscount: number;
+  variants: { itemCode: string; embala: string; embalaQty: number; qty: number; qtyUnd: number; lineTotal: number; warehouse: string }[];
+}
+
+function groupOrderLines(lines: SalesOrderLine[]): GroupedOrderLine[] {
+  const n = (v: unknown) => Number(v) || 0;
+  const groups = new Map<string, GroupedOrderLine>();
+
+  for (const l of lines) {
+    const info = parseItemInfo(l.ItemCode, l.ItemDescription);
+    const baseName = getBaseProductName(l.ItemDescription ?? "");
+    const key = baseName || l.ItemCode || `_line_${l.LineNum}`;
+
+    if (!groups.has(key)) {
+      groups.set(key, {
+        baseName,
+        undItemCode: "",
+        subNome: info.subNome,
+        capacidade: info.capacidade,
+        cor: info.cor,
+        fechamento: info.fechamento,
+        cod: info.cod,
+        totalEmb: 0,
+        totalUnd: 0,
+        totalVal: 0,
+        avgPriceUnd: 0,
+        maxDiscount: 0,
+        variants: [],
+      });
+    }
+
+    const g = groups.get(key)!;
+    const qtyEmb = n(l.Quantity);
+    const qtyUnd = qtyEmb * info.embalaQty;
+    const lineTotal = n(l.LineTotal);
+
+    if (info.embala === "UND" || info.embalaQty === 1) {
+      if (!g.undItemCode) g.undItemCode = l.ItemCode ?? "";
+    }
+
+    g.totalEmb += qtyEmb;
+    g.totalUnd += qtyUnd;
+    g.totalVal += lineTotal;
+    g.maxDiscount = Math.max(g.maxDiscount, n(l.DiscountPercent));
+    g.variants.push({
+      itemCode: l.ItemCode ?? "",
+      embala: info.embala,
+      embalaQty: info.embalaQty,
+      qty: qtyEmb,
+      qtyUnd,
+      lineTotal,
+      warehouse: l.WarehouseCode ?? "",
+    });
+  }
+
+  for (const g of groups.values()) {
+    g.avgPriceUnd = g.totalUnd > 0 ? g.totalVal / g.totalUnd : 0;
+    if (!g.undItemCode && g.variants.length > 0) {
+      g.undItemCode = g.variants[0].itemCode;
+    }
+  }
+
+  return Array.from(groups.values());
+}
+
 function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderDetailPanelProps) {
   if (lines.length === 0) {
     return (
@@ -395,13 +482,10 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
     );
   }
 
-  const n = (v: unknown) => Number(v) || 0;
-  const totalEmb = lines.reduce((s, l) => s + n(l.Quantity), 0);
-  const totalVal = lines.reduce((s, l) => s + n(l.LineTotal), 0);
-  const totalUnd = lines.reduce((s, l) => {
-    const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-    return s + n(l.Quantity) * info.embalaQty;
-  }, 0);
+  const grouped = groupOrderLines(lines);
+  const totalUnd = grouped.reduce((s, g) => s + g.totalUnd, 0);
+  const totalVal = grouped.reduce((s, g) => s + g.totalVal, 0);
+  const totalEmb = grouped.reduce((s, g) => s + g.totalEmb, 0);
 
   return (
     <div className="order-detail-enter overflow-hidden">
@@ -412,11 +496,16 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
               <Package className="w-4 h-4 text-cockpit-accent" />
             </div>
             <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">Itens do Pedido</span>
-            <span className="text-xs text-cockpit-muted font-normal">({lines.length} itens)</span>
+            <span className="text-xs text-cockpit-muted font-normal">
+              ({grouped.length} produto{grouped.length !== 1 ? "s" : ""}
+              {grouped.length < lines.length && ` · ${lines.length} linhas agrupadas`})
+            </span>
           </div>
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-gray-600">Emb: <strong className="text-gray-900 tabular-nums">{fmtNum(totalEmb)}</strong></span>
-            <span className="text-gray-600">UND: <strong className="text-gray-900 tabular-nums">{fmtNum(totalUnd)}</strong></span>
+            <span className="text-gray-600">Saída: <strong className="text-gray-900 tabular-nums">{fmtNum(totalUnd)} un</strong></span>
+            {totalEmb !== totalUnd && (
+              <span className="text-gray-500 text-xs">({fmtNum(totalEmb)} emb)</span>
+            )}
             <span className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(totalVal)}</span>
           </div>
         </div>
@@ -437,72 +526,65 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
         )}
 
         <div className="rounded-lg border border-cockpit-border/50 bg-white overflow-hidden shadow-sm overflow-x-auto">
-          <table className="w-full text-xs min-w-[1060px]">
+          <table className="w-full text-xs min-w-[900px]">
             <thead>
               <tr className="border-b border-cockpit-border/40 bg-gray-50/80 text-cockpit-muted uppercase tracking-wider text-[10px]">
                 <th className="text-left py-2.5 px-2 font-semibold w-7">#</th>
                 <th className="text-left py-2.5 px-2 font-semibold w-9">COD</th>
-                <th className="text-left py-2.5 px-2 font-semibold w-[86px]">Código</th>
-                <th className="text-left py-2.5 px-2 font-semibold">Sub-Nome</th>
+                <th className="text-left py-2.5 px-2 font-semibold w-[86px]">SKU (UN)</th>
+                <th className="text-left py-2.5 px-2 font-semibold">Produto</th>
                 <th className="text-center py-2.5 px-2 font-semibold w-14">Capac.</th>
-                <th className="text-center py-2.5 px-2 font-semibold w-20">Embala</th>
-                <th className="text-center py-2.5 px-2 font-semibold w-12">Armazém</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-12">Emb.</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-14">Qtd UND</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-12">Armaz.</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-16">Saída (un)</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-11">% Qtd</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[68px]">R$/Emb</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[62px]">R$/UND</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-10">Desc%</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[72px]">Total</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((l, idx) => {
-                const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-                const qtyEmb = n(l.Quantity);
-                const qtyUnd = qtyEmb * info.embalaQty;
-                const pctQty = totalUnd > 0 ? (qtyUnd / totalUnd) * 100 : 0;
-                const disc = n(l.DiscountPercent);
-                const precoEmb = n(l.UnitPrice) || n(l.Price);
-                const precoUnd = info.embalaQty > 1 ? precoEmb / info.embalaQty : precoEmb;
-                const lineTotal = n(l.LineTotal);
+              {grouped.map((g, idx) => {
+                const pctQty = totalUnd > 0 ? (g.totalUnd / totalUnd) * 100 : 0;
+                const isMulti = g.variants.length > 1;
+                const warehouses = [...new Set(g.variants.map((v) => v.warehouse).filter(Boolean))];
+                const embalas = [...new Set(g.variants.map((v) => v.embala))];
 
                 return (
-                  <tr key={`${l.ItemCode}-${l.LineNum ?? idx}`} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
-                    <td className="py-1.5 px-2 text-cockpit-muted tabular-nums">{(l.LineNum ?? idx) + 1}</td>
+                  <tr key={g.undItemCode || idx} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
+                    <td className="py-1.5 px-2 text-cockpit-muted tabular-nums">{idx + 1}</td>
                     <td className="py-1.5 px-2">
-                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{info.cod}</span>
+                      <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{g.cod}</span>
                     </td>
-                    <td className="py-1.5 px-2 font-mono text-[10px] text-blue-700 font-medium">{l.ItemCode ?? "—"}</td>
-                    <td className="py-1.5 px-2 text-gray-700 max-w-[200px]">
-                      <span className="line-clamp-1 font-medium" title={l.ItemDescription ?? ""}>{info.subNome}</span>
-                      <div className="flex gap-1.5 mt-0.5">
-                        {info.cor !== "—" && (
-                          <span className="text-[9px] text-gray-400">{info.cor}</span>
-                        )}
-                        {info.fechamento !== "—" && (
-                          <span className="text-[9px] text-violet-500">{info.fechamento}</span>
+                    <td className="py-1.5 px-2">
+                      <span className="font-mono text-[10px] text-blue-700 font-medium">{g.undItemCode || "—"}</span>
+                      {isMulti && (
+                        <span className="ml-1 inline-block px-1 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold">{g.variants.length}</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-2 text-gray-700 max-w-[220px]">
+                      <span className="line-clamp-1 font-medium" title={g.baseName}>{g.subNome}</span>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {g.cor !== "—" && <span className="text-[9px] text-gray-400">{g.cor}</span>}
+                        {g.fechamento !== "—" && <span className="text-[9px] text-violet-500">{g.fechamento}</span>}
+                        {isMulti && (
+                          <span className="text-[9px] text-gray-400">
+                            {g.variants.map((v) => `${fmtNum(v.qty)} ${v.embala}`).join(" + ")}
+                          </span>
                         )}
                       </div>
                     </td>
                     <td className="py-1.5 px-2 text-center">
-                      {info.capacidade !== "—" ? (
-                        <span className="text-[10px] font-semibold text-sky-700">{info.capacidade}</span>
+                      {g.capacidade !== "—" ? (
+                        <span className="text-[10px] font-semibold text-sky-700">{g.capacidade}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-1.5 px-2 text-center">
-                      {info.embala !== "—" ? (
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${
-                          info.embala === "UND" ? "bg-gray-50 text-gray-500" : "bg-amber-50 text-amber-700"
-                        }`}>{info.embala}</span>
-                      ) : <span className="text-gray-300">—</span>}
+                    <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">
+                      {warehouses.length > 0 ? warehouses.join(", ") : "—"}
                     </td>
-                    <td className="py-1.5 px-2 text-center text-[10px] font-medium text-gray-500">{l.WarehouseCode ?? "—"}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtNum(qtyEmb)}</td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-gray-900">
-                      {fmtNum(qtyUnd)}
-                      {info.embalaQty > 1 && (
-                        <span className="block text-[9px] text-gray-400 font-normal">×{info.embalaQty}</span>
+                    <td className="py-1.5 px-2 text-right tabular-nums">
+                      <span className="font-bold text-gray-900">{fmtNum(g.totalUnd)}</span>
+                      {isMulti && (
+                        <span className="block text-[9px] text-gray-400">{fmtNum(g.totalEmb)} emb</span>
                       )}
                     </td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
@@ -510,18 +592,17 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                         {pctQty.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums text-gray-600 text-[11px]">{precoEmb > 0 ? fmtBRL(precoEmb) : "—"}</td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
-                      {precoUnd > 0 ? (
-                        <span className={`text-[11px] ${info.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-500"}`}>{fmtBRL(precoUnd)}</span>
+                      {g.avgPriceUnd > 0 ? (
+                        <span className="text-[11px] text-teal-700 font-semibold">{fmtBRL(g.avgPriceUnd)}</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="py-1.5 px-2 text-right tabular-nums">
-                      {disc > 0 ? (
-                        <span className={`text-[10px] font-medium ${disc >= 10 ? "text-red-500 font-bold" : disc >= 5 ? "text-amber-600" : "text-gray-500"}`}>{disc.toFixed(1)}%</span>
+                      {g.maxDiscount > 0 ? (
+                        <span className={`text-[10px] font-medium ${g.maxDiscount >= 10 ? "text-red-500 font-bold" : g.maxDiscount >= 5 ? "text-amber-600" : "text-gray-500"}`}>{g.maxDiscount.toFixed(1)}%</span>
                       ) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-cockpit-accent">{lineTotal > 0 ? fmtBRL(lineTotal) : "—"}</td>
+                    <td className="py-1.5 px-2 text-right tabular-nums font-semibold text-cockpit-accent">{g.totalVal > 0 ? fmtBRL(g.totalVal) : "—"}</td>
                   </tr>
                 );
               })}
