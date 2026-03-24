@@ -8,7 +8,7 @@ import {
   ChevronDown, ChevronRight, Package, Plus, Loader2,
   RefreshCw, DollarSign, Users, TrendingUp, BarChart3,
   ArrowUpDown, ArrowUp, ArrowDown, ListOrdered,
-  PieChart as PieChartIcon, Clock, Activity, Hash,
+  PieChart as PieChartIcon, Activity, Hash,
   Calendar, Briefcase, Minus, Equal, MapPin,
 } from "lucide-react";
 import {
@@ -27,37 +27,16 @@ import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { getProductGroup } from "@/lib/format";
 import {
-  format, parseISO, startOfDay, startOfMonth, subDays, subMonths,
-  getDay, differenceInCalendarDays,
+  format, parseISO, getDay, differenceInCalendarDays, differenceInDays,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useDateRange, formatRangeShort } from "@/contexts/DateRangeContext";
 
 const BATCH_SIZE = 50;
 const WEEKDAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const WEEKDAY_COLORS = ["#e5484d", "#A81C2C", "#c42538", "#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6"];
 
-// ─── Range presets ────────────────────────────────────────────
-
-type RangePreset = "today" | "7d" | "month" | "3m" | "custom";
-
-interface LocalRange { from: Date; to: Date }
-
-function presetRange(key: Exclude<RangePreset, "custom">): LocalRange {
-  const now = new Date();
-  switch (key) {
-    case "today": return { from: startOfDay(now), to: now };
-    case "7d": return { from: subDays(now, 6), to: now };
-    case "month": return { from: startOfMonth(now), to: now };
-    case "3m": return { from: startOfMonth(subMonths(now, 2)), to: now };
-  }
-}
-
-const RANGE_OPTIONS: { key: RangePreset; label: string }[] = [
-  { key: "today", label: "Hoje" },
-  { key: "7d", label: "7 dias" },
-  { key: "month", label: "Mês atual" },
-  { key: "3m", label: "3 meses" },
-];
+// ─── (Range agora unificado via DateRangeContext global) ──────
 
 // ─── Helpers de formatação ────────────────────────────────────
 
@@ -571,23 +550,12 @@ function PedidosContent() {
   const cardCodeFromUrl = searchParams.get("cardCode");
   const clientNameFromUrl = searchParams.get("clientName") ?? undefined;
 
-  // ─── Range local ───
-  const [rangePreset, setRangePreset] = useState<RangePreset>("today");
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
-
-  const localRange = useMemo<LocalRange>(() => {
-    if (rangePreset === "custom" && customFrom && customTo)
-      return { from: new Date(customFrom + "T00:00:00"), to: new Date(customTo + "T23:59:59") };
-    if (rangePreset === "custom") return presetRange("today");
-    return presetRange(rangePreset);
-  }, [rangePreset, customFrom, customTo]);
-
-  const dateFrom = format(localRange.from, "yyyy-MM-dd");
-  const dateTo = format(localRange.to, "yyyy-MM-dd");
-  const rangeLabel = rangePreset === "custom" && customFrom && customTo
-    ? `${format(localRange.from, "dd/MM/yyyy")} — ${format(localRange.to, "dd/MM/yyyy")}`
-    : RANGE_OPTIONS.find((o) => o.key === rangePreset)?.label ?? "Hoje";
+  // ─── Range global (unificado via BITopbar) ───
+  const { range } = useDateRange();
+  const dateFrom = format(range.from, "yyyy-MM-dd");
+  const dateTo = format(range.to, "yyyy-MM-dd");
+  const dayCount = differenceInDays(range.to, range.from) + 1;
+  const rangeLabel = `${formatRangeShort(range)} · ${dayCount} dia${dayCount !== 1 ? "s" : ""}`;
 
   // ─── Fetch ───
   const { data, loading, error, refetch } = useFetch(
@@ -844,33 +812,6 @@ function PedidosContent() {
         </div>
       )}
 
-      {/* ═══ Range selector ═══ */}
-      <div className="rounded-xl border border-cockpit-border bg-white p-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <Clock className="w-4 h-4 text-cockpit-muted shrink-0" />
-          <span className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mr-1">Período</span>
-          {RANGE_OPTIONS.map((opt) => (
-            <button key={opt.key} type="button" onClick={() => setRangePreset(opt.key)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${rangePreset === opt.key ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-600 hover:bg-black/5 border border-cockpit-border/50"}`}>
-              {opt.label}
-            </button>
-          ))}
-          <div className="h-5 w-px bg-cockpit-border mx-1" />
-          <button type="button" onClick={() => { setRangePreset("custom"); setCustomFrom(dateFrom); setCustomTo(dateTo); }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${rangePreset === "custom" ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-600 hover:bg-black/5 border border-cockpit-border/50"}`}>
-            Personalizado
-          </button>
-          {rangePreset === "custom" && (
-            <div className="flex items-center gap-2 ml-2">
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} max={customTo || undefined}
-                className="px-2 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:ring-2 focus:ring-cockpit-accent/30" />
-              <span className="text-xs text-cockpit-muted">—</span>
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} min={customFrom || undefined}
-                className="px-2 py-1.5 rounded-lg bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:ring-2 focus:ring-cockpit-accent/30" />
-            </div>
-          )}
-        </div>
-      </div>
 
       {cardCodeFromUrl && clienteFilter && (
         <div className="rounded-xl border border-cockpit-accent/30 bg-cockpit-accent/5 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
