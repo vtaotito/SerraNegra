@@ -45,6 +45,9 @@ interface StockItem {
   coberturaClass: Cobertura;
   numPedidos: number;
   numClientes: number;
+  skuCount: number;
+  allSkus: string[];
+  embalas: string[];
 }
 
 function parseEmbalaQty(desc: string): { embalaQty: number; embala: string } {
@@ -63,6 +66,14 @@ function parseEmbalaQty(desc: string): { embalaQty: number; embala: string } {
   }
 
   return { embalaQty: 1, embala: "UND" };
+}
+
+function getBaseProductName(desc: string): string {
+  return (desc ?? "")
+    .replace(/\s*[-–]\s*(CAIXA|FARDO|PALETE)\s+C\s*\/\s*[\d.,]+\s*UND\s*$/i, "")
+    .replace(/\s*[-–]\s*UND\s*$/i, "")
+    .trim()
+    .toUpperCase();
 }
 
 const CURVA_STYLES: Record<CurvaABC, { bg: string; text: string; ring: string }> = {
@@ -114,7 +125,7 @@ function classifyCurvaABC(items: { sku: string; fat: number }[]): Map<string, Cu
   return map;
 }
 
-type SortField = "sku" | "descricao" | "estoqueTotal" | "disponivel" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro";
+type SortField = "sku" | "descricao" | "estoqueTotal" | "disponivel" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro" | "numPedidos";
 
 function CTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -176,31 +187,87 @@ export default function EstoquePage() {
       }
     }
 
-    const curvaMap = classifyCurvaABC(
-      Array.from(salesMap.entries()).map(([sku, v]) => ({ sku, fat: v.fat }))
-    );
+    type RawItem = {
+      sku: string;
+      description: string;
+      unitOfMeasure: string;
+      embala: string;
+      embalaQty: number;
+      baseName: string;
+      estoqueTotal: number;
+      disponivel: number;
+      reservado: number;
+      emPedido: number;
+      qtdEmb: number;
+      qtdVendida: number;
+      fatVendido: number;
+      pedidos: Set<number>;
+      clientes: Set<string>;
+    };
 
-    const items: StockItem[] = catalogData.data.map((cat) => {
+    const rawItems: RawItem[] = catalogData.data.map((cat) => {
       const inv = invMap.get(cat.sku);
       const sales = salesMap.get(cat.sku);
       const { embalaQty, embala } = parseEmbalaQty(cat.description);
-      const estoqueTotal = inv?.avail ?? 0;
-      const disponivel = inv?.free ?? 0;
-      const reservado = inv?.reserved ?? 0;
-      const emPedido = inv?.onOrder ?? 0;
       const qtdEmb = sales?.qty ?? 0;
-      const qtdVendida = qtdEmb * embalaQty;
-      const fatVendido = sales?.fat ?? 0;
+      return {
+        sku: cat.sku,
+        description: cat.description,
+        unitOfMeasure: cat.unit_of_measure || "UN",
+        embala,
+        embalaQty,
+        baseName: getBaseProductName(cat.description),
+        estoqueTotal: inv?.avail ?? 0,
+        disponivel: inv?.free ?? 0,
+        reservado: inv?.reserved ?? 0,
+        emPedido: inv?.onOrder ?? 0,
+        qtdEmb,
+        qtdVendida: qtdEmb * embalaQty,
+        fatVendido: sales?.fat ?? 0,
+        pedidos: sales?.pedidos ?? new Set<number>(),
+        clientes: sales?.clientes ?? new Set<string>(),
+      };
+    });
+
+    const groups = new Map<string, RawItem[]>();
+    for (const item of rawItems) {
+      const key = item.baseName || item.sku;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(item);
+    }
+
+    const mergedItems: StockItem[] = [];
+    for (const [baseName, group] of groups) {
+      const undItem = group.find((i) => i.embala === "UND") ?? group[0];
+
+      const estoqueTotal = group.reduce((s, i) => s + i.estoqueTotal, 0);
+      const disponivel = group.reduce((s, i) => s + i.disponivel, 0);
+      const reservado = group.reduce((s, i) => s + i.reservado, 0);
+      const emPedido = group.reduce((s, i) => s + i.emPedido, 0);
+      const qtdVendida = group.reduce((s, i) => s + i.qtdVendida, 0);
+      const qtdEmb = group.reduce((s, i) => s + i.qtdEmb, 0);
+      const fatVendido = group.reduce((s, i) => s + i.fatVendido, 0);
+
+      const allPedidos = new Set<number>();
+      const allClientes = new Set<string>();
+      for (const i of group) {
+        for (const p of i.pedidos) allPedidos.add(p);
+        for (const c of i.clientes) allClientes.add(c);
+      }
+
       const mediaDiaria = qtdVendida / totalDays;
       const coberturaDias = mediaDiaria > 0 ? disponivel / mediaDiaria : disponivel > 0 ? 999 : 0;
 
-      return {
-        sku: cat.sku,
-        cod: getProductGroup(cat.sku),
-        descricao: cat.description,
-        und: cat.unit_of_measure || "UN",
-        embala,
-        embalaQty,
+      const allSkus = group.map((i) => i.sku);
+      const embalas = [...new Set(group.map((i) => i.embala))];
+
+      mergedItems.push({
+        sku: undItem.sku,
+        cod: getProductGroup(undItem.sku),
+        descricao: baseName || undItem.description,
+        und: undItem.unitOfMeasure,
+        embala: embalas.join(", "),
+        embalaQty: undItem.embalaQty,
         estoqueTotal,
         disponivel,
         reservado,
@@ -211,17 +278,29 @@ export default function EstoquePage() {
         mediaDiaria,
         coberturaDias: Math.min(coberturaDias, 999),
         giro: "parado" as Giro,
-        curva: curvaMap.get(cat.sku) ?? "C",
+        curva: "C" as CurvaABC,
         coberturaClass: classifyCobertura(coberturaDias, qtdVendida > 0),
-        numPedidos: sales?.pedidos.size ?? 0,
-        numClientes: sales?.clientes.size ?? 0,
-      };
-    });
+        numPedidos: allPedidos.size,
+        numClientes: allClientes.size,
+        skuCount: group.length,
+        allSkus,
+        embalas,
+      });
+    }
 
-    const maxMedia = Math.max(...items.map((i) => i.mediaDiaria), 0);
-    for (const item of items) item.giro = classifyGiro(item.mediaDiaria, maxMedia);
+    const curvaMap = classifyCurvaABC(
+      mergedItems.map((i) => ({ sku: i.sku, fat: i.fatVendido }))
+    );
+    for (const item of mergedItems) {
+      item.curva = curvaMap.get(item.sku) ?? "C";
+    }
 
-    return items;
+    const maxMedia = Math.max(...mergedItems.map((i) => i.mediaDiaria), 0);
+    for (const item of mergedItems) {
+      item.giro = classifyGiro(item.mediaDiaria, maxMedia);
+    }
+
+    return mergedItems;
   }, [catalogData, invData, ordData, totalDays]);
 
   const [search, setSearch] = useState("");
@@ -253,6 +332,7 @@ export default function EstoquePage() {
         case "fatVendido": cmp = a.fatVendido - b.fatVendido; break;
         case "curva": cmp = a.curva.localeCompare(b.curva); break;
         case "giro": cmp = a.giro.localeCompare(b.giro); break;
+        case "numPedidos": cmp = a.numPedidos - b.numPedidos; break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -260,6 +340,7 @@ export default function EstoquePage() {
 
   const kpis = useMemo(() => {
     const total = allItems.length;
+    const totalSkus = allItems.reduce((s, i) => s + i.skuCount, 0);
     const estoqueTotal = allItems.reduce((s, i) => s + Math.max(i.estoqueTotal, 0), 0);
     const fatTotal = allItems.reduce((s, i) => s + i.fatVendido, 0);
     const criticos = allItems.filter((i) => i.coberturaClass === "critico").length;
@@ -269,8 +350,18 @@ export default function EstoquePage() {
     const cobMedia = comVenda.length > 0
       ? comVenda.reduce((s, i) => s + Math.min(i.coberturaDias, 365), 0) / comVenda.length
       : 0;
-    return { total, estoqueTotal, fatTotal, criticos, curvaA, parados, cobMedia };
-  }, [allItems]);
+    const orderNums = new Set<number>();
+    const cardCodes = new Set<string>();
+    if (ordData) {
+      for (const o of ordData.items) {
+        if (o.cancelled !== "Y") {
+          orderNums.add(o.doc_num);
+          cardCodes.add(o.card_code);
+        }
+      }
+    }
+    return { total, totalSkus, estoqueTotal, fatTotal, criticos, curvaA, parados, cobMedia, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
+  }, [allItems, ordData]);
 
   const curvaDistrib = useMemo(() => {
     const a = allItems.filter((i) => i.curva === "A");
@@ -314,16 +405,24 @@ export default function EstoquePage() {
 
   const handleExport = () => {
     exportCSV(filtered.map((i) => ({
-      SKU: i.sku, COD: i.cod, Descricao: i.descricao, Unidade: i.und,
-      Embalagem: i.embala, "UND/Emb": i.embalaQty,
-      Estoque: i.estoqueTotal, Disponivel: i.disponivel, Reservado: i.reservado,
-      "Embalagens Vendidas": i.qtdEmb,
-      "Unidades Vendidas": i.qtdVendida,
+      "SKU (UN)": i.sku,
+      COD: i.cod,
+      Produto: i.descricao,
+      "SKUs Agrupados": i.skuCount,
+      "Todos SKUs": i.allSkus.join(", "),
+      Embalagens: i.embalas.join(", "),
+      Estoque: i.estoqueTotal,
+      Disponivel: i.disponivel,
+      Reservado: i.reservado,
+      "Saída (un)": i.qtdVendida,
+      Pedidos: i.numPedidos,
+      Clientes: i.numClientes,
       "Fat. Vendido": i.fatVendido.toFixed(2),
       "Media Diaria (un)": i.mediaDiaria.toFixed(2),
       "Cobertura Dias": i.coberturaDias.toFixed(0),
-      Curva: i.curva, Giro: i.giro, Cobertura: i.coberturaClass,
-      Pedidos: i.numPedidos, Clientes: i.numClientes,
+      Curva: i.curva,
+      Giro: i.giro,
+      Cobertura: i.coberturaClass,
     })), `estoque-analise-${dateFrom}-${dateTo}`);
   };
 
@@ -346,7 +445,7 @@ export default function EstoquePage() {
             <CalendarDays className="w-3.5 h-3.5" />
             Estoque × Vendas · <span className="text-gray-600 font-medium">{periodoLabel}</span>
             <span className="text-cockpit-border">·</span>
-            <span>{kpis.total} SKUs · {totalDays} dias</span>
+            <span>{kpis.total} produtos · {totalDays} dias</span>
           </p>
         </div>
         <button onClick={handleExport} className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
@@ -357,12 +456,12 @@ export default function EstoquePage() {
       {/* KPIs */}
       <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         {[
-          { title: "SKUs", value: fmtNum(kpis.total), icon: Package, color: "text-cockpit-accent" },
+          { title: "Produtos", value: fmtNum(kpis.total), sub: `${fmtNum(kpis.totalSkus)} SKUs agrupados`, icon: Package, color: "text-cockpit-accent" },
           { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)} un`, icon: Boxes, color: "text-sky-500" },
-          { title: "Saída Total", value: `${fmtNum(allItems.reduce((s, i) => s + i.qtdVendida, 0))} un`, sub: `${fmtNum(allItems.reduce((s, i) => s + i.qtdEmb, 0))} embalagens`, icon: TrendingDown, color: "text-orange-500" },
+          { title: "Saída Total", value: `${fmtNum(allItems.reduce((s, i) => s + i.qtdVendida, 0))} un`, icon: TrendingDown, color: "text-orange-500" },
           { title: "Fat. Período", value: fmtBRL(kpis.fatTotal), icon: TrendingUp, color: "text-emerald-600" },
-          { title: "Cobertura Méd.", value: `${kpis.cobMedia.toFixed(0)} dias`, icon: Clock, color: "text-blue-500" },
-          { title: "Curva A", value: String(kpis.curvaA), sub: "SKUs que geram 80% do fat.", icon: Flame, color: "text-cockpit-accent" },
+          { title: "Total Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes`, icon: Layers, color: "text-indigo-500" },
+          { title: "Curva A", value: String(kpis.curvaA), sub: "Produtos 80% do fat.", icon: Flame, color: "text-cockpit-accent" },
           { title: "Críticos", value: String(kpis.criticos), sub: "≤ 7 dias de cobertura", icon: ShieldAlert, color: kpis.criticos > 0 ? "text-red-500" : "text-emerald-500" },
           { title: "Parados", value: String(kpis.parados), sub: "Estoque sem saída", icon: Snowflake, color: kpis.parados > 0 ? "text-amber-500" : "text-emerald-500" },
         ].map((k) => {
@@ -521,7 +620,8 @@ export default function EstoquePage() {
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
         <div className="px-4 py-2.5 border-b border-cockpit-border bg-gray-50/80 flex items-center justify-between">
           <p className="text-xs text-cockpit-muted">
-            <strong className="text-gray-800">{filtered.length}</strong> de <strong className="text-gray-800">{allItems.length}</strong> itens
+            <strong className="text-gray-800">{filtered.length}</strong> de <strong className="text-gray-800">{allItems.length}</strong> produtos
+            <span className="text-gray-400 ml-1">({kpis.totalSkus} SKUs agrupados)</span>
           </p>
           <div className="flex gap-2 text-[10px]">
             {(["A", "B", "C"] as const).map((c) => {
@@ -539,12 +639,11 @@ export default function EstoquePage() {
                   <span className="inline-flex items-center gap-1">ABC <SortIcon field="curva" /></span>
                 </th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("sku")}>
-                  <span className="inline-flex items-center gap-1">SKU <SortIcon field="sku" /></span>
+                  <span className="inline-flex items-center gap-1">SKU (UN) <SortIcon field="sku" /></span>
                 </th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("descricao")}>
-                  <span className="inline-flex items-center gap-1">Descrição <SortIcon field="descricao" /></span>
+                  <span className="inline-flex items-center gap-1">Produto <SortIcon field="descricao" /></span>
                 </th>
-                <th className="text-center py-2.5 px-2 font-semibold bg-gray-50 w-[72px]">Embala</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
@@ -553,6 +652,9 @@ export default function EstoquePage() {
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
                   <span className="inline-flex items-center gap-1 justify-end">Saída (un) <SortIcon field="qtdVendida" /></span>
+                </th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("numPedidos")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Pedidos <SortIcon field="numPedidos" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("mediaDiaria")}>
                   <span className="inline-flex items-center gap-1 justify-end">Méd/Dia <SortIcon field="mediaDiaria" /></span>
@@ -583,14 +685,19 @@ export default function EstoquePage() {
                     <td className="py-2 px-3">
                       <span className={`inline-block w-6 text-center px-1 py-0.5 rounded text-[10px] font-bold ${cs.bg} ${cs.text}`}>{item.curva}</span>
                     </td>
-                    <td className="py-2 px-2 font-mono text-[10px] text-gray-500">{item.sku}</td>
-                    <td className="py-2 px-2 text-gray-700 max-w-[200px]">
-                      <span className="line-clamp-1 font-medium text-[11px]" title={item.descricao}>{item.descricao}</span>
+                    <td className="py-2 px-2">
+                      <span className="font-mono text-[10px] text-gray-500">{item.sku}</span>
+                      {item.skuCount > 1 && (
+                        <span className="ml-1 inline-block px-1 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold">{item.skuCount} SKUs</span>
+                      )}
                     </td>
-                    <td className="py-2 px-2 text-center">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${item.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
-                        {item.embala}
-                      </span>
+                    <td className="py-2 px-2 text-gray-700 max-w-[220px]">
+                      <span className="line-clamp-1 font-medium text-[11px]" title={item.descricao}>{item.descricao}</span>
+                      {item.skuCount > 1 && (
+                        <span className="block text-[9px] text-gray-400 mt-0.5">
+                          {item.embalas.join(" · ")}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-600">{fmtNum(item.estoqueTotal)}</td>
                     <td className={`py-2 px-2 text-right tabular-nums font-medium ${item.disponivel <= 0 ? "text-red-500" : "text-gray-700"}`}>
@@ -598,12 +705,13 @@ export default function EstoquePage() {
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">
                       <span className={item.qtdVendida > 0 ? "text-gray-900 font-bold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
-                      {item.qtdEmb > 0 && (
-                        <span className="block text-[9px] text-gray-400">
-                          {item.embalaQty > 1
-                            ? `${fmtNum(item.qtdEmb)} × ${item.embalaQty} un`
-                            : `${fmtNum(item.qtdEmb)} un`}
-                        </span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums">
+                      <span className={item.numPedidos > 0 ? "text-indigo-700 font-semibold" : "text-gray-400"}>
+                        {item.numPedidos > 0 ? fmtNum(item.numPedidos) : "—"}
+                      </span>
+                      {item.numClientes > 0 && (
+                        <span className="block text-[9px] text-gray-400">{fmtNum(item.numClientes)} clientes</span>
                       )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-500">
@@ -633,7 +741,7 @@ export default function EstoquePage() {
 
         {filtered.length > 0 && (
           <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-gray-50/80 text-xs">
-            <span className="text-cockpit-muted">Total ({filtered.length} itens)</span>
+            <span className="text-cockpit-muted">Total ({filtered.length} produtos · {filtered.reduce((s, i) => s + i.skuCount, 0)} SKUs)</span>
             <div className="flex items-center gap-4 tabular-nums">
               <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))} un</strong></span>
               <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))} un</strong></span>
@@ -644,7 +752,7 @@ export default function EstoquePage() {
       </div>
 
       <footer className="text-center text-xs text-cockpit-muted py-3 border-t border-cockpit-border">
-        Estoque SAP B1 cruzado com {ordData?.total ?? 0} pedidos de venda · {totalDays} dias de período · Cobertura = Disponível ÷ Média diária de saída
+        Estoque SAP B1 cruzado com {ordData?.total ?? 0} pedidos de venda · {totalDays} dias · Produtos agrupados por embalagem · Cobertura = Disponível ÷ Média diária de saída
       </footer>
     </div>
   );
