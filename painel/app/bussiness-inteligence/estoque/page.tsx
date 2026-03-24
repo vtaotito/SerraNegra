@@ -355,10 +355,11 @@ export default function EstoquePage() {
       </div>
 
       {/* KPIs */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         {[
           { title: "SKUs", value: fmtNum(kpis.total), icon: Package, color: "text-cockpit-accent" },
           { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)} un`, icon: Boxes, color: "text-sky-500" },
+          { title: "Saída Total", value: `${fmtNum(allItems.reduce((s, i) => s + i.qtdVendida, 0))} un`, sub: `${fmtNum(allItems.reduce((s, i) => s + i.qtdEmb, 0))} embalagens`, icon: TrendingDown, color: "text-orange-500" },
           { title: "Fat. Período", value: fmtBRL(kpis.fatTotal), icon: TrendingUp, color: "text-emerald-600" },
           { title: "Cobertura Méd.", value: `${kpis.cobMedia.toFixed(0)} dias`, icon: Clock, color: "text-blue-500" },
           { title: "Curva A", value: String(kpis.curvaA), sub: "SKUs que geram 80% do fat.", icon: Flame, color: "text-cockpit-accent" },
@@ -551,7 +552,7 @@ export default function EstoquePage() {
                   <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Vend. (un) <SortIcon field="qtdVendida" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Saída (un) <SortIcon field="qtdVendida" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("mediaDiaria")}>
                   <span className="inline-flex items-center gap-1 justify-end">Méd/Dia <SortIcon field="mediaDiaria" /></span>
@@ -596,9 +597,13 @@ export default function EstoquePage() {
                       {fmtNum(item.disponivel)}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">
-                      <span className={item.qtdVendida > 0 ? "text-gray-900 font-semibold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
-                      {item.embalaQty > 1 && item.qtdEmb > 0 && (
-                        <span className="block text-[9px] text-gray-400">{fmtNum(item.qtdEmb)} emb ×{item.embalaQty}</span>
+                      <span className={item.qtdVendida > 0 ? "text-gray-900 font-bold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
+                      {item.qtdEmb > 0 && (
+                        <span className="block text-[9px] text-gray-400">
+                          {item.embalaQty > 1
+                            ? `${fmtNum(item.qtdEmb)} × ${item.embalaQty} un`
+                            : `${fmtNum(item.qtdEmb)} un`}
+                        </span>
                       )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-500">
@@ -630,8 +635,8 @@ export default function EstoquePage() {
           <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-gray-50/80 text-xs">
             <span className="text-cockpit-muted">Total ({filtered.length} itens)</span>
             <div className="flex items-center gap-4 tabular-nums">
-              <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
-              <span className="text-gray-500">Vendido: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))}</strong></span>
+              <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))} un</strong></span>
+              <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))} un</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, i) => s + i.fatVendido, 0))}</span>
             </div>
           </div>
