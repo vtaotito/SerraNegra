@@ -17,6 +17,7 @@ import {
   Menu,
   X,
   ExternalLink,
+  Zap,
 } from "lucide-react";
 import { useState } from "react";
 import { WMS_BASE_URL } from "@/lib/config";
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
   { href: "/bussiness-inteligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
+  { href: "/integracoes", label: "Integrações", icon: Zap, roles: ["admin", "supervisor"] },
 ];
 
 const moduleLinks = [

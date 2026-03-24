@@ -191,30 +191,6 @@ export default function DashboardPage() {
           })}
         </div>
 
-        <div className="mt-8 bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Activity className="w-4 h-4 text-gsn-400" />
-            Integração SAP B1
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="p-3 rounded-lg bg-gsn-50/50">
-              <p className="text-xs text-gray-500">Pedidos</p>
-              <p className="text-sm font-semibold text-gray-900 mt-1">Sync ativo</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gsn-50/50">
-              <p className="text-xs text-gray-500">Produtos</p>
-              <p className="text-sm font-semibold text-gray-900 mt-1">Sync ativo</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gsn-50/50">
-              <p className="text-xs text-gray-500">Estoque</p>
-              <p className="text-sm font-semibold text-gray-900 mt-1">Sync ativo</p>
-            </div>
-            <div className="p-3 rounded-lg bg-gsn-50/50">
-              <p className="text-xs text-gray-500">Clientes</p>
-              <p className="text-sm font-semibold text-gray-900 mt-1">Sync ativo</p>
-            </div>
-          </div>
-        </div>
       </div>
     </ProtectedLayout>
   );
