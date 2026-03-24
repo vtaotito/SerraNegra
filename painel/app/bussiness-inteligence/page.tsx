@@ -4,33 +4,31 @@ import { useMemo } from "react";
 import {
   DollarSign, ShoppingCart, Users, TrendingUp,
   Wallet, Target, CalendarDays,
-  ArrowUpRight, ArrowDownRight, MapPin, BarChart3,
-  Layers, Hash,
+  ArrowUpRight, ArrowDownRight, BarChart3,
+  Layers, Hash, Package, Calendar,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Cell, PieChart, Pie,
+  CartesianGrid, Cell, PieChart, Pie, AreaChart, Area,
 } from "recharts";
-import { fmtBRL, fmtNum, STATE_TO_REGION } from "@/lib/format";
+import { fmtBRL, fmtNum } from "@/lib/format";
 import {
   fetchSalesOrders, fetchSalesPersons, fetchCustomers,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, parseISO, differenceInDays, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import Link from "next/link";
 
-const REGION_COLORS: Record<string, string> = {
-  "Sudeste": "#AA1A1B", "Sul": "#0ea5e9", "Nordeste": "#f59e0b",
-  "Centro-Oeste": "#10b981", "Norte": "#8b5cf6", "Outro": "#78696c",
-};
-
-const STATE_COLORS = [
+const PRODUCT_COLORS = [
   "#AA1A1B", "#c42538", "#d42b2c", "#e94848", "#f47474",
   "#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6", "#6366f1",
-  "#14b8a6", "#ec4899", "#78696c",
 ];
+
+const DOW_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const DOW_COLORS = ["#78696c", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#78696c"];
 
 function CTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -39,7 +37,9 @@ function CTooltip({ active, payload, label }: any) {
       <p className="font-semibold text-gray-900 mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} className="text-gray-600">
-          {p.name}: <span className="font-medium text-gray-900">{typeof p.value === "number" && p.value > 100 ? fmtBRL(p.value) : fmtNum(p.value)}</span>
+          {p.name}: <span className="font-medium text-gray-900">
+            {p.name === "Pedidos" || p.name === "Qtd" ? fmtNum(Number(p.value)) : fmtBRL(Number(p.value))}
+          </span>
         </p>
       ))}
     </div>
@@ -59,11 +59,10 @@ export default function HomePage() {
   const { data: prevOrdersData } =
     useFetch(() => fetchSalesOrders({ dateFrom: prevFrom, dateTo: prevTo, limit: 50000 }), [prevFrom, prevTo]);
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);
-  const { data: custData } = useFetch(() => fetchCustomers({ limit: 50000 }), []);
+  const { data: custData } = useFetch(() => fetchCustomers({ limit: 1 }), []);
 
   const orders = useMemo(() => (ordersData?.items ?? []).filter((o) => o.cancelled !== "Y"), [ordersData]);
   const prevOrders = useMemo(() => (prevOrdersData?.items ?? []).filter((o) => o.cancelled !== "Y"), [prevOrdersData]);
-  const customers = useMemo(() => custData?.data ?? [], [custData]);
   const spMap = useMemo(() => {
     const m = new Map<number, string>();
     if (spData?.items) for (const s of spData.items) m.set(s.SalesEmployeeCode, s.SalesEmployeeName);
@@ -113,46 +112,78 @@ export default function HomePage() {
     return Array.from(agg.values()).sort((a, b) => b.fat - a.fat).slice(0, 10);
   }, [orders]);
 
-  // Clientes por estado (com faturamento)
-  const clientesPorEstado = useMemo(() => {
-    const custStateMap = new Map<string, string>();
-    for (const c of customers) {
-      if (c.card_code && c.state) custStateMap.set(c.card_code, c.state);
-    }
-    const agg = new Map<string, { fat: number; clientes: Set<string>; pedidos: number }>();
-    for (const o of orders) {
-      const state = custStateMap.get(o.card_code) || "N/D";
-      const cur = agg.get(state) ?? { fat: 0, clientes: new Set(), pedidos: 0 };
-      cur.fat += Number(o.doc_total) || 0;
-      cur.clientes.add(o.card_code);
-      cur.pedidos += 1;
-      agg.set(state, cur);
-    }
-    return Array.from(agg.entries())
-      .map(([state, v]) => ({ state, fat: v.fat, clientes: v.clientes.size, pedidos: v.pedidos }))
-      .sort((a, b) => b.fat - a.fat)
-      .slice(0, 12);
-  }, [orders, customers]);
+  // Evolução de faturamento (diário, semanal ou mensal conforme range)
+  const trendData = useMemo(() => {
+    const totalDays = differenceInDays(range.to, range.from) + 1;
 
-  // Clientes por região
-  const clientesPorRegiao = useMemo(() => {
-    const custStateMap = new Map<string, string>();
-    for (const c of customers) {
-      if (c.card_code && c.state) custStateMap.set(c.card_code, c.state);
+    if (totalDays <= 45) {
+      const days = eachDayOfInterval({ start: range.from, end: range.to });
+      const dayMap = new Map<string, { fat: number; pedidos: number }>();
+      for (const d of days) dayMap.set(format(d, "yyyy-MM-dd"), { fat: 0, pedidos: 0 });
+      for (const o of orders) {
+        const key = o.doc_date?.split("T")[0] || "";
+        const cur = dayMap.get(key);
+        if (cur) { cur.fat += Number(o.doc_total) || 0; cur.pedidos += 1; }
+      }
+      return Array.from(dayMap.entries()).map(([date, v]) => ({
+        label: format(parseISO(date), "dd/MM", { locale: ptBR }),
+        Faturamento: v.fat,
+        Pedidos: v.pedidos,
+      }));
     }
-    const agg = new Map<string, { fat: number; clientes: Set<string> }>();
+
+    if (totalDays <= 180) {
+      const weeks = eachWeekOfInterval({ start: range.from, end: range.to }, { weekStartsOn: 1 });
+      return weeks.map((wStart) => {
+        const wEnd = endOfWeek(wStart, { weekStartsOn: 1 });
+        let fat = 0, pedidos = 0;
+        for (const o of orders) {
+          const d = parseISO(o.doc_date?.split("T")[0] || "");
+          if (d >= wStart && d <= wEnd) { fat += Number(o.doc_total) || 0; pedidos += 1; }
+        }
+        return { label: `${format(wStart, "dd/MM")}`, Faturamento: fat, Pedidos: pedidos };
+      });
+    }
+
+    const months = eachMonthOfInterval({ start: range.from, end: range.to });
+    return months.map((mStart) => {
+      const mEnd = endOfMonth(mStart);
+      let fat = 0, pedidos = 0;
+      for (const o of orders) {
+        const d = parseISO(o.doc_date?.split("T")[0] || "");
+        if (d >= mStart && d <= mEnd) { fat += Number(o.doc_total) || 0; pedidos += 1; }
+      }
+      return { label: format(mStart, "MMM/yy", { locale: ptBR }), Faturamento: fat, Pedidos: pedidos };
+    });
+  }, [orders, range]);
+
+  // Top 10 produtos por faturamento (das linhas dos pedidos)
+  const topProdutos = useMemo(() => {
+    const agg = new Map<string, { desc: string; fat: number; qty: number }>();
     for (const o of orders) {
-      const state = custStateMap.get(o.card_code) || "";
-      const region = STATE_TO_REGION[state] || "Outro";
-      const cur = agg.get(region) ?? { fat: 0, clientes: new Set() };
-      cur.fat += Number(o.doc_total) || 0;
-      cur.clientes.add(o.card_code);
-      agg.set(region, cur);
+      if (!o.lines) continue;
+      for (const line of o.lines) {
+        const code = line.ItemCode || "N/D";
+        const cur = agg.get(code) ?? { desc: line.ItemDescription || code, fat: 0, qty: 0 };
+        cur.fat += Number(line.LineTotal) || 0;
+        cur.qty += Number(line.Quantity) || 0;
+        agg.set(code, cur);
+      }
     }
-    return Array.from(agg.entries())
-      .map(([region, v]) => ({ name: region, value: v.fat, clientes: v.clientes.size }))
-      .sort((a, b) => b.value - a.value);
-  }, [orders, customers]);
+    return Array.from(agg.values()).sort((a, b) => b.fat - a.fat).slice(0, 10);
+  }, [orders]);
+
+  // Vendas por dia da semana
+  const dowData = useMemo(() => {
+    const agg = Array.from({ length: 7 }, () => ({ fat: 0, pedidos: 0 }));
+    for (const o of orders) {
+      const d = parseISO(o.doc_date?.split("T")[0] || "");
+      const dow = d.getDay();
+      agg[dow].fat += Number(o.doc_total) || 0;
+      agg[dow].pedidos += 1;
+    }
+    return agg.map((v, i) => ({ name: DOW_LABELS[i], Faturamento: v.fat, Pedidos: v.pedidos }));
+  }, [orders]);
 
   // Pedidos abertos vs fechados
   const statusData = useMemo(() => {
@@ -188,7 +219,7 @@ export default function HomePage() {
         </p>
       </div>
 
-      {/* KPIs with variation */}
+      {/* KPIs */}
       <section className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {[
           { title: "Faturamento", value: fmtBRL(kpis.fat), variation: kpis.fatVar, icon: DollarSign, color: "text-cockpit-accent" },
@@ -223,7 +254,43 @@ export default function HomePage() {
         })}
       </section>
 
-      {/* Charts row: Vendedores + Status */}
+      {/* Evolução de faturamento */}
+      <section className="rounded-xl border border-cockpit-border bg-white p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-cockpit-accent" />
+            <h2 className="text-sm font-semibold text-gray-900">Evolução de Faturamento</h2>
+          </div>
+          <span className="text-[10px] text-cockpit-muted uppercase tracking-wider">
+            {differenceInDays(range.to, range.from) + 1 <= 45 ? "Diário" : differenceInDays(range.to, range.from) + 1 <= 180 ? "Semanal" : "Mensal"}
+          </span>
+        </div>
+        {trendData.length === 0 ? (
+          <p className="text-center text-cockpit-muted py-12 text-sm">Sem dados no período</p>
+        ) : (
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={trendData}>
+                <defs>
+                  <linearGradient id="gradFat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#AA1A1B" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#AA1A1B" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="label" tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false}
+                  interval={trendData.length > 20 ? Math.floor(trendData.length / 10) : 0} />
+                <YAxis tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false}
+                  tickFormatter={(v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <Tooltip content={<CTooltip />} />
+                <Area type="monotone" dataKey="Faturamento" stroke="#AA1A1B" strokeWidth={2} fill="url(#gradFat)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+
+      {/* Vendedores + Status */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <section className="xl:col-span-2 rounded-xl border border-cockpit-border bg-white p-5">
           <div className="flex items-center justify-between mb-4">
@@ -261,85 +328,94 @@ export default function HomePage() {
           {statusData.length === 0 ? (
             <p className="text-center text-cockpit-muted py-12 text-sm">Sem dados</p>
           ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3}
-                    label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                    {statusData.map((s, i) => <Cell key={i} fill={s.fill} />)}
-                  </Pie>
-                  <Tooltip formatter={(v) => fmtNum(Number(v))} />
-                </PieChart>
-              </ResponsiveContainer>
+            <div className="flex flex-col items-center justify-center h-64">
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={4}
+                      label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                      {statusData.map((s, i) => <Cell key={i} fill={s.fill} />)}
+                    </Pie>
+                    <Tooltip formatter={(v) => fmtNum(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex gap-4 mt-2">
+                {statusData.map((s) => (
+                  <div key={s.name} className="flex items-center gap-1.5 text-xs">
+                    <span className="w-2 h-2 rounded-full" style={{ background: s.fill }} />
+                    <span className="text-gray-600">{s.name}</span>
+                    <span className="font-semibold text-gray-900">{fmtNum(s.value)}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>
       </div>
 
-      {/* Geo: Região + Estado */}
+      {/* Top Produtos + Vendas por dia da semana */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <section className="rounded-xl border border-cockpit-border bg-white p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-cockpit-accent" />
-              <h2 className="text-sm font-semibold text-gray-900">Faturamento por Região</h2>
+              <Package className="w-4 h-4 text-cockpit-accent" />
+              <h2 className="text-sm font-semibold text-gray-900">Top 10 Produtos</h2>
             </div>
-            <Link href="/bussiness-inteligence/clientes" className="text-[11px] text-cockpit-accent hover:underline font-medium">
-              Ver clientes →
+            <Link href="/bussiness-inteligence/produtos" className="text-[11px] text-cockpit-accent hover:underline font-medium">
+              Ver todos →
             </Link>
           </div>
-          {clientesPorRegiao.length === 0 ? (
-            <p className="text-center text-cockpit-muted py-12 text-sm">Sem dados de localização</p>
+          {topProdutos.length === 0 ? (
+            <p className="text-center text-cockpit-muted py-12 text-sm">Sem dados de produtos</p>
           ) : (
-            <>
-              <div className="h-52">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={clientesPorRegiao} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} paddingAngle={2}
-                      label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
-                      {clientesPorRegiao.map((r, i) => <Cell key={i} fill={REGION_COLORS[r.name] || "#78696c"} />)}
-                    </Pie>
-                    <Tooltip formatter={(v) => fmtBRL(Number(v))} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-3 space-y-1.5">
-                {clientesPorRegiao.map((r) => (
-                  <div key={r.name} className="flex items-center gap-2 text-xs">
-                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: REGION_COLORS[r.name] || "#78696c" }} />
-                    <span className="text-gray-700 font-medium flex-1">{r.name}</span>
-                    <span className="text-gray-500 tabular-nums">{r.clientes} clientes</span>
-                    <span className="text-gray-900 font-semibold tabular-nums">{fmtBRL(r.value)}</span>
+            <div className="space-y-2">
+              {topProdutos.map((p, i) => {
+                const maxFat = topProdutos[0]?.fat || 1;
+                const pct = (p.fat / maxFat) * 100;
+                return (
+                  <div key={i} className="group">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="text-xs text-gray-700 font-medium truncate max-w-[55%]" title={p.desc}>
+                        {p.desc}
+                      </span>
+                      <div className="flex items-center gap-3 text-xs">
+                        <span className="text-gray-400 tabular-nums">{fmtNum(p.qty)} un</span>
+                        <span className="text-gray-900 font-semibold tabular-nums">{fmtBRL(p.fat)}</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className="h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: `${pct}%`, background: PRODUCT_COLORS[i % PRODUCT_COLORS.length] }}
+                      />
+                    </div>
                   </div>
-                ))}
-              </div>
-            </>
+                );
+              })}
+            </div>
           )}
         </section>
 
         <section className="rounded-xl border border-cockpit-border bg-white p-5">
           <div className="flex items-center gap-2 mb-4">
-            <MapPin className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-sm font-semibold text-gray-900">Faturamento por UF</h2>
+            <Calendar className="w-4 h-4 text-cockpit-accent" />
+            <h2 className="text-sm font-semibold text-gray-900">Vendas por Dia da Semana</h2>
           </div>
-          {clientesPorEstado.length === 0 ? (
-            <p className="text-center text-cockpit-muted py-12 text-sm">Sem dados de localização</p>
-          ) : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={clientesPorEstado.map((e) => ({ name: e.state, Faturamento: e.fat, Clientes: e.clientes }))} layout="vertical" barCategoryGap="15%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false}
-                    tickFormatter={(v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
-                  <YAxis dataKey="name" type="category" tick={{ fill: "#78696c", fontSize: 11 }} axisLine={false} tickLine={false} width={35} />
-                  <Tooltip content={<CTooltip />} />
-                  <Bar dataKey="Faturamento" radius={[0, 6, 6, 0]}>
-                    {clientesPorEstado.map((_, i) => <Cell key={i} fill={STATE_COLORS[i % STATE_COLORS.length]} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dowData} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false}
+                  tickFormatter={(v: number) => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
+                <Tooltip content={<CTooltip />} />
+                <Bar dataKey="Faturamento" radius={[6, 6, 0, 0]}>
+                  {dowData.map((_, i) => <Cell key={i} fill={DOW_COLORS[i]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </section>
       </div>
 
