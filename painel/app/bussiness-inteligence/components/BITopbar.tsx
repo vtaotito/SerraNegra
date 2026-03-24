@@ -23,11 +23,22 @@ const PRESET_ORDER: Exclude<PresetKey, "custom">[] = [
 ];
 
 function fmtInputVal(d: Date): string {
-  return format(d, "yyyy-MM-dd");
+  return format(d, "dd/MM/yyyy");
 }
 
-function fmtReadable(d: Date): string {
-  return format(d, "dd/MM/yyyy");
+function parseDDMMYYYY(str: string): Date | null {
+  const match = str.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const d = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+function applyDateMask(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 }
 
 export function BITopbar() {
@@ -69,11 +80,11 @@ export function BITopbar() {
   );
 
   const validateAndApply = useCallback(() => {
-    const from = new Date(draftFrom + "T00:00:00");
-    const to = new Date(draftTo + "T23:59:59");
+    const from = parseDDMMYYYY(draftFrom);
+    const to = parseDDMMYYYY(draftTo);
 
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
-      setValidationErr("Datas inválidas. Verifique o formato.");
+    if (!from || !to) {
+      setValidationErr("Datas inválidas. Use o formato DD/MM/AAAA.");
       return;
     }
     if (from > to) {
@@ -158,9 +169,9 @@ export function BITopbar() {
               <div className="px-4 py-2.5 bg-cockpit-accent/[0.05] border-b border-cockpit-border/50">
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-cockpit-muted">Ativo:</span>
-                  <span className="font-medium text-gray-900">{fmtReadable(range.from)}</span>
+                  <span className="font-medium text-gray-900">{fmtInputVal(range.from)}</span>
                   <ArrowRight className="w-3 h-3 text-cockpit-muted" />
-                  <span className="font-medium text-gray-900">{fmtReadable(range.to)}</span>
+                  <span className="font-medium text-gray-900">{fmtInputVal(range.to)}</span>
                   <span className="text-cockpit-muted ml-auto">({dayCount} dia{dayCount !== 1 ? "s" : ""})</span>
                 </div>
               </div>
@@ -191,15 +202,17 @@ export function BITopbar() {
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
                     <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data inicial</label>
-                    <input type="date" value={draftFrom} onChange={(e) => { setDraftFrom(e.target.value); setValidationErr(null); }} max={draftTo}
-                      className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
+                    <input type="text" inputMode="numeric" value={draftFrom} onChange={(e) => { setDraftFrom(applyDateMask(e.target.value)); setValidationErr(null); }}
+                      placeholder="DD/MM/AAAA" maxLength={10}
+                      className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data inicial" />
                   </div>
                   <div className="pb-2"><ArrowRight className="w-4 h-4 text-cockpit-muted" /></div>
                   <div className="flex-1">
                     <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data final</label>
-                    <input type="date" value={draftTo} onChange={(e) => { setDraftTo(e.target.value); setValidationErr(null); }} min={draftFrom}
-                      className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
+                    <input type="text" inputMode="numeric" value={draftTo} onChange={(e) => { setDraftTo(applyDateMask(e.target.value)); setValidationErr(null); }}
+                      placeholder="DD/MM/AAAA" maxLength={10}
+                      className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
                       aria-label="Data final" />
                   </div>
                 </div>
