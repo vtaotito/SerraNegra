@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LogIn, UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-const GSN_LOGO = "https://garrafariaserranegra.com.br/wp-content/uploads/2021/03/cropped-gsn-logo2021.png";
+const GSN_LOGO_EXTERNAL = "https://garrafariaserranegra.com.br/wp-content/uploads/2021/03/cropped-gsn-logo2021.png";
 
 type Mode = "login" | "register";
 
@@ -81,7 +81,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wMykiLz48L3N2Zz4=')] opacity-50" />
         <div className="relative z-10 text-center px-12">
           <div className="inline-flex items-center justify-center w-24 h-24 rounded-2xl bg-white/10 backdrop-blur-sm mb-8 ring-1 ring-white/10 shadow-2xl">
-            <Image src={GSN_LOGO} alt="Garrafaria Serra Negra" width={64} height={64} className="object-contain" unoptimized />
+            <Image src={GSN_LOGO_EXTERNAL} alt="Garrafaria Serra Negra" width={64} height={64} className="object-contain" unoptimized />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">
             Garrafaria Serra Negra
@@ -109,8 +109,8 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center px-6 py-12 bg-gray-50">
         <div className="w-full max-w-md">
           <div className="lg:hidden text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-xl bg-gsn-700 mb-4 shadow-lg">
-              <Image src={GSN_LOGO} alt="GSN" width={40} height={40} className="object-contain" unoptimized />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white mb-4 shadow-lg ring-1 ring-gray-100">
+              <Image src="/favicon.png" alt="GSN" width={36} height={36} className="object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Garrafaria Serra Negra</h1>
           </div>

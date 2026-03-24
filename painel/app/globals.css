@@ -65,8 +65,8 @@
   --gsn-primary: #AA1A1B;
   --gsn-primary-dark: #8a1516;
   --gsn-primary-light: #d42b2c;
-  --gsn-sidebar: #1a0809;
-  --gsn-sidebar-border: #3d1516;
+  --gsn-sidebar: #ffffff;
+  --gsn-sidebar-border: #f0f0f0;
 }
 
 * {
