@@ -29,10 +29,13 @@ interface StockItem {
   cod: string;
   descricao: string;
   und: string;
+  embala: string;
+  embalaQty: number;
   estoqueTotal: number;
   disponivel: number;
   reservado: number;
   emPedido: number;
+  qtdEmb: number;
   qtdVendida: number;
   fatVendido: number;
   mediaDiaria: number;
@@ -42,6 +45,24 @@ interface StockItem {
   coberturaClass: Cobertura;
   numPedidos: number;
   numClientes: number;
+}
+
+function parseEmbalaQty(desc: string): { embalaQty: number; embala: string } {
+  const d = (desc ?? "").trim();
+  if (!d) return { embalaQty: 1, embala: "UND" };
+
+  const packRx = /(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND/i;
+  const m = d.match(packRx);
+  if (m) {
+    const qty = parseInt(m[2].replace(/\./g, "").replace(",", "."), 10) || 1;
+    return { embalaQty: qty, embala: `${m[1].toUpperCase()} C/${qty}` };
+  }
+
+  if (/[-–]\s*UND\s*$/i.test(d) || /\bUND\s*$/i.test(d)) {
+    return { embalaQty: 1, embala: "UND" };
+  }
+
+  return { embalaQty: 1, embala: "UND" };
 }
 
 const CURVA_STYLES: Record<CurvaABC, { bg: string; text: string; ring: string }> = {
@@ -162,11 +183,13 @@ export default function EstoquePage() {
     const items: StockItem[] = catalogData.data.map((cat) => {
       const inv = invMap.get(cat.sku);
       const sales = salesMap.get(cat.sku);
+      const { embalaQty, embala } = parseEmbalaQty(cat.description);
       const estoqueTotal = inv?.avail ?? 0;
       const disponivel = inv?.free ?? 0;
       const reservado = inv?.reserved ?? 0;
       const emPedido = inv?.onOrder ?? 0;
-      const qtdVendida = sales?.qty ?? 0;
+      const qtdEmb = sales?.qty ?? 0;
+      const qtdVendida = qtdEmb * embalaQty;
       const fatVendido = sales?.fat ?? 0;
       const mediaDiaria = qtdVendida / totalDays;
       const coberturaDias = mediaDiaria > 0 ? disponivel / mediaDiaria : disponivel > 0 ? 999 : 0;
@@ -176,10 +199,13 @@ export default function EstoquePage() {
         cod: getProductGroup(cat.sku),
         descricao: cat.description,
         und: cat.unit_of_measure || "UN",
+        embala,
+        embalaQty,
         estoqueTotal,
         disponivel,
         reservado,
         emPedido,
+        qtdEmb,
         qtdVendida,
         fatVendido,
         mediaDiaria,
@@ -289,9 +315,13 @@ export default function EstoquePage() {
   const handleExport = () => {
     exportCSV(filtered.map((i) => ({
       SKU: i.sku, COD: i.cod, Descricao: i.descricao, Unidade: i.und,
+      Embalagem: i.embala, "UND/Emb": i.embalaQty,
       Estoque: i.estoqueTotal, Disponivel: i.disponivel, Reservado: i.reservado,
-      "Qtd Vendida": i.qtdVendida, "Fat. Vendido": i.fatVendido.toFixed(2),
-      "Media Diaria": i.mediaDiaria.toFixed(2), "Cobertura Dias": i.coberturaDias.toFixed(0),
+      "Embalagens Vendidas": i.qtdEmb,
+      "Unidades Vendidas": i.qtdVendida,
+      "Fat. Vendido": i.fatVendido.toFixed(2),
+      "Media Diaria (un)": i.mediaDiaria.toFixed(2),
+      "Cobertura Dias": i.coberturaDias.toFixed(0),
       Curva: i.curva, Giro: i.giro, Cobertura: i.coberturaClass,
       Pedidos: i.numPedidos, Clientes: i.numClientes,
     })), `estoque-analise-${dateFrom}-${dateTo}`);
@@ -501,7 +531,7 @@ export default function EstoquePage() {
         </div>
 
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-xs min-w-[900px]">
+          <table className="w-full text-xs min-w-[1000px]">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
                 <th className="text-left py-2.5 px-3 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("curva")}>
@@ -513,6 +543,7 @@ export default function EstoquePage() {
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("descricao")}>
                   <span className="inline-flex items-center gap-1">Descrição <SortIcon field="descricao" /></span>
                 </th>
+                <th className="text-center py-2.5 px-2 font-semibold bg-gray-50 w-[72px]">Embala</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
@@ -520,7 +551,7 @@ export default function EstoquePage() {
                   <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Vendido <SortIcon field="qtdVendida" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Vend. (un) <SortIcon field="qtdVendida" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("mediaDiaria")}>
                   <span className="inline-flex items-center gap-1 justify-end">Méd/Dia <SortIcon field="mediaDiaria" /></span>
@@ -536,7 +567,7 @@ export default function EstoquePage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={10} className="py-12 text-center text-cockpit-muted">
+                <tr><td colSpan={11} className="py-12 text-center text-cockpit-muted">
                   <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum item encontrado</p>
                 </td></tr>
@@ -552,8 +583,13 @@ export default function EstoquePage() {
                       <span className={`inline-block w-6 text-center px-1 py-0.5 rounded text-[10px] font-bold ${cs.bg} ${cs.text}`}>{item.curva}</span>
                     </td>
                     <td className="py-2 px-2 font-mono text-[10px] text-gray-500">{item.sku}</td>
-                    <td className="py-2 px-2 text-gray-700 max-w-[220px]">
+                    <td className="py-2 px-2 text-gray-700 max-w-[200px]">
                       <span className="line-clamp-1 font-medium text-[11px]" title={item.descricao}>{item.descricao}</span>
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${item.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
+                        {item.embala}
+                      </span>
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-600">{fmtNum(item.estoqueTotal)}</td>
                     <td className={`py-2 px-2 text-right tabular-nums font-medium ${item.disponivel <= 0 ? "text-red-500" : "text-gray-700"}`}>
@@ -561,6 +597,9 @@ export default function EstoquePage() {
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">
                       <span className={item.qtdVendida > 0 ? "text-gray-900 font-semibold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
+                      {item.embalaQty > 1 && item.qtdEmb > 0 && (
+                        <span className="block text-[9px] text-gray-400">{fmtNum(item.qtdEmb)} emb ×{item.embalaQty}</span>
+                      )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-500">
                       {item.mediaDiaria > 0 ? item.mediaDiaria.toFixed(1) : "—"}
