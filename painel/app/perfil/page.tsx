@@ -137,7 +137,7 @@ export default function PerfilPage() {
               {user.lastLoginAt
                 ? new Date(user.lastLoginAt).toLocaleDateString("pt-BR", {
                     day: "2-digit",
-                    month: "short",
+                    month: "2-digit",
                     year: "numeric",
                   })
                 : "—"}
@@ -149,7 +149,7 @@ export default function PerfilPage() {
             <p className="text-sm font-medium text-gray-900">
               {new Date(user.createdAt).toLocaleDateString("pt-BR", {
                 day: "2-digit",
-                month: "short",
+                month: "2-digit",
                 year: "numeric",
               })}
             </p>

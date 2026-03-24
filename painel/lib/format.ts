@@ -1,4 +1,4 @@
-export function fmtBRL(v: number, decimals = 0): string {
+export function fmtBRL(v: number, decimals = 2): string {
   return v.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",

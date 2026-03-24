@@ -163,7 +163,7 @@ export function useDateRange(): DateRangeContextValue {
 }
 
 export function formatRangeShort(range: DateRange): string {
-  const fmtM = (d: Date) => format(d, "dd MMM yyyy", { locale: ptBR });
+  const fmtM = (d: Date) => format(d, "dd/MM/yyyy", { locale: ptBR });
   return `${fmtM(range.from)} — ${fmtM(range.to)}`;
 }
 
