@@ -5,7 +5,7 @@ import {
   Package, Boxes, AlertTriangle, Search, CalendarDays,
   TrendingUp, TrendingDown, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown,
   Download, Gauge, BarChart3, Layers, Flame, Snowflake, ChevronDown,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag, BarChart2,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -179,18 +179,22 @@ function CTooltip({ active, payload, label }: any) {
   );
 }
 
+function toTitleCase(s: string): string {
+  return s.toLowerCase().replace(/(?:^|\s|[./_-])\S/g, (c) => c.toUpperCase());
+}
+
 function StockBar({ total, available, minStock }: { total: number; available: number; minStock: number }) {
-  if (total <= 0) return <span className="text-gray-300 text-[10px]">sem estoque</span>;
+  if (total <= 0) return <span className="text-gray-300 text-[10px]">—</span>;
   const pct = Math.min((available / total) * 100, 100);
   const minPct = minStock > 0 && total > 0 ? Math.min((minStock / total) * 100, 100) : 0;
   const color = available <= 0 ? "#ef4444" : minStock > 0 && available < minStock ? "#f59e0b" : pct < 30 ? "#f59e0b" : "#10b981";
   return (
-    <div className="flex items-center gap-2 min-w-[90px]">
-      <div className="flex-1 h-1.5 bg-gray-100 rounded-full relative overflow-hidden">
+    <div className="flex items-center gap-1.5 min-w-[100px]" title={`${fmtNum(available)} de ${fmtNum(total)} disponível (${pct.toFixed(0)}%)`}>
+      <div className="flex-1 h-2 bg-gray-100 rounded-full relative overflow-hidden">
         <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
-        {minPct > 0 && <div className="absolute top-0 h-full w-px bg-red-400" style={{ left: `${minPct}%` }} title={`Mín: ${fmtNum(minStock)}`} />}
+        {minPct > 0 && <div className="absolute top-0 h-full w-0.5 bg-red-400/70" style={{ left: `${minPct}%` }} />}
       </div>
-      <span className="text-[10px] tabular-nums text-gray-500 w-8 text-right">{pct.toFixed(0)}%</span>
+      <span className={`text-[10px] tabular-nums font-medium w-9 text-right ${pct < 30 ? "text-amber-600" : "text-gray-500"}`}>{pct.toFixed(0)}%</span>
     </div>
   );
 }
@@ -348,6 +352,7 @@ export default function EstoquePage() {
   const [expandedSku, setExpandedSku] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(50);
+  const [showCharts, setShowCharts] = useState(false);
 
   /* ── Filtered + sorted ── */
   const filtered = useMemo(() => {
@@ -518,48 +523,19 @@ export default function EstoquePage() {
       </section>
 
       {/* Category filter */}
-      <section>
-        <div className="flex items-center gap-2 mb-2">
-          <Tag className="w-3.5 h-3.5 text-cockpit-muted" />
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">Categorias</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button onClick={() => { setCatFilter("ALL"); resetPage(); }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${catFilter === "ALL" ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
-            Todas <span className="tabular-nums opacity-70">{allItems.length}</span>
+      <section className="flex flex-wrap items-center gap-1.5">
+        <Tag className="w-3.5 h-3.5 text-cockpit-muted mr-0.5" />
+        <button onClick={() => { setCatFilter("ALL"); resetPage(); }}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all ${catFilter === "ALL" ? "border-gray-900 bg-gray-900 text-white shadow-sm" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+          Todas <span className="tabular-nums opacity-60">{allItems.length}</span>
+        </button>
+        {categoryDistrib.map(({ cat, count, label, color, bg }) => (
+          <button key={cat} onClick={() => { setCatFilter(catFilter === cat ? "ALL" : cat); resetPage(); }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all ${catFilter === cat ? `border-gray-400 ${bg} ${color} shadow-sm` : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+            {label} <span className="tabular-nums opacity-60">{count}</span>
           </button>
-          {categoryDistrib.map(({ cat, count, label, color, bg }) => (
-            <button key={cat} onClick={() => { setCatFilter(catFilter === cat ? "ALL" : cat); resetPage(); }}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${catFilter === cat ? `border-gray-400 ${bg} ${color} shadow-sm` : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
-              {label} <span className="tabular-nums opacity-70">{count}</span>
-            </button>
-          ))}
-        </div>
+        ))}
       </section>
-
-      {/* Curva badges + parados */}
-      <div className="flex flex-wrap gap-2">
-        {curvaDistrib.map((d) => {
-          const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
-          const pct = totalFat > 0 ? ((d.fat / totalFat) * 100).toFixed(0) : "0";
-          return (
-            <button key={d.name} onClick={() => { setCurvaFilter(curvaFilter === d.name as CurvaABC ? "ALL" : d.name as CurvaABC); resetPage(); }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all ${curvaFilter === d.name ? "border-gray-400 bg-white shadow-sm" : "border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200"}`}>
-              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
-              <span className="text-gray-700">Curva {d.name}</span>
-              <span className="text-gray-400">{d.skus}</span>
-              <span className="font-bold tabular-nums" style={{ color: d.fill }}>{pct}%</span>
-            </button>
-          );
-        })}
-        {kpis.parados > 0 && (
-          <button onClick={() => { setGiroFilter(giroFilter === "parado" ? "ALL" : "parado"); resetPage(); }}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all ${giroFilter === "parado" ? "border-gray-400 bg-white shadow-sm" : "border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200"}`}>
-            <Snowflake className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-gray-700">{kpis.parados} parados</span>
-          </button>
-        )}
-      </div>
 
       {/* Alertas */}
       {alertas.length > 0 && (
@@ -572,7 +548,7 @@ export default function EstoquePage() {
           <div className="flex gap-2 overflow-x-auto scrollbar-none touch-scroll pb-0.5 -mx-1 px-1">
             {alertas.map((a) => (
               <div key={a.sku} className="shrink-0 w-52 bg-white rounded-lg border border-red-100 p-2.5">
-                <p className="text-[11px] font-semibold text-gray-900 truncate" title={a.descricao}>{a.descricao}</p>
+                <p className="text-[11px] font-semibold text-gray-900 truncate" title={a.descricao}>{toTitleCase(a.descricao)}</p>
                 <p className="text-[9px] text-gray-400 font-mono mt-0.5">{a.sku}</p>
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-red-600 font-bold text-xs">{a.coberturaDias.toFixed(0)}d</span>
@@ -584,8 +560,25 @@ export default function EstoquePage() {
         </section>
       )}
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      {/* Charts toggle + charts */}
+      <button onClick={() => setShowCharts(!showCharts)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 transition-all w-full sm:w-auto">
+        <BarChart2 className="w-3.5 h-3.5 text-cockpit-accent" />
+        <span>{showCharts ? "Ocultar" : "Exibir"} gráficos</span>
+        <ChevronDown className={`w-3.5 h-3.5 ml-auto text-gray-400 transition-transform ${showCharts ? "rotate-180" : ""}`} />
+        {!showCharts && curvaDistrib.length > 0 && (
+          <span className="flex items-center gap-1.5 ml-1.5 text-[10px] text-gray-400">
+            {curvaDistrib.map((d) => {
+              const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
+              const pct = totalFat > 0 ? ((d.fat / totalFat) * 100).toFixed(0) : "0";
+              return <span key={d.name} className="tabular-nums"><span className="font-bold" style={{ color: d.fill }}>{d.name}</span> {pct}%</span>;
+            })}
+            {kpis.parados > 0 && <span className="text-blue-400">{kpis.parados} parados</span>}
+          </span>
+        )}
+      </button>
+
+      {showCharts && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
         <section className="rounded-xl border border-cockpit-border bg-white p-4">
           <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4 text-cockpit-accent" />
@@ -652,18 +645,18 @@ export default function EstoquePage() {
             ))}
           </div>
         </section>
-      </div>
+      </div>}
 
-      {/* Search + Quick + Filters */}
-      <div className="space-y-2">
+      {/* Search + Filters */}
+      <div className="rounded-xl border border-cockpit-border bg-white p-3 space-y-2.5">
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input type="text" value={search} onChange={(e) => { setSearch(e.target.value); resetPage(); }}
               placeholder="Buscar SKU, produto, código..."
-              className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-white border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0" />
+              className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-gray-50 border-0 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0" />
           </div>
-          <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {([
               { key: "all", label: "Todos" },
               { key: "atencao", label: "Atenção" },
@@ -672,33 +665,33 @@ export default function EstoquePage() {
             ] as const).map(({ key, label }) => (
               <button key={key} onClick={() => { setQuickFilter(key); resetPage(); }}
                 className={`px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-                  quickFilter === key ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                  quickFilter === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{label}</button>
             ))}
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-none touch-scroll pb-0.5">
-          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+        <div className="flex gap-2 overflow-x-auto scrollbar-none touch-scroll">
+          <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "A", "B", "C"] as const).map((opt) => (
               <button key={opt} onClick={() => { setCurvaFilter(opt); resetPage(); }}
                 className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors min-w-[32px] ${
-                  curvaFilter === opt ? opt === "ALL" ? "bg-gray-900 text-white" : "text-white" : "text-gray-400 hover:text-gray-700"
+                  curvaFilter === opt ? opt === "ALL" ? "bg-white text-gray-900 shadow-sm" : "text-white shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`} style={curvaFilter === opt && opt !== "ALL" ? { backgroundColor: CURVA_COLORS[opt] } : {}}>{opt === "ALL" ? "ABC" : opt}</button>
             ))}
           </div>
-          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+          <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "alto", "medio", "baixo", "parado"] as const).map((opt) => (
               <button key={opt} onClick={() => { setGiroFilter(opt); resetPage(); }}
                 className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  giroFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                  giroFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{opt === "ALL" ? "Giro" : GIRO_CFG[opt].label}</button>
             ))}
           </div>
-          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+          <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "critico", "atencao", "ok", "excesso"] as const).map((opt) => (
               <button key={opt} onClick={() => { setCobFilter(opt); resetPage(); }}
                 className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  cobFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                  cobFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{opt === "ALL" ? "Cobert." : COB_CFG[opt].label}</button>
             ))}
           </div>
@@ -708,22 +701,22 @@ export default function EstoquePage() {
       {/* Table */}
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
         {/* Table header bar */}
-        <div className="px-4 py-2 border-b border-cockpit-border bg-gray-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-          <p className="text-xs text-cockpit-muted">
-            <strong className="text-gray-800">{filtered.length}</strong> produtos
-            {filtered.length !== allItems.length && <span className="text-gray-400"> de {allItems.length}</span>}
-            {catFilter !== "ALL" && <span className={`ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${CATEGORY_CFG[catFilter].bg} ${CATEGORY_CFG[catFilter].color}`}>{CATEGORY_CFG[catFilter].label}</span>}
-          </p>
+        <div className="px-4 py-2.5 border-b border-cockpit-border bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+          <div className="flex items-center gap-2 text-xs text-cockpit-muted">
+            <span><strong className="text-gray-800">{filtered.length}</strong> produtos</span>
+            {filtered.length !== allItems.length && <span className="text-gray-300">de {allItems.length}</span>}
+            {catFilter !== "ALL" && <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${CATEGORY_CFG[catFilter].color}`} style={{ borderColor: "currentColor" }}>{CATEGORY_CFG[catFilter].label}</span>}
+            {curvaFilter !== "ALL" && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[curvaFilter] }}>Curva {curvaFilter}</span>}
+          </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-              <span>Exibir</span>
               <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value) as any); resetPage(); }}
-                className="border border-gray-200 rounded px-1.5 py-0.5 text-[11px] text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-cockpit-accent/30">
+                className="border border-gray-200 rounded-md px-1.5 py-1 text-[11px] text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-cockpit-accent/30">
                 {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
-              <span>por página</span>
+              <span>por pág.</span>
             </div>
-            <p className="text-[10px] text-gray-400 hidden sm:block">Clique na linha para detalhes</p>
+            <p className="text-[10px] text-gray-400 hidden sm:block">Clique para detalhes</p>
           </div>
         </div>
 
@@ -772,7 +765,7 @@ export default function EstoquePage() {
                 return (
                   <tbody key={item.sku}>
                     <tr
-                      className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
+                      className={`group border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
                       onClick={() => setExpandedSku(isExpanded ? null : item.sku)}>
                       <td className="py-2.5 px-3">
                         <span className="inline-block w-6 text-center py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[item.curva] }}>{item.curva}</span>
@@ -780,17 +773,17 @@ export default function EstoquePage() {
                       <td className="py-2 px-2 max-w-[280px]">
                         <div className="flex items-start gap-1.5">
                           <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-semibold text-gray-900 truncate leading-tight" title={item.descricao}>{item.descricao}</p>
+                            <p className="text-[11px] font-semibold text-gray-900 truncate leading-tight" title={item.descricao}>{toTitleCase(item.descricao)}</p>
                             <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-1.5">
                               {item.sku}
                               {item.skuCount > 1 && <span className="px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px]">{item.skuCount} SKUs</span>}
                             </p>
                           </div>
-                          <ChevronDown className={`w-3.5 h-3.5 text-gray-300 shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                          <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
                         </div>
                       </td>
                       <td className="py-2 px-2 text-center hidden lg:table-cell">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold ${catCfg.bg} ${catCfg.color}`}>{catCfg.label}</span>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color}`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
                       </td>
                       <td className="py-2 px-2 text-right tabular-nums text-gray-600 font-medium">{fmtNum(item.estoqueTotal)}</td>
                       <td className={`py-2 px-2 text-right tabular-nums font-semibold ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
