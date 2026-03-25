@@ -179,6 +179,57 @@ export class SapEntitiesService {
       }
     }
 
+    console.log("[listInventory] $expand falhou — tentando fallback via Items (campos agregados)");
+
+    const fallbackCandidates = [
+      "ItemCode,ItemName,QuantityOnStock,QuantityOrderedByCustomers,QuantityOrderedFromVendors,MinInventory",
+      "ItemCode,ItemName,QuantityOnStock",
+    ];
+
+    for (let fi = 0; fi < fallbackCandidates.length; fi++) {
+      const sel = fallbackCandidates[fi];
+      try {
+        const allItems: SapItemRow[] = [];
+        const pageSize = 20;
+        let skip = 0;
+
+        while (allItems.length < maxItems) {
+          const url = `/Items?$select=${sel}&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
+          const res = await this.client.get<{ value: SapItemRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          allItems.push(...page);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listInventory] Fallback #${fi + 1} OK - ${allItems.length} itens com estoque agregado`);
+
+        const inventory: SapInventoryRow[] = [];
+        for (const item of allItems) {
+          const inStock = item.QuantityOnStock ?? 0;
+          const committed = item.QuantityOrderedByCustomers ?? 0;
+          const ordered = item.QuantityOrderedFromVendors ?? 0;
+          if (inStock > 0 || committed > 0 || ordered > 0) {
+            inventory.push({
+              ItemCode: item.ItemCode,
+              ItemName: item.ItemName,
+              WarehouseCode: "GERAL",
+              InStock: inStock,
+              Committed: committed,
+              Ordered: ordered,
+              Available: Math.max(inStock - committed, 0),
+              MinStock: (item as any).MinInventory ?? 0,
+            });
+          }
+        }
+        return inventory;
+      } catch (err) {
+        console.warn(`[listInventory] Fallback #${fi + 1} falhou:`, err instanceof Error ? err.message : err);
+        if (err instanceof SapHttpError && err.status === 400) continue;
+      }
+    }
+
     console.log("[listInventory] Nenhum candidato funcionou - retornando vazio");
     return [];
   }
