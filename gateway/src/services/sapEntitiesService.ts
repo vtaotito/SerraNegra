@@ -1,6 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import { SapHttpError } from "../../../sap-connector/src/errors.js";
-import { WmsQueriesHelper, type EnrichedInventoryRow } from "../../../sap-connector/src/sqlQueries.js";
+import { WmsQueriesHelper, WMS_QUERIES, type EnrichedInventoryRow } from "../../../sap-connector/src/sqlQueries.js";
 
 /**
  * Serviço para sincronizar entidades adicionais do SAP B1:
@@ -245,10 +245,7 @@ export class SapEntitiesService {
     const helper = new WmsQueriesHelper(this.client);
 
     try {
-      await helper.ensureQuery(
-        { QueryCategory: -1, QueryDescription: "WMS_Inventory_Enriched", Query: "" },
-        { correlationId }
-      ).catch(() => {});
+      await helper.ensureQuery(WMS_QUERIES.INVENTORY_ENRICHED, { correlationId }).catch(() => {});
 
       const result = await helper.getInventoryEnriched({ correlationId });
       const rows = result.value || [];
