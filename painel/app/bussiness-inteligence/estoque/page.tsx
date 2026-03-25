@@ -6,6 +6,7 @@ import {
   TrendingUp, TrendingDown, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown,
   Download, Gauge, BarChart3, Layers, Flame, Snowflake, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag, BarChart2,
+  Wallet, Clock, Weight, Truck,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -77,6 +78,7 @@ interface StockItem {
   reservado: number;
   emPedido: number;
   minStock: number;
+  maxStock: number;
   qtdEmb: number;
   qtdVendida: number;
   fatVendido: number;
@@ -92,6 +94,15 @@ interface StockItem {
   embalas: string[];
   belowMinStock: boolean;
   categoria: ProductCategory;
+  avgPrice: number;
+  lastPurchasePrice: number;
+  lastPurchaseDate: string | null;
+  lastSaleDate: string | null;
+  grossWeight: number;
+  leadTime: number;
+  itemGroupName: string | null;
+  lastCountDate: string | null;
+  valorEstoque: number;
 }
 
 /* ── Helpers ── */
@@ -222,16 +233,37 @@ export default function EstoquePage() {
   const allItems = useMemo<StockItem[]>(() => {
     if (!catalogData || !invData || !ordData) return [];
 
-    const invMap = new Map<string, { avail: number; free: number; reserved: number; onOrder: number; minStock: number; itemName: string | null }>();
+    type InvAgg = {
+      avail: number; free: number; reserved: number; onOrder: number;
+      minStock: number; maxStock: number; itemName: string | null;
+      avgPrice: number; lastPurchasePrice: number; lastPurchaseDate: string | null;
+      lastSaleDate: string | null; grossWeight: number; leadTime: number;
+      itemGroupName: string | null; lastCountDate: string | null;
+    };
+    const invMap = new Map<string, InvAgg>();
     for (const inv of invData.data) {
       if (EXCLUDED_PREFIXES.has(getSkuPrefix(inv.product_id))) continue;
-      const cur = invMap.get(inv.product_id) ?? { avail: 0, free: 0, reserved: 0, onOrder: 0, minStock: 0, itemName: null };
+      const cur = invMap.get(inv.product_id) ?? {
+        avail: 0, free: 0, reserved: 0, onOrder: 0, minStock: 0, maxStock: 0,
+        itemName: null, avgPrice: 0, lastPurchasePrice: 0,
+        lastPurchaseDate: null, lastSaleDate: null, grossWeight: 0,
+        leadTime: 0, itemGroupName: null, lastCountDate: null,
+      };
       cur.avail += inv.quantity_available;
       cur.free += inv.quantity_free;
       cur.reserved += inv.quantity_reserved;
       cur.onOrder += inv.quantity_on_order;
       cur.minStock = Math.max(cur.minStock, inv.min_stock ?? 0);
+      cur.maxStock = Math.max(cur.maxStock, inv.max_stock ?? 0);
       if (inv.item_name && !cur.itemName) cur.itemName = inv.item_name;
+      if (inv.avg_price && !cur.avgPrice) cur.avgPrice = inv.avg_price;
+      if (inv.last_purchase_price && !cur.lastPurchasePrice) cur.lastPurchasePrice = inv.last_purchase_price;
+      if (inv.last_purchase_date && !cur.lastPurchaseDate) cur.lastPurchaseDate = inv.last_purchase_date;
+      if (inv.last_sale_date && !cur.lastSaleDate) cur.lastSaleDate = inv.last_sale_date;
+      if (inv.gross_weight && !cur.grossWeight) cur.grossWeight = inv.gross_weight;
+      if (inv.lead_time && !cur.leadTime) cur.leadTime = inv.lead_time;
+      if (inv.item_group_name && !cur.itemGroupName) cur.itemGroupName = inv.item_group_name;
+      if (inv.last_count_date && !cur.lastCountDate) cur.lastCountDate = inv.last_count_date;
       invMap.set(inv.product_id, cur);
     }
 
@@ -253,9 +285,12 @@ export default function EstoquePage() {
     type RawItem = {
       sku: string; description: string; unitOfMeasure: string; embala: string;
       embalaQty: number; baseName: string; estoqueTotal: number; confirmado: number;
-      disponivel: number; reservado: number; emPedido: number; minStock: number;
+      disponivel: number; reservado: number; emPedido: number; minStock: number; maxStock: number;
       qtdEmb: number; qtdVendida: number; fatVendido: number;
       pedidos: Set<number>; clientes: Set<string>;
+      avgPrice: number; lastPurchasePrice: number; lastPurchaseDate: string | null;
+      lastSaleDate: string | null; grossWeight: number; leadTime: number;
+      itemGroupName: string | null; lastCountDate: string | null;
     };
 
     const rawItems: RawItem[] = catalogData.data
@@ -271,10 +306,18 @@ export default function EstoquePage() {
           baseName: getBaseProductName(inv?.itemName || cat.description),
           estoqueTotal: inv?.avail ?? 0, confirmado: inv?.reserved ?? 0,
           disponivel: inv?.free ?? 0, reservado: inv?.reserved ?? 0,
-          emPedido: inv?.onOrder ?? 0, minStock: inv?.minStock ?? 0,
+          emPedido: inv?.onOrder ?? 0, minStock: inv?.minStock ?? 0, maxStock: inv?.maxStock ?? 0,
           qtdEmb, qtdVendida: qtdEmb * embalaQty, fatVendido: sales?.fat ?? 0,
           pedidos: sales?.pedidos ?? new Set<number>(),
           clientes: sales?.clientes ?? new Set<string>(),
+          avgPrice: inv?.avgPrice ?? 0,
+          lastPurchasePrice: inv?.lastPurchasePrice ?? 0,
+          lastPurchaseDate: inv?.lastPurchaseDate ?? null,
+          lastSaleDate: inv?.lastSaleDate ?? null,
+          grossWeight: inv?.grossWeight ?? 0,
+          leadTime: inv?.leadTime ?? 0,
+          itemGroupName: inv?.itemGroupName ?? null,
+          lastCountDate: inv?.lastCountDate ?? null,
         };
       });
 
@@ -294,6 +337,7 @@ export default function EstoquePage() {
       const reservado = group.reduce((s, i) => s + i.reservado, 0);
       const emPedido = group.reduce((s, i) => s + i.emPedido, 0);
       const minStock = Math.max(...group.map((i) => i.minStock), 0);
+      const maxStock = Math.max(...group.map((i) => i.maxStock), 0);
       const qtdVendida = group.reduce((s, i) => s + i.qtdVendida, 0);
       const qtdEmb = group.reduce((s, i) => s + i.qtdEmb, 0);
       const fatVendido = group.reduce((s, i) => s + i.fatVendido, 0);
@@ -302,13 +346,15 @@ export default function EstoquePage() {
       for (const i of group) { for (const p of i.pedidos) allPedidos.add(p); for (const c of i.clientes) allClientes.add(c); }
       const mediaDiaria = qtdVendida / totalDays;
       const coberturaDias = mediaDiaria > 0 ? disponivel / mediaDiaria : disponivel > 0 ? 999 : 0;
+      const avgPrice = undItem.avgPrice;
+      const valorEstoque = avgPrice > 0 ? avgPrice * estoqueTotal : 0;
 
       mergedItems.push({
         sku: undItem.sku, cod: getProductGroup(undItem.sku),
         descricao: baseName || undItem.description, und: undItem.unitOfMeasure,
         embala: [...new Set(group.map((i) => i.embala))].join(", "),
         embalaQty: undItem.embalaQty, estoqueTotal, confirmado, disponivel, reservado,
-        emPedido, minStock, qtdEmb, qtdVendida, fatVendido, mediaDiaria,
+        emPedido, minStock, maxStock, qtdEmb, qtdVendida, fatVendido, mediaDiaria,
         coberturaDias: Math.min(coberturaDias, 999),
         giro: "parado" as Giro, curva: "C" as CurvaABC,
         coberturaClass: classifyCobertura(coberturaDias, qtdVendida > 0),
@@ -317,6 +363,14 @@ export default function EstoquePage() {
         embalas: [...new Set(group.map((i) => i.embala))],
         belowMinStock: minStock > 0 && disponivel < minStock,
         categoria: categorize(undItem.sku),
+        avgPrice, lastPurchasePrice: undItem.lastPurchasePrice,
+        lastPurchaseDate: undItem.lastPurchaseDate,
+        lastSaleDate: undItem.lastSaleDate,
+        grossWeight: undItem.grossWeight,
+        leadTime: undItem.leadTime,
+        itemGroupName: undItem.itemGroupName,
+        lastCountDate: undItem.lastCountDate,
+        valorEstoque,
       });
     }
 
@@ -409,13 +463,14 @@ export default function EstoquePage() {
     const dispTotal = allItems.reduce((s, i) => s + Math.max(i.disponivel, 0), 0);
     const fatTotal = allItems.reduce((s, i) => s + i.fatVendido, 0);
     const saidaTotal = allItems.reduce((s, i) => s + i.qtdVendida, 0);
+    const valorEstoqueTotal = allItems.reduce((s, i) => s + i.valorEstoque, 0);
     const criticos = allItems.filter((i) => i.coberturaClass === "critico").length;
     const parados = allItems.filter((i) => i.giro === "parado" && i.estoqueTotal > 0).length;
     const belowMin = allItems.filter((i) => i.belowMinStock).length;
     const orderNums = new Set<number>();
     const cardCodes = new Set<string>();
     if (ordData) { for (const o of ordData.items) { if (o.cancelled !== "Y") { orderNums.add(o.doc_num); cardCodes.add(o.card_code); } } }
-    return { total, totalSkus, estoqueTotal, dispTotal, fatTotal, saidaTotal, criticos, parados, belowMin, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
+    return { total, totalSkus, estoqueTotal, dispTotal, fatTotal, saidaTotal, valorEstoqueTotal, criticos, parados, belowMin, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
   }, [allItems, ordData]);
 
   const curvaDistrib = useMemo(() => {
@@ -457,10 +512,15 @@ export default function EstoquePage() {
   const handleExport = () => {
     exportCSV(filtered.map((i) => ({
       SKU: i.sku, COD: i.cod, Produto: i.descricao, Categoria: CATEGORY_CFG[i.categoria].label,
+      "Grupo SAP": i.itemGroupName ?? "",
       Curva: i.curva, "SKUs Agrup.": i.skuCount, Embalagens: i.embalas.join(", "),
       Estoque: i.estoqueTotal, Confirmado: i.confirmado, Disponivel: i.disponivel,
-      "Em Pedido": i.emPedido, "Est. Minimo": i.minStock,
+      "Em Pedido": i.emPedido, "Est. Minimo": i.minStock, "Est. Maximo": i.maxStock,
       "Abaixo Min.": i.belowMinStock ? "Sim" : "Nao",
+      "Custo Medio": i.avgPrice.toFixed(2), "Valor Estoque": i.valorEstoque.toFixed(2),
+      "Ult. Preco Compra": i.lastPurchasePrice.toFixed(2),
+      "Lead Time (dias)": i.leadTime, "Peso Bruto": i.grossWeight.toFixed(3),
+      "Ult. Compra": i.lastPurchaseDate ?? "", "Ult. Venda": i.lastSaleDate ?? "",
       "Saida (un)": i.qtdVendida, Pedidos: i.numPedidos, Clientes: i.numClientes,
       Faturamento: i.fatVendido.toFixed(2), "Media/Dia": i.mediaDiaria.toFixed(2),
       "Cobertura Dias": i.coberturaDias.toFixed(0), Giro: i.giro,
@@ -497,9 +557,10 @@ export default function EstoquePage() {
       </div>
 
       {/* KPIs */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)}`, sub: `${fmtNum(kpis.dispTotal)} disponível`, icon: Boxes, color: "text-sky-600", accent: "bg-sky-50" },
+          { title: "Valor em Estoque", value: fmtBRL(kpis.valorEstoqueTotal), sub: `Custo médio ponderado`, icon: Wallet, color: "text-violet-600", accent: "bg-violet-50" },
           { title: "Faturamento", value: fmtBRL(kpis.fatTotal), sub: `${fmtNum(kpis.saidaTotal)} un saída no período`, icon: TrendingUp, color: "text-emerald-600", accent: "bg-emerald-50" },
           { title: "Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes atendidos`, icon: Layers, color: "text-indigo-600", accent: "bg-indigo-50" },
           { title: "Precisa Atenção", value: String(kpis.criticos + kpis.belowMin), sub: `${kpis.criticos} críticos · ${kpis.belowMin} abaixo mín.`, icon: ShieldAlert, color: (kpis.criticos + kpis.belowMin) > 0 ? "text-red-600" : "text-emerald-600", accent: (kpis.criticos + kpis.belowMin) > 0 ? "bg-red-50" : "bg-emerald-50" },
@@ -831,6 +892,7 @@ export default function EstoquePage() {
                     {isExpanded && (
                       <tr className="bg-gray-50/70">
                         <td colSpan={10} className="px-4 py-3 border-b border-cockpit-border/20">
+                          {/* Quantidades */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[11px]">
                             <div>
                               <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Estoque (SAP)</p>
@@ -849,10 +911,10 @@ export default function EstoquePage() {
                               <p className="font-bold text-sky-600 tabular-nums">{item.emPedido > 0 ? fmtNum(item.emPedido) : "—"}</p>
                             </div>
                             <div>
-                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Est. Mínimo</p>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Est. Mínimo / Máximo</p>
                               <p className={`font-bold tabular-nums ${item.belowMinStock ? "text-red-600" : "text-gray-600"}`}>
-                                {item.minStock > 0 ? fmtNum(item.minStock) : "Não definido"}
-                                {item.belowMinStock && <span className="text-red-500 text-[9px] ml-1">⚠ Abaixo</span>}
+                                {item.minStock > 0 ? fmtNum(item.minStock) : "—"} / {item.maxStock > 0 ? fmtNum(item.maxStock) : "—"}
+                                {item.belowMinStock && <span className="text-red-500 text-[9px] ml-1">Abaixo</span>}
                               </p>
                             </div>
                             <div>
@@ -860,6 +922,54 @@ export default function EstoquePage() {
                               <p className="font-bold text-gray-800 tabular-nums">{item.mediaDiaria > 0 ? `${item.mediaDiaria.toFixed(1)} un/dia` : "Sem saída"}</p>
                             </div>
                           </div>
+
+                          {/* Dados financeiros e logísticos (SAP enriquecido) */}
+                          {(item.avgPrice > 0 || item.lastPurchasePrice > 0 || item.leadTime > 0 || item.grossWeight > 0) && (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-200/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[11px]">
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1"><Wallet className="w-2.5 h-2.5" />Custo Médio</p>
+                                <p className="font-bold text-violet-700 tabular-nums">{item.avgPrice > 0 ? fmtBRL(item.avgPrice) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Valor em Estoque</p>
+                                <p className="font-bold text-violet-700 tabular-nums">{item.valorEstoque > 0 ? fmtBRL(item.valorEstoque) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Últ. Preço Compra</p>
+                                <p className="font-bold text-gray-700 tabular-nums">{item.lastPurchasePrice > 0 ? fmtBRL(item.lastPurchasePrice) : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1"><Truck className="w-2.5 h-2.5" />Lead Time</p>
+                                <p className="font-bold text-gray-700 tabular-nums">{item.leadTime > 0 ? `${item.leadTime} dias` : "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5 flex items-center gap-1"><Weight className="w-2.5 h-2.5" />Peso Bruto</p>
+                                <p className="font-bold text-gray-700 tabular-nums">{item.grossWeight > 0 ? `${item.grossWeight.toFixed(3)} kg` : "—"}</p>
+                              </div>
+                              {item.itemGroupName && (
+                                <div>
+                                  <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Grupo SAP</p>
+                                  <p className="font-bold text-gray-700">{item.itemGroupName}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Datas */}
+                          {(item.lastPurchaseDate || item.lastSaleDate || item.lastCountDate) && (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-200/60 flex flex-wrap gap-4 text-[11px]">
+                              {item.lastPurchaseDate && (
+                                <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" />Últ. Compra: <strong className="text-gray-700">{item.lastPurchaseDate}</strong></span>
+                              )}
+                              {item.lastSaleDate && (
+                                <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" />Últ. Venda: <strong className="text-gray-700">{item.lastSaleDate}</strong></span>
+                              )}
+                              {item.lastCountDate && (
+                                <span className="text-gray-500 flex items-center gap-1"><Clock className="w-3 h-3" />Últ. Contagem: <strong className="text-gray-700">{item.lastCountDate}</strong></span>
+                              )}
+                            </div>
+                          )}
+
                           {item.skuCount > 1 && (
                             <div className="mt-2.5 pt-2.5 border-t border-gray-200/60">
                               <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">Embalagens Agrupadas ({item.skuCount} SKUs)</p>
@@ -933,6 +1043,7 @@ export default function EstoquePage() {
               <div className="flex items-center gap-3 tabular-nums flex-wrap">
                 <span className="text-gray-500">Est: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
                 <span className="text-emerald-700">Disp: <strong>{fmtNum(filtered.reduce((s, i) => s + i.disponivel, 0))}</strong></span>
+                <span className="text-violet-600">Valor: <strong>{fmtBRL(filtered.reduce((s, i) => s + i.valorEstoque, 0))}</strong></span>
                 <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))}</strong></span>
                 <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, i) => s + i.fatVendido, 0))}</span>
               </div>

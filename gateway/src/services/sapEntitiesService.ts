@@ -1,5 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import { SapHttpError } from "../../../sap-connector/src/errors.js";
+import { WmsQueriesHelper, type EnrichedInventoryRow } from "../../../sap-connector/src/sqlQueries.js";
 
 /**
  * Serviço para sincronizar entidades adicionais do SAP B1:
@@ -232,6 +233,60 @@ export class SapEntitiesService {
 
     console.log("[listInventory] Nenhum candidato funcionou - retornando vazio");
     return [];
+  }
+
+  // ========================================
+  // INVENTORY ENRICHED (via SQLQueries: OITM+OITW+OITB)
+  // ========================================
+
+  async listInventoryEnriched(
+    correlationId?: string
+  ): Promise<SapEnrichedInventoryRow[]> {
+    const helper = new WmsQueriesHelper(this.client);
+
+    try {
+      await helper.ensureQuery(
+        { QueryCategory: -1, QueryDescription: "WMS_Inventory_Enriched", Query: "" },
+        { correlationId }
+      ).catch(() => {});
+
+      const result = await helper.getInventoryEnriched({ correlationId });
+      const rows = result.value || [];
+      console.log(`[listInventoryEnriched] SQLQuery OK - ${rows.length} linhas`);
+
+      return rows.map((r) => ({
+        ItemCode: r.ItemCode,
+        ItemName: r.ItemName ?? "",
+        WarehouseCode: r.WarehouseCode,
+        InStock: r.OnHand ?? 0,
+        Committed: r.Committed ?? 0,
+        Ordered: r.Ordered ?? 0,
+        Available: Math.max((r.OnHand ?? 0) - (r.Committed ?? 0), 0),
+        MinStock: r.WhsMinStock ?? 0,
+        UoM: r.UoM ?? "UN",
+        AvgPrice: r.AvgPrice ?? 0,
+        LastPurPrc: r.LastPurPrc ?? 0,
+        LastPurDat: r.LastPurDat ?? null,
+        LstSalDate: r.LstSalDate ?? null,
+        GrossWeight: r.GrossWeight ?? 0,
+        MaxStock: r.MaxStock ?? 0,
+        WhsMaxStock: r.WhsMaxStock ?? 0,
+        LeadTime: r.LeadTime ?? 0,
+        LastSaleQty: r.LastSaleQty ?? 0,
+        LastBuyQty: r.LastBuyQty ?? 0,
+        ItmsGrpCod: r.ItmsGrpCod ?? 0,
+        GroupName: r.GroupName ?? null,
+        LastCountDate: r.LastCountDate ?? null,
+        U_COD: r.U_COD ?? null,
+        U_UNIT: r.U_UNIT ?? null,
+        U_EMBALA: r.U_EMBALA ?? null,
+        U_SubNome: r.U_SubNome ?? null,
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listInventoryEnriched] SQLQuery falhou (${msg}), usando fallback OData`);
+      return [];
+    }
   }
 
   // ========================================
@@ -651,6 +706,27 @@ export type SapInventoryRow = {
   Ordered: number;
   Available?: number;
   MinStock?: number;
+};
+
+export type SapEnrichedInventoryRow = SapInventoryRow & {
+  UoM: string;
+  AvgPrice: number;
+  LastPurPrc: number;
+  LastPurDat: string | null;
+  LstSalDate: string | null;
+  GrossWeight: number;
+  MaxStock: number;
+  WhsMaxStock: number;
+  LeadTime: number;
+  LastSaleQty: number;
+  LastBuyQty: number;
+  ItmsGrpCod: number;
+  GroupName: string | null;
+  LastCountDate: string | null;
+  U_COD: string | null;
+  U_UNIT: string | null;
+  U_EMBALA: string | null;
+  U_SubNome: string | null;
 };
 
 export type SapBusinessPartnerRow = {

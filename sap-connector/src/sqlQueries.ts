@@ -141,6 +141,37 @@ export const WMS_QUERIES = {
     QueryCategory: -1,
     QueryDescription: "WMS_Active_Customers",
     Query: `SELECT T0.CardCode, T0.CardName, T0.CardType, T0.frozenFor AS Frozen, T0.validFor AS Valid FROM OCRD T0 WHERE T0.CardType = 'C' AND T0.frozenFor = 'N' AND T0.validFor = 'Y' ORDER BY T0.CardCode`
+  },
+
+  /**
+   * Query: Estoque enriquecido com custo, datas, grupo e UDFs.
+   * Join OITM + OITW + OITB. Sem parâmetros.
+   */
+  INVENTORY_ENRICHED: {
+    QueryCategory: -1,
+    QueryDescription: "WMS_Inventory_Enriched",
+    Query: `SELECT T0.ItemCode, T0.ItemName, T0.InvntryUom AS UoM, T0.AvgPrice, T0.LastPurPrc, T0.LastPurDat, T0.LstSalDate, T0.SWeight1 AS GrossWeight, T0.MaxInvtry AS MaxStock, T0.LeadTime, T0.NumInSale AS LastSaleQty, T0.NumInBuy AS LastBuyQty, T0.ItmsGrpCod, T2.ItmsGrpNam AS GroupName, T0.U_COD, T0.U_UNIT, T0.U_EMBALA, T0.U_SubNome, T1.WhsCode AS WarehouseCode, T1.OnHand, T1.IsCommited AS Committed, T1.OnOrder AS Ordered, T1.MinStock AS WhsMinStock, T1.MaxStock AS WhsMaxStock, T1.CountDate AS LastCountDate FROM OITM T0 INNER JOIN OITW T1 ON T0.ItemCode = T1.ItemCode LEFT JOIN OITB T2 ON T0.ItmsGrpCod = T2.ItmsGrpCod WHERE T0.frozenFor = 'N' AND T0.validFor = 'Y' AND (T1.OnHand <> 0 OR T1.IsCommited <> 0 OR T1.OnOrder <> 0) ORDER BY T0.ItemCode, T1.WhsCode`
+  },
+
+  /**
+   * Query: Movimentações de estoque recentes (OINM).
+   * Parâmetros:
+   *  [%0] = Data inicial (YYYY-MM-DD)
+   */
+  STOCK_MOVEMENTS: {
+    QueryCategory: -1,
+    QueryDescription: "WMS_Stock_Movements",
+    Query: `SELECT T0.ItemCode, T0.Warehouse, T0.DocDate, T0.CreateDate, T0.InQty, T0.OutQty, T0.TransType, T0.BASE_REF, T0.CalcPrice, T0.Balance FROM OINM T0 WHERE T0.DocDate >= [%0] ORDER BY T0.DocDate DESC, T0.ItemCode`
+  },
+
+  /**
+   * Query: Preços de venda por lista de preços ativa.
+   * Sem parâmetros.
+   */
+  ITEM_PRICES: {
+    QueryCategory: -1,
+    QueryDescription: "WMS_Item_Prices",
+    Query: `SELECT T0.ItemCode, T0.Price, T0.PriceList, T1.ListName FROM ITM1 T0 INNER JOIN OPLN T1 ON T0.PriceList = T1.ListNum WHERE T1.ValidFor = 'Y' ORDER BY T0.ItemCode, T0.PriceList`
   }
 } as const;
 
@@ -209,4 +240,83 @@ export class WmsQueriesHelper extends SqlQueriesHelper {
   async getActiveCustomers(opts?: SapRequestOptions): Promise<SqlQueryResult> {
     return this.executeQuery(WMS_QUERIES.ACTIVE_CUSTOMERS.QueryDescription, [], opts);
   }
+
+  /**
+   * Busca estoque enriquecido (OITM+OITW+OITB com custo, datas, grupo).
+   */
+  async getInventoryEnriched(opts?: SapRequestOptions): Promise<SqlQueryResult<EnrichedInventoryRow>> {
+    return this.executeQuery<EnrichedInventoryRow>(
+      WMS_QUERIES.INVENTORY_ENRICHED.QueryDescription, [], opts
+    );
+  }
+
+  /**
+   * Busca movimentações de estoque desde uma data.
+   */
+  async getStockMovements(dateFrom: string, opts?: SapRequestOptions): Promise<SqlQueryResult<StockMovementRow>> {
+    return this.executeQuery<StockMovementRow>(
+      WMS_QUERIES.STOCK_MOVEMENTS.QueryDescription,
+      [{ Name: "dateFrom", Value: dateFrom }],
+      opts
+    );
+  }
+
+  /**
+   * Busca preços de venda por lista ativa.
+   */
+  async getItemPrices(opts?: SapRequestOptions): Promise<SqlQueryResult<ItemPriceRow>> {
+    return this.executeQuery<ItemPriceRow>(
+      WMS_QUERIES.ITEM_PRICES.QueryDescription, [], opts
+    );
+  }
 }
+
+/* ── Row types retornados pelas SQLQueries ── */
+
+export type EnrichedInventoryRow = {
+  ItemCode: string;
+  ItemName: string;
+  UoM: string;
+  AvgPrice: number;
+  LastPurPrc: number;
+  LastPurDat: string | null;
+  LstSalDate: string | null;
+  GrossWeight: number;
+  MaxStock: number;
+  LeadTime: number;
+  LastSaleQty: number;
+  LastBuyQty: number;
+  ItmsGrpCod: number;
+  GroupName: string | null;
+  U_COD: string | null;
+  U_UNIT: string | null;
+  U_EMBALA: string | null;
+  U_SubNome: string | null;
+  WarehouseCode: string;
+  OnHand: number;
+  Committed: number;
+  Ordered: number;
+  WhsMinStock: number;
+  WhsMaxStock: number;
+  LastCountDate: string | null;
+};
+
+export type StockMovementRow = {
+  ItemCode: string;
+  Warehouse: string;
+  DocDate: string;
+  CreateDate: string;
+  InQty: number;
+  OutQty: number;
+  TransType: number;
+  BASE_REF: string;
+  CalcPrice: number;
+  Balance: number;
+};
+
+export type ItemPriceRow = {
+  ItemCode: string;
+  Price: number;
+  PriceList: number;
+  ListName: string;
+};

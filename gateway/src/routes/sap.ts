@@ -801,32 +801,55 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 3. Sync Estoque (Inventory) — cruzado com Items para MinInventory
+    // 3. Sync Estoque (Inventory) — SQLQuery enriquecida com fallback OData
     try {
       const entSvc = getEntitiesService();
-      const [sapInventory, sapItemsForInv] = await Promise.all([
-        entSvc.listInventory({ limit: 2000 }, correlationId),
-        entSvc.listItems({ limit: 5000 }, correlationId),
-      ]);
-      if (sapInventory.length > 0) {
+      const enriched = await entSvc.listInventoryEnriched(correlationId);
+
+      let inventoryBulk: any[];
+      if (enriched.length > 0) {
+        inventoryBulk = enriched.map((row) => ({
+          sku: row.ItemCode, warehouse_code: row.WarehouseCode,
+          item_name: row.ItemName ?? null,
+          on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
+          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
+          min_stock: row.MinStock ?? 0,
+          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
+          uom: (row as any).UoM ?? null,
+          avg_price: (row as any).AvgPrice ?? 0,
+          last_purchase_price: (row as any).LastPurPrc ?? 0,
+          last_purchase_date: (row as any).LastPurDat ?? null,
+          last_sale_date: (row as any).LstSalDate ?? null,
+          gross_weight: (row as any).GrossWeight ?? 0,
+          lead_time: (row as any).LeadTime ?? 0,
+          item_group_code: (row as any).ItmsGrpCod ?? null,
+          item_group_name: (row as any).GroupName ?? null,
+          last_count_date: (row as any).LastCountDate ?? null,
+          sap_update_date: new Date().toISOString(),
+        }));
+      } else {
+        const [sapInventory, sapItemsForInv] = await Promise.all([
+          entSvc.listInventory({ limit: 2000 }, correlationId),
+          entSvc.listItems({ limit: 5000 }, correlationId),
+        ]);
         const itemsLookup = new Map<string, { name?: string; minStock?: number }>();
         for (const it of sapItemsForInv) {
           itemsLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
         }
-        const inventoryBulk = sapInventory.map((row) => {
+        inventoryBulk = sapInventory.map((row) => {
           const info = itemsLookup.get(row.ItemCode);
           return {
-            sku: row.ItemCode,
-            warehouse_code: row.WarehouseCode,
+            sku: row.ItemCode, warehouse_code: row.WarehouseCode,
             item_name: row.ItemName ?? info?.name ?? null,
-            on_hand: row.InStock,
-            committed: row.Committed,
-            ordered: row.Ordered,
+            on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
             available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
             min_stock: info?.minStock ?? 0,
+            sap_update_date: new Date().toISOString(),
           };
         });
+      }
 
+      if (inventoryBulk.length > 0) {
         const invRes = await fetch(`${coreUrl}/v1/inventory/bulk`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-correlation-id": correlationId },
@@ -837,7 +860,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
           ok: invRes.ok,
           imported: invResult?.upserted ?? 0,
           errors: 0,
-          message: `${invResult?.created ?? 0} criados, ${invResult?.updated ?? 0} atualizados`,
+          message: `${invResult?.created ?? 0} criados, ${invResult?.updated ?? 0} atualizados${enriched.length > 0 ? " (enriquecido)" : ""}`,
         };
       } else {
         results.inventory = { ok: true, imported: 0, errors: 0, message: "Sem dados de estoque via Service Layer" };
@@ -947,7 +970,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
   /**
    * POST /api/sap/sync/inventory
-   * Sincroniza Estoque do SAP.
+   * Sincroniza Estoque do SAP (tenta SQLQuery enriquecida, fallback OData).
    */
   app.post("/sap/sync/inventory", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
@@ -956,42 +979,75 @@ export async function registerSapRoutes(app: FastifyInstance) {
     try {
       const entSvc = getEntitiesService();
 
-      const [sapInv, sapItems] = await Promise.all([
-        entSvc.listInventory({ limit: 2000 }, correlationId),
-        entSvc.listItems({ limit: 5000 }, correlationId),
-      ]);
+      // Tenta SQLQuery enriquecida primeiro (OITM+OITW+OITB)
+      const enriched = await entSvc.listInventoryEnriched(correlationId);
 
-      if (sapInv.length === 0) {
-        reply.code(200).send({
-          ok: true,
-          message: "Nenhum dado de estoque disponivel via Service Layer (expand nao suportado ou sem estoque)",
-          upserted: 0,
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
+      let inventoryBulk: any[];
 
-      const itemsMap = new Map<string, { name?: string; minStock?: number }>();
-      for (const it of sapItems) {
-        itemsMap.set(it.ItemCode, {
-          name: it.ItemName,
-          minStock: (it as any).MinInventory ?? 0,
-        });
-      }
-
-      const inventoryBulk = sapInv.map((row) => {
-        const info = itemsMap.get(row.ItemCode);
-        return {
+      if (enriched.length > 0) {
+        req.log.info({ count: enriched.length, correlationId }, "Usando dados enriquecidos via SQLQuery");
+        inventoryBulk = enriched.map((row) => ({
           sku: row.ItemCode,
           warehouse_code: row.WarehouseCode,
-          item_name: row.ItemName ?? info?.name ?? null,
+          item_name: row.ItemName ?? null,
           on_hand: row.InStock,
           committed: row.Committed,
           ordered: row.Ordered,
           available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-          min_stock: info?.minStock ?? 0,
-        };
-      });
+          min_stock: row.MinStock ?? 0,
+          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
+          uom: (row as any).UoM ?? null,
+          avg_price: (row as any).AvgPrice ?? 0,
+          last_purchase_price: (row as any).LastPurPrc ?? 0,
+          last_purchase_date: (row as any).LastPurDat ?? null,
+          last_sale_date: (row as any).LstSalDate ?? null,
+          gross_weight: (row as any).GrossWeight ?? 0,
+          lead_time: (row as any).LeadTime ?? 0,
+          item_group_code: (row as any).ItmsGrpCod ?? null,
+          item_group_name: (row as any).GroupName ?? null,
+          last_count_date: (row as any).LastCountDate ?? null,
+          sap_update_date: new Date().toISOString(),
+        }));
+      } else {
+        // Fallback: OData Items + expand
+        const [sapInv, sapItems] = await Promise.all([
+          entSvc.listInventory({ limit: 2000 }, correlationId),
+          entSvc.listItems({ limit: 5000 }, correlationId),
+        ]);
+
+        if (sapInv.length === 0) {
+          reply.code(200).send({
+            ok: true,
+            message: "Nenhum dado de estoque disponivel via Service Layer",
+            upserted: 0,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
+        const itemsMap = new Map<string, { name?: string; minStock?: number }>();
+        for (const it of sapItems) {
+          itemsMap.set(it.ItemCode, {
+            name: it.ItemName,
+            minStock: (it as any).MinInventory ?? 0,
+          });
+        }
+
+        inventoryBulk = sapInv.map((row) => {
+          const info = itemsMap.get(row.ItemCode);
+          return {
+            sku: row.ItemCode,
+            warehouse_code: row.WarehouseCode,
+            item_name: row.ItemName ?? info?.name ?? null,
+            on_hand: row.InStock,
+            committed: row.Committed,
+            ordered: row.Ordered,
+            available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
+            min_stock: info?.minStock ?? 0,
+            sap_update_date: new Date().toISOString(),
+          };
+        });
+      }
 
       const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
         method: "POST",
@@ -1002,8 +1058,9 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
       reply.code(200).send({
         ok: res.ok,
-        message: `${result?.upserted ?? 0} registros de estoque sincronizados`,
-        total_sap: sapInv.length,
+        message: `${result?.upserted ?? 0} registros de estoque sincronizados${enriched.length > 0 ? " (enriquecido)" : " (OData)"}`,
+        total_sap: inventoryBulk.length,
+        enriched: enriched.length > 0,
         ...result,
         timestamp: new Date().toISOString(),
       });
@@ -1243,16 +1300,38 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 4. Estoque — cruzado com Items já carregados para MinInventory
+    // 4. Estoque — SQLQuery enriquecida com fallback OData
     try {
-      const inv = await entSvc.listInventory({ limit: 2000 }, correlationId);
-      const itemsForInv = await entSvc.listItems({ limit: 5000 }, correlationId).catch(() => [] as any[]);
-      if (inv.length > 0) {
+      const enrichedInv = await entSvc.listInventoryEnriched(correlationId);
+      let invBulk: any[];
+      if (enrichedInv.length > 0) {
+        invBulk = enrichedInv.map((row) => ({
+          sku: row.ItemCode, warehouse_code: row.WarehouseCode,
+          item_name: row.ItemName ?? null,
+          on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
+          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
+          min_stock: row.MinStock ?? 0,
+          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
+          uom: (row as any).UoM ?? null,
+          avg_price: (row as any).AvgPrice ?? 0,
+          last_purchase_price: (row as any).LastPurPrc ?? 0,
+          last_purchase_date: (row as any).LastPurDat ?? null,
+          last_sale_date: (row as any).LstSalDate ?? null,
+          gross_weight: (row as any).GrossWeight ?? 0,
+          lead_time: (row as any).LeadTime ?? 0,
+          item_group_code: (row as any).ItmsGrpCod ?? null,
+          item_group_name: (row as any).GroupName ?? null,
+          last_count_date: (row as any).LastCountDate ?? null,
+          sap_update_date: new Date().toISOString(),
+        }));
+      } else {
+        const inv = await entSvc.listInventory({ limit: 2000 }, correlationId);
+        const itemsForInv = await entSvc.listItems({ limit: 5000 }, correlationId).catch(() => [] as any[]);
         const iLookup = new Map<string, { name?: string; minStock?: number }>();
         for (const it of itemsForInv) {
           iLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
         }
-        const invBulk = inv.map((r) => {
+        invBulk = inv.map((r) => {
           const info = iLookup.get(r.ItemCode);
           return {
             sku: r.ItemCode, warehouse_code: r.WarehouseCode,
@@ -1260,8 +1339,11 @@ export async function registerSapRoutes(app: FastifyInstance) {
             on_hand: r.InStock, committed: r.Committed, ordered: r.Ordered,
             available: r.Available ?? Math.max(r.InStock - r.Committed, 0),
             min_stock: info?.minStock ?? 0,
+            sap_update_date: new Date().toISOString(),
           };
         });
+      }
+      if (invBulk.length > 0) {
         const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-correlation-id": correlationId },

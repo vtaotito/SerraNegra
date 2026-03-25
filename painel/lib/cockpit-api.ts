@@ -54,6 +54,17 @@ export interface InventoryRow {
   quantity_free: number;
   quantity_on_order: number;
   min_stock: number;
+  max_stock: number;
+  uom: string | null;
+  avg_price: number;
+  last_purchase_price: number;
+  last_purchase_date: string | null;
+  last_sale_date: string | null;
+  gross_weight: number;
+  lead_time: number;
+  item_group_code: number | null;
+  item_group_name: string | null;
+  last_count_date: string | null;
   sap_update_date: string | null;
   updated_at: string;
 }

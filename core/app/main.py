@@ -195,6 +195,17 @@ def list_inventory(
                 "quantity_free": float(s.available) if s.available else max(float(s.on_hand) - float(s.committed), 0),
                 "quantity_on_order": float(s.ordered),
                 "min_stock": float(s.min_stock) if s.min_stock else 0,
+                "max_stock": float(s.max_stock) if s.max_stock else 0,
+                "uom": s.uom,
+                "avg_price": float(s.avg_price) if s.avg_price else 0,
+                "last_purchase_price": float(s.last_purchase_price) if s.last_purchase_price else 0,
+                "last_purchase_date": s.last_purchase_date,
+                "last_sale_date": s.last_sale_date,
+                "gross_weight": float(s.gross_weight) if s.gross_weight else 0,
+                "lead_time": s.lead_time or 0,
+                "item_group_code": s.item_group_code,
+                "item_group_name": s.item_group_name,
+                "last_count_date": s.last_count_date,
                 "sap_update_date": s.sap_update_date,
                 "updated_at": s.updated_at.isoformat() if s.updated_at else None,
             }
@@ -332,6 +343,17 @@ class BulkInventoryItem(BaseModel):
     ordered: float = 0
     available: float = 0
     min_stock: float = 0
+    max_stock: float = 0
+    uom: str | None = None
+    avg_price: float = 0
+    last_purchase_price: float = 0
+    last_purchase_date: str | None = None
+    last_sale_date: str | None = None
+    gross_weight: float = 0
+    lead_time: int = 0
+    item_group_code: int | None = None
+    item_group_name: str | None = None
+    last_count_date: str | None = None
     sap_update_date: str | None = None
 
 
@@ -367,6 +389,17 @@ def bulk_upsert_inventory(
             existing.ordered = item.ordered
             existing.available = computed_available
             existing.min_stock = item.min_stock
+            existing.max_stock = item.max_stock
+            existing.uom = item.uom
+            existing.avg_price = item.avg_price
+            existing.last_purchase_price = item.last_purchase_price
+            existing.last_purchase_date = item.last_purchase_date
+            existing.last_sale_date = item.last_sale_date
+            existing.gross_weight = item.gross_weight
+            existing.lead_time = item.lead_time
+            existing.item_group_code = item.item_group_code
+            existing.item_group_name = item.item_group_name
+            existing.last_count_date = item.last_count_date
             existing.sap_update_date = item.sap_update_date
             existing.updated_at = now
             updated += 1
@@ -380,6 +413,17 @@ def bulk_upsert_inventory(
                 ordered=item.ordered,
                 available=computed_available,
                 min_stock=item.min_stock,
+                max_stock=item.max_stock,
+                uom=item.uom,
+                avg_price=item.avg_price,
+                last_purchase_price=item.last_purchase_price,
+                last_purchase_date=item.last_purchase_date,
+                last_sale_date=item.last_sale_date,
+                gross_weight=item.gross_weight,
+                lead_time=item.lead_time,
+                item_group_code=item.item_group_code,
+                item_group_name=item.item_group_name,
+                last_count_date=item.last_count_date,
                 sap_update_date=item.sap_update_date,
                 created_at=now,
                 updated_at=now,
