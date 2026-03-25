@@ -180,7 +180,7 @@ function CTooltip({ active, payload, label }: any) {
 }
 
 function toTitleCase(s: string): string {
-  return s.toLowerCase().replace(/(?:^|\s|[./_-])\S/g, (c) => c.toUpperCase());
+  return s.toLowerCase().replace(/(?:^|\s|[./>_-])\S/g, (c) => c.toUpperCase());
 }
 
 function StockBar({ total, available, minStock }: { total: number; available: number; minStock: number }) {
