@@ -161,10 +161,12 @@ export class SapEntitiesService {
             if (inStock > 0 || committed > 0 || ordered > 0) {
               inventory.push({
                 ItemCode: item.ItemCode,
+                ItemName: item.ItemName,
                 WarehouseCode: wh.WarehouseCode,
                 InStock: inStock,
                 Committed: committed,
                 Ordered: ordered,
+                Available: Math.max(inStock - committed, 0),
               });
             }
           }
@@ -591,10 +593,13 @@ type SapItemWithWarehouse = {
 
 export type SapInventoryRow = {
   ItemCode: string;
+  ItemName?: string;
   WarehouseCode: string;
   InStock: number;
   Committed: number;
   Ordered: number;
+  Available?: number;
+  MinStock?: number;
 };
 
 export type SapBusinessPartnerRow = {

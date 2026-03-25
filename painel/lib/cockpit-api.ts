@@ -48,10 +48,12 @@ export interface InventoryRow {
   id: number;
   product_id: string;
   warehouse_id: string;
+  item_name: string | null;
   quantity_available: number;
   quantity_reserved: number;
   quantity_free: number;
   quantity_on_order: number;
+  min_stock: number;
   sap_update_date: string | null;
   updated_at: string;
 }

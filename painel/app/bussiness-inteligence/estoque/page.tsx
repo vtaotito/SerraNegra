@@ -32,9 +32,11 @@ interface StockItem {
   embala: string;
   embalaQty: number;
   estoqueTotal: number;
+  confirmado: number;
   disponivel: number;
   reservado: number;
   emPedido: number;
+  minStock: number;
   qtdEmb: number;
   qtdVendida: number;
   fatVendido: number;
@@ -48,6 +50,7 @@ interface StockItem {
   skuCount: number;
   allSkus: string[];
   embalas: string[];
+  belowMinStock: boolean;
 }
 
 function parseEmbalaQty(desc: string): { embalaQty: number; embala: string } {
@@ -125,7 +128,7 @@ function classifyCurvaABC(items: { sku: string; fat: number }[]): Map<string, Cu
   return map;
 }
 
-type SortField = "sku" | "descricao" | "estoqueTotal" | "disponivel" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro" | "numPedidos";
+type SortField = "sku" | "descricao" | "estoqueTotal" | "confirmado" | "disponivel" | "emPedido" | "minStock" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro" | "numPedidos";
 
 function CTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -162,13 +165,15 @@ export default function EstoquePage() {
   const allItems = useMemo<StockItem[]>(() => {
     if (!catalogData || !invData || !ordData) return [];
 
-    const invMap = new Map<string, { avail: number; free: number; reserved: number; onOrder: number }>();
+    const invMap = new Map<string, { avail: number; free: number; reserved: number; onOrder: number; minStock: number; itemName: string | null }>();
     for (const inv of invData.data) {
-      const cur = invMap.get(inv.product_id) ?? { avail: 0, free: 0, reserved: 0, onOrder: 0 };
+      const cur = invMap.get(inv.product_id) ?? { avail: 0, free: 0, reserved: 0, onOrder: 0, minStock: 0, itemName: null };
       cur.avail += inv.quantity_available;
       cur.free += inv.quantity_free;
       cur.reserved += inv.quantity_reserved;
       cur.onOrder += inv.quantity_on_order;
+      cur.minStock = Math.max(cur.minStock, inv.min_stock ?? 0);
+      if (inv.item_name && !cur.itemName) cur.itemName = inv.item_name;
       invMap.set(inv.product_id, cur);
     }
 
@@ -195,9 +200,11 @@ export default function EstoquePage() {
       embalaQty: number;
       baseName: string;
       estoqueTotal: number;
+      confirmado: number;
       disponivel: number;
       reservado: number;
       emPedido: number;
+      minStock: number;
       qtdEmb: number;
       qtdVendida: number;
       fatVendido: number;
@@ -212,15 +219,17 @@ export default function EstoquePage() {
       const qtdEmb = sales?.qty ?? 0;
       return {
         sku: cat.sku,
-        description: cat.description,
+        description: inv?.itemName || cat.description,
         unitOfMeasure: cat.unit_of_measure || "UN",
         embala,
         embalaQty,
-        baseName: getBaseProductName(cat.description),
+        baseName: getBaseProductName(inv?.itemName || cat.description),
         estoqueTotal: inv?.avail ?? 0,
+        confirmado: inv?.reserved ?? 0,
         disponivel: inv?.free ?? 0,
         reservado: inv?.reserved ?? 0,
         emPedido: inv?.onOrder ?? 0,
+        minStock: inv?.minStock ?? 0,
         qtdEmb,
         qtdVendida: qtdEmb * embalaQty,
         fatVendido: sales?.fat ?? 0,
@@ -241,9 +250,11 @@ export default function EstoquePage() {
       const undItem = group.find((i) => i.embala === "UND") ?? group[0];
 
       const estoqueTotal = group.reduce((s, i) => s + i.estoqueTotal, 0);
+      const confirmado = group.reduce((s, i) => s + i.confirmado, 0);
       const disponivel = group.reduce((s, i) => s + i.disponivel, 0);
       const reservado = group.reduce((s, i) => s + i.reservado, 0);
       const emPedido = group.reduce((s, i) => s + i.emPedido, 0);
+      const minStock = Math.max(...group.map((i) => i.minStock), 0);
       const qtdVendida = group.reduce((s, i) => s + i.qtdVendida, 0);
       const qtdEmb = group.reduce((s, i) => s + i.qtdEmb, 0);
       const fatVendido = group.reduce((s, i) => s + i.fatVendido, 0);
@@ -269,9 +280,11 @@ export default function EstoquePage() {
         embala: embalas.join(", "),
         embalaQty: undItem.embalaQty,
         estoqueTotal,
+        confirmado,
         disponivel,
         reservado,
         emPedido,
+        minStock,
         qtdEmb,
         qtdVendida,
         fatVendido,
@@ -285,6 +298,7 @@ export default function EstoquePage() {
         skuCount: group.length,
         allSkus,
         embalas,
+        belowMinStock: minStock > 0 && disponivel < minStock,
       });
     }
 
@@ -325,7 +339,10 @@ export default function EstoquePage() {
         case "sku": cmp = a.sku.localeCompare(b.sku); break;
         case "descricao": cmp = a.descricao.localeCompare(b.descricao); break;
         case "estoqueTotal": cmp = a.estoqueTotal - b.estoqueTotal; break;
+        case "confirmado": cmp = a.confirmado - b.confirmado; break;
         case "disponivel": cmp = a.disponivel - b.disponivel; break;
+        case "emPedido": cmp = a.emPedido - b.emPedido; break;
+        case "minStock": cmp = a.minStock - b.minStock; break;
         case "qtdVendida": cmp = a.qtdVendida - b.qtdVendida; break;
         case "mediaDiaria": cmp = a.mediaDiaria - b.mediaDiaria; break;
         case "coberturaDias": cmp = a.coberturaDias - b.coberturaDias; break;
@@ -360,7 +377,8 @@ export default function EstoquePage() {
         }
       }
     }
-    return { total, totalSkus, estoqueTotal, fatTotal, criticos, curvaA, parados, cobMedia, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
+    const belowMin = allItems.filter((i) => i.belowMinStock).length;
+    return { total, totalSkus, estoqueTotal, fatTotal, criticos, curvaA, parados, cobMedia, totalPedidos: orderNums.size, totalClientes: cardCodes.size, belowMin };
   }, [allItems, ordData]);
 
   const curvaDistrib = useMemo(() => {
@@ -412,8 +430,11 @@ export default function EstoquePage() {
       "Todos SKUs": i.allSkus.join(", "),
       Embalagens: i.embalas.join(", "),
       Estoque: i.estoqueTotal,
+      Confirmado: i.confirmado,
       Disponivel: i.disponivel,
-      Reservado: i.reservado,
+      "Em Pedido": i.emPedido,
+      "Estoque Minimo": i.minStock,
+      "Abaixo Minimo": i.belowMinStock ? "Sim" : "Nao",
       "Saída (un)": i.qtdVendida,
       Pedidos: i.numPedidos,
       Clientes: i.numClientes,
@@ -463,7 +484,7 @@ export default function EstoquePage() {
           { title: "Total Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes`, icon: Layers, color: "text-indigo-500" },
           { title: "Curva A", value: String(kpis.curvaA), sub: "Produtos 80% do fat.", icon: Flame, color: "text-cockpit-accent" },
           { title: "Críticos", value: String(kpis.criticos), sub: "≤ 7 dias de cobertura", icon: ShieldAlert, color: kpis.criticos > 0 ? "text-red-500" : "text-emerald-500" },
-          { title: "Parados", value: String(kpis.parados), sub: "Estoque sem saída", icon: Snowflake, color: kpis.parados > 0 ? "text-amber-500" : "text-emerald-500" },
+          { title: "Abaixo Mín.", value: String(kpis.belowMin), sub: "Disp. < est. mínimo SAP", icon: AlertTriangle, color: kpis.belowMin > 0 ? "text-red-500" : "text-emerald-500" },
         ].map((k) => {
           const Icon = k.icon;
           return (
@@ -634,7 +655,7 @@ export default function EstoquePage() {
         </div>
 
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-xs min-w-[1000px]">
+          <table className="w-full text-xs min-w-[1200px]">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
                 <th className="text-left py-2.5 px-3 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("curva")}>
@@ -649,8 +670,17 @@ export default function EstoquePage() {
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("confirmado")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Confirm. <SortIcon field="confirmado" /></span>
+                </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
                   <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
+                </th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("emPedido")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Pedido <SortIcon field="emPedido" /></span>
+                </th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("minStock")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Est. Mín. <SortIcon field="minStock" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
                   <span className="inline-flex items-center gap-1 justify-end">Saída (un) <SortIcon field="qtdVendida" /></span>
@@ -672,7 +702,7 @@ export default function EstoquePage() {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={11} className="py-12 text-center text-cockpit-muted">
+                <tr><td colSpan={14} className="py-12 text-center text-cockpit-muted">
                   <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum item encontrado</p>
                 </td></tr>
@@ -683,7 +713,7 @@ export default function EstoquePage() {
                 const isCritical = item.curva === "A" && item.coberturaClass === "critico";
                 const GiroIcon = gs.icon;
                 return (
-                  <tr key={item.sku} className={`border-b border-cockpit-border/10 hover:bg-gray-50/80 transition-colors ${isCritical ? "bg-red-50/30" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}>
+                  <tr key={item.sku} className={`border-b border-cockpit-border/10 hover:bg-gray-50/80 transition-colors ${item.belowMinStock ? "bg-red-50/30" : isCritical ? "bg-red-50/20" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}>
                     <td className="py-2 px-3">
                       <span className={`inline-block w-6 text-center px-1 py-0.5 rounded text-[10px] font-bold ${cs.bg} ${cs.text}`}>{item.curva}</span>
                     </td>
@@ -702,8 +732,22 @@ export default function EstoquePage() {
                       )}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-gray-600">{fmtNum(item.estoqueTotal)}</td>
-                    <td className={`py-2 px-2 text-right tabular-nums font-medium ${item.disponivel <= 0 ? "text-red-500" : "text-gray-700"}`}>
+                    <td className="py-2 px-2 text-right tabular-nums text-amber-600">
+                      {item.confirmado > 0 ? fmtNum(item.confirmado) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className={`py-2 px-2 text-right tabular-nums font-medium ${item.belowMinStock ? "text-red-600" : item.disponivel <= 0 ? "text-red-500" : "text-emerald-700"}`}>
                       {fmtNum(item.disponivel)}
+                      {item.belowMinStock && <AlertTriangle className="inline w-3 h-3 ml-0.5 text-red-500 -mt-0.5" />}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums text-sky-600">
+                      {item.emPedido > 0 ? fmtNum(item.emPedido) : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums">
+                      {item.minStock > 0 ? (
+                        <span className={item.belowMinStock ? "text-red-600 font-semibold" : "text-gray-500"}>
+                          {fmtNum(item.minStock)}
+                        </span>
+                      ) : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">
                       <span className={item.qtdVendida > 0 ? "text-gray-900 font-bold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
@@ -742,11 +786,13 @@ export default function EstoquePage() {
         </div>
 
         {filtered.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-gray-50/80 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2 border-t border-cockpit-border bg-gray-50/80 text-xs gap-1">
             <span className="text-cockpit-muted">Total ({filtered.length} produtos · {filtered.reduce((s, i) => s + i.skuCount, 0)} SKUs)</span>
-            <div className="flex items-center gap-4 tabular-nums">
-              <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))} un</strong></span>
-              <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))} un</strong></span>
+            <div className="flex items-center gap-3 sm:gap-4 tabular-nums flex-wrap">
+              <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
+              <span className="text-amber-600">Confirm.: <strong>{fmtNum(filtered.reduce((s, i) => s + i.confirmado, 0))}</strong></span>
+              <span className="text-emerald-700">Disp.: <strong>{fmtNum(filtered.reduce((s, i) => s + i.disponivel, 0))}</strong></span>
+              <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))}</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, i) => s + i.fatVendido, 0))}</span>
             </div>
           </div>
@@ -754,7 +800,7 @@ export default function EstoquePage() {
       </div>
 
       <footer className="text-center text-xs text-cockpit-muted py-3 border-t border-cockpit-border">
-        Estoque SAP B1 cruzado com {ordData?.total ?? 0} pedidos de venda · {totalDays} dias · Produtos agrupados por embalagem · Cobertura = Disponível ÷ Média diária de saída
+        Estoque SAP B1 sincronizado (Estoque · Confirmado · Disponível · Pedido · Est. Mínimo) cruzado com {ordData?.total ?? 0} pedidos de venda · {totalDays} dias · Produtos agrupados por embalagem
       </footer>
     </div>
   );

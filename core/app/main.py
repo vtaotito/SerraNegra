@@ -189,10 +189,12 @@ def list_inventory(
                 "id": s.id,
                 "product_id": s.sku,
                 "warehouse_id": s.warehouse_code,
+                "item_name": s.item_name,
                 "quantity_available": float(s.on_hand),
                 "quantity_reserved": float(s.committed),
-                "quantity_free": max(float(s.on_hand) - float(s.committed), 0),
+                "quantity_free": float(s.available) if s.available else max(float(s.on_hand) - float(s.committed), 0),
                 "quantity_on_order": float(s.ordered),
+                "min_stock": float(s.min_stock) if s.min_stock else 0,
                 "sap_update_date": s.sap_update_date,
                 "updated_at": s.updated_at.isoformat() if s.updated_at else None,
             }
@@ -324,9 +326,12 @@ def bulk_upsert_products(
 class BulkInventoryItem(BaseModel):
     sku: str
     warehouse_code: str
+    item_name: str | None = None
     on_hand: float = 0
     committed: float = 0
     ordered: float = 0
+    available: float = 0
+    min_stock: float = 0
     sap_update_date: str | None = None
 
 
@@ -353,11 +358,15 @@ def bulk_upsert_inventory(
             )
         ).scalar_one_or_none()
 
+        computed_available = item.available if item.available else max(item.on_hand - item.committed, 0)
         now = now_utc()
         if existing:
+            existing.item_name = item.item_name
             existing.on_hand = item.on_hand
             existing.committed = item.committed
             existing.ordered = item.ordered
+            existing.available = computed_available
+            existing.min_stock = item.min_stock
             existing.sap_update_date = item.sap_update_date
             existing.updated_at = now
             updated += 1
@@ -365,9 +374,12 @@ def bulk_upsert_inventory(
             db.add(DbInventoryStock(
                 sku=item.sku,
                 warehouse_code=item.warehouse_code,
+                item_name=item.item_name,
                 on_hand=item.on_hand,
                 committed=item.committed,
                 ordered=item.ordered,
+                available=computed_available,
+                min_stock=item.min_stock,
                 sap_update_date=item.sap_update_date,
                 created_at=now,
                 updated_at=now,

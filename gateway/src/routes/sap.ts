@@ -801,18 +801,31 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 3. Sync Estoque (Inventory)
+    // 3. Sync Estoque (Inventory) — cruzado com Items para MinInventory
     try {
       const entSvc = getEntitiesService();
-      const sapInventory = await entSvc.listInventory({ limit: 1000 }, correlationId);
+      const [sapInventory, sapItemsForInv] = await Promise.all([
+        entSvc.listInventory({ limit: 2000 }, correlationId),
+        entSvc.listItems({ limit: 5000 }, correlationId),
+      ]);
       if (sapInventory.length > 0) {
-        const inventoryBulk = sapInventory.map((row) => ({
-          sku: row.ItemCode,
-          warehouse_code: row.WarehouseCode,
-          on_hand: row.InStock,
-          committed: row.Committed,
-          ordered: row.Ordered,
-        }));
+        const itemsLookup = new Map<string, { name?: string; minStock?: number }>();
+        for (const it of sapItemsForInv) {
+          itemsLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
+        }
+        const inventoryBulk = sapInventory.map((row) => {
+          const info = itemsLookup.get(row.ItemCode);
+          return {
+            sku: row.ItemCode,
+            warehouse_code: row.WarehouseCode,
+            item_name: row.ItemName ?? info?.name ?? null,
+            on_hand: row.InStock,
+            committed: row.Committed,
+            ordered: row.Ordered,
+            available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
+            min_stock: info?.minStock ?? 0,
+          };
+        });
 
         const invRes = await fetch(`${coreUrl}/v1/inventory/bulk`, {
           method: "POST",
@@ -942,7 +955,11 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
     try {
       const entSvc = getEntitiesService();
-      const sapInv = await entSvc.listInventory({ limit: 1000 }, correlationId);
+
+      const [sapInv, sapItems] = await Promise.all([
+        entSvc.listInventory({ limit: 2000 }, correlationId),
+        entSvc.listItems({ limit: 5000 }, correlationId),
+      ]);
 
       if (sapInv.length === 0) {
         reply.code(200).send({
@@ -954,13 +971,27 @@ export async function registerSapRoutes(app: FastifyInstance) {
         return;
       }
 
-      const inventoryBulk = sapInv.map((row) => ({
-        sku: row.ItemCode,
-        warehouse_code: row.WarehouseCode,
-        on_hand: row.InStock,
-        committed: row.Committed,
-        ordered: row.Ordered,
-      }));
+      const itemsMap = new Map<string, { name?: string; minStock?: number }>();
+      for (const it of sapItems) {
+        itemsMap.set(it.ItemCode, {
+          name: it.ItemName,
+          minStock: (it as any).MinInventory ?? 0,
+        });
+      }
+
+      const inventoryBulk = sapInv.map((row) => {
+        const info = itemsMap.get(row.ItemCode);
+        return {
+          sku: row.ItemCode,
+          warehouse_code: row.WarehouseCode,
+          item_name: row.ItemName ?? info?.name ?? null,
+          on_hand: row.InStock,
+          committed: row.Committed,
+          ordered: row.Ordered,
+          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
+          min_stock: info?.minStock ?? 0,
+        };
+      });
 
       const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
         method: "POST",
@@ -1212,14 +1243,25 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 4. Estoque
+    // 4. Estoque — cruzado com Items já carregados para MinInventory
     try {
       const inv = await entSvc.listInventory({ limit: 2000 }, correlationId);
+      const itemsForInv = await entSvc.listItems({ limit: 5000 }, correlationId).catch(() => [] as any[]);
       if (inv.length > 0) {
-        const invBulk = inv.map((r) => ({
-          sku: r.ItemCode, warehouse_code: r.WarehouseCode,
-          on_hand: r.InStock, committed: r.Committed, ordered: r.Ordered,
-        }));
+        const iLookup = new Map<string, { name?: string; minStock?: number }>();
+        for (const it of itemsForInv) {
+          iLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
+        }
+        const invBulk = inv.map((r) => {
+          const info = iLookup.get(r.ItemCode);
+          return {
+            sku: r.ItemCode, warehouse_code: r.WarehouseCode,
+            item_name: r.ItemName ?? info?.name ?? null,
+            on_hand: r.InStock, committed: r.Committed, ordered: r.Ordered,
+            available: r.Available ?? Math.max(r.InStock - r.Committed, 0),
+            min_stock: info?.minStock ?? 0,
+          };
+        });
         const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
           method: "POST",
           headers: { "content-type": "application/json", "x-correlation-id": correlationId },
