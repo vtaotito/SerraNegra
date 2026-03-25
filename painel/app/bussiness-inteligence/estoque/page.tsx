@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import {
   Package, Boxes, AlertTriangle, Search, CalendarDays,
   TrendingUp, TrendingDown, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown,
-  Download, Gauge, BarChart3, Layers, Clock, Flame, Snowflake,
+  Download, Gauge, BarChart3, Layers, Flame, Snowflake, ChevronDown, Eye,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -56,18 +56,13 @@ interface StockItem {
 function parseEmbalaQty(desc: string): { embalaQty: number; embala: string } {
   const d = (desc ?? "").trim();
   if (!d) return { embalaQty: 1, embala: "UND" };
-
   const packRx = /(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND/i;
   const m = d.match(packRx);
   if (m) {
     const qty = parseInt(m[2].replace(/\./g, "").replace(",", "."), 10) || 1;
     return { embalaQty: qty, embala: `${m[1].toUpperCase()} C/${qty}` };
   }
-
-  if (/[-–]\s*UND\s*$/i.test(d) || /\bUND\s*$/i.test(d)) {
-    return { embalaQty: 1, embala: "UND" };
-  }
-
+  if (/[-–]\s*UND\s*$/i.test(d) || /\bUND\s*$/i.test(d)) return { embalaQty: 1, embala: "UND" };
   return { embalaQty: 1, embala: "UND" };
 }
 
@@ -79,24 +74,20 @@ function getBaseProductName(desc: string): string {
     .toUpperCase();
 }
 
-const CURVA_STYLES: Record<CurvaABC, { bg: string; text: string; ring: string }> = {
-  A: { bg: "bg-cockpit-accent/10", text: "text-cockpit-accent", ring: "ring-cockpit-accent/30" },
-  B: { bg: "bg-amber-50", text: "text-amber-700", ring: "ring-amber-300" },
-  C: { bg: "bg-gray-100", text: "text-gray-500", ring: "ring-gray-300" },
+const CURVA_COLORS: Record<CurvaABC, string> = { A: "#AA1A1B", B: "#f59e0b", C: "#9ca3af" };
+
+const GIRO_CFG: Record<Giro, { bg: string; text: string; icon: React.ElementType; label: string }> = {
+  alto:   { bg: "bg-emerald-50", text: "text-emerald-700", icon: Flame,        label: "Alto" },
+  medio:  { bg: "bg-sky-50",     text: "text-sky-700",     icon: TrendingUp,   label: "Médio" },
+  baixo:  { bg: "bg-amber-50",   text: "text-amber-700",   icon: TrendingDown, label: "Baixo" },
+  parado: { bg: "bg-gray-100",   text: "text-gray-500",    icon: Snowflake,    label: "Parado" },
 };
 
-const GIRO_STYLES: Record<Giro, { bg: string; text: string; icon: React.ElementType; label: string }> = {
-  alto: { bg: "bg-emerald-50", text: "text-emerald-700", icon: Flame, label: "Alto" },
-  medio: { bg: "bg-sky-50", text: "text-sky-700", icon: TrendingUp, label: "Médio" },
-  baixo: { bg: "bg-amber-50", text: "text-amber-700", icon: TrendingDown, label: "Baixo" },
-  parado: { bg: "bg-gray-100", text: "text-gray-500", icon: Snowflake, label: "Parado" },
-};
-
-const COB_STYLES: Record<Cobertura, { bg: string; text: string; label: string }> = {
-  critico: { bg: "bg-red-50", text: "text-red-700", label: "Crítico" },
-  atencao: { bg: "bg-amber-50", text: "text-amber-700", label: "Atenção" },
-  ok: { bg: "bg-emerald-50", text: "text-emerald-700", label: "OK" },
-  excesso: { bg: "bg-violet-50", text: "text-violet-600", label: "Excesso" },
+const COB_CFG: Record<Cobertura, { bg: string; text: string; label: string }> = {
+  critico: { bg: "bg-red-50",      text: "text-red-700",    label: "Crítico" },
+  atencao: { bg: "bg-amber-50",    text: "text-amber-700",  label: "Atenção" },
+  ok:      { bg: "bg-emerald-50",  text: "text-emerald-700",label: "OK" },
+  excesso: { bg: "bg-violet-50",   text: "text-violet-600", label: "Excesso" },
 };
 
 function classifyGiro(mediaDiaria: number, maxMedia: number): Giro {
@@ -122,13 +113,12 @@ function classifyCurvaABC(items: { sku: string; fat: number }[]): Map<string, Cu
   let cum = 0;
   for (const i of sorted) {
     cum += i.fat;
-    const pct = total > 0 ? cum / total : 1;
-    map.set(i.sku, pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C");
+    map.set(i.sku, total > 0 ? (cum / total <= 0.8 ? "A" : cum / total <= 0.95 ? "B" : "C") : "C");
   }
   return map;
 }
 
-type SortField = "sku" | "descricao" | "estoqueTotal" | "confirmado" | "disponivel" | "emPedido" | "minStock" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro" | "numPedidos";
+type SortField = "descricao" | "estoqueTotal" | "disponivel" | "qtdVendida" | "mediaDiaria" | "coberturaDias" | "fatVendido" | "curva" | "giro" | "numPedidos";
 
 function CTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -142,6 +132,24 @@ function CTooltip({ active, payload, label }: any) {
           </span>
         </p>
       ))}
+    </div>
+  );
+}
+
+function StockBar({ total, available, minStock }: { total: number; available: number; minStock: number }) {
+  if (total <= 0) return <span className="text-gray-300 text-[10px]">sem estoque</span>;
+  const pct = Math.min((available / total) * 100, 100);
+  const minPct = minStock > 0 && total > 0 ? Math.min((minStock / total) * 100, 100) : 0;
+  const color = available <= 0 ? "#ef4444" : minStock > 0 && available < minStock ? "#f59e0b" : pct < 30 ? "#f59e0b" : "#10b981";
+  return (
+    <div className="flex items-center gap-2 min-w-[90px]">
+      <div className="flex-1 h-1.5 bg-gray-100 rounded-full relative overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+        {minPct > 0 && (
+          <div className="absolute top-0 h-full w-px bg-red-400" style={{ left: `${minPct}%` }} title={`Mín: ${fmtNum(minStock)}`} />
+        )}
+      </div>
+      <span className="text-[10px] tabular-nums text-gray-500 w-8 text-right">{pct.toFixed(0)}%</span>
     </div>
   );
 }
@@ -193,23 +201,11 @@ export default function EstoquePage() {
     }
 
     type RawItem = {
-      sku: string;
-      description: string;
-      unitOfMeasure: string;
-      embala: string;
-      embalaQty: number;
-      baseName: string;
-      estoqueTotal: number;
-      confirmado: number;
-      disponivel: number;
-      reservado: number;
-      emPedido: number;
-      minStock: number;
-      qtdEmb: number;
-      qtdVendida: number;
-      fatVendido: number;
-      pedidos: Set<number>;
-      clientes: Set<string>;
+      sku: string; description: string; unitOfMeasure: string; embala: string;
+      embalaQty: number; baseName: string; estoqueTotal: number; confirmado: number;
+      disponivel: number; reservado: number; emPedido: number; minStock: number;
+      qtdEmb: number; qtdVendida: number; fatVendido: number;
+      pedidos: Set<number>; clientes: Set<string>;
     };
 
     const rawItems: RawItem[] = catalogData.data.map((cat) => {
@@ -218,21 +214,13 @@ export default function EstoquePage() {
       const { embalaQty, embala } = parseEmbalaQty(cat.description);
       const qtdEmb = sales?.qty ?? 0;
       return {
-        sku: cat.sku,
-        description: inv?.itemName || cat.description,
-        unitOfMeasure: cat.unit_of_measure || "UN",
-        embala,
-        embalaQty,
+        sku: cat.sku, description: inv?.itemName || cat.description,
+        unitOfMeasure: cat.unit_of_measure || "UN", embala, embalaQty,
         baseName: getBaseProductName(inv?.itemName || cat.description),
-        estoqueTotal: inv?.avail ?? 0,
-        confirmado: inv?.reserved ?? 0,
-        disponivel: inv?.free ?? 0,
-        reservado: inv?.reserved ?? 0,
-        emPedido: inv?.onOrder ?? 0,
-        minStock: inv?.minStock ?? 0,
-        qtdEmb,
-        qtdVendida: qtdEmb * embalaQty,
-        fatVendido: sales?.fat ?? 0,
+        estoqueTotal: inv?.avail ?? 0, confirmado: inv?.reserved ?? 0,
+        disponivel: inv?.free ?? 0, reservado: inv?.reserved ?? 0,
+        emPedido: inv?.onOrder ?? 0, minStock: inv?.minStock ?? 0,
+        qtdEmb, qtdVendida: qtdEmb * embalaQty, fatVendido: sales?.fat ?? 0,
         pedidos: sales?.pedidos ?? new Set<number>(),
         clientes: sales?.clientes ?? new Set<string>(),
       };
@@ -248,7 +236,6 @@ export default function EstoquePage() {
     const mergedItems: StockItem[] = [];
     for (const [baseName, group] of groups) {
       const undItem = group.find((i) => i.embala === "UND") ?? group[0];
-
       const estoqueTotal = group.reduce((s, i) => s + i.estoqueTotal, 0);
       const confirmado = group.reduce((s, i) => s + i.confirmado, 0);
       const disponivel = group.reduce((s, i) => s + i.disponivel, 0);
@@ -258,62 +245,34 @@ export default function EstoquePage() {
       const qtdVendida = group.reduce((s, i) => s + i.qtdVendida, 0);
       const qtdEmb = group.reduce((s, i) => s + i.qtdEmb, 0);
       const fatVendido = group.reduce((s, i) => s + i.fatVendido, 0);
-
       const allPedidos = new Set<number>();
       const allClientes = new Set<string>();
-      for (const i of group) {
-        for (const p of i.pedidos) allPedidos.add(p);
-        for (const c of i.clientes) allClientes.add(c);
-      }
-
+      for (const i of group) { for (const p of i.pedidos) allPedidos.add(p); for (const c of i.clientes) allClientes.add(c); }
       const mediaDiaria = qtdVendida / totalDays;
       const coberturaDias = mediaDiaria > 0 ? disponivel / mediaDiaria : disponivel > 0 ? 999 : 0;
 
-      const allSkus = group.map((i) => i.sku);
-      const embalas = [...new Set(group.map((i) => i.embala))];
-
       mergedItems.push({
-        sku: undItem.sku,
-        cod: getProductGroup(undItem.sku),
-        descricao: baseName || undItem.description,
-        und: undItem.unitOfMeasure,
-        embala: embalas.join(", "),
-        embalaQty: undItem.embalaQty,
-        estoqueTotal,
-        confirmado,
-        disponivel,
-        reservado,
-        emPedido,
-        minStock,
-        qtdEmb,
-        qtdVendida,
-        fatVendido,
-        mediaDiaria,
+        sku: undItem.sku, cod: getProductGroup(undItem.sku),
+        descricao: baseName || undItem.description, und: undItem.unitOfMeasure,
+        embala: [...new Set(group.map((i) => i.embala))].join(", "),
+        embalaQty: undItem.embalaQty, estoqueTotal, confirmado, disponivel, reservado,
+        emPedido, minStock, qtdEmb, qtdVendida, fatVendido, mediaDiaria,
         coberturaDias: Math.min(coberturaDias, 999),
-        giro: "parado" as Giro,
-        curva: "C" as CurvaABC,
+        giro: "parado" as Giro, curva: "C" as CurvaABC,
         coberturaClass: classifyCobertura(coberturaDias, qtdVendida > 0),
-        numPedidos: allPedidos.size,
-        numClientes: allClientes.size,
-        skuCount: group.length,
-        allSkus,
-        embalas,
+        numPedidos: allPedidos.size, numClientes: allClientes.size,
+        skuCount: group.length, allSkus: group.map((i) => i.sku),
+        embalas: [...new Set(group.map((i) => i.embala))],
         belowMinStock: minStock > 0 && disponivel < minStock,
       });
     }
 
-    const curvaMap = classifyCurvaABC(
-      mergedItems.map((i) => ({ sku: i.sku, fat: i.fatVendido }))
-    );
-    for (const item of mergedItems) {
-      item.curva = curvaMap.get(item.sku) ?? "C";
-    }
-
+    const curvaMap = classifyCurvaABC(mergedItems.map((i) => ({ sku: i.sku, fat: i.fatVendido })));
     const maxMedia = Math.max(...mergedItems.map((i) => i.mediaDiaria), 0);
     for (const item of mergedItems) {
+      item.curva = curvaMap.get(item.sku) ?? "C";
       item.giro = classifyGiro(item.mediaDiaria, maxMedia);
     }
-
     return mergedItems;
   }, [catalogData, invData, ordData, totalDays]);
 
@@ -321,14 +280,19 @@ export default function EstoquePage() {
   const [curvaFilter, setCurvaFilter] = useState<CurvaABC | "ALL">("ALL");
   const [giroFilter, setGiroFilter] = useState<Giro | "ALL">("ALL");
   const [cobFilter, setCobFilter] = useState<Cobertura | "ALL">("ALL");
+  const [quickFilter, setQuickFilter] = useState<"all" | "atencao" | "comVenda" | "semVenda">("all");
   const [sortField, setSortField] = useState<SortField>("fatVendido");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [expandedSku, setExpandedSku] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     let res = allItems;
     if (curvaFilter !== "ALL") res = res.filter((i) => i.curva === curvaFilter);
     if (giroFilter !== "ALL") res = res.filter((i) => i.giro === giroFilter);
     if (cobFilter !== "ALL") res = res.filter((i) => i.coberturaClass === cobFilter);
+    if (quickFilter === "atencao") res = res.filter((i) => i.coberturaClass === "critico" || i.coberturaClass === "atencao" || i.belowMinStock);
+    else if (quickFilter === "comVenda") res = res.filter((i) => i.qtdVendida > 0);
+    else if (quickFilter === "semVenda") res = res.filter((i) => i.qtdVendida === 0 && i.estoqueTotal > 0);
     if (search.trim()) {
       const q = search.toLowerCase();
       res = res.filter((i) => i.sku.toLowerCase().includes(q) || i.descricao.toLowerCase().includes(q) || i.cod.toLowerCase().includes(q));
@@ -336,13 +300,9 @@ export default function EstoquePage() {
     return [...res].sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case "sku": cmp = a.sku.localeCompare(b.sku); break;
         case "descricao": cmp = a.descricao.localeCompare(b.descricao); break;
         case "estoqueTotal": cmp = a.estoqueTotal - b.estoqueTotal; break;
-        case "confirmado": cmp = a.confirmado - b.confirmado; break;
         case "disponivel": cmp = a.disponivel - b.disponivel; break;
-        case "emPedido": cmp = a.emPedido - b.emPedido; break;
-        case "minStock": cmp = a.minStock - b.minStock; break;
         case "qtdVendida": cmp = a.qtdVendida - b.qtdVendida; break;
         case "mediaDiaria": cmp = a.mediaDiaria - b.mediaDiaria; break;
         case "coberturaDias": cmp = a.coberturaDias - b.coberturaDias; break;
@@ -353,32 +313,23 @@ export default function EstoquePage() {
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [allItems, curvaFilter, giroFilter, cobFilter, search, sortField, sortDir]);
+  }, [allItems, curvaFilter, giroFilter, cobFilter, quickFilter, search, sortField, sortDir]);
 
   const kpis = useMemo(() => {
     const total = allItems.length;
     const totalSkus = allItems.reduce((s, i) => s + i.skuCount, 0);
     const estoqueTotal = allItems.reduce((s, i) => s + Math.max(i.estoqueTotal, 0), 0);
+    const dispTotal = allItems.reduce((s, i) => s + Math.max(i.disponivel, 0), 0);
     const fatTotal = allItems.reduce((s, i) => s + i.fatVendido, 0);
+    const saidaTotal = allItems.reduce((s, i) => s + i.qtdVendida, 0);
     const criticos = allItems.filter((i) => i.coberturaClass === "critico").length;
     const curvaA = allItems.filter((i) => i.curva === "A").length;
     const parados = allItems.filter((i) => i.giro === "parado" && i.estoqueTotal > 0).length;
-    const comVenda = allItems.filter((i) => i.qtdVendida > 0);
-    const cobMedia = comVenda.length > 0
-      ? comVenda.reduce((s, i) => s + Math.min(i.coberturaDias, 365), 0) / comVenda.length
-      : 0;
+    const belowMin = allItems.filter((i) => i.belowMinStock).length;
     const orderNums = new Set<number>();
     const cardCodes = new Set<string>();
-    if (ordData) {
-      for (const o of ordData.items) {
-        if (o.cancelled !== "Y") {
-          orderNums.add(o.doc_num);
-          cardCodes.add(o.card_code);
-        }
-      }
-    }
-    const belowMin = allItems.filter((i) => i.belowMinStock).length;
-    return { total, totalSkus, estoqueTotal, fatTotal, criticos, curvaA, parados, cobMedia, totalPedidos: orderNums.size, totalClientes: cardCodes.size, belowMin };
+    if (ordData) { for (const o of ordData.items) { if (o.cancelled !== "Y") { orderNums.add(o.doc_num); cardCodes.add(o.card_code); } } }
+    return { total, totalSkus, estoqueTotal, dispTotal, fatTotal, saidaTotal, criticos, curvaA, parados, belowMin, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
   }, [allItems, ordData]);
 
   const curvaDistrib = useMemo(() => {
@@ -393,23 +344,16 @@ export default function EstoquePage() {
   }, [allItems]);
 
   const cobDistrib = useMemo(() => {
-    const groups: Record<string, number> = { "0-7d": 0, "8-21d": 0, "22-60d": 0, "61-90d": 0, "90d+": 0 };
+    const g: Record<string, number> = { "0-7d": 0, "8-21d": 0, "22-60d": 0, "61-90d": 0, "90d+": 0 };
     for (const i of allItems.filter((x) => x.qtdVendida > 0)) {
-      if (i.coberturaDias <= 7) groups["0-7d"]++;
-      else if (i.coberturaDias <= 21) groups["8-21d"]++;
-      else if (i.coberturaDias <= 60) groups["22-60d"]++;
-      else if (i.coberturaDias <= 90) groups["61-90d"]++;
-      else groups["90d+"]++;
+      if (i.coberturaDias <= 7) g["0-7d"]++; else if (i.coberturaDias <= 21) g["8-21d"]++; else if (i.coberturaDias <= 60) g["22-60d"]++; else if (i.coberturaDias <= 90) g["61-90d"]++; else g["90d+"]++;
     }
-    return Object.entries(groups).map(([name, value]) => ({ name, value }));
+    return Object.entries(g).map(([name, value]) => ({ name, value }));
   }, [allItems]);
 
-  const alertas = useMemo(() => {
-    return allItems
-      .filter((i) => i.curva === "A" && i.coberturaClass === "critico")
-      .sort((a, b) => a.coberturaDias - b.coberturaDias)
-      .slice(0, 8);
-  }, [allItems]);
+  const alertas = useMemo(() =>
+    allItems.filter((i) => i.curva === "A" && i.coberturaClass === "critico").sort((a, b) => a.coberturaDias - b.coberturaDias).slice(0, 6),
+  [allItems]);
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -423,33 +367,20 @@ export default function EstoquePage() {
 
   const handleExport = () => {
     exportCSV(filtered.map((i) => ({
-      "SKU (UN)": i.sku,
-      COD: i.cod,
-      Produto: i.descricao,
-      "SKUs Agrupados": i.skuCount,
-      "Todos SKUs": i.allSkus.join(", "),
-      Embalagens: i.embalas.join(", "),
-      Estoque: i.estoqueTotal,
-      Confirmado: i.confirmado,
-      Disponivel: i.disponivel,
-      "Em Pedido": i.emPedido,
-      "Estoque Minimo": i.minStock,
-      "Abaixo Minimo": i.belowMinStock ? "Sim" : "Nao",
-      "Saída (un)": i.qtdVendida,
-      Pedidos: i.numPedidos,
-      Clientes: i.numClientes,
-      "Fat. Vendido": i.fatVendido.toFixed(2),
-      "Media Diaria (un)": i.mediaDiaria.toFixed(2),
-      "Cobertura Dias": i.coberturaDias.toFixed(0),
-      Curva: i.curva,
-      Giro: i.giro,
-      Cobertura: i.coberturaClass,
-    })), `estoque-analise-${dateFrom}-${dateTo}`);
+      SKU: i.sku, COD: i.cod, Produto: i.descricao, Curva: i.curva,
+      "SKUs Agrup.": i.skuCount, Embalagens: i.embalas.join(", "),
+      Estoque: i.estoqueTotal, Confirmado: i.confirmado, Disponivel: i.disponivel,
+      "Em Pedido": i.emPedido, "Est. Minimo": i.minStock,
+      "Abaixo Min.": i.belowMinStock ? "Sim" : "Nao",
+      "Saida (un)": i.qtdVendida, Pedidos: i.numPedidos, Clientes: i.numClientes,
+      "Faturamento": i.fatVendido.toFixed(2), "Media/Dia": i.mediaDiaria.toFixed(2),
+      "Cobertura Dias": i.coberturaDias.toFixed(0), Giro: i.giro,
+    })), `estoque-${dateFrom}-${dateTo}`);
   };
 
   if (loading) return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold text-gray-900">Gestão de Estoque</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados...</p></div>
+      <div><h1 className="text-lg sm:text-2xl font-bold text-gray-900">Gestão de Estoque</h1><p className="text-cockpit-muted mt-1 text-sm">Carregando dados...</p></div>
       <LoadingSkeleton rows={6} />
     </div>
   );
@@ -457,65 +388,92 @@ export default function EstoquePage() {
   if (error) return <ErrorState message={error} onRetry={() => { r1(); r2(); r3(); }} />;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Gestão de Estoque</h1>
-          <p className="text-cockpit-muted mt-1 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          <p className="text-cockpit-muted mt-0.5 text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
             <CalendarDays className="w-3.5 h-3.5 shrink-0" />
             <span className="text-gray-600 font-medium">{periodoLabel}</span>
-            <span className="text-cockpit-border hidden sm:inline">·</span>
-            <span>{kpis.total} produtos · {totalDays} dias</span>
+            <span className="text-gray-300">·</span>
+            <span>{fmtNum(kpis.total)} produtos agrupados</span>
+            <span className="text-gray-300">·</span>
+            <span>{totalDays} dias</span>
           </p>
         </div>
         <button onClick={handleExport} className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition min-h-[44px] sm:min-h-0 w-full sm:w-auto">
-          <Download className="w-4 h-4" /> Exportar
+          <Download className="w-4 h-4" /> Exportar CSV
         </button>
       </div>
 
-      {/* KPIs */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+      {/* KPIs — 2 rows of 4, larger and cleaner */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { title: "Produtos", value: fmtNum(kpis.total), sub: `${fmtNum(kpis.totalSkus)} SKUs agrupados`, icon: Package, color: "text-cockpit-accent" },
-          { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)} un`, icon: Boxes, color: "text-sky-500" },
-          { title: "Saída Total", value: `${fmtNum(allItems.reduce((s, i) => s + i.qtdVendida, 0))} un`, icon: TrendingDown, color: "text-orange-500" },
-          { title: "Fat. Período", value: fmtBRL(kpis.fatTotal), icon: TrendingUp, color: "text-emerald-600" },
-          { title: "Total Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes`, icon: Layers, color: "text-indigo-500" },
-          { title: "Curva A", value: String(kpis.curvaA), sub: "Produtos 80% do fat.", icon: Flame, color: "text-cockpit-accent" },
-          { title: "Críticos", value: String(kpis.criticos), sub: "≤ 7 dias de cobertura", icon: ShieldAlert, color: kpis.criticos > 0 ? "text-red-500" : "text-emerald-500" },
-          { title: "Abaixo Mín.", value: String(kpis.belowMin), sub: "Disp. < est. mínimo SAP", icon: AlertTriangle, color: kpis.belowMin > 0 ? "text-red-500" : "text-emerald-500" },
+          { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)}`, sub: `${fmtNum(kpis.dispTotal)} disponível`, icon: Boxes, color: "text-sky-600", accent: "bg-sky-50" },
+          { title: "Faturamento", value: fmtBRL(kpis.fatTotal), sub: `${fmtNum(kpis.saidaTotal)} un saída no período`, icon: TrendingUp, color: "text-emerald-600", accent: "bg-emerald-50" },
+          { title: "Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes atendidos`, icon: Layers, color: "text-indigo-600", accent: "bg-indigo-50" },
+          { title: "Precisa Atenção", value: String(kpis.criticos + kpis.belowMin), sub: `${kpis.criticos} críticos · ${kpis.belowMin} abaixo mín.`, icon: ShieldAlert, color: (kpis.criticos + kpis.belowMin) > 0 ? "text-red-600" : "text-emerald-600", accent: (kpis.criticos + kpis.belowMin) > 0 ? "bg-red-50" : "bg-emerald-50" },
         ].map((k) => {
           const Icon = k.icon;
           return (
-            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-3.5 hover:border-cockpit-accent/30 transition-all group">
-              <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">{k.title}</span>
-                <Icon className={`w-3.5 h-3.5 ${k.color} opacity-60 group-hover:opacity-100`} />
+            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-gray-300 transition-all group">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-lg ${k.accent} flex items-center justify-center shrink-0`}>
+                  <Icon className={`w-5 h-5 ${k.color}`} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">{k.title}</p>
+                  <p className="text-xl font-bold text-gray-900 tabular-nums leading-tight">{k.value}</p>
+                  <p className="text-[10px] text-cockpit-muted mt-0.5 truncate">{k.sub}</p>
+                </div>
               </div>
-              <p className="text-lg font-bold text-gray-900 tabular-nums leading-tight">{k.value}</p>
-              {k.sub && <p className="text-[10px] text-cockpit-muted mt-0.5">{k.sub}</p>}
             </div>
           );
         })}
       </section>
 
-      {/* Alertas inteligentes */}
+      {/* Quick insights row: Curva badges + parados */}
+      <div className="flex flex-wrap gap-2">
+        {curvaDistrib.map((d) => {
+          const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
+          const pct = totalFat > 0 ? ((d.fat / totalFat) * 100).toFixed(0) : "0";
+          return (
+            <button key={d.name} onClick={() => setCurvaFilter(curvaFilter === d.name as CurvaABC ? "ALL" : d.name as CurvaABC)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all ${curvaFilter === d.name ? "border-gray-400 bg-white shadow-sm" : "border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200"}`}>
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+              <span className="text-gray-700">Curva {d.name}</span>
+              <span className="text-gray-400">{d.skus} itens</span>
+              <span className="font-bold tabular-nums" style={{ color: d.fill }}>{pct}%</span>
+            </button>
+          );
+        })}
+        {kpis.parados > 0 && (
+          <button onClick={() => setGiroFilter(giroFilter === "parado" ? "ALL" : "parado")}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-all ${giroFilter === "parado" ? "border-gray-400 bg-white shadow-sm" : "border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200"}`}>
+            <Snowflake className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-gray-700">{kpis.parados} parados</span>
+            <span className="text-gray-400">com estoque</span>
+          </button>
+        )}
+      </div>
+
+      {/* Alertas compactos */}
       {alertas.length > 0 && (
-        <section className="rounded-xl border border-red-200 bg-red-50/50 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <ShieldAlert className="w-4 h-4 text-red-600" />
-            <h2 className="text-sm font-semibold text-red-800">Alerta: Produtos Curva A com Estoque Crítico</h2>
-            <span className="ml-auto text-[10px] text-red-500 font-medium">{alertas.length} itens</span>
+        <section className="rounded-xl border border-red-200 bg-gradient-to-r from-red-50/80 to-white p-3 sm:p-4">
+          <div className="flex items-center gap-2 mb-2.5">
+            <ShieldAlert className="w-4 h-4 text-red-600 shrink-0" />
+            <h2 className="text-xs font-semibold text-red-800">Curva A com cobertura crítica</h2>
+            <span className="ml-auto text-[10px] text-red-400">{alertas.length} itens</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="flex gap-2 overflow-x-auto scrollbar-none touch-scroll pb-0.5 -mx-1 px-1">
             {alertas.map((a) => (
-              <div key={a.sku} className="bg-white rounded-lg border border-red-100 p-3">
-                <p className="text-xs font-semibold text-gray-900 truncate" title={a.descricao}>{a.descricao}</p>
-                <p className="text-[10px] text-gray-400 font-mono">{a.sku}</p>
-                <div className="flex items-center justify-between mt-2 text-xs">
-                  <span className="text-red-600 font-bold">{a.coberturaDias.toFixed(0)} dias</span>
-                  <span className="text-gray-500">Disp: {fmtNum(a.disponivel)} · Méd: {a.mediaDiaria.toFixed(1)}/dia</span>
+              <div key={a.sku} className="shrink-0 w-52 bg-white rounded-lg border border-red-100 p-2.5">
+                <p className="text-[11px] font-semibold text-gray-900 truncate" title={a.descricao}>{a.descricao}</p>
+                <p className="text-[9px] text-gray-400 font-mono mt-0.5">{a.sku}</p>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-red-600 font-bold text-xs">{a.coberturaDias.toFixed(0)}d</span>
+                  <span className="text-[10px] text-gray-400">disp {fmtNum(a.disponivel)} · {a.mediaDiaria.toFixed(1)}/dia</span>
                 </div>
               </div>
             ))}
@@ -523,21 +481,21 @@ export default function EstoquePage() {
         </section>
       )}
 
-      {/* Charts: Curva ABC + Cobertura */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <section className="rounded-xl border border-cockpit-border bg-white p-5">
-          <div className="flex items-center gap-2 mb-4">
+      {/* Charts row — mais compactos */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        <section className="rounded-xl border border-cockpit-border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
             <BarChart3 className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-sm font-semibold text-gray-900">Curva ABC — Participação no Faturamento</h2>
+            <h2 className="text-xs font-semibold text-gray-900">Curva ABC — Faturamento</h2>
           </div>
           {curvaDistrib.length === 0 ? (
-            <p className="text-center text-cockpit-muted py-8 text-sm">Sem dados de vendas</p>
+            <p className="text-center text-cockpit-muted py-6 text-xs">Sem dados de vendas</p>
           ) : (
             <div className="flex items-center gap-4">
-              <div className="h-48 w-1/2">
+              <div className="h-36 w-2/5">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={curvaDistrib} dataKey="fat" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3}
+                    <Pie data={curvaDistrib} dataKey="fat" nameKey="name" cx="50%" cy="50%" innerRadius={32} outerRadius={56} paddingAngle={3}
                       label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
                       {curvaDistrib.map((d, i) => <Cell key={i} fill={d.fill} />)}
                     </Pie>
@@ -545,24 +503,20 @@ export default function EstoquePage() {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex-1 space-y-3">
+              <div className="flex-1 space-y-2.5">
                 {curvaDistrib.map((d) => {
                   const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
                   const pct = totalFat > 0 ? (d.fat / totalFat) * 100 : 0;
                   return (
                     <div key={d.name}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center" style={{ background: d.fill + "20", color: d.fill }}>
-                            {d.name}
-                          </span>
-                          <span className="text-xs text-gray-600"><strong>{d.skus}</strong> SKUs</span>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center" style={{ background: d.fill + "20", color: d.fill }}>{d.name}</span>
+                          <span className="text-[11px] text-gray-500"><strong className="text-gray-700">{d.skus}</strong> itens</span>
                         </div>
-                        <span className="text-xs font-semibold text-gray-900 tabular-nums">{fmtBRL(d.fat)}</span>
+                        <span className="text-[11px] font-semibold text-gray-800 tabular-nums">{fmtBRL(d.fat)}</span>
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: d.fill }} />
-                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-1"><div className="h-1 rounded-full" style={{ width: `${pct}%`, background: d.fill }} /></div>
                     </div>
                   );
                 })}
@@ -571,214 +525,248 @@ export default function EstoquePage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-cockpit-border bg-white p-5">
-          <div className="flex items-center gap-2 mb-4">
+        <section className="rounded-xl border border-cockpit-border bg-white p-4">
+          <div className="flex items-center gap-2 mb-3">
             <Gauge className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-sm font-semibold text-gray-900">Distribuição de Cobertura (dias)</h2>
+            <h2 className="text-xs font-semibold text-gray-900">Cobertura de Estoque</h2>
           </div>
-          <div className="h-48">
+          <div className="h-36">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cobDistrib} barCategoryGap="25%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <BarChart data={cobDistrib} barCategoryGap="20%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
+                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
                 <Tooltip content={<CTooltip />} />
-                <Bar dataKey="value" name="SKUs" radius={[6, 6, 0, 0]}>
-                  {cobDistrib.map((_, i) => (
-                    <Cell key={i} fill={["#ef4444", "#f59e0b", "#10b981", "#0ea5e9", "#8b5cf6"][i]} />
-                  ))}
+                <Bar dataKey="value" name="SKUs" radius={[4, 4, 0, 0]}>
+                  {cobDistrib.map((_, i) => <Cell key={i} fill={["#ef4444", "#f59e0b", "#10b981", "#0ea5e9", "#8b5cf6"][i]} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex justify-center gap-3 mt-2 text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /> Crítico ≤7d</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /> Atenção 8-21d</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /> OK 22-60d</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-500" /> Bom 61-90d</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-violet-500" /> Excesso 90d+</span>
+          <div className="flex justify-center gap-2 mt-1.5 text-[9px] flex-wrap">
+            {[["bg-red-500", "≤7d"], ["bg-amber-500", "8-21d"], ["bg-emerald-500", "22-60d"], ["bg-sky-500", "61-90d"], ["bg-violet-500", "90d+"]].map(([c, l]) => (
+              <span key={l} className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${c}`} />{l}</span>
+            ))}
           </div>
         </section>
       </div>
 
-      {/* Filters */}
-      <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-row sm:gap-3 sm:flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
-          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar SKU, descrição..."
-            className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-white border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 min-h-[44px] sm:min-h-0" />
+      {/* Search + Quick Filters + Detail Filters */}
+      <div className="space-y-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar SKU, produto, código..."
+              className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-white border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0" />
+          </div>
+          <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+            {([
+              { key: "all", label: "Todos" },
+              { key: "atencao", label: "Precisa Atenção" },
+              { key: "comVenda", label: "Com Venda" },
+              { key: "semVenda", label: "Sem Venda" },
+            ] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => setQuickFilter(key)}
+                className={`px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                  quickFilter === key ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                }`}>{label}</button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-none touch-scroll -mx-1 px-1 pb-1 sm:pb-0">
+        <div className="flex gap-2 overflow-x-auto scrollbar-none touch-scroll pb-0.5">
           <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
             {(["ALL", "A", "B", "C"] as const).map((opt) => (
               <button key={opt} onClick={() => setCurvaFilter(opt)}
-                className={`px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-colors min-w-[40px] ${
+                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors min-w-[32px] ${
                   curvaFilter === opt
-                    ? opt === "A" ? "bg-cockpit-accent/15 text-cockpit-accent" : opt === "B" ? "bg-amber-100 text-amber-700" : opt === "C" ? "bg-gray-200 text-gray-600" : "bg-gray-900 text-white"
-                    : "text-gray-400 hover:text-gray-700"
-                }`}>{opt === "ALL" ? "ABC" : opt}</button>
+                    ? opt === "ALL" ? "bg-gray-900 text-white" : "text-white" : "text-gray-400 hover:text-gray-700"
+                }`} style={curvaFilter === opt && opt !== "ALL" ? { backgroundColor: CURVA_COLORS[opt] } : {}}>{opt === "ALL" ? "ABC" : opt}</button>
             ))}
           </div>
           <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
             {(["ALL", "alto", "medio", "baixo", "parado"] as const).map((opt) => (
               <button key={opt} onClick={() => setGiroFilter(opt)}
-                className={`px-2 sm:px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   giroFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
-                }`}>{opt === "ALL" ? "Giro" : GIRO_STYLES[opt].label}</button>
+                }`}>{opt === "ALL" ? "Giro" : GIRO_CFG[opt].label}</button>
             ))}
           </div>
           <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
             {(["ALL", "critico", "atencao", "ok", "excesso"] as const).map((opt) => (
               <button key={opt} onClick={() => setCobFilter(opt)}
-                className={`px-2 sm:px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   cobFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
-                }`}>{opt === "ALL" ? "Cob." : COB_STYLES[opt].label}</button>
+                }`}>{opt === "ALL" ? "Cobert." : COB_CFG[opt].label}</button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — streamlined with expandable detail */}
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-cockpit-border bg-gray-50/80 flex items-center justify-between">
+        <div className="px-4 py-2 border-b border-cockpit-border bg-gray-50/80 flex items-center justify-between">
           <p className="text-xs text-cockpit-muted">
-            <strong className="text-gray-800">{filtered.length}</strong> de <strong className="text-gray-800">{allItems.length}</strong> produtos
-            <span className="text-gray-400 ml-1">({kpis.totalSkus} SKUs agrupados)</span>
+            <strong className="text-gray-800">{filtered.length}</strong> de {allItems.length} produtos
           </p>
-          <div className="flex gap-2 text-[10px]">
-            {(["A", "B", "C"] as const).map((c) => {
-              const s = CURVA_STYLES[c];
-              return <span key={c} className={`px-1.5 py-0.5 rounded font-bold ${s.bg} ${s.text}`}>Curva {c}</span>;
-            })}
-          </div>
+          <p className="text-[10px] text-gray-400 hidden sm:block">Clique na linha para detalhes SAP</p>
         </div>
 
-        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-xs min-w-[1200px]">
+        <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-300px)]">
+          <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
-                <th className="text-left py-2.5 px-3 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("curva")}>
-                  <span className="inline-flex items-center gap-1">ABC <SortIcon field="curva" /></span>
-                </th>
-                <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("sku")}>
-                  <span className="inline-flex items-center gap-1">SKU (UN) <SortIcon field="sku" /></span>
-                </th>
+                <th className="text-left py-2.5 px-3 font-semibold bg-gray-50 w-8"></th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("descricao")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="descricao" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("confirmado")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Confirm. <SortIcon field="confirmado" /></span>
-                </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Disponível <SortIcon field="disponivel" /></span>
                 </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("emPedido")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Pedido <SortIcon field="emPedido" /></span>
-                </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("minStock")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Est. Mín. <SortIcon field="minStock" /></span>
-                </th>
+                <th className="text-center py-2.5 px-2 font-semibold bg-gray-50 hidden sm:table-cell">Saúde</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Saída (un) <SortIcon field="qtdVendida" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Saída <SortIcon field="qtdVendida" /></span>
                 </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("numPedidos")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Pedidos <SortIcon field="numPedidos" /></span>
-                </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("mediaDiaria")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Méd/Dia <SortIcon field="mediaDiaria" /></span>
-                </th>
-                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("coberturaDias")}>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50 hidden md:table-cell" onClick={() => toggleSort("coberturaDias")}>
                   <span className="inline-flex items-center gap-1 justify-end">Cobert. <SortIcon field="coberturaDias" /></span>
                 </th>
-                <th className="text-center py-2.5 px-2 font-semibold bg-gray-50">Giro</th>
+                <th className="text-center py-2.5 px-2 font-semibold bg-gray-50 hidden lg:table-cell">Giro</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("fatVendido")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Faturamento <SortIcon field="fatVendido" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Fat. <SortIcon field="fatVendido" /></span>
                 </th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={14} className="py-12 text-center text-cockpit-muted">
+                <tr><td colSpan={9} className="py-12 text-center text-cockpit-muted">
                   <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum item encontrado</p>
                 </td></tr>
               ) : filtered.map((item, idx) => {
-                const cs = CURVA_STYLES[item.curva];
-                const gs = GIRO_STYLES[item.giro];
-                const cobS = COB_STYLES[item.coberturaClass];
-                const isCritical = item.curva === "A" && item.coberturaClass === "critico";
+                const gs = GIRO_CFG[item.giro];
+                const cobS = COB_CFG[item.coberturaClass];
+                const isExpanded = expandedSku === item.sku;
                 const GiroIcon = gs.icon;
+                const rowBg = item.belowMinStock ? "bg-red-50/40" : item.curva === "A" && item.coberturaClass === "critico" ? "bg-red-50/20" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/30";
+
                 return (
-                  <tr key={item.sku} className={`border-b border-cockpit-border/10 hover:bg-gray-50/80 transition-colors ${item.belowMinStock ? "bg-red-50/30" : isCritical ? "bg-red-50/20" : idx % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}>
-                    <td className="py-2 px-3">
-                      <span className={`inline-block w-6 text-center px-1 py-0.5 rounded text-[10px] font-bold ${cs.bg} ${cs.text}`}>{item.curva}</span>
-                    </td>
-                    <td className="py-2 px-2">
-                      <span className="font-mono text-[10px] text-gray-500">{item.sku}</span>
-                      {item.skuCount > 1 && (
-                        <span className="ml-1 inline-block px-1 py-0.5 rounded bg-blue-50 text-blue-600 text-[9px] font-bold">{item.skuCount} SKUs</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-gray-700 max-w-[220px]">
-                      <span className="line-clamp-1 font-medium text-[11px]" title={item.descricao}>{item.descricao}</span>
-                      {item.skuCount > 1 && (
-                        <span className="block text-[9px] text-gray-400 mt-0.5">
-                          {item.embalas.join(" · ")}
+                  <>
+                    <tr key={item.sku}
+                      className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
+                      onClick={() => setExpandedSku(isExpanded ? null : item.sku)}>
+                      {/* Curva badge */}
+                      <td className="py-2.5 px-3">
+                        <span className="inline-block w-6 text-center py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[item.curva] }}>{item.curva}</span>
+                      </td>
+                      {/* Produto compound cell */}
+                      <td className="py-2 px-2 max-w-[280px]">
+                        <div className="flex items-start gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold text-gray-900 truncate leading-tight" title={item.descricao}>{item.descricao}</p>
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-1.5">
+                              {item.sku}
+                              {item.skuCount > 1 && <span className="px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px]">{item.skuCount} SKUs</span>}
+                            </p>
+                          </div>
+                          <ChevronDown className={`w-3.5 h-3.5 text-gray-300 shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        </div>
+                      </td>
+                      {/* Estoque */}
+                      <td className="py-2 px-2 text-right tabular-nums text-gray-600 font-medium">{fmtNum(item.estoqueTotal)}</td>
+                      {/* Disponível */}
+                      <td className={`py-2 px-2 text-right tabular-nums font-semibold ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
+                        {fmtNum(item.disponivel)}
+                        {item.belowMinStock && <AlertTriangle className="inline w-3 h-3 ml-0.5 text-red-500 -mt-0.5" />}
+                      </td>
+                      {/* Saúde visual */}
+                      <td className="py-2 px-2 hidden sm:table-cell">
+                        <StockBar total={item.estoqueTotal} available={item.disponivel} minStock={item.minStock} />
+                      </td>
+                      {/* Saída */}
+                      <td className="py-2 px-2 text-right tabular-nums">
+                        {item.qtdVendida > 0 ? (
+                          <div>
+                            <span className="text-gray-900 font-bold">{fmtNum(item.qtdVendida)}</span>
+                            {item.numPedidos > 0 && <span className="block text-[9px] text-gray-400">{fmtNum(item.numPedidos)} ped.</span>}
+                          </div>
+                        ) : <span className="text-gray-300">—</span>}
+                      </td>
+                      {/* Cobertura */}
+                      <td className="py-2 px-2 text-right hidden md:table-cell">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${cobS.bg} ${cobS.text}`}>
+                          {item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)}d`}
                         </span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-gray-600">{fmtNum(item.estoqueTotal)}</td>
-                    <td className="py-2 px-2 text-right tabular-nums text-amber-600">
-                      {item.confirmado > 0 ? fmtNum(item.confirmado) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className={`py-2 px-2 text-right tabular-nums font-medium ${item.belowMinStock ? "text-red-600" : item.disponivel <= 0 ? "text-red-500" : "text-emerald-700"}`}>
-                      {fmtNum(item.disponivel)}
-                      {item.belowMinStock && <AlertTriangle className="inline w-3 h-3 ml-0.5 text-red-500 -mt-0.5" />}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-sky-600">
-                      {item.emPedido > 0 ? fmtNum(item.emPedido) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">
-                      {item.minStock > 0 ? (
-                        <span className={item.belowMinStock ? "text-red-600 font-semibold" : "text-gray-500"}>
-                          {fmtNum(item.minStock)}
+                      </td>
+                      {/* Giro */}
+                      <td className="py-2 px-2 text-center hidden lg:table-cell">
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${gs.bg} ${gs.text}`}>
+                          <GiroIcon className="w-2.5 h-2.5" />{gs.label}
                         </span>
-                      ) : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">
-                      <span className={item.qtdVendida > 0 ? "text-gray-900 font-bold" : "text-gray-400"}>{fmtNum(item.qtdVendida)}</span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">
-                      <span className={item.numPedidos > 0 ? "text-indigo-700 font-semibold" : "text-gray-400"}>
-                        {item.numPedidos > 0 ? fmtNum(item.numPedidos) : "—"}
-                      </span>
-                      {item.numClientes > 0 && (
-                        <span className="block text-[9px] text-gray-400">{fmtNum(item.numClientes)} clientes</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-gray-500">
-                      {item.mediaDiaria > 0 ? item.mediaDiaria.toFixed(1) : "—"}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${cobS.bg} ${cobS.text}`}>
-                        {item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)}d`}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-center">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${gs.bg} ${gs.text}`}>
-                        <GiroIcon className="w-2.5 h-2.5" /> {gs.label}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums">
-                      <span className={item.fatVendido > 0 ? "text-cockpit-accent font-semibold" : "text-gray-400"}>
-                        {item.fatVendido > 0 ? fmtBRL(item.fatVendido) : "—"}
-                      </span>
-                    </td>
-                  </tr>
+                      </td>
+                      {/* Faturamento */}
+                      <td className="py-2 px-2 text-right tabular-nums">
+                        <span className={item.fatVendido > 0 ? "text-cockpit-accent font-semibold" : "text-gray-300"}>
+                          {item.fatVendido > 0 ? fmtBRL(item.fatVendido) : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                    {/* Expandable detail row */}
+                    {isExpanded && (
+                      <tr key={`${item.sku}-detail`} className="bg-gray-50/70">
+                        <td colSpan={9} className="px-4 py-3 border-b border-cockpit-border/20">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[11px]">
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Estoque (SAP)</p>
+                              <p className="font-bold text-gray-800 tabular-nums">{fmtNum(item.estoqueTotal)} un</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Confirmado</p>
+                              <p className="font-bold text-amber-600 tabular-nums">{item.confirmado > 0 ? fmtNum(item.confirmado) : "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Disponível</p>
+                              <p className={`font-bold tabular-nums ${item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>{fmtNum(item.disponivel)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Em Pedido (Fornec.)</p>
+                              <p className="font-bold text-sky-600 tabular-nums">{item.emPedido > 0 ? fmtNum(item.emPedido) : "—"}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Est. Mínimo</p>
+                              <p className={`font-bold tabular-nums ${item.belowMinStock ? "text-red-600" : "text-gray-600"}`}>
+                                {item.minStock > 0 ? fmtNum(item.minStock) : "Não definido"}
+                                {item.belowMinStock && <span className="text-red-500 text-[9px] ml-1">⚠ Abaixo</span>}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-0.5">Média Diária</p>
+                              <p className="font-bold text-gray-800 tabular-nums">{item.mediaDiaria > 0 ? `${item.mediaDiaria.toFixed(1)} un/dia` : "Sem saída"}</p>
+                            </div>
+                          </div>
+                          {item.skuCount > 1 && (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-200/60">
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-1">Embalagens Agrupadas ({item.skuCount} SKUs)</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {item.embalas.map((e) => (
+                                  <span key={e} className="px-2 py-0.5 rounded bg-white border border-gray-200 text-[10px] text-gray-600 font-medium">{e}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {(item.numPedidos > 0 || item.numClientes > 0) && (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-200/60 flex gap-4 text-[11px]">
+                              <span className="text-gray-500">Pedidos: <strong className="text-indigo-700">{fmtNum(item.numPedidos)}</strong></span>
+                              <span className="text-gray-500">Clientes: <strong className="text-indigo-700">{fmtNum(item.numClientes)}</strong></span>
+                              <span className="text-gray-500">Cobertura: <strong className={cobS.text}>{item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)} dias`}</strong></span>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
@@ -786,12 +774,11 @@ export default function EstoquePage() {
         </div>
 
         {filtered.length > 0 && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2 border-t border-cockpit-border bg-gray-50/80 text-xs gap-1">
-            <span className="text-cockpit-muted">Total ({filtered.length} produtos · {filtered.reduce((s, i) => s + i.skuCount, 0)} SKUs)</span>
-            <div className="flex items-center gap-3 sm:gap-4 tabular-nums flex-wrap">
-              <span className="text-gray-500">Estoque: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
-              <span className="text-amber-600">Confirm.: <strong>{fmtNum(filtered.reduce((s, i) => s + i.confirmado, 0))}</strong></span>
-              <span className="text-emerald-700">Disp.: <strong>{fmtNum(filtered.reduce((s, i) => s + i.disponivel, 0))}</strong></span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2.5 border-t border-cockpit-border bg-gray-50/80 text-xs gap-1">
+            <span className="text-cockpit-muted">{filtered.length} produtos · {filtered.reduce((s, i) => s + i.skuCount, 0)} SKUs</span>
+            <div className="flex items-center gap-3 tabular-nums flex-wrap">
+              <span className="text-gray-500">Est: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
+              <span className="text-emerald-700">Disp: <strong>{fmtNum(filtered.reduce((s, i) => s + i.disponivel, 0))}</strong></span>
               <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))}</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, i) => s + i.fatVendido, 0))}</span>
             </div>
@@ -799,8 +786,8 @@ export default function EstoquePage() {
         )}
       </div>
 
-      <footer className="text-center text-xs text-cockpit-muted py-3 border-t border-cockpit-border">
-        Estoque SAP B1 sincronizado (Estoque · Confirmado · Disponível · Pedido · Est. Mínimo) cruzado com {ordData?.total ?? 0} pedidos de venda · {totalDays} dias · Produtos agrupados por embalagem
+      <footer className="text-center text-[10px] text-cockpit-muted py-2">
+        Dados SAP B1 sincronizados · {ordData?.total ?? 0} pedidos de venda · {totalDays} dias · Produtos agrupados por embalagem
       </footer>
     </div>
   );
