@@ -721,40 +721,51 @@ export default function EstoquePage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[640px]">
+          <table className="w-full text-xs" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: 36 }} />
+              <col />
+              <col className="hidden lg:table-column" style={{ width: 84 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 72 }} />
+              <col className="hidden sm:table-column" style={{ width: 112 }} />
+              <col style={{ width: 56 }} />
+              <col className="hidden md:table-column" style={{ width: 64 }} />
+              <col className="hidden lg:table-column" style={{ width: 68 }} />
+              <col style={{ width: 96 }} />
+            </colgroup>
             <thead>
-              <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted whitespace-nowrap sticky top-0 z-10">
-                <th className="w-9 text-center py-2.5 px-1.5 font-semibold bg-gray-50"></th>
+              <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted whitespace-nowrap">
+                <th className="text-center py-2.5 px-1 font-semibold bg-gray-50"></th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("descricao")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="descricao" /></span>
                 </th>
-                <th className="w-20 text-center py-2.5 px-1.5 font-semibold bg-gray-50 hidden lg:table-cell">Cat.</th>
-                <th className="w-[72px] text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
+                <th className="text-center py-2.5 px-1 font-semibold bg-gray-50 hidden lg:table-cell">Cat.</th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
-                <th className="w-[72px] text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
                   <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
                 </th>
-                <th className="w-28 text-center py-2.5 px-1.5 font-semibold bg-gray-50 hidden sm:table-cell">Saúde</th>
-                <th className="w-14 text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
+                <th className="text-center py-2.5 px-1 font-semibold bg-gray-50 hidden sm:table-cell">Saúde</th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
                   <span className="inline-flex items-center gap-1 justify-end">Saída <SortIcon field="qtdVendida" /></span>
                 </th>
-                <th className="w-16 text-right py-2.5 px-1.5 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50 hidden md:table-cell" onClick={() => toggleSort("coberturaDias")}>
+                <th className="text-right py-2.5 px-1 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50 hidden md:table-cell" onClick={() => toggleSort("coberturaDias")}>
                   <span className="inline-flex items-center gap-1 justify-end">Cobert. <SortIcon field="coberturaDias" /></span>
                 </th>
-                <th className="w-[68px] text-center py-2.5 px-1.5 font-semibold bg-gray-50 hidden lg:table-cell">Giro</th>
-                <th className="w-24 text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("fatVendido")}>
+                <th className="text-center py-2.5 px-1 font-semibold bg-gray-50 hidden lg:table-cell">Giro</th>
+                <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("fatVendido")}>
                   <span className="inline-flex items-center gap-1 justify-end">Fat. <SortIcon field="fatVendido" /></span>
                 </th>
               </tr>
             </thead>
-            <tbody>
-              {paginatedItems.length === 0 ? (
-                <tr><td colSpan={10} className="py-12 text-center text-cockpit-muted">
-                  <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                  <p className="font-medium text-gray-500">Nenhum item encontrado</p>
-                </td></tr>
-              ) : paginatedItems.map((item, idx) => {
+            {paginatedItems.length === 0 ? (
+              <tbody><tr><td colSpan={10} className="py-12 text-center text-cockpit-muted">
+                <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                <p className="font-medium text-gray-500">Nenhum item encontrado</p>
+              </td></tr></tbody>
+            ) : paginatedItems.map((item, idx) => {
                 const gs = GIRO_CFG[item.giro];
                 const cobS = COB_CFG[item.coberturaClass];
                 const catCfg = CATEGORY_CFG[item.categoria];
@@ -767,33 +778,33 @@ export default function EstoquePage() {
                     <tr
                       className={`group border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
                       onClick={() => setExpandedSku(isExpanded ? null : item.sku)}>
-                      <td className="py-2.5 px-1.5 text-center">
+                      <td className="py-2.5 px-1 text-center">
                         <span className="inline-block w-6 text-center py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[item.curva] }}>{item.curva}</span>
                       </td>
-                      <td className="py-2.5 px-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                      <td className="py-2.5 px-2 overflow-hidden">
+                        <div className="flex items-center gap-1 min-w-0">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-semibold text-gray-900 truncate leading-tight" title={item.descricao}>{toTitleCase(item.descricao)}</p>
-                            <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate flex items-center gap-1.5">
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate">
                               {item.sku}
-                              {item.skuCount > 1 && <span className="px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px] shrink-0">{item.skuCount} SKUs</span>}
+                              {item.skuCount > 1 && <span className="ml-1 px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px]">{item.skuCount} SKUs</span>}
                             </p>
                           </div>
                           <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
                         </div>
                       </td>
-                      <td className="py-2.5 px-1.5 text-center hidden lg:table-cell">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color} whitespace-nowrap`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
+                      <td className="py-2.5 px-1 text-center hidden lg:table-cell">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color} truncate`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
                       </td>
-                      <td className="py-2.5 px-2 text-right tabular-nums text-gray-600 font-medium whitespace-nowrap">{fmtNum(item.estoqueTotal)}</td>
-                      <td className={`py-2.5 px-2 text-right tabular-nums font-semibold whitespace-nowrap ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      <td className="py-2.5 px-2 text-right tabular-nums text-gray-600 font-medium">{fmtNum(item.estoqueTotal)}</td>
+                      <td className={`py-2.5 px-2 text-right tabular-nums font-semibold ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
                         {fmtNum(item.disponivel)}
                         {item.belowMinStock && <AlertTriangle className="inline w-3 h-3 ml-0.5 text-red-500 -mt-0.5" />}
                       </td>
-                      <td className="py-2.5 px-1.5 hidden sm:table-cell">
+                      <td className="py-2.5 px-1 hidden sm:table-cell">
                         <StockBar total={item.estoqueTotal} available={item.disponivel} minStock={item.minStock} />
                       </td>
-                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                      <td className="py-2.5 px-2 text-right tabular-nums">
                         {item.qtdVendida > 0 ? (
                           <div>
                             <span className="text-gray-900 font-bold">{fmtNum(item.qtdVendida)}</span>
@@ -801,17 +812,17 @@ export default function EstoquePage() {
                           </div>
                         ) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="py-2.5 px-1.5 text-right hidden md:table-cell whitespace-nowrap">
+                      <td className="py-2.5 px-1 text-right hidden md:table-cell">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${cobS.bg} ${cobS.text}`}>
                           {item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)}d`}
                         </span>
                       </td>
-                      <td className="py-2.5 px-1.5 text-center hidden lg:table-cell whitespace-nowrap">
-                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${gs.bg} ${gs.text}`}>
+                      <td className="py-2.5 px-1 text-center hidden lg:table-cell">
+                        <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[10px] font-medium ${gs.bg} ${gs.text}`}>
                           <GiroIcon className="w-2.5 h-2.5" />{gs.label}
                         </span>
                       </td>
-                      <td className="py-2.5 px-2 text-right tabular-nums whitespace-nowrap">
+                      <td className="py-2.5 px-2 text-right tabular-nums">
                         <span className={item.fatVendido > 0 ? "text-cockpit-accent font-semibold" : "text-gray-300"}>
                           {item.fatVendido > 0 ? fmtBRL(item.fatVendido) : "—"}
                         </span>
@@ -873,7 +884,6 @@ export default function EstoquePage() {
                   </tbody>
                 );
               })}
-            </tbody>
           </table>
         </div>
 
