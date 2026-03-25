@@ -188,10 +188,10 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button */}
+      {/* Mobile menu button — z-[80] stays above date picker (z-[60]) */}
       <button
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2.5 rounded-xl bg-white text-gray-700 shadow-lg shadow-black/5 ring-1 ring-gray-100"
+        className="lg:hidden fixed top-4 left-4 z-[80] p-2.5 rounded-xl bg-white text-gray-700 shadow-lg shadow-black/5 ring-1 ring-gray-100"
       >
         <Menu className="w-5 h-5" />
       </button>
@@ -199,7 +199,7 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
+          className="lg:hidden fixed inset-0 z-[70] bg-black/20 backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
@@ -207,7 +207,7 @@ export function Sidebar() {
       {/* Mobile sidebar */}
       <aside
         className={cn(
-          "lg:hidden fixed inset-y-0 left-0 z-50 w-72 bg-white shadow-2xl shadow-black/10 transform transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          "lg:hidden fixed inset-y-0 left-0 z-[80] w-72 bg-white shadow-2xl shadow-black/10 transform transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >

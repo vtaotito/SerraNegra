@@ -157,7 +157,7 @@ export function BITopbar() {
         </div>
       </div>
 
-      {/* Date range picker - full width on mobile */}
+      {/* Date range picker — z-[60] stays below sidebar (z-[80]) */}
       <div className="relative z-[60]" ref={pickerRef}>
         <button
           type="button"
@@ -178,8 +178,8 @@ export function BITopbar() {
 
         {pickerOpen && (
           <>
-            <div className="sm:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-40" onClick={() => setPickerOpen(false)} />
-            <div className="fixed inset-x-0 bottom-0 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 w-full sm:w-[440px] rounded-t-2xl sm:rounded-xl border border-cockpit-border bg-white shadow-2xl shadow-black/10 z-50 overflow-hidden max-h-[85vh] sm:max-h-[80vh] overflow-y-auto safe-bottom">
+            <div className="sm:hidden fixed inset-0 bg-black/20 backdrop-blur-sm z-[60]" onClick={() => setPickerOpen(false)} />
+            <div className="fixed inset-x-0 bottom-0 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 w-full sm:w-[440px] rounded-t-2xl sm:rounded-xl border border-cockpit-border bg-white shadow-2xl shadow-black/10 z-[65] overflow-hidden max-h-[85vh] sm:max-h-[80vh] overflow-y-auto safe-bottom">
               <div className="flex items-center justify-between px-4 py-3 border-b border-cockpit-border bg-gray-50/50 sticky top-0 z-10">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-cockpit-accent" />
