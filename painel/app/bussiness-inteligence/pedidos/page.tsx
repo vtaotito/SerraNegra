@@ -859,30 +859,30 @@ function PedidosContent() {
     <div className="space-y-5">
 
       {/* ═══ Header ═══ */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-lg bg-cockpit-accent/10">
-            <ShoppingCart className="w-5 h-5 text-cockpit-accent" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="p-1.5 sm:p-2 rounded-lg bg-cockpit-accent/10 shrink-0">
+            <ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5 text-cockpit-accent" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Pedidos de Venda</h1>
-            <p className="text-sm text-cockpit-muted flex items-center gap-1.5 mt-0.5">
-              <CalendarDays className="w-3.5 h-3.5" />
-              {rangeLabel}
-              <span className="text-cockpit-border mx-1">·</span>
-              <strong className="text-gray-700">{data?.total ?? 0}</strong> registros
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Pedidos de Venda</h1>
+            <p className="text-xs sm:text-sm text-cockpit-muted flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{rangeLabel}</span>
+              <span className="text-cockpit-border hidden sm:inline">·</span>
+              <strong className="text-gray-700">{data?.total ?? 0}</strong> <span className="hidden sm:inline">registros</span>
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleSync} disabled={syncing}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg bg-cockpit-accent text-white font-medium hover:bg-cockpit-accent/90 transition-colors disabled:opacity-50 shadow-sm">
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg bg-cockpit-accent text-white font-medium hover:bg-cockpit-accent/90 transition-colors disabled:opacity-50 shadow-sm min-h-[44px] sm:min-h-0">
             {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {syncing ? "Sincronizando..." : "Sync SAP"}
+            {syncing ? "Sync..." : "Sync SAP"}
           </button>
           <button type="button" onClick={handleExportCSV}
-            className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 transition-colors">
-            <Download className="w-4 h-4" /> CSV
+            className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 transition-colors min-h-[44px] sm:min-h-0">
+            <Download className="w-4 h-4" /> <span className="hidden sm:inline">CSV</span>
           </button>
         </div>
       </div>
@@ -932,21 +932,21 @@ function PedidosContent() {
       </section>
 
       {/* ═══ Filtros da tabela ═══ */}
-      <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+      <div className="rounded-xl border border-cockpit-border bg-white p-3 sm:p-4 shadow-sm">
+        <div className="space-y-2 sm:space-y-0 sm:grid sm:grid-cols-12 sm:gap-3">
           <div className="relative sm:col-span-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Nº pedido, cliente, item..."
-              className="w-full pl-10 pr-8 py-2 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 placeholder:text-cockpit-muted focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent" />
+              className="w-full pl-10 pr-8 py-2.5 sm:py-2 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 placeholder:text-cockpit-muted focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent min-h-[44px] sm:min-h-0" />
             {search && (
-              <button type="button" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-black/5 rounded">
+              <button type="button" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-black/5 rounded">
                 <X className="w-3.5 h-3.5 text-cockpit-muted" />
               </button>
             )}
           </div>
           <div className="sm:col-span-4">
             <select value={clienteFilter} onChange={(e) => setClienteFilter(e.target.value)}
-              className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
+              className="w-full py-2.5 sm:py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent min-h-[44px] sm:min-h-0">
               <option value="">Todos clientes ({clientes.length})</option>
               {clientes.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}
             </select>
@@ -954,11 +954,11 @@ function PedidosContent() {
           <div className="sm:col-span-4 flex items-center rounded-lg border border-cockpit-border overflow-hidden bg-cockpit-bg">
             {(["all", "open", "closed", "cancelled"] as const).map((s) => {
               const counts = { all: totalDocs, open: openDocs, closed: closedDocs, cancelled: cancelledDocs };
-              const labels = { all: "Todos", open: "Abertos", closed: "Fechados", cancelled: "Cancelados" };
+              const labels: Record<string, string> = { all: "Todos", open: "Abertos", closed: "Fechados", cancelled: "Cancel." };
               return (
                 <button key={s} type="button" onClick={() => setStatusFilter(s)}
-                  className={`flex-1 py-2 text-xs font-medium transition-colors ${statusFilter === s ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-500 hover:bg-black/5 hover:text-gray-700"}`}>
-                  {labels[s]} <span className="opacity-70">({counts[s]})</span>
+                  className={`flex-1 py-2.5 sm:py-2 text-[11px] sm:text-xs font-medium transition-colors min-h-[44px] sm:min-h-0 ${statusFilter === s ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-500 hover:bg-black/5 hover:text-gray-700"}`}>
+                  {labels[s]} <span className="opacity-70 hidden sm:inline">({counts[s]})</span>
                 </button>
               );
             })}
@@ -968,40 +968,38 @@ function PedidosContent() {
 
       {/* ═══ Tabela de pedidos ═══ */}
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-cockpit-border bg-gray-50/80">
-          <p className="text-xs text-cockpit-muted">
-            Exibindo <strong className="text-gray-800">{visibleDocs.length}</strong> de{" "}
-            <strong className="text-gray-800">{filtered.length}</strong> pedidos
-            {filtered.length < orders.length && <span className="ml-1">({orders.length} total)</span>}
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 border-b border-cockpit-border bg-gray-50/80 gap-2">
+          <p className="text-[11px] sm:text-xs text-cockpit-muted">
+            <strong className="text-gray-800">{visibleDocs.length}</strong>/<strong className="text-gray-800">{filtered.length}</strong> pedidos
           </p>
           {visibleDocs.length > 0 && (
             <button type="button" onClick={expanded.size > 0 ? collapseAll : expandAll}
-              className="text-xs text-cockpit-accent hover:text-cockpit-accent/80 font-medium transition-colors">
-              {expanded.size > 0 ? "Recolher todos" : "Expandir todos"}
+              className="text-[11px] sm:text-xs text-cockpit-accent hover:text-cockpit-accent/80 font-medium transition-colors whitespace-nowrap">
+              {expanded.size > 0 ? "Recolher" : "Expandir"}
             </button>
           )}
         </div>
 
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-sm table-sticky-head">
+          <table className="w-full text-sm table-sticky-head min-w-[800px]">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50/50 text-[10px] uppercase tracking-wider text-cockpit-muted">
                 <th className="w-8" />
-                <th className="text-left py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_num")}>
+                <th className="text-left py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_num")}>
                   <span className="inline-flex items-center gap-1">Nº <SortIcon field="doc_num" /></span></th>
-                <th className="text-left py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_date")}>
+                <th className="text-left py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_date")}>
                   <span className="inline-flex items-center gap-1">Data <SortIcon field="doc_date" /></span></th>
-                <th className="text-left py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("card_name")}>
-                  <span className="inline-flex items-center gap-1">Parceiro de Negócios <SortIcon field="card_name" /></span></th>
-                <th className="text-left py-2.5 px-3 font-semibold">Localização</th>
-                <th className="text-center py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("num_lines")}>
+                <th className="text-left py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("card_name")}>
+                  <span className="inline-flex items-center gap-1">Cliente <SortIcon field="card_name" /></span></th>
+                <th className="text-left py-2.5 px-2 sm:px-3 font-semibold hidden lg:table-cell">Local</th>
+                <th className="text-center py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("num_lines")}>
                   <span className="inline-flex items-center gap-1">Itens <SortIcon field="num_lines" /></span></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("total_quantity")}>
+                <th className="text-right py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("total_quantity")}>
                   <span className="inline-flex items-center gap-1 justify-end">Qtd <SortIcon field="total_quantity" /></span></th>
-                <th className="text-right py-2.5 px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_total")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Valor (BRL) <SortIcon field="doc_total" /></span></th>
-                <th className="text-center py-2.5 px-3 font-semibold">Status</th>
-                <th className="text-left py-2.5 px-3 font-semibold">Vendedor</th>
+                <th className="text-right py-2.5 px-2 sm:px-3 font-semibold cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort("doc_total")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Valor <SortIcon field="doc_total" /></span></th>
+                <th className="text-center py-2.5 px-2 sm:px-3 font-semibold">Status</th>
+                <th className="text-left py-2.5 px-2 sm:px-3 font-semibold hidden xl:table-cell">Vendedor</th>
               </tr>
             </thead>
             <tbody>
@@ -1028,33 +1026,33 @@ function PedidosContent() {
                   <Fragment key={order.doc_entry}>
                     <tr onClick={() => toggleExpand(order.doc_entry)}
                       className={`border-b border-cockpit-border/30 cursor-pointer transition-colors ${isExpanded ? "bg-cockpit-accent/[0.03]" : rowIdx % 2 === 0 ? "bg-white" : "bg-gray-50/40"} hover:bg-cockpit-accent/[0.05]`}>
-                      <td className="pl-2.5 pr-0">
+                      <td className="pl-2 sm:pl-2.5 pr-0">
                         {isExpanded ? <ChevronDown className="w-4 h-4 text-cockpit-accent" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                       </td>
-                      <td className="py-2.5 px-3 font-bold text-gray-900 tabular-nums text-sm">{order.doc_num}</td>
-                      <td className="py-2.5 px-3 text-gray-600 tabular-nums whitespace-nowrap">{fmtDateShort(order.doc_date)}</td>
-                      <td className="py-2.5 px-3 text-gray-800 max-w-[180px] truncate font-medium" title={`${order.card_name} (${order.card_code})`}>
-                        <span>{order.card_name || order.card_code}</span>
+                      <td className="py-2.5 px-2 sm:px-3 font-bold text-gray-900 tabular-nums text-sm">{order.doc_num}</td>
+                      <td className="py-2.5 px-2 sm:px-3 text-gray-600 tabular-nums whitespace-nowrap text-xs sm:text-sm">{fmtDateShort(order.doc_date)}</td>
+                      <td className="py-2.5 px-2 sm:px-3 text-gray-800 max-w-[140px] sm:max-w-[180px] truncate font-medium" title={`${order.card_name} (${order.card_code})`}>
+                        <span className="text-xs sm:text-sm">{order.card_name || order.card_code}</span>
                         <span className="block text-[10px] text-gray-400 font-mono">{order.card_code}</span>
                       </td>
-                      <td className="py-2.5 px-3 text-xs text-gray-500 max-w-[120px] truncate" title={loc}>
+                      <td className="py-2.5 px-2 sm:px-3 text-xs text-gray-500 max-w-[120px] truncate hidden lg:table-cell" title={loc}>
                         {loc && loc !== "—" ? (
                           <span className="flex items-center gap-1"><MapPin className="w-3 h-3 text-gray-400 shrink-0" />{loc}</span>
                         ) : "—"}
                       </td>
-                      <td className="py-2.5 px-3 text-center">
+                      <td className="py-2.5 px-2 sm:px-3 text-center">
                         <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 tabular-nums">{nLines}</span>
                       </td>
-                      <td className="py-2.5 px-3 text-right tabular-nums font-medium text-gray-800">{fmtQty(qty)}</td>
-                      <td className="py-2.5 px-3 text-right tabular-nums font-bold text-gray-900">{fmtBRL(Number(order.doc_total) || 0)}</td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                      <td className="py-2.5 px-2 sm:px-3 text-right tabular-nums font-medium text-gray-800 text-xs sm:text-sm">{fmtQty(qty)}</td>
+                      <td className="py-2.5 px-2 sm:px-3 text-right tabular-nums font-bold text-gray-900 text-xs sm:text-sm">{fmtBRL(Number(order.doc_total) || 0)}</td>
+                      <td className="py-2.5 px-2 sm:px-3 text-center">
+                        <span className={`inline-block px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold uppercase tracking-wide ${
                           isCancelled ? "bg-red-50 text-red-600 ring-1 ring-red-200" : isOpen ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" : "bg-gray-100 text-gray-500 ring-1 ring-gray-200"
                         }`}>
-                          {isCancelled ? "Cancelado" : isOpen ? "Aberto" : "Fechado"}
+                          {isCancelled ? "Cancel." : isOpen ? "Aberto" : "Fechado"}
                         </span>
                       </td>
-                      <td className="py-2.5 px-3 text-xs text-gray-600 max-w-[120px] truncate" title={vendorName}>{vendorName}</td>
+                      <td className="py-2.5 px-2 sm:px-3 text-xs text-gray-600 max-w-[120px] truncate hidden xl:table-cell" title={vendorName}>{vendorName}</td>
                     </tr>
                     {isExpanded && (
                       <tr className="bg-transparent">
@@ -1091,10 +1089,10 @@ function PedidosContent() {
         </div>
 
         {visibleDocs.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs">
-            <span className="text-cockpit-muted">Subtotal visível ({visibleDocs.length} pedidos)</span>
-            <div className="flex items-center gap-6 tabular-nums">
-              <span className="text-gray-600">Itens: <strong className="text-gray-800">{visibleDocs.reduce((s, o) => s + (o.lines?.length ?? o.num_lines ?? 0), 0)}</strong></span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs gap-1">
+            <span className="text-cockpit-muted">{visibleDocs.length} pedidos</span>
+            <div className="flex items-center gap-3 sm:gap-6 tabular-nums flex-wrap">
+              <span className="text-gray-600 hidden sm:inline">Itens: <strong className="text-gray-800">{visibleDocs.reduce((s, o) => s + (o.lines?.length ?? o.num_lines ?? 0), 0)}</strong></span>
               <span className="text-gray-600">Qtd: <strong className="text-gray-800">{fmtQty(visibleDocs.reduce((s, o) => s + (Number(o.total_quantity) || 0), 0))}</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(visibleDocs.reduce((s, o) => s + (Number(o.doc_total) || 0), 0))}</span>
             </div>
@@ -1102,7 +1100,7 @@ function PedidosContent() {
         )}
 
         {hasMore && (
-          <div className="px-4 py-3 border-t border-cockpit-border space-y-2.5">
+          <div className="px-3 sm:px-4 py-3 border-t border-cockpit-border space-y-2.5">
             <div className="flex items-center gap-3">
               <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, background: "linear-gradient(90deg, #A81C2C 0%, #c42538 100%)" }} />
@@ -1111,13 +1109,13 @@ function PedidosContent() {
             </div>
             <div className="flex items-center gap-2">
               <button type="button" onClick={handleLoadMore}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cockpit-accent text-white text-sm font-medium hover:bg-cockpit-accent/90 transition-colors shadow-sm">
-                <Plus className="w-4 h-4" /> Carregar +{nextBatch}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 sm:py-2 rounded-lg bg-cockpit-accent text-white text-sm font-medium hover:bg-cockpit-accent/90 transition-colors shadow-sm min-h-[44px] sm:min-h-0">
+                <Plus className="w-4 h-4" /> +{nextBatch}
               </button>
               {remaining > BATCH_SIZE && (
                 <button type="button" onClick={handleShowAll}
-                  className="px-4 py-2 rounded-lg border border-cockpit-border text-sm text-gray-600 hover:bg-black/5 transition-colors">
-                  Mostrar todos ({remaining.toLocaleString("pt-BR")})
+                  className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-lg border border-cockpit-border text-sm text-gray-600 hover:bg-black/5 transition-colors min-h-[44px] sm:min-h-0 text-center">
+                  Todos ({remaining.toLocaleString("pt-BR")})
                 </button>
               )}
             </div>

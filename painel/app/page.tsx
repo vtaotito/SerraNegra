@@ -68,66 +68,66 @@ export default function DashboardPage() {
   return (
     <ProtectedLayout>
       <div className="max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="text-lg sm:text-2xl font-bold text-gray-900">
             Bem-vindo, {user.displayName.split(" ")[0]}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
             Painel administrativo — Garrafaria Serra Negra
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-gsn-200 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-gsn-50 flex items-center justify-center">
-                <Shield className="w-4 h-4 text-gsn-700" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="bg-white rounded-xl border border-gray-200 p-3.5 sm:p-5 hover:border-gsn-200 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gsn-50 flex items-center justify-center shrink-0">
+                <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gsn-700" />
               </div>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Perfil
               </span>
             </div>
-            <p className="text-lg font-semibold text-gray-900">
+            <p className="text-sm sm:text-lg font-semibold text-gray-900 truncate">
               {ROLE_LABELS[user.role]}
             </p>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-gsn-200 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-gsn-50 flex items-center justify-center">
-                <Activity className="w-4 h-4 text-gsn-600" />
+          <div className="bg-white rounded-xl border border-gray-200 p-3.5 sm:p-5 hover:border-gsn-200 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-gsn-50 flex items-center justify-center shrink-0">
+                <Activity className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gsn-600" />
               </div>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Módulos
               </span>
             </div>
-            <p className="text-lg font-semibold text-gray-900">
+            <p className="text-sm sm:text-lg font-semibold text-gray-900">
               {user.allowedModules.length} ativos
             </p>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-gsn-200 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center">
-                <Users className="w-4 h-4 text-emerald-600" />
+          <div className="bg-white rounded-xl border border-gray-200 p-3.5 sm:p-5 hover:border-gsn-200 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
               </div>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Usuário
               </span>
             </div>
-            <p className="text-lg font-semibold text-gray-900">{user.username}</p>
+            <p className="text-sm sm:text-lg font-semibold text-gray-900 truncate">{user.username}</p>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-gsn-200 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
-                <Clock className="w-4 h-4 text-amber-600" />
+          <div className="bg-white rounded-xl border border-gray-200 p-3.5 sm:p-5 hover:border-gsn-200 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />
               </div>
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <span className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Último acesso
               </span>
             </div>
-            <p className="text-sm font-semibold text-gray-900">
+            <p className="text-xs sm:text-sm font-semibold text-gray-900">
               {user.lastLoginAt
                 ? new Date(user.lastLoginAt).toLocaleDateString("pt-BR", {
                     day: "2-digit",

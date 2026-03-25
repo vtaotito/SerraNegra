@@ -439,16 +439,16 @@ export default function EstoquePage() {
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Gestão de Estoque</h1>
-          <p className="text-cockpit-muted mt-1 text-sm flex items-center gap-2">
-            <CalendarDays className="w-3.5 h-3.5" />
-            Estoque × Vendas · <span className="text-gray-600 font-medium">{periodoLabel}</span>
-            <span className="text-cockpit-border">·</span>
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Gestão de Estoque</h1>
+          <p className="text-cockpit-muted mt-1 text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-gray-600 font-medium">{periodoLabel}</span>
+            <span className="text-cockpit-border hidden sm:inline">·</span>
             <span>{kpis.total} produtos · {totalDays} dias</span>
           </p>
         </div>
-        <button onClick={handleExport} className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+        <button onClick={handleExport} className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition min-h-[44px] sm:min-h-0 w-full sm:w-auto">
           <Download className="w-4 h-4" /> Exportar
         </button>
       </div>
@@ -581,38 +581,40 @@ export default function EstoquePage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+      <div className="space-y-2 sm:space-y-0 sm:flex sm:flex-row sm:gap-3 sm:flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar SKU, descrição..."
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-white border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30" />
+            className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-white border border-gray-200 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 min-h-[44px] sm:min-h-0" />
         </div>
-        <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
-          {(["ALL", "A", "B", "C"] as const).map((opt) => (
-            <button key={opt} onClick={() => setCurvaFilter(opt)}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                curvaFilter === opt
-                  ? opt === "A" ? "bg-cockpit-accent/15 text-cockpit-accent" : opt === "B" ? "bg-amber-100 text-amber-700" : opt === "C" ? "bg-gray-200 text-gray-600" : "bg-gray-900 text-white"
-                  : "text-gray-400 hover:text-gray-700"
-              }`}>{opt === "ALL" ? "Curva" : `Curva ${opt}`}</button>
-          ))}
-        </div>
-        <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
-          {(["ALL", "alto", "medio", "baixo", "parado"] as const).map((opt) => (
-            <button key={opt} onClick={() => setGiroFilter(opt)}
-              className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                giroFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
-              }`}>{opt === "ALL" ? "Giro" : GIRO_STYLES[opt].label}</button>
-          ))}
-        </div>
-        <div className="flex gap-1 rounded-lg border border-gray-200 bg-white p-1">
-          {(["ALL", "critico", "atencao", "ok", "excesso"] as const).map((opt) => (
-            <button key={opt} onClick={() => setCobFilter(opt)}
-              className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                cobFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
-              }`}>{opt === "ALL" ? "Cobertura" : COB_STYLES[opt].label}</button>
-          ))}
+        <div className="flex gap-2 sm:gap-3 overflow-x-auto scrollbar-none touch-scroll -mx-1 px-1 pb-1 sm:pb-0">
+          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+            {(["ALL", "A", "B", "C"] as const).map((opt) => (
+              <button key={opt} onClick={() => setCurvaFilter(opt)}
+                className={`px-2.5 sm:px-3 py-2 sm:py-1.5 rounded-md text-xs font-semibold transition-colors min-w-[40px] ${
+                  curvaFilter === opt
+                    ? opt === "A" ? "bg-cockpit-accent/15 text-cockpit-accent" : opt === "B" ? "bg-amber-100 text-amber-700" : opt === "C" ? "bg-gray-200 text-gray-600" : "bg-gray-900 text-white"
+                    : "text-gray-400 hover:text-gray-700"
+                }`}>{opt === "ALL" ? "ABC" : opt}</button>
+            ))}
+          </div>
+          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+            {(["ALL", "alto", "medio", "baixo", "parado"] as const).map((opt) => (
+              <button key={opt} onClick={() => setGiroFilter(opt)}
+                className={`px-2 sm:px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  giroFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                }`}>{opt === "ALL" ? "Giro" : GIRO_STYLES[opt].label}</button>
+            ))}
+          </div>
+          <div className="flex gap-0.5 rounded-lg border border-gray-200 bg-white p-0.5 shrink-0">
+            {(["ALL", "critico", "atencao", "ok", "excesso"] as const).map((opt) => (
+              <button key={opt} onClick={() => setCobFilter(opt)}
+                className={`px-2 sm:px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  cobFilter === opt ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"
+                }`}>{opt === "ALL" ? "Cob." : COB_STYLES[opt].label}</button>
+            ))}
+          </div>
         </div>
       </div>
 
