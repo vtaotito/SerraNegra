@@ -721,10 +721,22 @@ export default function EstoquePage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-xs table-fixed">
+            <colgroup>
+              <col className="w-10" />
+              <col />
+              <col className="w-[88px] hidden lg:table-column" />
+              <col className="w-[76px]" />
+              <col className="w-[82px]" />
+              <col className="w-[110px] hidden sm:table-column" />
+              <col className="w-[68px]" />
+              <col className="w-[68px] hidden md:table-column" />
+              <col className="w-[72px] hidden lg:table-column" />
+              <col className="w-[96px]" />
+            </colgroup>
             <thead>
-              <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
-                <th className="text-left py-2.5 px-3 font-semibold bg-gray-50 w-8"></th>
+              <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted whitespace-nowrap sticky top-0 z-10">
+                <th className="text-left py-2.5 px-2 font-semibold bg-gray-50"></th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("descricao")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="descricao" /></span>
                 </th>
@@ -733,7 +745,7 @@ export default function EstoquePage() {
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Disponível <SortIcon field="disponivel" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
                 </th>
                 <th className="text-center py-2.5 px-2 font-semibold bg-gray-50 hidden sm:table-cell">Saúde</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdVendida")}>
@@ -767,33 +779,33 @@ export default function EstoquePage() {
                     <tr
                       className={`group border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
                       onClick={() => setExpandedSku(isExpanded ? null : item.sku)}>
-                      <td className="py-2.5 px-3">
+                      <td className="py-2 px-2">
                         <span className="inline-block w-6 text-center py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[item.curva] }}>{item.curva}</span>
                       </td>
-                      <td className="py-2 px-2 max-w-[280px]">
-                        <div className="flex items-start gap-1.5">
+                      <td className="py-2 px-2 overflow-hidden">
+                        <div className="flex items-center gap-1.5 min-w-0">
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-semibold text-gray-900 truncate leading-tight" title={item.descricao}>{toTitleCase(item.descricao)}</p>
-                            <p className="text-[10px] text-gray-400 font-mono mt-0.5 flex items-center gap-1.5">
+                            <p className="text-[10px] text-gray-400 font-mono mt-0.5 truncate flex items-center gap-1.5">
                               {item.sku}
-                              {item.skuCount > 1 && <span className="px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px]">{item.skuCount} SKUs</span>}
+                              {item.skuCount > 1 && <span className="px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px] shrink-0">{item.skuCount} SKUs</span>}
                             </p>
                           </div>
-                          <ChevronDown className={`w-4 h-4 text-gray-400 shrink-0 mt-0.5 transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
+                          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
                         </div>
                       </td>
                       <td className="py-2 px-2 text-center hidden lg:table-cell">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color}`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color} whitespace-nowrap`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
                       </td>
-                      <td className="py-2 px-2 text-right tabular-nums text-gray-600 font-medium">{fmtNum(item.estoqueTotal)}</td>
-                      <td className={`py-2 px-2 text-right tabular-nums font-semibold ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      <td className="py-2 px-2 text-right tabular-nums text-gray-600 font-medium whitespace-nowrap">{fmtNum(item.estoqueTotal)}</td>
+                      <td className={`py-2 px-2 text-right tabular-nums font-semibold whitespace-nowrap ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
                         {fmtNum(item.disponivel)}
                         {item.belowMinStock && <AlertTriangle className="inline w-3 h-3 ml-0.5 text-red-500 -mt-0.5" />}
                       </td>
                       <td className="py-2 px-2 hidden sm:table-cell">
                         <StockBar total={item.estoqueTotal} available={item.disponivel} minStock={item.minStock} />
                       </td>
-                      <td className="py-2 px-2 text-right tabular-nums">
+                      <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">
                         {item.qtdVendida > 0 ? (
                           <div>
                             <span className="text-gray-900 font-bold">{fmtNum(item.qtdVendida)}</span>
@@ -801,17 +813,17 @@ export default function EstoquePage() {
                           </div>
                         ) : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="py-2 px-2 text-right hidden md:table-cell">
+                      <td className="py-2 px-2 text-right hidden md:table-cell whitespace-nowrap">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${cobS.bg} ${cobS.text}`}>
                           {item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)}d`}
                         </span>
                       </td>
-                      <td className="py-2 px-2 text-center hidden lg:table-cell">
+                      <td className="py-2 px-2 text-center hidden lg:table-cell whitespace-nowrap">
                         <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium ${gs.bg} ${gs.text}`}>
                           <GiroIcon className="w-2.5 h-2.5" />{gs.label}
                         </span>
                       </td>
-                      <td className="py-2 px-2 text-right tabular-nums">
+                      <td className="py-2 px-2 text-right tabular-nums whitespace-nowrap">
                         <span className={item.fatVendido > 0 ? "text-cockpit-accent font-semibold" : "text-gray-300"}>
                           {item.fatVendido > 0 ? fmtBRL(item.fatVendido) : "—"}
                         </span>
