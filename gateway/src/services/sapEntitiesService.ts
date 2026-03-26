@@ -311,9 +311,10 @@ export class SapEntitiesService {
     const maxItems = opts.limit ?? 5000;
 
     const selectCandidates = [
-      "ItemCode,ItemName,InvntryUom,AvgPrice,LastPurPrc,LastPurDat,LstSalDate,SWeight1,MaxInvtry,LeadTime,ItmsGrpCod",
-      "ItemCode,ItemName,InvntryUom,AvgPrice,LastPurPrc,ItmsGrpCod",
+      "ItemCode,ItemName,InventoryUOM,AvgPrice,LastPurchasePrice,LastPurchaseDate,SWeight1,MaxInventory,LeadTime,ItemsGroupCode",
+      "ItemCode,ItemName,InventoryUOM,AvgPrice,ItemsGroupCode",
       "ItemCode,ItemName,AvgPrice",
+      "ItemCode,ItemName,InventoryUOM,QuantityOnStock,ItemsGroupCode,SWeight1,MinInventory",
     ];
 
     let lastError: unknown;
@@ -334,9 +335,12 @@ export class SapEntitiesService {
           skip += pageSize;
         }
 
-        console.log(`[listItemsWithPricing] Candidato #${ci + 1} OK - ${allItems.length} itens`);
+        console.log(`[listItemsWithPricing] Candidato #${ci + 1} OK - ${allItems.length} itens (campos: ${sel.split(',').length})`);
         return allItems.slice(0, maxItems);
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const status = err instanceof SapHttpError ? err.status : 0;
+        console.warn(`[listItemsWithPricing] Candidato #${ci + 1} falhou (status=${status}): ${errMsg.substring(0, 120)}`);
         lastError = err;
         if (err instanceof SapHttpError && err.status === 400) continue;
         throw err;
@@ -892,14 +896,15 @@ export type SapSalesOrderLine = {
 export type SapItemPricingRow = {
   ItemCode: string;
   ItemName?: string;
-  InvntryUom?: string;
+  InventoryUOM?: string;
   AvgPrice?: number;
-  LastPurPrc?: number;
-  LastPurDat?: string;
-  LstSalDate?: string;
+  LastPurchasePrice?: number;
+  LastPurchaseDate?: string;
   SWeight1?: number;
-  MaxInvtry?: number;
+  MaxInventory?: number;
   LeadTime?: number;
-  ItmsGrpCod?: number;
+  ItemsGroupCode?: number;
+  MinInventory?: number;
+  QuantityOnStock?: number;
   [key: string]: unknown;
 };

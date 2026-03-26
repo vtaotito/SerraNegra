@@ -109,7 +109,8 @@ export class InventoryEnrichmentService {
 
       const items: InventoryBulkItem[] = warehouse.map((wh) => {
         const pr = pricingMap.get(wh.ItemCode);
-        const groupName = pr?.ItmsGrpCod != null ? (groupMap.get(pr.ItmsGrpCod) ?? null) : null;
+        const groupCode = pr?.ItemsGroupCode ?? null;
+        const groupName = groupCode != null ? (groupMap.get(groupCode) ?? null) : null;
 
         return {
           sku: wh.ItemCode,
@@ -120,15 +121,15 @@ export class InventoryEnrichmentService {
           ordered: wh.Ordered,
           available: wh.Available ?? Math.max(wh.InStock - wh.Committed, 0),
           min_stock: wh.MinStock ?? 0,
-          max_stock: 0,
-          uom: pr?.InvntryUom ?? null,
+          max_stock: pr?.MaxInventory ?? 0,
+          uom: pr?.InventoryUOM ?? null,
           avg_price: pr?.AvgPrice ?? 0,
-          last_purchase_price: pr?.LastPurPrc ?? 0,
-          last_purchase_date: pr?.LastPurDat ?? null,
-          last_sale_date: pr?.LstSalDate ?? null,
+          last_purchase_price: pr?.LastPurchasePrice ?? 0,
+          last_purchase_date: pr?.LastPurchaseDate ?? null,
+          last_sale_date: null,
           gross_weight: pr?.SWeight1 ?? 0,
           lead_time: pr?.LeadTime ?? 0,
-          item_group_code: pr?.ItmsGrpCod ?? null,
+          item_group_code: groupCode,
           item_group_name: groupName,
           last_count_date: null,
           sap_update_date: now,
