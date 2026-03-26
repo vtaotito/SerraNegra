@@ -192,6 +192,10 @@ export class SapServiceLayerClient {
     return this.requestJson<T>("POST", path, body, opts);
   }
 
+  async delete<T>(path: string, opts?: SapRequestOptions): Promise<SapResponse<T>> {
+    return this.requestJson<T>("DELETE", path, undefined, opts);
+  }
+
   private async requestJson<T>(
     method: HttpMethod,
     path: string,

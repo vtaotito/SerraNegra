@@ -301,6 +301,52 @@ export class SapEntitiesService {
   }
 
   // ========================================
+  // ITEMS WITH PRICING (OData enriquecido - Nível 3)
+  // ========================================
+
+  async listItemsWithPricing(
+    opts: { limit?: number } = {},
+    correlationId?: string
+  ): Promise<SapItemPricingRow[]> {
+    const maxItems = opts.limit ?? 5000;
+
+    const selectCandidates = [
+      "ItemCode,ItemName,InvntryUom,AvgPrice,LastPurPrc,LastPurDat,LstSalDate,SWeight1,MaxInvtry,LeadTime,ItmsGrpCod",
+      "ItemCode,ItemName,InvntryUom,AvgPrice,LastPurPrc,ItmsGrpCod",
+      "ItemCode,ItemName,AvgPrice",
+    ];
+
+    let lastError: unknown;
+    for (let ci = 0; ci < selectCandidates.length; ci++) {
+      const sel = selectCandidates[ci];
+      try {
+        const allItems: SapItemPricingRow[] = [];
+        const pageSize = 20;
+        let skip = 0;
+
+        while (allItems.length < maxItems) {
+          const url = `/Items?$select=${sel}&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
+          const res = await this.client.get<{ value: SapItemPricingRow[] }>(url, { correlationId });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          allItems.push(...page);
+          if (page.length < pageSize) break;
+          skip += pageSize;
+        }
+
+        console.log(`[listItemsWithPricing] Candidato #${ci + 1} OK - ${allItems.length} itens`);
+        return allItems.slice(0, maxItems);
+      } catch (err) {
+        lastError = err;
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        throw err;
+      }
+    }
+    console.warn("[listItemsWithPricing] Nenhum candidato funcionou");
+    return [];
+  }
+
+  // ========================================
   // BUSINESS PARTNERS (Clientes)
   // ========================================
 
@@ -840,5 +886,20 @@ export type SapSalesOrderLine = {
   Weight1?: number;
   TaxCode?: string;
   Usage?: number;
+  [key: string]: unknown;
+};
+
+export type SapItemPricingRow = {
+  ItemCode: string;
+  ItemName?: string;
+  InvntryUom?: string;
+  AvgPrice?: number;
+  LastPurPrc?: number;
+  LastPurDat?: string;
+  LstSalDate?: string;
+  SWeight1?: number;
+  MaxInvtry?: number;
+  LeadTime?: number;
+  ItmsGrpCod?: number;
   [key: string]: unknown;
 };

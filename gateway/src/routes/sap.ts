@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { createSapClient } from "../config/sap.js";
 import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
+import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { runSalesOrdersSync, querySalesOrders, querySyncHistory, queryDbStats } from "../scheduler/dailySync.js";
 
@@ -63,6 +64,10 @@ export async function registerSapRoutes(app: FastifyInstance) {
       }
     }
     return entitiesService;
+  }
+
+  function getInventoryEnrichment() {
+    return new InventoryEnrichmentService(getEntitiesService());
   }
 
   /**
@@ -801,70 +806,15 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 3. Sync Estoque (Inventory) — SQLQuery enriquecida com fallback OData
+    // 3. Sync Estoque (Inventory) — fallback multi-nível via InventoryEnrichmentService
     try {
-      const entSvc = getEntitiesService();
-      const enriched = await entSvc.listInventoryEnriched(correlationId);
-
-      let inventoryBulk: any[];
-      if (enriched.length > 0) {
-        inventoryBulk = enriched.map((row) => ({
-          sku: row.ItemCode, warehouse_code: row.WarehouseCode,
-          item_name: row.ItemName ?? null,
-          on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
-          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-          min_stock: row.MinStock ?? 0,
-          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
-          uom: (row as any).UoM ?? null,
-          avg_price: (row as any).AvgPrice ?? 0,
-          last_purchase_price: (row as any).LastPurPrc ?? 0,
-          last_purchase_date: (row as any).LastPurDat ?? null,
-          last_sale_date: (row as any).LstSalDate ?? null,
-          gross_weight: (row as any).GrossWeight ?? 0,
-          lead_time: (row as any).LeadTime ?? 0,
-          item_group_code: (row as any).ItmsGrpCod ?? null,
-          item_group_name: (row as any).GroupName ?? null,
-          last_count_date: (row as any).LastCountDate ?? null,
-          sap_update_date: new Date().toISOString(),
-        }));
-      } else {
-        const [sapInventory, sapItemsForInv] = await Promise.all([
-          entSvc.listInventory({ limit: 2000 }, correlationId),
-          entSvc.listItems({ limit: 5000 }, correlationId),
-        ]);
-        const itemsLookup = new Map<string, { name?: string; minStock?: number }>();
-        for (const it of sapItemsForInv) {
-          itemsLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
-        }
-        inventoryBulk = sapInventory.map((row) => {
-          const info = itemsLookup.get(row.ItemCode);
-          return {
-            sku: row.ItemCode, warehouse_code: row.WarehouseCode,
-            item_name: row.ItemName ?? info?.name ?? null,
-            on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
-            available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-            min_stock: info?.minStock ?? 0,
-            sap_update_date: new Date().toISOString(),
-          };
-        });
-      }
-
-      if (inventoryBulk.length > 0) {
-        const invRes = await fetch(`${coreUrl}/v1/inventory/bulk`, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-correlation-id": correlationId },
-          body: JSON.stringify({ items: inventoryBulk }),
-        });
-        const invResult = invRes.ok ? await invRes.json() : null;
-        results.inventory = {
-          ok: invRes.ok,
-          imported: invResult?.upserted ?? 0,
-          errors: 0,
-          message: `${invResult?.created ?? 0} criados, ${invResult?.updated ?? 0} atualizados${enriched.length > 0 ? " (enriquecido)" : ""}`,
-        };
-      } else {
-        results.inventory = { ok: true, imported: 0, errors: 0, message: "Sem dados de estoque via Service Layer" };
-      }
+      const invResult = await getInventoryEnrichment().syncToCore(coreUrl, correlationId);
+      results.inventory = {
+        ok: invResult.ok,
+        imported: invResult.count,
+        errors: 0,
+        message: invResult.message,
+      };
     } catch (error) {
       results.inventory = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
     }
@@ -970,98 +920,20 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
   /**
    * POST /api/sap/sync/inventory
-   * Sincroniza Estoque do SAP (tenta SQLQuery enriquecida, fallback OData).
+   * Sincroniza Estoque do SAP com fallback multi-nível (SQLQuery → OData enriquecido → OData básico).
    */
   app.post("/sap/sync/inventory", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
     const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
 
     try {
-      const entSvc = getEntitiesService();
-
-      // Tenta SQLQuery enriquecida primeiro (OITM+OITW+OITB)
-      const enriched = await entSvc.listInventoryEnriched(correlationId);
-
-      let inventoryBulk: any[];
-
-      if (enriched.length > 0) {
-        req.log.info({ count: enriched.length, correlationId }, "Usando dados enriquecidos via SQLQuery");
-        inventoryBulk = enriched.map((row) => ({
-          sku: row.ItemCode,
-          warehouse_code: row.WarehouseCode,
-          item_name: row.ItemName ?? null,
-          on_hand: row.InStock,
-          committed: row.Committed,
-          ordered: row.Ordered,
-          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-          min_stock: row.MinStock ?? 0,
-          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
-          uom: (row as any).UoM ?? null,
-          avg_price: (row as any).AvgPrice ?? 0,
-          last_purchase_price: (row as any).LastPurPrc ?? 0,
-          last_purchase_date: (row as any).LastPurDat ?? null,
-          last_sale_date: (row as any).LstSalDate ?? null,
-          gross_weight: (row as any).GrossWeight ?? 0,
-          lead_time: (row as any).LeadTime ?? 0,
-          item_group_code: (row as any).ItmsGrpCod ?? null,
-          item_group_name: (row as any).GroupName ?? null,
-          last_count_date: (row as any).LastCountDate ?? null,
-          sap_update_date: new Date().toISOString(),
-        }));
-      } else {
-        // Fallback: OData Items + expand
-        const [sapInv, sapItems] = await Promise.all([
-          entSvc.listInventory({ limit: 2000 }, correlationId),
-          entSvc.listItems({ limit: 5000 }, correlationId),
-        ]);
-
-        if (sapInv.length === 0) {
-          reply.code(200).send({
-            ok: true,
-            message: "Nenhum dado de estoque disponivel via Service Layer",
-            upserted: 0,
-            timestamp: new Date().toISOString(),
-          });
-          return;
-        }
-
-        const itemsMap = new Map<string, { name?: string; minStock?: number }>();
-        for (const it of sapItems) {
-          itemsMap.set(it.ItemCode, {
-            name: it.ItemName,
-            minStock: (it as any).MinInventory ?? 0,
-          });
-        }
-
-        inventoryBulk = sapInv.map((row) => {
-          const info = itemsMap.get(row.ItemCode);
-          return {
-            sku: row.ItemCode,
-            warehouse_code: row.WarehouseCode,
-            item_name: row.ItemName ?? info?.name ?? null,
-            on_hand: row.InStock,
-            committed: row.Committed,
-            ordered: row.Ordered,
-            available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-            min_stock: info?.minStock ?? 0,
-            sap_update_date: new Date().toISOString(),
-          };
-        });
-      }
-
-      const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
-        body: JSON.stringify({ items: inventoryBulk }),
-      });
-      const result = res.ok ? await res.json() : null;
+      const result = await getInventoryEnrichment().syncToCore(coreUrl, correlationId);
 
       reply.code(200).send({
-        ok: res.ok,
-        message: `${result?.upserted ?? 0} registros de estoque sincronizados${enriched.length > 0 ? " (enriquecido)" : " (OData)"}`,
-        total_sap: inventoryBulk.length,
-        enriched: enriched.length > 0,
-        ...result,
+        ok: result.ok,
+        message: result.message,
+        upserted: result.count,
+        enrichment_level: result.level,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
@@ -1300,60 +1172,10 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results.products = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
     }
 
-    // 4. Estoque — SQLQuery enriquecida com fallback OData
+    // 4. Estoque — fallback multi-nível via InventoryEnrichmentService
     try {
-      const enrichedInv = await entSvc.listInventoryEnriched(correlationId);
-      let invBulk: any[];
-      if (enrichedInv.length > 0) {
-        invBulk = enrichedInv.map((row) => ({
-          sku: row.ItemCode, warehouse_code: row.WarehouseCode,
-          item_name: row.ItemName ?? null,
-          on_hand: row.InStock, committed: row.Committed, ordered: row.Ordered,
-          available: row.Available ?? Math.max(row.InStock - row.Committed, 0),
-          min_stock: row.MinStock ?? 0,
-          max_stock: (row as any).WhsMaxStock ?? (row as any).MaxStock ?? 0,
-          uom: (row as any).UoM ?? null,
-          avg_price: (row as any).AvgPrice ?? 0,
-          last_purchase_price: (row as any).LastPurPrc ?? 0,
-          last_purchase_date: (row as any).LastPurDat ?? null,
-          last_sale_date: (row as any).LstSalDate ?? null,
-          gross_weight: (row as any).GrossWeight ?? 0,
-          lead_time: (row as any).LeadTime ?? 0,
-          item_group_code: (row as any).ItmsGrpCod ?? null,
-          item_group_name: (row as any).GroupName ?? null,
-          last_count_date: (row as any).LastCountDate ?? null,
-          sap_update_date: new Date().toISOString(),
-        }));
-      } else {
-        const inv = await entSvc.listInventory({ limit: 2000 }, correlationId);
-        const itemsForInv = await entSvc.listItems({ limit: 5000 }, correlationId).catch(() => [] as any[]);
-        const iLookup = new Map<string, { name?: string; minStock?: number }>();
-        for (const it of itemsForInv) {
-          iLookup.set(it.ItemCode, { name: it.ItemName, minStock: (it as any).MinInventory ?? 0 });
-        }
-        invBulk = inv.map((r) => {
-          const info = iLookup.get(r.ItemCode);
-          return {
-            sku: r.ItemCode, warehouse_code: r.WarehouseCode,
-            item_name: r.ItemName ?? info?.name ?? null,
-            on_hand: r.InStock, committed: r.Committed, ordered: r.Ordered,
-            available: r.Available ?? Math.max(r.InStock - r.Committed, 0),
-            min_stock: info?.minStock ?? 0,
-            sap_update_date: new Date().toISOString(),
-          };
-        });
-      }
-      if (invBulk.length > 0) {
-        const res = await fetch(`${coreUrl}/v1/inventory/bulk`, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-correlation-id": correlationId },
-          body: JSON.stringify({ items: invBulk }),
-        });
-        const result = res.ok ? await res.json() : null;
-        results.inventory = { ok: res.ok, count: result?.upserted ?? 0, message: `${result?.created ?? 0} novos, ${result?.updated ?? 0} atualizados` };
-      } else {
-        results.inventory = { ok: true, count: 0, message: "Sem dados de estoque" };
-      }
+      const invResult = await getInventoryEnrichment().syncToCore(coreUrl, correlationId);
+      results.inventory = { ok: invResult.ok, count: invResult.count, message: invResult.message };
     } catch (error) {
       results.inventory = { ok: false, count: 0, message: error instanceof Error ? error.message : "Erro" };
     }

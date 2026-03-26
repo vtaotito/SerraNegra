@@ -22,6 +22,36 @@ export type SqlQueryResult<T = unknown> = {
 };
 
 /**
+ * Cache de estado das queries: evita tentar criar/executar queries
+ * que já sabemos que falham nesta instância SAP.
+ * Chave = QueryDescription, Valor = { available, checkedAt }.
+ */
+const queryStateCache = new Map<string, { available: boolean; checkedAt: number }>();
+const QUERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+
+/**
+ * Indica se /SQLQueries é suportado nesta instância SAP.
+ * null = desconhecido, true/false = detectado.
+ */
+let sqlQueriesEndpointAvailable: boolean | null = null;
+let sqlQueriesCheckedAt = 0;
+
+export function isSqlQueriesAvailable(): boolean | null {
+  if (sqlQueriesEndpointAvailable === null) return null;
+  if (Date.now() - sqlQueriesCheckedAt > QUERY_CACHE_TTL_MS) {
+    sqlQueriesEndpointAvailable = null;
+    return null;
+  }
+  return sqlQueriesEndpointAvailable;
+}
+
+export function resetSqlQueriesCache(): void {
+  queryStateCache.clear();
+  sqlQueriesEndpointAvailable = null;
+  sqlQueriesCheckedAt = 0;
+}
+
+/**
  * Helper para gerenciar SQLQueries no SAP B1 Service Layer.
  */
 export class SqlQueriesHelper {
@@ -29,7 +59,6 @@ export class SqlQueriesHelper {
 
   /**
    * Cria uma nova SQLQuery no SAP B1.
-   * A query fica salva e pode ser reutilizada.
    */
   async createQuery(definition: SqlQueryDefinition, opts?: SapRequestOptions): Promise<void> {
     await this.client.post("/SQLQueries", definition, opts);
@@ -50,12 +79,32 @@ export class SqlQueriesHelper {
   }
 
   /**
-   * Cria uma query se não existir (idempotente).
+   * Cria uma query se não existir. Usa cache para evitar requests repetidos.
    */
   async ensureQuery(definition: SqlQueryDefinition, opts?: SapRequestOptions): Promise<void> {
-    const exists = await this.queryExists(definition.QueryDescription, opts);
-    if (!exists) {
-      await this.createQuery(definition, opts);
+    const name = definition.QueryDescription;
+    const cached = queryStateCache.get(name);
+    if (cached && Date.now() - cached.checkedAt < QUERY_CACHE_TTL_MS) {
+      if (cached.available) return;
+      throw new Error(`SQLQuery '${name}' indisponível (cache)`);
+    }
+
+    try {
+      const exists = await this.queryExists(name, opts);
+      if (!exists) {
+        await this.createQuery(definition, opts);
+      }
+      queryStateCache.set(name, { available: true, checkedAt: Date.now() });
+      sqlQueriesEndpointAvailable = true;
+      sqlQueriesCheckedAt = Date.now();
+    } catch (err) {
+      queryStateCache.set(name, { available: false, checkedAt: Date.now() });
+      const status = (err as { status?: number }).status;
+      if (status === 400 || status === 404 || status === 405) {
+        sqlQueriesEndpointAvailable = false;
+        sqlQueriesCheckedAt = Date.now();
+      }
+      throw err;
     }
   }
 
@@ -73,10 +122,17 @@ export class SqlQueriesHelper {
   }
 
   /**
-   * Deleta uma SQLQuery.
+   * Deleta uma SQLQuery. Tenta DELETE primeiro, fallback para POST /Delete.
    */
   async deleteQuery(queryName: string, opts?: SapRequestOptions): Promise<void> {
-    await this.client.get(`/SQLQueries('${queryName}')/Delete`, opts);
+    const path = `/SQLQueries('${queryName}')`;
+    try {
+      await this.client.delete(path, opts);
+      return;
+    } catch { /* fallback below */ }
+    try {
+      await this.client.post(`${path}/Delete`, undefined, opts);
+    } catch { /* best-effort */ }
   }
 }
 

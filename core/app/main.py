@@ -181,7 +181,7 @@ def list_inventory(
         q = q.where(DbInventoryStock.warehouse_code == warehouseCode)
 
     total = len(db.execute(select(DbInventoryStock)).scalars().all())
-    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 5000))).scalars().all()
 
     return {
         "data": [
