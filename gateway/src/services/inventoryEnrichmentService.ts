@@ -84,14 +84,17 @@ export class InventoryEnrichmentService {
 
   /**
    * Nível 3: Busca dados via OData com campos de pricing e merge com warehouse data.
-   * Nível 4 (fallback): apenas warehouse data básico.
+   * Se listItemsWithPricing falhar, usa listItems (que tem ItemsGroupCode) como
+   * fonte secundária para pelo menos resolver GroupName.
+   * Nível 4 (fallback): apenas warehouse data sem enriquecimento.
    */
   private async tryODataEnriched(correlationId: string | undefined, now: string): Promise<EnrichmentResult> {
     try {
-      const [warehouse, pricing, groups] = await Promise.all([
+      const [warehouse, pricing, groups, items] = await Promise.all([
         this.entSvc.listInventory({ limit: 5000 }, correlationId),
-        this.entSvc.listItemsWithPricing({ limit: 5000 }, correlationId).catch(() => []),
+        this.entSvc.listItemsWithPricing({ limit: 5000 }, correlationId).catch(() => [] as SapItemPricingRow[]),
         this.entSvc.listItemGroups(correlationId).catch(() => []),
+        this.entSvc.listItems({ limit: 5000 }, correlationId).catch(() => []),
       ]);
 
       if (warehouse.length === 0) {
@@ -104,25 +107,37 @@ export class InventoryEnrichmentService {
       const groupMap = new Map<number, string>();
       for (const g of groups) groupMap.set(g.Number, g.GroupName);
 
-      const hasPricing = pricing.length > 0;
-      const level: EnrichmentLevel = hasPricing ? 3 : 4;
+      type ItemInfo = { name?: string; groupCode?: number; uom?: string };
+      const itemsMap = new Map<string, ItemInfo>();
+      for (const it of items) {
+        itemsMap.set(it.ItemCode, {
+          name: it.ItemName,
+          groupCode: it.ItemsGroupCode,
+          uom: it.InventoryUOM,
+        });
+      }
 
-      const items: InventoryBulkItem[] = warehouse.map((wh) => {
+      const hasPricing = pricing.length > 0;
+      const hasItems = items.length > 0;
+      const level: EnrichmentLevel = hasPricing ? 3 : (hasItems && groups.length > 0 ? 3 : 4);
+
+      const result: InventoryBulkItem[] = warehouse.map((wh) => {
         const pr = pricingMap.get(wh.ItemCode);
-        const groupCode = pr?.ItemsGroupCode ?? null;
+        const info = itemsMap.get(wh.ItemCode);
+        const groupCode = pr?.ItemsGroupCode ?? info?.groupCode ?? null;
         const groupName = groupCode != null ? (groupMap.get(groupCode) ?? null) : null;
 
         return {
           sku: wh.ItemCode,
           warehouse_code: wh.WarehouseCode,
-          item_name: wh.ItemName ?? pr?.ItemName ?? null,
+          item_name: wh.ItemName ?? pr?.ItemName ?? info?.name ?? null,
           on_hand: wh.InStock,
           committed: wh.Committed,
           ordered: wh.Ordered,
           available: wh.Available ?? Math.max(wh.InStock - wh.Committed, 0),
           min_stock: wh.MinStock ?? 0,
           max_stock: pr?.MaxInventory ?? 0,
-          uom: pr?.InventoryUOM ?? null,
+          uom: pr?.InventoryUOM ?? info?.uom ?? null,
           avg_price: pr?.AvgPrice ?? 0,
           last_purchase_price: pr?.LastPurchasePrice ?? 0,
           last_purchase_date: pr?.LastPurchaseDate ?? null,
@@ -136,11 +151,12 @@ export class InventoryEnrichmentService {
         };
       });
 
-      console.log(`[enrichment] Nível ${level} (OData${hasPricing ? " enriquecido" : " básico"}) - ${items.length} itens`);
+      const sources = [hasPricing ? "pricing" : null, hasItems ? "items" : null, groups.length > 0 ? "groups" : null].filter(Boolean).join("+");
+      console.log(`[enrichment] Nível ${level} (OData ${sources}) - ${result.length} itens`);
       return {
-        items,
+        items: result,
         level,
-        message: `${items.length} itens via OData${hasPricing ? " enriquecido" : " básico"} (nível ${level})`,
+        message: `${result.length} itens via OData (${sources}, nível ${level})`,
       };
     } catch (err) {
       console.warn("[enrichment] OData enriquecido falhou, tentando básico:", err instanceof Error ? err.message : err);
