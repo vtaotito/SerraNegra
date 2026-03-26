@@ -5,7 +5,7 @@ import {
   Package, Boxes, AlertTriangle, Search, CalendarDays,
   TrendingUp, TrendingDown, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown,
   Download, Gauge, BarChart3, Layers, Flame, Snowflake, ChevronDown,
-  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag, BarChart2,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag,
   Wallet, Clock, Weight, Truck,
 } from "lucide-react";
 import {
@@ -394,9 +394,67 @@ export default function EstoquePage() {
       .sort((a, b) => b.count - a.count);
   }, [allItems]);
 
+  /* ── SAP Group distribution ── */
+  const sapGroupDistrib = useMemo(() => {
+    const counts = new Map<string, { count: number; stock: number; value: number }>();
+    for (const item of allItems) {
+      const grp = item.itemGroupName ?? "Sem Grupo";
+      const cur = counts.get(grp) ?? { count: 0, stock: 0, value: 0 };
+      cur.count++;
+      cur.stock += item.estoqueTotal;
+      cur.value += item.valorEstoque;
+      counts.set(grp, cur);
+    }
+    return Array.from(counts.entries())
+      .map(([name, d]) => ({ name, ...d }))
+      .sort((a, b) => b.count - a.count);
+  }, [allItems]);
+
+  /* ── Stock health overview ── */
+  const stockHealthDistrib = useMemo(() => {
+    const h = { critico: 0, atencao: 0, ok: 0, excesso: 0, parado: 0 };
+    for (const item of allItems) {
+      if (item.giro === "parado" && item.estoqueTotal > 0) h.parado++;
+      else h[item.coberturaClass]++;
+    }
+    return [
+      { name: "Crítico", value: h.critico, fill: "#ef4444" },
+      { name: "Atenção", value: h.atencao, fill: "#f59e0b" },
+      { name: "OK", value: h.ok, fill: "#10b981" },
+      { name: "Excesso", value: h.excesso, fill: "#8b5cf6" },
+      { name: "Parado", value: h.parado, fill: "#94a3b8" },
+    ].filter((d) => d.value > 0);
+  }, [allItems]);
+
+  /* ── Giro distribution ── */
+  const giroDistrib = useMemo(() => {
+    const g = { alto: 0, medio: 0, baixo: 0, parado: 0 };
+    for (const item of allItems) g[item.giro]++;
+    return [
+      { name: "Alto", value: g.alto, fill: "#10b981" },
+      { name: "Médio", value: g.medio, fill: "#0ea5e9" },
+      { name: "Baixo", value: g.baixo, fill: "#f59e0b" },
+      { name: "Parado", value: g.parado, fill: "#94a3b8" },
+    ].filter((d) => d.value > 0);
+  }, [allItems]);
+
+  /* ── Top 10 by stock value ── */
+  const topByValue = useMemo(() => {
+    return [...allItems]
+      .filter((i) => i.valorEstoque > 0)
+      .sort((a, b) => b.valorEstoque - a.valorEstoque)
+      .slice(0, 10)
+      .map((i) => ({
+        name: toTitleCase(i.descricao).slice(0, 28),
+        valor: i.valorEstoque,
+        sku: i.sku,
+      }));
+  }, [allItems]);
+
   /* ── State ── */
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<ProductCategory | "ALL">("ALL");
+  const [groupFilter, setGroupFilter] = useState<string>("ALL");
   const [curvaFilter, setCurvaFilter] = useState<CurvaABC | "ALL">("ALL");
   const [giroFilter, setGiroFilter] = useState<Giro | "ALL">("ALL");
   const [cobFilter, setCobFilter] = useState<Cobertura | "ALL">("ALL");
@@ -406,12 +464,12 @@ export default function EstoquePage() {
   const [expandedSku, setExpandedSku] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(50);
-  const [showCharts, setShowCharts] = useState(false);
 
   /* ── Filtered + sorted ── */
   const filtered = useMemo(() => {
     let res = allItems;
     if (catFilter !== "ALL") res = res.filter((i) => i.categoria === catFilter);
+    if (groupFilter !== "ALL") res = res.filter((i) => (i.itemGroupName ?? "Sem Grupo") === groupFilter);
     if (curvaFilter !== "ALL") res = res.filter((i) => i.curva === curvaFilter);
     if (giroFilter !== "ALL") res = res.filter((i) => i.giro === giroFilter);
     if (cobFilter !== "ALL") res = res.filter((i) => i.coberturaClass === cobFilter);
@@ -438,7 +496,7 @@ export default function EstoquePage() {
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [allItems, catFilter, curvaFilter, giroFilter, cobFilter, quickFilter, search, sortField, sortDir]);
+  }, [allItems, catFilter, groupFilter, curvaFilter, giroFilter, cobFilter, quickFilter, search, sortField, sortDir]);
 
   /* ── Pagination ── */
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -557,25 +615,26 @@ export default function EstoquePage() {
       </div>
 
       {/* KPIs */}
-      <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)}`, sub: `${fmtNum(kpis.dispTotal)} disponível`, icon: Boxes, color: "text-sky-600", accent: "bg-sky-50" },
-          { title: "Valor em Estoque", value: fmtBRL(kpis.valorEstoqueTotal), sub: `Custo médio ponderado`, icon: Wallet, color: "text-violet-600", accent: "bg-violet-50" },
-          { title: "Faturamento", value: fmtBRL(kpis.fatTotal), sub: `${fmtNum(kpis.saidaTotal)} un saída no período`, icon: TrendingUp, color: "text-emerald-600", accent: "bg-emerald-50" },
-          { title: "Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes atendidos`, icon: Layers, color: "text-indigo-600", accent: "bg-indigo-50" },
+          { title: "Valor em Estoque", value: fmtBRL(kpis.valorEstoqueTotal), sub: `${sapGroupDistrib.length} grupos SAP`, icon: Wallet, color: "text-violet-600", accent: "bg-violet-50" },
+          { title: "Faturamento", value: fmtBRL(kpis.fatTotal), sub: `${fmtNum(kpis.saidaTotal)} un saída`, icon: TrendingUp, color: "text-emerald-600", accent: "bg-emerald-50" },
+          { title: "Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes`, icon: Layers, color: "text-indigo-600", accent: "bg-indigo-50" },
+          { title: "Itens Parados", value: String(kpis.parados), sub: `com estoque sem venda`, icon: Snowflake, color: kpis.parados > 0 ? "text-blue-600" : "text-emerald-600", accent: kpis.parados > 0 ? "bg-blue-50" : "bg-emerald-50" },
           { title: "Precisa Atenção", value: String(kpis.criticos + kpis.belowMin), sub: `${kpis.criticos} críticos · ${kpis.belowMin} abaixo mín.`, icon: ShieldAlert, color: (kpis.criticos + kpis.belowMin) > 0 ? "text-red-600" : "text-emerald-600", accent: (kpis.criticos + kpis.belowMin) > 0 ? "bg-red-50" : "bg-emerald-50" },
         ].map((k) => {
           const Icon = k.icon;
           return (
-            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-gray-300 transition-all group">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg ${k.accent} flex items-center justify-center shrink-0`}>
-                  <Icon className={`w-5 h-5 ${k.color}`} />
+            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-3.5 hover:border-gray-300 transition-all group">
+              <div className="flex items-center gap-2.5">
+                <div className={`w-9 h-9 rounded-lg ${k.accent} flex items-center justify-center shrink-0`}>
+                  <Icon className={`w-4.5 h-4.5 ${k.color}`} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-cockpit-muted">{k.title}</p>
-                  <p className="text-xl font-bold text-gray-900 tabular-nums leading-tight">{k.value}</p>
-                  <p className="text-[10px] text-cockpit-muted mt-0.5 truncate">{k.sub}</p>
+                  <p className="text-[9px] font-semibold uppercase tracking-wider text-cockpit-muted">{k.title}</p>
+                  <p className="text-lg font-bold text-gray-900 tabular-nums leading-tight">{k.value}</p>
+                  <p className="text-[9px] text-cockpit-muted mt-0.5 truncate">{k.sub}</p>
                 </div>
               </div>
             </div>
@@ -621,78 +680,83 @@ export default function EstoquePage() {
         </section>
       )}
 
-      {/* Charts toggle + charts */}
-      <button onClick={() => setShowCharts(!showCharts)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:bg-gray-50 transition-all w-full sm:w-auto">
-        <BarChart2 className="w-3.5 h-3.5 text-cockpit-accent" />
-        <span>{showCharts ? "Ocultar" : "Exibir"} gráficos</span>
-        <ChevronDown className={`w-3.5 h-3.5 ml-auto text-gray-400 transition-transform ${showCharts ? "rotate-180" : ""}`} />
-        {!showCharts && curvaDistrib.length > 0 && (
-          <span className="flex items-center gap-1.5 ml-1.5 text-[10px] text-gray-400">
-            {curvaDistrib.map((d) => {
-              const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
-              const pct = totalFat > 0 ? ((d.fat / totalFat) * 100).toFixed(0) : "0";
-              return <span key={d.name} className="tabular-nums"><span className="font-bold" style={{ color: d.fill }}>{d.name}</span> {pct}%</span>;
-            })}
-            {kpis.parados > 0 && <span className="text-blue-400">{kpis.parados} parados</span>}
-          </span>
-        )}
-      </button>
-
-      {showCharts && <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+      {/* Dashboard de Insights */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        {/* Saúde do Estoque */}
         <section className="rounded-xl border border-cockpit-border bg-white p-4">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-cockpit-accent" />
+            <h2 className="text-xs font-semibold text-gray-900">Saúde do Estoque</h2>
+          </div>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={stockHealthDistrib} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={28} outerRadius={48} paddingAngle={2}>
+                  {stockHealthDistrib.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Pie>
+                <Tooltip formatter={(v) => `${v} itens`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-wrap justify-center gap-x-2.5 gap-y-1 mt-1">
+            {stockHealthDistrib.map((d) => (
+              <span key={d.name} className="flex items-center gap-1 text-[9px] text-gray-600">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                {d.name} <strong className="text-gray-800">{d.value}</strong>
+              </span>
+            ))}
+          </div>
+        </section>
+
+        {/* Curva ABC */}
+        <section className="rounded-xl border border-cockpit-border bg-white p-4">
+          <div className="flex items-center gap-2 mb-2">
             <BarChart3 className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-xs font-semibold text-gray-900">Curva ABC — Faturamento</h2>
+            <h2 className="text-xs font-semibold text-gray-900">Curva ABC</h2>
           </div>
           {curvaDistrib.length === 0 ? (
-            <p className="text-center text-cockpit-muted py-6 text-xs">Sem dados de vendas</p>
+            <p className="text-center text-cockpit-muted py-8 text-xs">Sem dados</p>
           ) : (
-            <div className="flex items-center gap-4">
-              <div className="h-36 w-2/5">
+            <>
+              <div className="h-[120px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={curvaDistrib} dataKey="fat" nameKey="name" cx="50%" cy="50%" innerRadius={32} outerRadius={56} paddingAngle={3}
-                      label={({ name, percent }: any) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false}>
+                    <Pie data={curvaDistrib} dataKey="fat" nameKey="name" cx="50%" cy="50%" innerRadius={28} outerRadius={48} paddingAngle={3}>
                       {curvaDistrib.map((d, i) => <Cell key={i} fill={d.fill} />)}
                     </Pie>
                     <Tooltip formatter={(v) => fmtBRL(Number(v))} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="flex-1 space-y-2.5">
+              <div className="space-y-1.5 mt-1">
                 {curvaDistrib.map((d) => {
                   const totalFat = curvaDistrib.reduce((s, x) => s + x.fat, 0);
                   const pct = totalFat > 0 ? (d.fat / totalFat) * 100 : 0;
                   return (
-                    <div key={d.name}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center" style={{ background: d.fill + "20", color: d.fill }}>{d.name}</span>
-                          <span className="text-[11px] text-gray-500"><strong className="text-gray-700">{d.skus}</strong> itens</span>
-                        </div>
-                        <span className="text-[11px] font-semibold text-gray-800 tabular-nums">{fmtBRL(d.fat)}</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1"><div className="h-1 rounded-full" style={{ width: `${pct}%`, background: d.fill }} /></div>
+                    <div key={d.name} className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center shrink-0" style={{ background: d.fill + "20", color: d.fill }}>{d.name}</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: d.fill }} /></div>
+                      <span className="text-[10px] tabular-nums text-gray-600 w-16 text-right"><strong>{d.skus}</strong> · {pct.toFixed(0)}%</span>
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </>
           )}
         </section>
 
+        {/* Cobertura */}
         <section className="rounded-xl border border-cockpit-border bg-white p-4">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-2">
             <Gauge className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-xs font-semibold text-gray-900">Cobertura de Estoque</h2>
+            <h2 className="text-xs font-semibold text-gray-900">Cobertura (dias)</h2>
           </div>
-          <div className="h-36">
+          <div className="h-[140px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={cobDistrib} barCategoryGap="20%">
+              <BarChart data={cobDistrib} barCategoryGap="16%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
-                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#78696c", fontSize: 10 }} axisLine={false} tickLine={false} width={30} />
+                <XAxis dataKey="name" tick={{ fill: "#78696c", fontSize: 9 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#78696c", fontSize: 9 }} axisLine={false} tickLine={false} width={24} />
                 <Tooltip content={<CTooltip />} />
                 <Bar dataKey="value" name="SKUs" radius={[4, 4, 0, 0]}>
                   {cobDistrib.map((_, i) => <Cell key={i} fill={["#ef4444", "#f59e0b", "#10b981", "#0ea5e9", "#8b5cf6"][i]} />)}
@@ -700,13 +764,94 @@ export default function EstoquePage() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex justify-center gap-2 mt-1.5 text-[9px] flex-wrap">
+          <div className="flex justify-center gap-1.5 mt-1 text-[8px] flex-wrap">
             {[["bg-red-500", "≤7d"], ["bg-amber-500", "8-21d"], ["bg-emerald-500", "22-60d"], ["bg-sky-500", "61-90d"], ["bg-violet-500", "90d+"]].map(([c, l]) => (
-              <span key={l} className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${c}`} />{l}</span>
+              <span key={l} className="flex items-center gap-0.5"><span className={`w-1.5 h-1.5 rounded-full ${c}`} />{l}</span>
             ))}
           </div>
         </section>
-      </div>}
+
+        {/* Giro de Estoque */}
+        <section className="rounded-xl border border-cockpit-border bg-white p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Flame className="w-4 h-4 text-cockpit-accent" />
+            <h2 className="text-xs font-semibold text-gray-900">Giro de Estoque</h2>
+          </div>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={giroDistrib} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={28} outerRadius={48} paddingAngle={2}>
+                  {giroDistrib.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                </Pie>
+                <Tooltip formatter={(v) => `${v} itens`} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex flex-wrap justify-center gap-x-2.5 gap-y-1 mt-1">
+            {giroDistrib.map((d) => (
+              <span key={d.name} className="flex items-center gap-1 text-[9px] text-gray-600">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.fill }} />
+                {d.name} <strong className="text-gray-800">{d.value}</strong>
+              </span>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {/* Concentração de Valor + Distribuição por Grupo SAP */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+        {/* Top 10 por Valor em Estoque */}
+        {topByValue.length > 0 && (
+          <section className="rounded-xl border border-cockpit-border bg-white p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Wallet className="w-4 h-4 text-violet-600" />
+              <h2 className="text-xs font-semibold text-gray-900">Top 10 — Concentração de Valor</h2>
+              <span className="ml-auto text-[10px] text-gray-400 tabular-nums">{fmtBRL(topByValue.reduce((s, i) => s + i.valor, 0))}</span>
+            </div>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={topByValue} layout="vertical" barCategoryGap="12%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "#78696c", fontSize: 9 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtBRL(v)} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "#374151", fontSize: 9 }} width={110} axisLine={false} tickLine={false} />
+                  <Tooltip formatter={(v) => fmtBRL(Number(v))} labelFormatter={(l) => `${l}`} />
+                  <Bar dataKey="valor" name="Valor" radius={[0, 4, 4, 0]} fill="#8b5cf6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        )}
+
+        {/* Distribuição por Grupo SAP */}
+        {sapGroupDistrib.length > 0 && (
+          <section className="rounded-xl border border-cockpit-border bg-white p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Tag className="w-4 h-4 text-indigo-600" />
+              <h2 className="text-xs font-semibold text-gray-900">Distribuição por Grupo SAP</h2>
+              <span className="ml-auto text-[10px] text-gray-400">{sapGroupDistrib.length} grupos</span>
+            </div>
+            <div className="h-[200px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={sapGroupDistrib.slice(0, 12)} layout="vertical" barCategoryGap="10%">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "#78696c", fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "#374151", fontSize: 9 }} width={120} axisLine={false} tickLine={false} />
+                  <Tooltip content={({ active, payload, label }: any) => {
+                    if (!active || !payload?.length) return null;
+                    return (
+                      <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-lg text-xs">
+                        <p className="font-semibold text-gray-900 mb-1">{label}</p>
+                        <p className="text-gray-600">Itens: <strong>{payload[0]?.value}</strong></p>
+                      </div>
+                    );
+                  }} />
+                  <Bar dataKey="count" name="Itens" radius={[0, 4, 4, 0]} fill="#6366f1" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        )}
+      </div>
 
       {/* Search + Filters */}
       <div className="rounded-xl border border-cockpit-border bg-white p-3 space-y-2.5">
@@ -717,6 +862,13 @@ export default function EstoquePage() {
               placeholder="Buscar SKU, produto, código..."
               className="w-full pl-9 pr-4 py-2.5 sm:py-2 rounded-lg bg-gray-50 border-0 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0" />
           </div>
+          <select value={groupFilter} onChange={(e) => { setGroupFilter(e.target.value); resetPage(); }}
+            className={`border rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0 max-w-[200px] ${groupFilter !== "ALL" ? "border-indigo-300 text-indigo-700 bg-indigo-50" : "border-gray-200 text-gray-600"}`}>
+            <option value="ALL">Todos os Grupos SAP</option>
+            {sapGroupDistrib.map((g) => (
+              <option key={g.name} value={g.name}>{g.name} ({g.count})</option>
+            ))}
+          </select>
           <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {([
               { key: "all", label: "Todos" },
@@ -763,11 +915,12 @@ export default function EstoquePage() {
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
         {/* Table header bar */}
         <div className="px-4 py-2.5 border-b border-cockpit-border bg-gray-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-          <div className="flex items-center gap-2 text-xs text-cockpit-muted">
+          <div className="flex items-center gap-2 text-xs text-cockpit-muted flex-wrap">
             <span><strong className="text-gray-800">{filtered.length}</strong> produtos</span>
             {filtered.length !== allItems.length && <span className="text-gray-300">de {allItems.length}</span>}
             {catFilter !== "ALL" && <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium border ${CATEGORY_CFG[catFilter].color}`} style={{ borderColor: "currentColor" }}>{CATEGORY_CFG[catFilter].label}</span>}
             {curvaFilter !== "ALL" && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[curvaFilter] }}>Curva {curvaFilter}</span>}
+            {groupFilter !== "ALL" && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium text-indigo-700 bg-indigo-50 border border-indigo-200">{groupFilter}</span>}
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
@@ -787,6 +940,7 @@ export default function EstoquePage() {
               <col style={{ width: 36 }} />
               <col />
               <col className="hidden lg:table-column" style={{ width: 84 }} />
+              <col className="hidden xl:table-column" style={{ width: 100 }} />
               <col style={{ width: 72 }} />
               <col style={{ width: 72 }} />
               <col className="hidden sm:table-column" style={{ width: 112 }} />
@@ -802,6 +956,7 @@ export default function EstoquePage() {
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="descricao" /></span>
                 </th>
                 <th className="text-center py-2.5 px-1 font-semibold bg-gray-50 hidden lg:table-cell">Cat.</th>
+                <th className="text-left py-2.5 px-1 font-semibold bg-gray-50 hidden xl:table-cell">Grupo SAP</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
                   <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
                 </th>
@@ -822,7 +977,7 @@ export default function EstoquePage() {
               </tr>
             </thead>
             {paginatedItems.length === 0 ? (
-              <tbody><tr><td colSpan={10} className="py-12 text-center text-cockpit-muted">
+              <tbody><tr><td colSpan={11} className="py-12 text-center text-cockpit-muted">
                 <Package className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                 <p className="font-medium text-gray-500">Nenhum item encontrado</p>
               </td></tr></tbody>
@@ -856,6 +1011,11 @@ export default function EstoquePage() {
                       </td>
                       <td className="py-2.5 px-1 text-center hidden lg:table-cell">
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[9px] font-medium border ${catCfg.color} truncate`} style={{ borderColor: "currentColor", opacity: 0.8 }}>{catCfg.label}</span>
+                      </td>
+                      <td className="py-2.5 px-1 hidden xl:table-cell">
+                        {item.itemGroupName ? (
+                          <span className="text-[10px] text-indigo-600 font-medium truncate block max-w-[96px]" title={item.itemGroupName}>{item.itemGroupName}</span>
+                        ) : <span className="text-[10px] text-gray-300">—</span>}
                       </td>
                       <td className="py-2.5 px-2 text-right tabular-nums text-gray-600 font-medium">{fmtNum(item.estoqueTotal)}</td>
                       <td className={`py-2.5 px-2 text-right tabular-nums font-semibold ${item.belowMinStock || item.disponivel <= 0 ? "text-red-600" : "text-emerald-700"}`}>
@@ -891,7 +1051,7 @@ export default function EstoquePage() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-gray-50/70">
-                        <td colSpan={10} className="px-4 py-3 border-b border-cockpit-border/20">
+                        <td colSpan={11} className="px-4 py-3 border-b border-cockpit-border/20">
                           {/* Quantidades */}
                           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-[11px]">
                             <div>
