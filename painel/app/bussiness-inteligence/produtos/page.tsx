@@ -5,17 +5,19 @@ import {
   Tag, Search, X, Download, Package, DollarSign,
   TrendingUp, Hash, BarChart3, Layers,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronRight,
-  Clock, Users, ShoppingCart,
+  Users, Boxes, MapPin, Briefcase,
 } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   ReferenceLine, ComposedChart, Line,
 } from "recharts";
-import { format } from "date-fns";
-import { fmtBRL, fmtNum, fmtDateShort, exportCSV, getProductGroup } from "@/lib/format";
+import { format, subMonths } from "date-fns";
+import { fmtBRL, fmtNum, fmtDateShort, exportCSV, getProductGroup, STATE_TO_REGION } from "@/lib/format";
 import {
-  fetchSalesOrders, type SalesOrderRow, type SalesOrderLine,
+  fetchSalesOrders, fetchCustomers, fetchSalesPersons,
+  type SalesOrderRow, type SalesOrderLine,
+  type CustomerRow, type SapSalesPerson,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
@@ -35,6 +37,16 @@ const COD_COLORS: Record<string, string> = {
 
 const PIE_COLORS = ["#A81C2C", "#0ea5e9", "#f59e0b", "#8b5cf6", "#10b981", "#ec4899", "#6366f1", "#14b8a6"];
 
+const UF_NAME: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
+  CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
+  MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+  PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí",
+  RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+  RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo",
+  SE: "Sergipe", TO: "Tocantins",
+};
+
 const n = (v: unknown) => Number(v) || 0;
 
 function median(arr: number[]): number {
@@ -49,6 +61,14 @@ function fmtK(v: number): string {
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
   return v.toFixed(0);
 }
+
+function extractUF(addr: string | null | undefined): string | null {
+  if (!addr) return null;
+  const m = addr.match(/-([A-Z]{2})\s*[\r\n]/);
+  return m && STATE_TO_REGION[m[1]] ? m[1] : null;
+}
+
+/* ═══════════════════ Item parsing ═══════════════════ */
 
 interface ParsedItem {
   cod: string;
@@ -104,6 +124,8 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
   return { cod, subNome, embala, embalaQty, unit, capacidade, cor, fechamento };
 }
 
+/* ═══════════════════ Data types ═══════════════════ */
+
 interface ProductRow {
   itemCode: string;
   cod: string;
@@ -122,6 +144,9 @@ interface ProductRow {
   descMedio: number;
   vendas: number;
   clientes: number;
+  maxSaleValue: number;
+  minSaleValue: number;
+  qty3mUnd: number;
 }
 
 interface CodGroup {
@@ -136,11 +161,40 @@ interface CodGroup {
   mediana: number;
 }
 
-function buildProductData(orders: SalesOrderRow[]): { products: ProductRow[]; codGroups: CodGroup[] } {
+interface UnifiedProductRow {
+  itemCode: string;
+  cod: string;
+  codName: string;
+  subNome: string;
+  capacidade: string;
+  cor: string;
+  fechamento: string;
+  qtdUnd: number;
+  faturamento: number;
+  precoUndMedio: number;
+  vendas: number;
+  clientes: number;
+  avgQtd3m: number;
+  maxSale12m: number;
+  minSale12m: number;
+  variants: ProductRow[];
+}
+
+/* ═══════════════════ Data builders ═══════════════════ */
+
+function buildProductData(orders: SalesOrderRow[], date3mCutoff: string): {
+  products: ProductRow[];
+  codGroups: CodGroup[];
+  clientsByItem: Map<string, Set<string>>;
+} {
   const active = orders.filter((o) => o.cancelled !== "Y");
-  const byItem = new Map<string, { info: ParsedItem; qtdEmb: number; totals: number[]; descs: number[]; clients: Set<string> }>();
+  const byItem = new Map<string, {
+    info: ParsedItem; qtdEmb: number; totals: number[]; descs: number[];
+    clients: Set<string>; maxSale: number; minSale: number; qty3mEmb: number;
+  }>();
 
   for (const o of active) {
+    const isLast3m = o.doc_date >= date3mCutoff;
     for (const l of (o.lines ?? [])) {
       const code = l.ItemCode ?? "";
       if (!code) continue;
@@ -151,20 +205,27 @@ function buildProductData(orders: SalesOrderRow[]): { products: ProductRow[]; co
 
       let entry = byItem.get(code);
       if (!entry) {
-        entry = { info, qtdEmb: 0, totals: [], descs: [], clients: new Set() };
+        entry = { info, qtdEmb: 0, totals: [], descs: [], clients: new Set(), maxSale: -Infinity, minSale: Infinity, qty3mEmb: 0 };
         byItem.set(code, entry);
       }
       entry.qtdEmb += qty;
       entry.totals.push(total);
       entry.descs.push(disc);
       entry.clients.add(o.card_code ?? "");
+      if (total > 0) {
+        entry.maxSale = Math.max(entry.maxSale, total);
+        entry.minSale = Math.min(entry.minSale, total);
+      }
+      if (isLast3m) entry.qty3mEmb += qty;
     }
   }
 
+  const clientsByItem = new Map<string, Set<string>>();
   const products: ProductRow[] = Array.from(byItem.entries()).map(([itemCode, e]) => {
     const fat = e.totals.reduce((s, v) => s + v, 0);
     const vendas = e.totals.length;
     const qtdUnd = e.qtdEmb * e.info.embalaQty;
+    clientsByItem.set(itemCode, e.clients);
     return {
       itemCode, cod: e.info.cod, codName: COD_NAMES[e.info.cod] ?? e.info.cod,
       subNome: e.info.subNome, capacidade: e.info.capacidade, cor: e.info.cor,
@@ -174,6 +235,9 @@ function buildProductData(orders: SalesOrderRow[]): { products: ProductRow[]; co
       precoUndMedio: qtdUnd > 0 ? fat / qtdUnd : 0,
       descMedio: e.descs.length > 0 ? e.descs.reduce((s, v) => s + v, 0) / e.descs.length : 0,
       vendas, clientes: e.clients.size,
+      maxSaleValue: e.maxSale === -Infinity ? 0 : e.maxSale,
+      minSaleValue: e.minSale === Infinity ? 0 : e.minSale,
+      qty3mUnd: e.qty3mEmb * e.info.embalaQty,
     };
   }).sort((a, b) => b.faturamento - a.faturamento);
 
@@ -193,7 +257,59 @@ function buildProductData(orders: SalesOrderRow[]): { products: ProductRow[]; co
     mediana: median(g.unitPrices),
   })).sort((a, b) => b.faturamento - a.faturamento);
 
-  return { products, codGroups };
+  return { products, codGroups, clientsByItem };
+}
+
+function unifyProducts(products: ProductRow[], clientsByItem: Map<string, Set<string>>): UnifiedProductRow[] {
+  const groups = new Map<string, ProductRow[]>();
+  for (const p of products) {
+    const key = `${p.cod}::${p.subNome}`;
+    const arr = groups.get(key) ?? [];
+    arr.push(p);
+    groups.set(key, arr);
+  }
+
+  return Array.from(groups.entries()).map(([, variants]) => {
+    const undVariant = variants.find((v) => v.embala === "UND");
+    const primary = undVariant ?? variants.reduce((best, v) => (v.faturamento > best.faturamento ? v : best));
+
+    const totalQtdUnd = variants.reduce((s, v) => s + v.qtdUnd, 0);
+    const totalFat = variants.reduce((s, v) => s + v.faturamento, 0);
+    const totalVendas = variants.reduce((s, v) => s + v.vendas, 0);
+
+    const mergedClients = new Set<string>();
+    for (const v of variants) {
+      const cs = clientsByItem.get(v.itemCode);
+      if (cs) for (const c of cs) mergedClients.add(c);
+    }
+
+    const maxVals = variants.map((v) => v.maxSaleValue).filter((v) => v > 0);
+    const minVals = variants.map((v) => v.minSaleValue).filter((v) => v > 0);
+    const totalQty3m = variants.reduce((s, v) => s + v.qty3mUnd, 0);
+
+    const sortedVariants = [...variants].sort((a, b) =>
+      a.embala === "UND" ? -1 : b.embala === "UND" ? 1 : b.faturamento - a.faturamento
+    );
+
+    return {
+      itemCode: primary.itemCode,
+      cod: primary.cod,
+      codName: primary.codName,
+      subNome: primary.subNome,
+      capacidade: primary.capacidade,
+      cor: primary.cor,
+      fechamento: primary.fechamento,
+      qtdUnd: totalQtdUnd,
+      faturamento: totalFat,
+      precoUndMedio: totalQtdUnd > 0 ? totalFat / totalQtdUnd : 0,
+      vendas: totalVendas,
+      clientes: mergedClients.size,
+      avgQtd3m: totalQty3m / 3,
+      maxSale12m: maxVals.length > 0 ? Math.max(...maxVals) : 0,
+      minSale12m: minVals.length > 0 ? Math.min(...minVals) : 0,
+      variants: sortedVariants,
+    };
+  }).sort((a, b) => b.faturamento - a.faturamento);
 }
 
 function embalaDistribution(products: ProductRow[]): { name: string; value: number; qty: number }[] {
@@ -207,36 +323,44 @@ function embalaDistribution(products: ProductRow[]): { name: string; value: numb
   return Array.from(m.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value);
 }
 
-type SortField = "itemCode" | "cod" | "subNome" | "faturamento" | "qtdUnd" | "qtdEmb" | "precoUndMedio" | "vendas" | "clientes";
+type SortField = "cod" | "subNome" | "faturamento" | "qtdUnd" | "avgQtd3m" | "maxSale12m" | "minSale12m" | "precoUndMedio" | "vendas" | "clientes";
 type SortDir = "asc" | "desc";
 
 function CTooltip({ children }: { children: React.ReactNode }) {
   return <div className="bg-white/95 backdrop-blur-sm border border-cockpit-border rounded-lg shadow-lg px-3 py-2.5 text-xs">{children}</div>;
 }
 
-/* ═══════════════════ Product Detail Modal ═══════════════════ */
+/* ═══════════════════ Unified Product Detail Modal ═══════════════════ */
 
-function ProductModal({
+function UnifiedProductModal({
   product, orders, totalFat, onClose,
 }: {
-  product: ProductRow; orders: SalesOrderRow[]; totalFat: number; onClose: () => void;
+  product: UnifiedProductRow; orders: SalesOrderRow[]; totalFat: number; onClose: () => void;
 }) {
+  const variantCodes = useMemo(() => new Set(product.variants.map((v) => v.itemCode)), [product.variants]);
+
   const productOrders = useMemo(() => {
-    const rows: Array<{ docNum: number; docDate: string; cardCode: string; cardName: string; qty: number; lineTotal: number; unitPrice: number; disc: number }> = [];
+    const rows: Array<{
+      docNum: number; docDate: string; cardCode: string; cardName: string;
+      qty: number; lineTotal: number; unitPrice: number; disc: number;
+      itemCode: string; embala: string;
+    }> = [];
     for (const o of orders) {
       if (o.cancelled === "Y") continue;
       for (const l of (o.lines ?? [])) {
-        if ((l.ItemCode ?? "") !== product.itemCode) continue;
+        if (!variantCodes.has(l.ItemCode ?? "")) continue;
+        const variant = product.variants.find((v) => v.itemCode === (l.ItemCode ?? ""));
         rows.push({
           docNum: o.doc_num, docDate: o.doc_date,
           cardCode: o.card_code, cardName: o.card_name,
           qty: n(l.Quantity), lineTotal: n(l.LineTotal),
           unitPrice: n(l.UnitPrice), disc: n(l.DiscountPercent),
+          itemCode: l.ItemCode ?? "", embala: variant?.embala ?? "—",
         });
       }
     }
     return rows.sort((a, b) => (b.docDate > a.docDate ? 1 : -1));
-  }, [orders, product.itemCode]);
+  }, [orders, variantCodes, product.variants]);
 
   const topClients = useMemo(() => {
     const map = new Map<string, { name: string; fat: number; qty: number; orders: number }>();
@@ -267,6 +391,7 @@ function ProductModal({
 
   const pctTotal = totalFat > 0 ? (product.faturamento / totalFat * 100) : 0;
   const codColor = COD_COLORS[product.cod] ?? "#A81C2C";
+  const hasMultipleVariants = product.variants.length > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -282,7 +407,11 @@ function ProductModal({
               {product.capacidade !== "—" && <span className="text-xs text-sky-700 bg-sky-50 px-2 py-0.5 rounded-md font-medium">{product.capacidade}</span>}
               {product.cor !== "—" && <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">{product.cor}</span>}
               {product.fechamento !== "—" && <span className="text-xs text-violet-600 bg-violet-50 px-2 py-0.5 rounded-md font-medium">{product.fechamento}</span>}
-              <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${product.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>{product.embala}</span>
+              {hasMultipleVariants && (
+                <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-medium">
+                  {product.variants.length} embalagens
+                </span>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
@@ -294,9 +423,9 @@ function ProductModal({
           {/* KPIs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: "Faturamento", value: fmtBRL(product.faturamento), sub: `${pctTotal.toFixed(1)}% do total`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
-              { label: "Qtd Vendida", value: `${fmtNum(product.qtdUnd)} un`, sub: product.embalaQty > 1 ? `${fmtNum(product.qtdEmb)} emb ×${product.embalaQty}` : undefined, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
-              { label: "R$/UND Médio", value: product.precoUndMedio > 0 ? fmtBRL(product.precoUndMedio, 2) : "—", sub: product.embalaQty > 1 && product.precoEmbMedio > 0 ? `${fmtBRL(product.precoEmbMedio, 2)}/emb` : undefined, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-50" },
+              { label: "Faturamento 12m", value: fmtBRL(product.faturamento), sub: `${pctTotal.toFixed(1)}% do total`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+              { label: "Qtd Total (UND)", value: `${fmtNum(product.qtdUnd)} un`, sub: `Média 3m: ${fmtNum(Math.round(product.avgQtd3m))}/mês`, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
+              { label: "R$/UND Consolidado", value: product.precoUndMedio > 0 ? fmtBRL(product.precoUndMedio, 2) : "—", sub: product.maxSale12m > 0 ? `Max: ${fmtBRL(product.maxSale12m)} · Min: ${fmtBRL(product.minSale12m)}` : undefined, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-50" },
               { label: "Clientes", value: String(product.clientes), sub: `${product.vendas} vendas`, icon: Users, color: "text-violet-600", bg: "bg-violet-50" },
             ].map((k) => (
               <div key={k.label} className="rounded-xl border border-cockpit-border p-3">
@@ -308,6 +437,63 @@ function ProductModal({
                 {k.sub && <span className="text-[10px] text-cockpit-muted">{k.sub}</span>}
               </div>
             ))}
+          </div>
+
+          {/* Visão por Embalagem */}
+          <div>
+            <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Boxes className="w-3.5 h-3.5" /> Visão por Embalagem
+            </h4>
+            <div className="rounded-lg border border-cockpit-border overflow-hidden">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-cockpit-bg text-cockpit-muted uppercase text-[10px] border-b border-cockpit-border">
+                    <th className="py-2 px-3 bg-cockpit-bg">Embalagem</th>
+                    <th className="py-2 px-3 bg-cockpit-bg font-mono">SKU</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd Emb</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd UND</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg">R$/UND</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg">Faturamento</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg">%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-cockpit-border/50">
+                  {product.variants.map((v) => {
+                    const pctVar = product.faturamento > 0 ? (v.faturamento / product.faturamento * 100) : 0;
+                    return (
+                      <tr key={v.itemCode} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                        <td className="py-1.5 px-3">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${v.embala === "UND" ? "bg-gray-100 text-gray-600" : "bg-amber-50 text-amber-700"}`}>
+                            {v.embala}
+                          </span>
+                          {v.embalaQty > 1 && <span className="ml-1 text-[9px] text-gray-400">×{v.embalaQty}</span>}
+                        </td>
+                        <td className="py-1.5 px-3 font-mono text-blue-600 text-[10px]">{v.itemCode}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">{fmtNum(v.qtdEmb)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-gray-900">{fmtNum(v.qtdUnd)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-teal-700">{v.precoUndMedio > 0 ? fmtBRL(v.precoUndMedio, 2) : "—"}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-cockpit-accent">{fmtBRL(v.faturamento)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-gray-500">{pctVar.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                {product.variants.length > 1 && (
+                  <tfoot>
+                    <tr className="bg-cockpit-bg/70 border-t border-cockpit-border font-semibold">
+                      <td className="py-2 px-3 text-gray-700" colSpan={2}>Total Consolidado</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-600">
+                        {fmtNum(product.variants.reduce((s, v) => s + v.qtdEmb, 0))}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-900">{fmtNum(product.qtdUnd)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-teal-700">{product.precoUndMedio > 0 ? fmtBRL(product.precoUndMedio, 2) : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-cockpit-accent">{fmtBRL(product.faturamento)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-700">100%</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
 
           {/* Faturamento mensal */}
@@ -378,6 +564,7 @@ function ProductModal({
                       <th className="py-2 px-3 bg-cockpit-bg">Doc</th>
                       <th className="py-2 px-3 bg-cockpit-bg">Data</th>
                       <th className="py-2 px-3 bg-cockpit-bg">Cliente</th>
+                      {hasMultipleVariants && <th className="py-2 px-3 bg-cockpit-bg">Emb</th>}
                       <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd</th>
                       <th className="py-2 px-3 text-right bg-cockpit-bg">R$/Un</th>
                       <th className="py-2 px-3 text-right bg-cockpit-bg">Total</th>
@@ -388,7 +575,14 @@ function ProductModal({
                       <tr key={`${r.docNum}-${i}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
                         <td className="py-1.5 px-3 font-mono font-medium text-gray-700">{r.docNum}</td>
                         <td className="py-1.5 px-3 text-gray-600">{fmtDateShort(r.docDate)}</td>
-                        <td className="py-1.5 px-3 text-gray-700 max-w-[160px] truncate" title={r.cardName}>{r.cardName}</td>
+                        <td className="py-1.5 px-3 text-gray-700 max-w-[140px] truncate" title={r.cardName}>{r.cardName}</td>
+                        {hasMultipleVariants && (
+                          <td className="py-1.5 px-3">
+                            <span className={`inline-block px-1 py-0.5 rounded text-[9px] font-semibold ${r.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
+                              {r.embala}
+                            </span>
+                          </td>
+                        )}
                         <td className="py-1.5 px-3 text-right text-gray-600">{fmtNum(r.qty)}</td>
                         <td className="py-1.5 px-3 text-right text-gray-500">{fmtBRL(r.unitPrice, 2)}</td>
                         <td className="py-1.5 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(r.lineTotal)}</td>
@@ -403,7 +597,10 @@ function ProductModal({
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-cockpit-border bg-cockpit-bg/50 text-xs text-cockpit-muted flex items-center justify-between">
-          <span>{product.codName} · {product.vendas} vendas · {product.clientes} clientes · {pctTotal.toFixed(2)}% do total</span>
+          <span>
+            {product.codName} · {product.vendas} vendas · {product.clientes} clientes · {pctTotal.toFixed(2)}% do total
+            {hasMultipleVariants && ` · ${product.variants.length} embalagens`}
+          </span>
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 transition-colors">
             Fechar
           </button>
@@ -420,69 +617,128 @@ export default function ProdutosPage() {
 }
 
 function ProdutosContent() {
-  const { label: periodoLabel, range } = useDateRange();
-  const dateFrom = format(range.from, "yyyy-MM-dd");
-  const dateTo = format(range.to, "yyyy-MM-dd");
+  const { label: periodoLabel } = useDateRange();
 
-  const { data, loading, error, refetch } = useFetch(
-    () => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }),
-    [dateFrom, dateTo]
-  );
+  const date12mAgo = useMemo(() => format(subMonths(new Date(), 12), "yyyy-MM-dd"), []);
+  const date3mCutoff = useMemo(() => format(subMonths(new Date(), 3), "yyyy-MM-dd"), []);
+  const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+
+  const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom: date12mAgo, dateTo: todayStr }), [date12mAgo, todayStr]);
+  const { data: custData, loading: l2, error: e2, refetch: r2 } =
+    useFetch(() => fetchCustomers({ limit: 5000 }), []);
+  const { data: spData, loading: l3, error: e3, refetch: r3 } =
+    useFetch(() => fetchSalesPersons(), []);
+
+  const loading = l1;
+  const error = e1 || e2 || e3;
+
+  const allOrders = useMemo(() => ordersData?.items ?? [], [ordersData]);
+  const customers = useMemo(() => custData?.data ?? [], [custData]);
+  const persons = useMemo(() => spData?.items ?? [], [spData]);
+
+  const stateByCard = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of customers) {
+      if (c.state) map.set(c.card_code, c.state);
+    }
+    for (const o of allOrders) {
+      if (!map.has(o.card_code)) {
+        const uf = extractUF(o.address) || extractUF(o.address2);
+        if (uf) map.set(o.card_code, uf);
+      }
+    }
+    return map;
+  }, [customers, allOrders]);
+
+  const spMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const p of persons) map.set(p.SalesEmployeeCode, p.SalesEmployeeName);
+    return map;
+  }, [persons]);
 
   const [search, setSearch] = useState("");
   const [codFilter, setCodFilter] = useState("");
   const [embalaFilter, setEmbalaFilter] = useState("");
   const [capFilter, setCapFilter] = useState("");
   const [fechFilter, setFechFilter] = useState("");
+  const [estadoFilter, setEstadoFilter] = useState("");
+  const [vendedorFilter, setVendedorFilter] = useState("");
   const [sortField, setSortField] = useState<SortField>("faturamento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [modalProduct, setModalProduct] = useState<ProductRow | null>(null);
+  const [modalProduct, setModalProduct] = useState<UnifiedProductRow | null>(null);
 
-  const orders = useMemo(() => data?.items ?? [], [data]);
-  const { products, codGroups } = useMemo(() => buildProductData(orders), [orders]);
+  const estadoOptions = useMemo(() =>
+    [...new Set(Array.from(stateByCard.values()))].filter(Boolean).sort(),
+    [stateByCard]
+  );
 
-  const totalFat = useMemo(() => products.reduce((s, p) => s + p.faturamento, 0), [products]);
-  const totalUnd = useMemo(() => products.reduce((s, p) => s + p.qtdUnd, 0), [products]);
-  const totalEmb = useMemo(() => products.reduce((s, p) => s + p.qtdEmb, 0), [products]);
-  const ticketMedioSku = products.length > 0 ? totalFat / products.length : 0;
-  const medianUndPrice = median(products.filter((p) => p.precoUndMedio > 0).map((p) => p.precoUndMedio));
+  const vendedorOptions = useMemo(() => {
+    const codes = new Set<number>();
+    for (const o of allOrders) {
+      if (o.cancelled !== "Y" && o.sales_person_code != null) codes.add(o.sales_person_code);
+    }
+    return Array.from(codes)
+      .map((code) => ({ code, name: spMap.get(code) ?? `Vendedor ${code}` }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [allOrders, spMap]);
+
+  const filteredOrders = useMemo(() => {
+    let res = allOrders;
+    if (estadoFilter) res = res.filter((o) => stateByCard.get(o.card_code) === estadoFilter);
+    if (vendedorFilter) res = res.filter((o) => String(o.sales_person_code) === vendedorFilter);
+    return res;
+  }, [allOrders, estadoFilter, vendedorFilter, stateByCard]);
+
+  const { products, codGroups, clientsByItem } = useMemo(
+    () => buildProductData(filteredOrders, date3mCutoff),
+    [filteredOrders, date3mCutoff]
+  );
+  const unifiedProducts = useMemo(() => unifyProducts(products, clientsByItem), [products, clientsByItem]);
+
+  const totalFat = useMemo(() => unifiedProducts.reduce((s, p) => s + p.faturamento, 0), [unifiedProducts]);
+  const totalUnd = useMemo(() => unifiedProducts.reduce((s, p) => s + p.qtdUnd, 0), [unifiedProducts]);
+  const totalSkus = products.length;
+  const ticketMedioProd = unifiedProducts.length > 0 ? totalFat / unifiedProducts.length : 0;
+  const medianUndPrice = median(unifiedProducts.filter((p) => p.precoUndMedio > 0).map((p) => p.precoUndMedio));
 
   const embalaDist = useMemo(() => embalaDistribution(products), [products]);
-  const top10 = useMemo(() => products.slice(0, 10), [products]);
+  const top10 = useMemo(() => unifiedProducts.slice(0, 10), [unifiedProducts]);
   const codMedianAll = useMemo(() => median(codGroups.map((g) => g.faturamento)), [codGroups]);
 
-  const codList = useMemo(() => Array.from(new Set(products.map((p) => p.cod))).sort(), [products]);
+  const codList = useMemo(() => Array.from(new Set(unifiedProducts.map((p) => p.cod))).sort(), [unifiedProducts]);
   const embalaTypes = useMemo(() => {
     const s = new Set<string>();
     for (const p of products) s.add(p.embalaQty > 1 ? p.embala.split(" ")[0] : "UND");
     return Array.from(s).sort();
   }, [products]);
-
-  const capacidades = useMemo(() => [...new Set(products.map((p) => p.capacidade).filter((c) => c !== "—"))].sort(), [products]);
-  const fechamentos = useMemo(() => [...new Set(products.map((p) => p.fechamento).filter((f) => f !== "—"))].sort(), [products]);
+  const capacidades = useMemo(() => [...new Set(unifiedProducts.map((p) => p.capacidade).filter((c) => c !== "—"))].sort(), [unifiedProducts]);
+  const fechamentos = useMemo(() => [...new Set(unifiedProducts.map((p) => p.fechamento).filter((f) => f !== "—"))].sort(), [unifiedProducts]);
 
   const filtered = useMemo(() => {
-    let res = products;
+    let res = unifiedProducts;
     if (codFilter) res = res.filter((p) => p.cod === codFilter);
-    if (embalaFilter) res = res.filter((p) => (p.embalaQty > 1 ? p.embala.split(" ")[0] : "UND") === embalaFilter);
+    if (embalaFilter) res = res.filter((p) => p.variants.some((v) => (v.embalaQty > 1 ? v.embala.split(" ")[0] : "UND") === embalaFilter));
     if (capFilter) res = res.filter((p) => p.capacidade === capFilter);
     if (fechFilter) res = res.filter((p) => p.fechamento === fechFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       res = res.filter((p) =>
         p.itemCode.toLowerCase().includes(q) || p.subNome.toLowerCase().includes(q) ||
-        p.cod.toLowerCase().includes(q) || p.codName.toLowerCase().includes(q)
+        p.cod.toLowerCase().includes(q) || p.codName.toLowerCase().includes(q) ||
+        p.variants.some((v) => v.itemCode.toLowerCase().includes(q))
       );
     }
     res = [...res].sort((a, b) => {
       let cmp = 0;
       switch (sortField) {
-        case "itemCode": cmp = a.itemCode.localeCompare(b.itemCode); break;
         case "cod": cmp = a.cod.localeCompare(b.cod); break;
         case "subNome": cmp = a.subNome.localeCompare(b.subNome); break;
         case "faturamento": cmp = a.faturamento - b.faturamento; break;
         case "qtdUnd": cmp = a.qtdUnd - b.qtdUnd; break;
-        case "qtdEmb": cmp = a.qtdEmb - b.qtdEmb; break;
+        case "avgQtd3m": cmp = a.avgQtd3m - b.avgQtd3m; break;
+        case "maxSale12m": cmp = a.maxSale12m - b.maxSale12m; break;
+        case "minSale12m": cmp = a.minSale12m - b.minSale12m; break;
         case "precoUndMedio": cmp = a.precoUndMedio - b.precoUndMedio; break;
         case "vendas": cmp = a.vendas - b.vendas; break;
         case "clientes": cmp = a.clientes - b.clientes; break;
@@ -490,9 +746,14 @@ function ProdutosContent() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return res;
-  }, [products, codFilter, embalaFilter, capFilter, fechFilter, search, sortField, sortDir]);
+  }, [unifiedProducts, codFilter, embalaFilter, capFilter, fechFilter, search, sortField, sortDir]);
 
-  const hasActiveFilters = codFilter || embalaFilter || capFilter || fechFilter || search;
+  const hasActiveFilters = codFilter || embalaFilter || capFilter || fechFilter || search || estadoFilter || vendedorFilter;
+
+  const clearAllFilters = () => {
+    setCodFilter(""); setEmbalaFilter(""); setCapFilter(""); setFechFilter("");
+    setSearch(""); setEstadoFilter(""); setVendedorFilter("");
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -506,15 +767,18 @@ function ProdutosContent() {
 
   const handleExport = () => {
     const rows = filtered.map((p) => ({
-      "COD": p.cod, "Grupo": p.codName, "Código": p.itemCode, "Sub-Nome": p.subNome,
+      "COD": p.cod, "Grupo": p.codName, "SKU (UND)": p.itemCode, "Produto": p.subNome,
       "Capacidade": p.capacidade, "Cor": p.cor, "Fechamento": p.fechamento,
-      "Embalagem": p.embala, "Qtd/Emb": p.embalaQty,
-      "Emb. Vendidas": p.qtdEmb, "UND Vendidas": p.qtdUnd,
-      "R$/Emb Médio": p.precoEmbMedio.toFixed(2), "R$/UND Médio": p.precoUndMedio.toFixed(2),
-      "Faturamento": p.faturamento.toFixed(2), "Desc% Médio": p.descMedio.toFixed(1),
+      "Embalagens": p.variants.map((v) => v.embala).join(", "),
+      "Fat. Total 12m": p.faturamento.toFixed(2),
+      "Qtd Total 12m": p.qtdUnd,
+      "Média Qtd 3m": p.avgQtd3m.toFixed(0),
+      "Maior Venda 12m": p.maxSale12m.toFixed(2),
+      "Menor Venda 12m": p.minSale12m.toFixed(2),
+      "R$/UND Consolidado": p.precoUndMedio.toFixed(2),
       "Nº Vendas": p.vendas, "Clientes": p.clientes,
     }));
-    exportCSV(rows, `catalogo-produtos-${dateFrom}-${dateTo}`);
+    exportCSV(rows, `catalogo-produtos-12m-${todayStr}`);
   };
 
   if (loading) return (
@@ -526,7 +790,7 @@ function ProdutosContent() {
       <LoadingSkeleton rows={6} />
     </div>
   );
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (error) return <ErrorState message={error} onRetry={r1} />;
 
   return (
     <div className="space-y-5">
@@ -538,7 +802,13 @@ function ProdutosContent() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Catálogo de Produtos</h1>
             <p className="text-sm text-cockpit-muted mt-0.5">
-              <strong className="text-gray-700">{products.length}</strong> SKUs em <strong className="text-gray-700">{codGroups.length}</strong> grupos · {periodoLabel}
+              <strong className="text-gray-700">{unifiedProducts.length}</strong> produtos (<strong className="text-gray-700">{totalSkus}</strong> SKUs) em <strong className="text-gray-700">{codGroups.length}</strong> grupos · Últimos 12 meses
+              {(estadoFilter || vendedorFilter) && (
+                <span className="text-cockpit-accent font-semibold">
+                  {estadoFilter && ` · ${UF_NAME[estadoFilter] ?? estadoFilter}`}
+                  {vendedorFilter && ` · ${spMap.get(Number(vendedorFilter)) ?? `Vend. ${vendedorFilter}`}`}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -551,10 +821,10 @@ function ProdutosContent() {
       {/* ═══ KPIs ═══ */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {[
-          { label: "SKUs", value: fmtNum(products.length), sub: `${codGroups.length} grupos`, icon: Tag, color: "text-cockpit-accent" },
-          { label: "Faturamento", value: fmtBRL(totalFat), icon: DollarSign, color: "text-emerald-600" },
-          { label: "Qtd UND", value: fmtNum(totalUnd), sub: `${fmtNum(totalEmb)} embalagens`, icon: Package, color: "text-blue-600" },
-          { label: "Ticket/SKU", value: fmtBRL(ticketMedioSku), icon: TrendingUp, color: "text-violet-600" },
+          { label: "Produtos", value: fmtNum(unifiedProducts.length), sub: `${totalSkus} SKUs · ${codGroups.length} grupos`, icon: Tag, color: "text-cockpit-accent" },
+          { label: "Faturamento 12m", value: fmtBRL(totalFat), icon: DollarSign, color: "text-emerald-600" },
+          { label: "Qtd UND 12m", value: fmtNum(totalUnd), icon: Package, color: "text-blue-600" },
+          { label: "Ticket/Produto", value: fmtBRL(ticketMedioProd), icon: TrendingUp, color: "text-violet-600" },
           { label: "R$/UND Mediana", value: fmtBRL(medianUndPrice, 2), icon: Hash, color: "text-teal-600" },
           { label: "Tipo Embala", value: String(embalaTypes.length), sub: embalaTypes.join(", "), icon: Layers, color: "text-amber-600" },
         ].map((kpi) => (
@@ -572,7 +842,6 @@ function ProdutosContent() {
       {/* ═══ Charts ═══ */}
       {codGroups.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          {/* Faturamento por COD */}
           <div className="xl:col-span-2 rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -614,7 +883,6 @@ function ProdutosContent() {
             </div>
           </div>
 
-          {/* Mix de Embalagens */}
           <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Layers className="w-4 h-4 text-cockpit-accent" />
@@ -655,7 +923,6 @@ function ProdutosContent() {
                     })}
                   </div>
                 </div>
-
                 <div className="mt-4 pt-3 border-t border-cockpit-border/50 space-y-2">
                   <p className="text-[10px] text-cockpit-muted uppercase tracking-wider font-semibold mb-2">Grupos de Produto</p>
                   {codGroups.slice(0, 5).map((g) => {
@@ -680,12 +947,12 @@ function ProdutosContent() {
         </div>
       )}
 
-      {/* Top 10 SKUs */}
+      {/* Top 10 Produtos */}
       {top10.length > 0 && (
         <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-sm font-semibold text-gray-900">Top 10 SKUs por Faturamento</h2>
+            <h2 className="text-sm font-semibold text-gray-900">Top 10 Produtos por Faturamento</h2>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -696,19 +963,19 @@ function ProdutosContent() {
                   tickFormatter={(v: string) => v.length > 28 ? v.substring(0, 28) + "…" : v} />
                 <Tooltip content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
-                  const d = payload[0]?.payload as ProductRow;
+                  const d = payload[0]?.payload as UnifiedProductRow;
                   return (
                     <CTooltip>
                       <p className="font-semibold text-gray-800">{d.subNome}</p>
                       <p className="text-gray-500 text-[10px] font-mono mb-1">{d.itemCode} · {d.cod}</p>
                       <p className="text-cockpit-accent font-bold">{fmtBRL(d.faturamento)}</p>
-                      <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · {d.embala} · {fmtNum(d.vendas)} vendas · {d.clientes} clientes</p>
+                      <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · {d.variants.length} emb · {fmtNum(d.vendas)} vendas</p>
                       <p className="text-teal-700">R$/UND: {fmtBRL(d.precoUndMedio, 2)}</p>
                     </CTooltip>
                   );
                 }} />
                 <Bar dataKey="faturamento" radius={[0, 4, 4, 0]} barSize={18} cursor="pointer"
-                  onClick={(d) => { if (d) setModalProduct(d as unknown as ProductRow); }}>
+                  onClick={(d) => { if (d) setModalProduct(d as unknown as UnifiedProductRow); }}>
                   {top10.map((p) => <Cell key={p.itemCode} fill={COD_COLORS[p.cod] ?? "#A81C2C"} fillOpacity={0.8} />)}
                 </Bar>
               </BarChart>
@@ -720,6 +987,7 @@ function ProdutosContent() {
       {/* ═══ Filtros ═══ */}
       <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          {/* Row 1: Search + Estado + Vendedor + Grupo */}
           <div className="relative sm:col-span-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
             <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Código, nome, grupo..."
@@ -727,27 +995,49 @@ function ProdutosContent() {
             {search && <button type="button" onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 hover:bg-black/5 rounded"><X className="w-3.5 h-3.5 text-cockpit-muted" /></button>}
           </div>
           <div className="sm:col-span-2">
+            <div className="relative">
+              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cockpit-muted pointer-events-none" />
+              <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)}
+                className="w-full py-2 pl-8 pr-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
+                <option value="">Estado</option>
+                {estadoOptions.map((uf) => <option key={uf} value={uf}>{uf} — {UF_NAME[uf] ?? uf}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="sm:col-span-3">
+            <div className="relative">
+              <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cockpit-muted pointer-events-none" />
+              <select value={vendedorFilter} onChange={(e) => setVendedorFilter(e.target.value)}
+                className="w-full py-2 pl-8 pr-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
+                <option value="">Vendedor</option>
+                {vendedorOptions.map((v) => <option key={v.code} value={String(v.code)}>{v.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="sm:col-span-3">
             <select value={codFilter} onChange={(e) => setCodFilter(e.target.value)}
               className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
               <option value="">Todos grupos</option>
               {codList.map((c) => <option key={c} value={c}>{c} — {COD_NAMES[c] ?? c}</option>)}
             </select>
           </div>
-          <div className="sm:col-span-2">
+
+          {/* Row 2: Embalagem + Capacidade + Fechamento */}
+          <div className="sm:col-span-4">
             <select value={embalaFilter} onChange={(e) => setEmbalaFilter(e.target.value)}
               className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
               <option value="">Embalagem</option>
               {embalaTypes.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-4">
             <select value={capFilter} onChange={(e) => setCapFilter(e.target.value)}
               className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
               <option value="">Capacidade</option>
               {capacidades.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-4">
             <select value={fechFilter} onChange={(e) => setFechFilter(e.target.value)}
               className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
               <option value="">Fechamento</option>
@@ -760,6 +1050,16 @@ function ProdutosContent() {
         {hasActiveFilters && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] text-cockpit-muted uppercase font-semibold">Filtros:</span>
+            {estadoFilter && (
+              <button onClick={() => setEstadoFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors">
+                <MapPin className="w-2.5 h-2.5" /> {UF_NAME[estadoFilter] ?? estadoFilter} <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+            {vendedorFilter && (
+              <button onClick={() => setVendedorFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors">
+                <Briefcase className="w-2.5 h-2.5" /> {spMap.get(Number(vendedorFilter)) ?? vendedorFilter} <X className="w-2.5 h-2.5" />
+              </button>
+            )}
             {codFilter && (
               <button onClick={() => setCodFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cockpit-accent/10 text-cockpit-accent hover:bg-cockpit-accent/20 transition-colors">
                 {codFilter} <X className="w-2.5 h-2.5" />
@@ -785,7 +1085,7 @@ function ProdutosContent() {
                 &ldquo;{search}&rdquo; <X className="w-2.5 h-2.5" />
               </button>
             )}
-            <button onClick={() => { setCodFilter(""); setEmbalaFilter(""); setCapFilter(""); setFechFilter(""); setSearch(""); }}
+            <button onClick={clearAllFilters}
               className="text-[10px] text-cockpit-muted hover:text-cockpit-accent transition-colors underline">
               Limpar todos
             </button>
@@ -797,26 +1097,32 @@ function ProdutosContent() {
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden shadow-sm">
         <div className="px-4 py-2.5 border-b border-cockpit-border bg-gray-50/80 flex items-center justify-between">
           <p className="text-xs text-cockpit-muted">
-            <strong className="text-gray-800">{filtered.length}</strong> de <strong className="text-gray-800">{products.length}</strong> produtos
+            <strong className="text-gray-800">{filtered.length}</strong> de <strong className="text-gray-800">{unifiedProducts.length}</strong> produtos
           </p>
-          <span className="text-[10px] text-cockpit-accent/60">Clique em um produto para ver detalhes</span>
+          <span className="text-[10px] text-cockpit-accent/60">Clique em um produto para ver detalhes por embalagem</span>
         </div>
 
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-320px)]">
-          <table className="w-full text-xs min-w-[760px]">
+          <table className="w-full text-xs min-w-[1100px]">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50 text-[10px] uppercase tracking-wider text-cockpit-muted sticky top-0 z-10">
                 <th className="text-left py-2.5 px-2 font-semibold w-[44px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("cod")}>
                   <span className="inline-flex items-center gap-1">COD <SortIcon field="cod" /></span></th>
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("subNome")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="subNome" /></span></th>
-                <th className="text-center py-2.5 px-2 font-semibold w-[72px] bg-gray-50">Embala</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[70px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdUnd")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Qtd <SortIcon field="qtdUnd" /></span></th>
+                <th className="text-center py-2.5 px-2 font-semibold w-[68px] bg-gray-50">Emb.</th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[110px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Fat. 12m <SortIcon field="faturamento" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[72px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdUnd")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Qtd 12m <SortIcon field="qtdUnd" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[72px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("avgQtd3m")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Média 3m <SortIcon field="avgQtd3m" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("maxSale12m")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Maior Vnd <SortIcon field="maxSale12m" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("minSale12m")}>
+                  <span className="inline-flex items-center gap-1 justify-end">Menor Vnd <SortIcon field="minSale12m" /></span></th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[68px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("precoUndMedio")}>
                   <span className="inline-flex items-center gap-1 justify-end">R$/UND <SortIcon field="precoUndMedio" /></span></th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[120px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Faturamento <SortIcon field="faturamento" /></span></th>
                 <th className="text-center py-2.5 px-2 font-semibold w-[40px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("vendas")}>
                   <span className="inline-flex items-center gap-1">Vnd <SortIcon field="vendas" /></span></th>
                 <th className="text-center py-2.5 px-2 font-semibold w-[36px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("clientes")}>
@@ -826,15 +1132,16 @@ function ProdutosContent() {
             <tbody>
               {filtered.map((p, i) => {
                 const pctFat = totalFat > 0 ? (p.faturamento / totalFat * 100) : 0;
+                const hasMulti = p.variants.length > 1;
                 return (
-                  <tr key={p.itemCode} onClick={() => setModalProduct(p)}
+                  <tr key={`${p.cod}-${p.subNome}`} onClick={() => setModalProduct(p)}
                     className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.04] transition-colors cursor-pointer group ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
                     <td className="py-2 px-2 align-top">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: (COD_COLORS[p.cod] ?? "#A81C2C") + "18", color: COD_COLORS[p.cod] ?? "#A81C2C" }}>
                         {p.cod}
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-gray-700 max-w-[280px] align-top">
+                    <td className="py-2 px-2 text-gray-700 max-w-[220px] align-top">
                       <div className="flex items-center gap-1.5">
                         <span className="line-clamp-1 font-bold text-[11px] text-gray-900 group-hover:text-cockpit-accent transition-colors" title={`${p.itemCode} · ${p.subNome}`}>{p.subNome}</span>
                         <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
@@ -847,28 +1154,40 @@ function ProdutosContent() {
                       </div>
                     </td>
                     <td className="py-2 px-2 text-center align-top">
-                      <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${p.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>{p.embala}</span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums align-top">
-                      <span className="font-semibold text-gray-900">{fmtNum(p.qtdUnd)}</span>
-                      {p.embalaQty > 1 && (
-                        <span className="block text-[9px] text-gray-400 font-normal">{fmtNum(p.qtdEmb)} emb ×{p.embalaQty}</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums align-top">
-                      <span className={`text-[11px] ${p.embalaQty > 1 ? "text-teal-700 font-semibold" : "text-gray-600"}`}>{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio, 2) : "—"}</span>
-                      {p.embalaQty > 1 && p.precoEmbMedio > 0 && (
-                        <span className="block text-[9px] text-gray-400">{fmtBRL(p.precoEmbMedio, 2)}/emb</span>
-                      )}
+                      <div className="flex flex-wrap justify-center gap-0.5">
+                        {p.variants.map((v) => (
+                          <span key={v.itemCode}
+                            className={`inline-block px-1 py-0.5 rounded text-[9px] font-semibold ${v.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
+                            {v.embala === "UND" ? "UND" : v.embala.split(" ")[0]}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums align-top">
                       <div className="flex items-center justify-end gap-2">
-                        <div className="w-16 h-1.5 rounded-full bg-gray-100 overflow-hidden hidden sm:block">
+                        <div className="w-12 h-1.5 rounded-full bg-gray-100 overflow-hidden hidden sm:block">
                           <div className="h-full rounded-full" style={{ width: `${Math.min(pctFat * 3, 100)}%`, background: COD_COLORS[p.cod] ?? "#A81C2C", opacity: 0.6 }} />
                         </div>
                         <span className="font-semibold text-cockpit-accent">{fmtBRL(p.faturamento)}</span>
                       </div>
                       <span className={`block text-[9px] text-right ${pctFat >= 10 ? "text-cockpit-accent font-bold" : pctFat >= 3 ? "text-gray-600" : "text-gray-400"}`}>{pctFat.toFixed(1)}%</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="font-semibold text-gray-900">{fmtNum(p.qtdUnd)}</span>
+                      {hasMulti && <span className="block text-[9px] text-gray-400">{p.variants.length} var.</span>}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="text-blue-700 font-semibold">{fmtNum(Math.round(p.avgQtd3m))}</span>
+                      <span className="block text-[9px] text-gray-400">/mês</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="text-emerald-700 font-medium">{p.maxSale12m > 0 ? fmtBRL(p.maxSale12m) : "—"}</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="text-orange-600 font-medium">{p.minSale12m > 0 ? fmtBRL(p.minSale12m) : "—"}</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top">
+                      <span className="text-[11px] text-teal-700 font-semibold">{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio, 2) : "—"}</span>
                     </td>
                     <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.vendas}</td>
                     <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.clientes}</td>
@@ -876,11 +1195,11 @@ function ProdutosContent() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-12 text-cockpit-muted">
+                <tr><td colSpan={11} className="text-center py-12 text-cockpit-muted">
                   <Tag className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum produto encontrado</p>
                   {hasActiveFilters && (
-                    <button onClick={() => { setCodFilter(""); setEmbalaFilter(""); setCapFilter(""); setFechFilter(""); setSearch(""); }}
+                    <button onClick={clearAllFilters}
                       className="mt-2 text-xs text-cockpit-accent hover:underline">
                       Limpar filtros
                     </button>
@@ -895,8 +1214,8 @@ function ProdutosContent() {
           <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs">
             <span className="text-cockpit-muted">Total ({filtered.length} produtos)</span>
             <div className="flex items-center gap-5 tabular-nums">
-              <span className="text-gray-600">UND: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdUnd, 0))}</strong></span>
-              <span className="text-gray-600">Emb: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdEmb, 0))}</strong></span>
+              <span className="text-gray-600">UND 12m: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdUnd, 0))}</strong></span>
+              <span className="text-gray-600">Média 3m: <strong className="text-blue-700">{fmtNum(Math.round(filtered.reduce((s, p) => s + p.avgQtd3m, 0)))}/mês</strong></span>
               <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, p) => s + p.faturamento, 0))}</span>
             </div>
           </div>
@@ -905,9 +1224,9 @@ function ProdutosContent() {
 
       {/* Product Detail Modal */}
       {modalProduct && (
-        <ProductModal
+        <UnifiedProductModal
           product={modalProduct}
-          orders={orders}
+          orders={filteredOrders}
           totalFat={totalFat}
           onClose={() => setModalProduct(null)}
         />
