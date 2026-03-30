@@ -587,6 +587,145 @@ export async function querySalesOrders(opts: {
   };
 }
 
+/**
+ * Aggregated product analytics — all heavy work done in PostgreSQL.
+ * Returns ~200-500 rows instead of 50k raw orders.
+ */
+export async function queryProductAnalytics(opts: {
+  dateFrom: string;
+  dateTo: string;
+  date3mCutoff: string;
+  estado?: string;
+  salesPerson?: number;
+}) {
+  const db = getPool();
+  const conditions: string[] = ["o.cancelled = 'N'"];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  conditions.push(`o.doc_date >= $${idx++}`); params.push(opts.dateFrom);
+  conditions.push(`o.doc_date <= $${idx++}`); params.push(opts.dateTo);
+
+  const date3mIdx = idx++;
+  params.push(opts.date3mCutoff);
+
+  if (opts.salesPerson != null) {
+    conditions.push(`o.sales_person_code = $${idx++}`);
+    params.push(opts.salesPerson);
+  }
+  if (opts.estado) {
+    conditions.push(`(
+      substring(COALESCE(o.raw_json->>'Address','') from '-([A-Z]{2})[[:space:]]') = $${idx}
+      OR substring(COALESCE(o.raw_json->>'Address2','') from '-([A-Z]{2})[[:space:]]') = $${idx}
+    )`);
+    params.push(opts.estado);
+    idx++;
+  }
+
+  const where = conditions.join(" AND ");
+
+  const sql = `
+    WITH all_lines AS (
+      SELECT o.doc_entry, o.doc_date, o.card_code, o.sales_person_code,
+             l.item_code, l.item_description, l.quantity, l.line_total, l.unit_price, l.discount_percent
+      FROM sap_sales_orders o
+      INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
+      WHERE ${where}
+        UNION ALL
+      SELECT o.doc_entry, o.doc_date, o.card_code, o.sales_person_code,
+             dl->>'ItemCode', dl->>'ItemDescription',
+             COALESCE((dl->>'Quantity')::numeric,0),
+             COALESCE((dl->>'LineTotal')::numeric,0),
+             COALESCE((dl->>'UnitPrice')::numeric,0),
+             COALESCE((dl->>'DiscountPercent')::numeric,0)
+      FROM sap_sales_orders o
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.raw_json->'DocumentLines','[]'::jsonb)) dl
+      WHERE ${where}
+        AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines x WHERE x.doc_entry = o.doc_entry LIMIT 1)
+    )
+    SELECT
+      item_code,
+      item_description,
+      SUM(quantity)::float                                         AS total_qty,
+      SUM(line_total)::float                                       AS total_revenue,
+      MAX(CASE WHEN line_total > 0 THEN line_total END)::float     AS max_sale,
+      MIN(CASE WHEN line_total > 0 THEN line_total END)::float     AS min_sale,
+      COUNT(*)::int                                                AS sale_count,
+      COUNT(DISTINCT card_code)::int                               AS unique_clients,
+      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN quantity ELSE 0 END)::float AS qty_3m
+    FROM all_lines
+    WHERE item_code IS NOT NULL AND item_code <> ''
+    GROUP BY item_code, item_description
+    ORDER BY total_revenue DESC
+  `;
+
+  const filtersSql = `
+    SELECT
+      array_agg(DISTINCT uf ORDER BY uf) FILTER (WHERE uf IS NOT NULL) AS estados,
+      array_agg(DISTINCT sales_person_code ORDER BY sales_person_code) FILTER (WHERE sales_person_code IS NOT NULL) AS vendedor_codes
+    FROM (
+      SELECT
+        sales_person_code,
+        COALESCE(
+          substring(COALESCE(raw_json->>'Address','') from '-([A-Z]{2})[[:space:]]'),
+          substring(COALESCE(raw_json->>'Address2','') from '-([A-Z]{2})[[:space:]]')
+        ) AS uf
+      FROM sap_sales_orders
+      WHERE cancelled = 'N' AND doc_date >= $1 AND doc_date <= $2
+    ) sub
+  `;
+
+  const [prodRes, filtersRes] = await Promise.all([
+    db.query(sql, params),
+    db.query(filtersSql, [opts.dateFrom, opts.dateTo]),
+  ]);
+
+  return {
+    products: prodRes.rows,
+    estados: filtersRes.rows[0]?.estados ?? [],
+    vendedorCodes: filtersRes.rows[0]?.vendedor_codes ?? [],
+  };
+}
+
+/**
+ * Fetch order lines for specific item codes (for product detail modal).
+ * Much smaller payload than fetching all orders.
+ */
+export async function queryProductOrders(opts: {
+  itemCodes: string[];
+  dateFrom: string;
+  dateTo: string;
+}) {
+  const db = getPool();
+
+  const sql = `
+    WITH matched_lines AS (
+      SELECT o.doc_num, o.doc_date, o.card_code, o.card_name,
+             l.item_code, l.item_description, l.quantity, l.unit_price, l.line_total, l.discount_percent
+      FROM sap_sales_orders o
+      INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
+      WHERE o.cancelled = 'N' AND o.doc_date >= $1 AND o.doc_date <= $2
+        AND l.item_code = ANY($3)
+        UNION ALL
+      SELECT o.doc_num, o.doc_date, o.card_code, o.card_name,
+             dl->>'ItemCode', dl->>'ItemDescription',
+             COALESCE((dl->>'Quantity')::numeric,0),
+             COALESCE((dl->>'UnitPrice')::numeric,0),
+             COALESCE((dl->>'LineTotal')::numeric,0),
+             COALESCE((dl->>'DiscountPercent')::numeric,0)
+      FROM sap_sales_orders o
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.raw_json->'DocumentLines','[]'::jsonb)) dl
+      WHERE o.cancelled = 'N' AND o.doc_date >= $1 AND o.doc_date <= $2
+        AND dl->>'ItemCode' = ANY($3)
+        AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines x WHERE x.doc_entry = o.doc_entry LIMIT 1)
+    )
+    SELECT * FROM matched_lines ORDER BY doc_date DESC, doc_num DESC
+  `;
+
+  const res = await db.query(sql, [opts.dateFrom, opts.dateTo, opts.itemCodes]);
+  return { orders: res.rows };
+}
+
 export async function querySyncHistory(limit = 20) {
   const db = getPool();
   const res = await db.query(

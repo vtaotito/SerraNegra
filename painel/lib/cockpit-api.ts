@@ -270,6 +270,71 @@ export function fetchSalesOrders(opts?: {
   return get("/sap/sales-orders", p);
 }
 
+// ─── Product Analytics (server-side aggregation) ──────────────
+
+export interface ProductAnalyticsRow {
+  item_code: string;
+  item_description: string;
+  total_qty: number;
+  total_revenue: number;
+  max_sale: number | null;
+  min_sale: number | null;
+  sale_count: number;
+  unique_clients: number;
+  qty_3m: number;
+}
+
+export interface ProductAnalyticsResult {
+  ok: boolean;
+  products: ProductAnalyticsRow[];
+  estados: string[];
+  vendedorCodes: number[];
+  timestamp: string;
+}
+
+export function fetchProductAnalytics(opts: {
+  dateFrom: string;
+  dateTo: string;
+  date3mCutoff: string;
+  estado?: string;
+  salesPerson?: number;
+}): Promise<ProductAnalyticsResult> {
+  const p: Record<string, string> = {
+    dateFrom: opts.dateFrom,
+    dateTo: opts.dateTo,
+    date3mCutoff: opts.date3mCutoff,
+  };
+  if (opts.estado) p.estado = opts.estado;
+  if (opts.salesPerson != null) p.salesPerson = String(opts.salesPerson);
+  return get("/sap/products/analytics", p);
+}
+
+export interface ProductOrderLine {
+  doc_num: number;
+  doc_date: string;
+  card_code: string;
+  card_name: string;
+  item_code: string;
+  item_description: string;
+  quantity: number;
+  unit_price: number;
+  line_total: number;
+  discount_percent: number;
+}
+
+export function fetchProductOrders(opts: {
+  itemCodes: string[];
+  dateFrom: string;
+  dateTo: string;
+}): Promise<{ ok: boolean; count: number; orders: ProductOrderLine[] }> {
+  const p: Record<string, string> = {
+    itemCodes: opts.itemCodes.join(","),
+    dateFrom: opts.dateFrom,
+    dateTo: opts.dateTo,
+  };
+  return get("/sap/products/orders", p);
+}
+
 export function syncSalesOrders(): Promise<{
   ok: boolean;
   fetched: number;

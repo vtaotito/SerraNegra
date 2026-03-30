@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useMemo, Suspense } from "react";
+import { useState, useMemo, useCallback, Suspense } from "react";
 import {
   Tag, Search, X, Download, Package, DollarSign,
   TrendingUp, Hash, BarChart3, Layers,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronRight,
-  Users, Boxes, MapPin, Briefcase,
+  Users, Boxes, MapPin, Briefcase, Loader2,
 } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
@@ -15,13 +15,11 @@ import {
 import { format, subMonths } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort, exportCSV, getProductGroup, STATE_TO_REGION } from "@/lib/format";
 import {
-  fetchSalesOrders, fetchCustomers, fetchSalesPersons,
-  type SalesOrderRow, type SalesOrderLine,
-  type CustomerRow, type SapSalesPerson,
+  fetchProductAnalytics, fetchProductOrders, fetchSalesPersons,
+  type ProductAnalyticsRow, type ProductOrderLine, type SapSalesPerson,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
-import { useDateRange } from "@/contexts/DateRangeContext";
 
 const COD_NAMES: Record<string, string> = {
   GN: "Garrafa Normal", GI: "Garrafa Importada", PO: "Pote",
@@ -47,8 +45,6 @@ const UF_NAME: Record<string, string> = {
   SE: "Sergipe", TO: "Tocantins",
 };
 
-const n = (v: unknown) => Number(v) || 0;
-
 function median(arr: number[]): number {
   if (!arr.length) return 0;
   const s = [...arr].sort((a, b) => a - b);
@@ -60,12 +56,6 @@ function fmtK(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}k`;
   return v.toFixed(0);
-}
-
-function extractUF(addr: string | null | undefined): string | null {
-  if (!addr) return null;
-  const m = addr.match(/-([A-Z]{2})\s*[\r\n]/);
-  return m && STATE_TO_REGION[m[1]] ? m[1] : null;
 }
 
 /* ═══════════════════ Item parsing ═══════════════════ */
@@ -141,7 +131,6 @@ interface ProductRow {
   faturamento: number;
   precoEmbMedio: number;
   precoUndMedio: number;
-  descMedio: number;
   vendas: number;
   clientes: number;
   maxSaleValue: number;
@@ -180,66 +169,43 @@ interface UnifiedProductRow {
   variants: ProductRow[];
 }
 
-/* ═══════════════════ Data builders ═══════════════════ */
+/* ═══════════════════ Build from server-aggregated rows ═══════════════════ */
 
-function buildProductData(orders: SalesOrderRow[], date3mCutoff: string): {
+function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
   products: ProductRow[];
   codGroups: CodGroup[];
-  clientsByItem: Map<string, Set<string>>;
+  clientsByItem: Map<string, number>;
 } {
-  const active = orders.filter((o) => o.cancelled !== "Y");
-  const byItem = new Map<string, {
-    info: ParsedItem; qtdEmb: number; totals: number[]; descs: number[];
-    clients: Set<string>; maxSale: number; minSale: number; qty3mEmb: number;
-  }>();
-
-  for (const o of active) {
-    const isLast3m = o.doc_date >= date3mCutoff;
-    for (const l of (o.lines ?? [])) {
-      const code = l.ItemCode ?? "";
-      if (!code) continue;
-      const info = parseItemInfo(l.ItemCode, l.ItemDescription);
-      const qty = n(l.Quantity);
-      const total = n(l.LineTotal);
-      const disc = n(l.DiscountPercent);
-
-      let entry = byItem.get(code);
-      if (!entry) {
-        entry = { info, qtdEmb: 0, totals: [], descs: [], clients: new Set(), maxSale: -Infinity, minSale: Infinity, qty3mEmb: 0 };
-        byItem.set(code, entry);
-      }
-      entry.qtdEmb += qty;
-      entry.totals.push(total);
-      entry.descs.push(disc);
-      entry.clients.add(o.card_code ?? "");
-      if (total > 0) {
-        entry.maxSale = Math.max(entry.maxSale, total);
-        entry.minSale = Math.min(entry.minSale, total);
-      }
-      if (isLast3m) entry.qty3mEmb += qty;
-    }
-  }
-
-  const clientsByItem = new Map<string, Set<string>>();
-  const products: ProductRow[] = Array.from(byItem.entries()).map(([itemCode, e]) => {
-    const fat = e.totals.reduce((s, v) => s + v, 0);
-    const vendas = e.totals.length;
-    const qtdUnd = e.qtdEmb * e.info.embalaQty;
-    clientsByItem.set(itemCode, e.clients);
+  const products: ProductRow[] = rows.map((r) => {
+    const info = parseItemInfo(r.item_code, r.item_description);
+    const qtdEmb = r.total_qty;
+    const qtdUnd = qtdEmb * info.embalaQty;
+    const fat = r.total_revenue;
     return {
-      itemCode, cod: e.info.cod, codName: COD_NAMES[e.info.cod] ?? e.info.cod,
-      subNome: e.info.subNome, capacidade: e.info.capacidade, cor: e.info.cor,
-      fechamento: e.info.fechamento, embala: e.info.embala, embalaQty: e.info.embalaQty,
-      qtdEmb: e.qtdEmb, qtdUnd, faturamento: fat,
-      precoEmbMedio: e.qtdEmb > 0 ? fat / e.qtdEmb : 0,
+      itemCode: r.item_code,
+      cod: info.cod,
+      codName: COD_NAMES[info.cod] ?? info.cod,
+      subNome: info.subNome,
+      capacidade: info.capacidade,
+      cor: info.cor,
+      fechamento: info.fechamento,
+      embala: info.embala,
+      embalaQty: info.embalaQty,
+      qtdEmb,
+      qtdUnd,
+      faturamento: fat,
+      precoEmbMedio: qtdEmb > 0 ? fat / qtdEmb : 0,
       precoUndMedio: qtdUnd > 0 ? fat / qtdUnd : 0,
-      descMedio: e.descs.length > 0 ? e.descs.reduce((s, v) => s + v, 0) / e.descs.length : 0,
-      vendas, clientes: e.clients.size,
-      maxSaleValue: e.maxSale === -Infinity ? 0 : e.maxSale,
-      minSaleValue: e.minSale === Infinity ? 0 : e.minSale,
-      qty3mUnd: e.qty3mEmb * e.info.embalaQty,
+      vendas: r.sale_count,
+      clientes: r.unique_clients,
+      maxSaleValue: r.max_sale ?? 0,
+      minSaleValue: r.min_sale ?? 0,
+      qty3mUnd: (r.qty_3m ?? 0) * info.embalaQty,
     };
   }).sort((a, b) => b.faturamento - a.faturamento);
+
+  const clientsByItem = new Map<string, number>();
+  for (const p of products) clientsByItem.set(p.itemCode, p.clientes);
 
   const byCod = new Map<string, { skus: Set<string>; qtdEmb: number; qtdUnd: number; fat: number; vendas: number; unitPrices: number[] }>();
   for (const p of products) {
@@ -260,7 +226,7 @@ function buildProductData(orders: SalesOrderRow[], date3mCutoff: string): {
   return { products, codGroups, clientsByItem };
 }
 
-function unifyProducts(products: ProductRow[], clientsByItem: Map<string, Set<string>>): UnifiedProductRow[] {
+function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number>): UnifiedProductRow[] {
   const groups = new Map<string, ProductRow[]>();
   for (const p of products) {
     const key = `${p.cod}::${p.subNome}`;
@@ -277,11 +243,7 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, Set<st
     const totalFat = variants.reduce((s, v) => s + v.faturamento, 0);
     const totalVendas = variants.reduce((s, v) => s + v.vendas, 0);
 
-    const mergedClients = new Set<string>();
-    for (const v of variants) {
-      const cs = clientsByItem.get(v.itemCode);
-      if (cs) for (const c of cs) mergedClients.add(c);
-    }
+    const totalClients = Math.max(...variants.map((v) => clientsByItem.get(v.itemCode) ?? 0), 0);
 
     const maxVals = variants.map((v) => v.maxSaleValue).filter((v) => v > 0);
     const minVals = variants.map((v) => v.minSaleValue).filter((v) => v > 0);
@@ -303,7 +265,7 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, Set<st
       faturamento: totalFat,
       precoUndMedio: totalQtdUnd > 0 ? totalFat / totalQtdUnd : 0,
       vendas: totalVendas,
-      clientes: mergedClients.size,
+      clientes: totalClients,
       avgQtd3m: totalQty3m / 3,
       maxSale12m: maxVals.length > 0 ? Math.max(...maxVals) : 0,
       minSale12m: minVals.length > 0 ? Math.min(...minVals) : 0,
@@ -330,37 +292,36 @@ function CTooltip({ children }: { children: React.ReactNode }) {
   return <div className="bg-white/95 backdrop-blur-sm border border-cockpit-border rounded-lg shadow-lg px-3 py-2.5 text-xs">{children}</div>;
 }
 
-/* ═══════════════════ Unified Product Detail Modal ═══════════════════ */
+/* ═══════════════════ Lazy-loaded Product Detail Modal ═══════════════════ */
 
 function UnifiedProductModal({
-  product, orders, totalFat, onClose,
+  product, dateFrom, dateTo, totalFat, onClose,
 }: {
-  product: UnifiedProductRow; orders: SalesOrderRow[]; totalFat: number; onClose: () => void;
+  product: UnifiedProductRow; dateFrom: string; dateTo: string; totalFat: number; onClose: () => void;
 }) {
-  const variantCodes = useMemo(() => new Set(product.variants.map((v) => v.itemCode)), [product.variants]);
+  const itemCodes = useMemo(() => product.variants.map((v) => v.itemCode), [product.variants]);
+
+  const { data: ordersData, loading: ordersLoading } = useFetch(
+    () => fetchProductOrders({ itemCodes, dateFrom, dateTo }),
+    [itemCodes.join(","), dateFrom, dateTo],
+  );
 
   const productOrders = useMemo(() => {
-    const rows: Array<{
-      docNum: number; docDate: string; cardCode: string; cardName: string;
-      qty: number; lineTotal: number; unitPrice: number; disc: number;
-      itemCode: string; embala: string;
-    }> = [];
-    for (const o of orders) {
-      if (o.cancelled === "Y") continue;
-      for (const l of (o.lines ?? [])) {
-        if (!variantCodes.has(l.ItemCode ?? "")) continue;
-        const variant = product.variants.find((v) => v.itemCode === (l.ItemCode ?? ""));
-        rows.push({
-          docNum: o.doc_num, docDate: o.doc_date,
-          cardCode: o.card_code, cardName: o.card_name,
-          qty: n(l.Quantity), lineTotal: n(l.LineTotal),
-          unitPrice: n(l.UnitPrice), disc: n(l.DiscountPercent),
-          itemCode: l.ItemCode ?? "", embala: variant?.embala ?? "—",
-        });
-      }
-    }
-    return rows.sort((a, b) => (b.docDate > a.docDate ? 1 : -1));
-  }, [orders, variantCodes, product.variants]);
+    if (!ordersData?.orders) return [];
+    const variantMap = new Map(product.variants.map((v) => [v.itemCode, v]));
+    return ordersData.orders.map((o) => ({
+      docNum: o.doc_num,
+      docDate: o.doc_date,
+      cardCode: o.card_code,
+      cardName: o.card_name,
+      qty: Number(o.quantity) || 0,
+      lineTotal: Number(o.line_total) || 0,
+      unitPrice: Number(o.unit_price) || 0,
+      disc: Number(o.discount_percent) || 0,
+      itemCode: o.item_code,
+      embala: variantMap.get(o.item_code)?.embala ?? "—",
+    }));
+  }, [ordersData, product.variants]);
 
   const topClients = useMemo(() => {
     const map = new Map<string, { name: string; fat: number; qty: number; orders: number }>();
@@ -496,8 +457,16 @@ function UnifiedProductModal({
             </div>
           </div>
 
+          {/* Loading indicator for lazy-loaded data */}
+          {ordersLoading && (
+            <div className="flex items-center justify-center gap-2 py-4 text-cockpit-muted">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span className="text-xs">Carregando histórico...</span>
+            </div>
+          )}
+
           {/* Faturamento mensal */}
-          {monthlyData.length > 1 && (
+          {!ordersLoading && monthlyData.length > 1 && (
             <div>
               <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Evolução Mensal</h4>
               <div className="h-36">
@@ -527,7 +496,7 @@ function UnifiedProductModal({
           )}
 
           {/* Top clientes */}
-          {topClients.length > 0 && (
+          {!ordersLoading && topClients.length > 0 && (
             <div>
               <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Top Clientes</h4>
               <div className="space-y-1.5">
@@ -552,47 +521,49 @@ function UnifiedProductModal({
           )}
 
           {/* Histórico de vendas */}
-          <div>
-            <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">
-              Histórico de Vendas ({productOrders.length})
-            </h4>
-            <div className="rounded-lg border border-cockpit-border overflow-hidden">
-              <div className="overflow-y-auto max-h-52">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="bg-cockpit-bg text-cockpit-muted uppercase text-[10px] border-b border-cockpit-border sticky top-0">
-                      <th className="py-2 px-3 bg-cockpit-bg">Doc</th>
-                      <th className="py-2 px-3 bg-cockpit-bg">Data</th>
-                      <th className="py-2 px-3 bg-cockpit-bg">Cliente</th>
-                      {hasMultipleVariants && <th className="py-2 px-3 bg-cockpit-bg">Emb</th>}
-                      <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd</th>
-                      <th className="py-2 px-3 text-right bg-cockpit-bg">R$/Un</th>
-                      <th className="py-2 px-3 text-right bg-cockpit-bg">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-cockpit-border/50">
-                    {productOrders.map((r, i) => (
-                      <tr key={`${r.docNum}-${i}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
-                        <td className="py-1.5 px-3 font-mono font-medium text-gray-700">{r.docNum}</td>
-                        <td className="py-1.5 px-3 text-gray-600">{fmtDateShort(r.docDate)}</td>
-                        <td className="py-1.5 px-3 text-gray-700 max-w-[140px] truncate" title={r.cardName}>{r.cardName}</td>
-                        {hasMultipleVariants && (
-                          <td className="py-1.5 px-3">
-                            <span className={`inline-block px-1 py-0.5 rounded text-[9px] font-semibold ${r.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
-                              {r.embala}
-                            </span>
-                          </td>
-                        )}
-                        <td className="py-1.5 px-3 text-right text-gray-600">{fmtNum(r.qty)}</td>
-                        <td className="py-1.5 px-3 text-right text-gray-500">{fmtBRL(r.unitPrice, 2)}</td>
-                        <td className="py-1.5 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(r.lineTotal)}</td>
+          {!ordersLoading && productOrders.length > 0 && (
+            <div>
+              <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">
+                Histórico de Vendas ({productOrders.length})
+              </h4>
+              <div className="rounded-lg border border-cockpit-border overflow-hidden">
+                <div className="overflow-y-auto max-h-52">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="bg-cockpit-bg text-cockpit-muted uppercase text-[10px] border-b border-cockpit-border sticky top-0">
+                        <th className="py-2 px-3 bg-cockpit-bg">Doc</th>
+                        <th className="py-2 px-3 bg-cockpit-bg">Data</th>
+                        <th className="py-2 px-3 bg-cockpit-bg">Cliente</th>
+                        {hasMultipleVariants && <th className="py-2 px-3 bg-cockpit-bg">Emb</th>}
+                        <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd</th>
+                        <th className="py-2 px-3 text-right bg-cockpit-bg">R$/Un</th>
+                        <th className="py-2 px-3 text-right bg-cockpit-bg">Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-cockpit-border/50">
+                      {productOrders.map((r, i) => (
+                        <tr key={`${r.docNum}-${i}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                          <td className="py-1.5 px-3 font-mono font-medium text-gray-700">{r.docNum}</td>
+                          <td className="py-1.5 px-3 text-gray-600">{fmtDateShort(r.docDate)}</td>
+                          <td className="py-1.5 px-3 text-gray-700 max-w-[140px] truncate" title={r.cardName}>{r.cardName}</td>
+                          {hasMultipleVariants && (
+                            <td className="py-1.5 px-3">
+                              <span className={`inline-block px-1 py-0.5 rounded text-[9px] font-semibold ${r.embala === "UND" ? "bg-gray-100 text-gray-500" : "bg-amber-50 text-amber-700"}`}>
+                                {r.embala}
+                              </span>
+                            </td>
+                          )}
+                          <td className="py-1.5 px-3 text-right text-gray-600">{fmtNum(r.qty)}</td>
+                          <td className="py-1.5 px-3 text-right text-gray-500">{fmtBRL(r.unitPrice, 2)}</td>
+                          <td className="py-1.5 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(r.lineTotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -617,82 +588,43 @@ export default function ProdutosPage() {
 }
 
 function ProdutosContent() {
-  const { label: periodoLabel } = useDateRange();
-
   const date12mAgo = useMemo(() => format(subMonths(new Date(), 12), "yyyy-MM-dd"), []);
   const date3mCutoff = useMemo(() => format(subMonths(new Date(), 3), "yyyy-MM-dd"), []);
   const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
 
-  const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
-    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom: date12mAgo, dateTo: todayStr }), [date12mAgo, todayStr]);
-  const { data: custData, loading: l2, error: e2, refetch: r2 } =
-    useFetch(() => fetchCustomers({ limit: 5000 }), []);
-  const { data: spData, loading: l3, error: e3, refetch: r3 } =
-    useFetch(() => fetchSalesPersons(), []);
+  const [estadoFilter, setEstadoFilter] = useState("");
+  const [vendedorFilter, setVendedorFilter] = useState("");
 
-  const loading = l1;
-  const error = e1 || e2 || e3;
+  const { data: analyticsData, loading, error, refetch } = useFetch(
+    () => fetchProductAnalytics({
+      dateFrom: date12mAgo,
+      dateTo: todayStr,
+      date3mCutoff,
+      estado: estadoFilter || undefined,
+      salesPerson: vendedorFilter ? Number(vendedorFilter) : undefined,
+    }),
+    [date12mAgo, todayStr, date3mCutoff, estadoFilter, vendedorFilter],
+  );
 
-  const allOrders = useMemo(() => ordersData?.items ?? [], [ordersData]);
-  const customers = useMemo(() => custData?.data ?? [], [custData]);
-  const persons = useMemo(() => spData?.items ?? [], [spData]);
-
-  const stateByCard = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of customers) {
-      if (c.state) map.set(c.card_code, c.state);
-    }
-    for (const o of allOrders) {
-      if (!map.has(o.card_code)) {
-        const uf = extractUF(o.address) || extractUF(o.address2);
-        if (uf) map.set(o.card_code, uf);
-      }
-    }
-    return map;
-  }, [customers, allOrders]);
+  const { data: spData } = useFetch(() => fetchSalesPersons(), []);
 
   const spMap = useMemo(() => {
     const map = new Map<number, string>();
-    for (const p of persons) map.set(p.SalesEmployeeCode, p.SalesEmployeeName);
+    for (const p of spData?.items ?? []) map.set(p.SalesEmployeeCode, p.SalesEmployeeName);
     return map;
-  }, [persons]);
+  }, [spData]);
 
-  const [search, setSearch] = useState("");
-  const [codFilter, setCodFilter] = useState("");
-  const [embalaFilter, setEmbalaFilter] = useState("");
-  const [capFilter, setCapFilter] = useState("");
-  const [fechFilter, setFechFilter] = useState("");
-  const [estadoFilter, setEstadoFilter] = useState("");
-  const [vendedorFilter, setVendedorFilter] = useState("");
-  const [sortField, setSortField] = useState<SortField>("faturamento");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [modalProduct, setModalProduct] = useState<UnifiedProductRow | null>(null);
-
-  const estadoOptions = useMemo(() =>
-    [...new Set(Array.from(stateByCard.values()))].filter(Boolean).sort(),
-    [stateByCard]
+  const estadoOptions = useMemo(() => analyticsData?.estados ?? [], [analyticsData]);
+  const vendedorOptions = useMemo(() =>
+    (analyticsData?.vendedorCodes ?? []).map((code) => ({
+      code, name: spMap.get(code) ?? `Vendedor ${code}`,
+    })).sort((a, b) => a.name.localeCompare(b.name)),
+    [analyticsData, spMap],
   );
 
-  const vendedorOptions = useMemo(() => {
-    const codes = new Set<number>();
-    for (const o of allOrders) {
-      if (o.cancelled !== "Y" && o.sales_person_code != null) codes.add(o.sales_person_code);
-    }
-    return Array.from(codes)
-      .map((code) => ({ code, name: spMap.get(code) ?? `Vendedor ${code}` }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allOrders, spMap]);
-
-  const filteredOrders = useMemo(() => {
-    let res = allOrders;
-    if (estadoFilter) res = res.filter((o) => stateByCard.get(o.card_code) === estadoFilter);
-    if (vendedorFilter) res = res.filter((o) => String(o.sales_person_code) === vendedorFilter);
-    return res;
-  }, [allOrders, estadoFilter, vendedorFilter, stateByCard]);
-
   const { products, codGroups, clientsByItem } = useMemo(
-    () => buildProductData(filteredOrders, date3mCutoff),
-    [filteredOrders, date3mCutoff]
+    () => buildFromAnalytics(analyticsData?.products ?? []),
+    [analyticsData],
   );
   const unifiedProducts = useMemo(() => unifyProducts(products, clientsByItem), [products, clientsByItem]);
 
@@ -705,6 +637,15 @@ function ProdutosContent() {
   const embalaDist = useMemo(() => embalaDistribution(products), [products]);
   const top10 = useMemo(() => unifiedProducts.slice(0, 10), [unifiedProducts]);
   const codMedianAll = useMemo(() => median(codGroups.map((g) => g.faturamento)), [codGroups]);
+
+  const [search, setSearch] = useState("");
+  const [codFilter, setCodFilter] = useState("");
+  const [embalaFilter, setEmbalaFilter] = useState("");
+  const [capFilter, setCapFilter] = useState("");
+  const [fechFilter, setFechFilter] = useState("");
+  const [sortField, setSortField] = useState<SortField>("faturamento");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [modalProduct, setModalProduct] = useState<UnifiedProductRow | null>(null);
 
   const codList = useMemo(() => Array.from(new Set(unifiedProducts.map((p) => p.cod))).sort(), [unifiedProducts]);
   const embalaTypes = useMemo(() => {
@@ -781,7 +722,10 @@ function ProdutosContent() {
     exportCSV(rows, `catalogo-produtos-12m-${todayStr}`);
   };
 
-  if (loading) return (
+  const isFirstLoad = loading && !analyticsData;
+  const isRefreshing = loading && !!analyticsData;
+
+  if (isFirstLoad) return (
     <div className="space-y-6">
       <div className="flex items-center gap-2.5">
         <div className="p-2 rounded-lg bg-cockpit-accent/10"><Tag className="w-5 h-5 text-cockpit-accent" /></div>
@@ -790,10 +734,17 @@ function ProdutosContent() {
       <LoadingSkeleton rows={6} />
     </div>
   );
-  if (error) return <ErrorState message={error} onRetry={r1} />;
+  if (error && !analyticsData) return <ErrorState message={error} onRetry={refetch} />;
 
   return (
     <div className="space-y-5">
+
+      {/* Refresh indicator */}
+      {isRefreshing && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-cockpit-accent/20">
+          <div className="h-full bg-cockpit-accent animate-pulse rounded-full" style={{ width: "60%" }} />
+        </div>
+      )}
 
       {/* ═══ Header ═══ */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1226,7 +1177,8 @@ function ProdutosContent() {
       {modalProduct && (
         <UnifiedProductModal
           product={modalProduct}
-          orders={filteredOrders}
+          dateFrom={date12mAgo}
+          dateTo={todayStr}
           totalFat={totalFat}
           onClose={() => setModalProduct(null)}
         />

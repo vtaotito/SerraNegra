@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, querySalesOrders, querySyncHistory, queryDbStats } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, querySalesOrders, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1238,6 +1238,48 @@ export async function registerSapRoutes(app: FastifyInstance) {
   // ========================================
   // PEDIDOS DE VENDA — base local (PostgreSQL)
   // ========================================
+
+  /**
+   * GET /api/sap/products/analytics
+   * Pre-aggregated product analytics (SQL server-side).
+   * Returns ~200-500 product rows instead of 50k raw orders.
+   */
+  app.get("/sap/products/analytics", async (req, reply) => {
+    const q = req.query as any;
+    try {
+      const result = await queryProductAnalytics({
+        dateFrom: q.dateFrom,
+        dateTo: q.dateTo,
+        date3mCutoff: q.date3mCutoff,
+        estado: q.estado || undefined,
+        salesPerson: q.salesPerson ? Number(q.salesPerson) : undefined,
+      });
+      reply.code(200).send({ ok: true, ...result, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * GET /api/sap/products/orders
+   * Order lines for specific item codes (modal detail lazy load).
+   */
+  app.get("/sap/products/orders", async (req, reply) => {
+    const q = req.query as any;
+    try {
+      const itemCodes = typeof q.itemCodes === "string" ? q.itemCodes.split(",") : [];
+      const result = await queryProductOrders({
+        itemCodes,
+        dateFrom: q.dateFrom,
+        dateTo: q.dateTo,
+      });
+      reply.code(200).send({ ok: true, count: result.orders.length, orders: result.orders, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
 
   /**
    * GET /api/sap/sales-orders
