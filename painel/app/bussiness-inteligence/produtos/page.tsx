@@ -82,24 +82,33 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
   let embalaQty = 1;
   const unit = "UND";
 
+  const U = "(?:UND|UNID)";
+
   const dashIdx = d.lastIndexOf(" - ");
   if (dashIdx > 0) {
     subNome = d.slice(0, dashIdx).trim();
     const packPart = d.slice(dashIdx + 3).trim();
-    const packRx = /^(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND$/i;
-    const m = packPart.match(packRx);
+    const rxCSlash = new RegExp(`^(CAIXA|FARDO|PALETE)\\s+C\\s*/\\s*([\\d.,]+)\\s*${U}?\\s*$`, "i");
+    const rxPlain  = new RegExp(`^(CAIXA|FARDO|PALETE)\\s+(\\d+)\\s*${U}\\s*$`, "i");
+    const m = packPart.match(rxCSlash) ?? packPart.match(rxPlain);
     if (m) { embalaQty = parseInt(m[2].replace(/\./g, "").replace(",", "."), 10) || 1; embala = `${m[1].toUpperCase()} C/${embalaQty}`; }
-    else if (/^UND$/i.test(packPart.replace(/-/g, "").trim())) { embala = "UND"; embalaQty = 1; }
+    else if (new RegExp(`^${U}$`, "i").test(packPart.replace(/-/g, "").trim())) { embala = "UND"; embalaQty = 1; }
     else embala = packPart || "—";
-  } else if (/[-–]\s*UND\s*$/i.test(d)) {
-    subNome = d.slice(0, d.search(/[-–]\s*UND\s*$/i)).trim();
+  } else if (new RegExp(`[-–]\\s*${U}\\s*$`, "i").test(d)) {
+    subNome = d.slice(0, d.search(new RegExp(`[-–]\\s*${U}\\s*$`, "i"))).trim();
     embala = "UND"; embalaQty = 1;
   } else {
-    const inRx = /\s+(CAIXA|FARDO|PALETE)\s+C\s*\/\s*([\d.,]+)\s*UND\s*$/i;
-    const m2 = d.match(inRx);
+    const rxCSlash = new RegExp(`\\s+(CAIXA|FARDO|PALETE)\\s+C\\s*/\\s*([\\d.,]+)\\s*${U}?\\s*$`, "i");
+    const rxPlain  = new RegExp(`\\s+(CAIXA|FARDO|PALETE)\\s+(\\d+)\\s*${U}\\s*$`, "i");
+    const m2 = d.match(rxCSlash) ?? d.match(rxPlain);
     if (m2) { subNome = d.slice(0, m2.index!).trim(); embalaQty = parseInt(m2[2].replace(/\./g, "").replace(",", "."), 10) || 1; embala = `${m2[1].toUpperCase()} C/${embalaQty}`; }
-    else if (/\bUND\s*$/i.test(d)) { const ui = d.search(/\s+UND\s*$/i); if (ui > 0) { subNome = d.slice(0, ui).trim(); embala = "UND"; embalaQty = 1; } }
+    else if (new RegExp(`\\b${U}\\s*$`, "i").test(d)) {
+      const ui = d.search(new RegExp(`\\s+${U}\\s*$`, "i"));
+      if (ui > 0) { subNome = d.slice(0, ui).trim(); embala = "UND"; embalaQty = 1; }
+    }
   }
+
+  subNome = subNome.replace(/\s{2,}/g, " ").trim();
 
   const capM = subNome.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
   const capacidade = capM ? `${capM[1]} ${capM[2].toUpperCase()}` : "—";
@@ -419,10 +428,10 @@ function UnifiedProductModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cockpit-border/50">
-                  {product.variants.map((v) => {
+                  {product.variants.map((v, vi) => {
                     const pctVar = product.faturamento > 0 ? (v.faturamento / product.faturamento * 100) : 0;
                     return (
-                      <tr key={v.itemCode} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                      <tr key={`${v.itemCode}-${v.embala}-${vi}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
                         <td className="py-1.5 px-3">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${v.embala === "UND" ? "bg-gray-100 text-gray-600" : "bg-amber-50 text-amber-700"}`}>
                             {v.embala}
