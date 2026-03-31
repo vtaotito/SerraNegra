@@ -21,6 +21,9 @@ export const API_ENDPOINTS = {
   // Customers
   CUSTOMERS: "/v1/customers",
   CUSTOMER_BY_ID: (id: string) => `/v1/customers/${id}`,
+  CUSTOMER_PRICING: (cardCode: string) => `/v1/customers/${cardCode}/pricing`,
+  CUSTOMER_PRICING_ITEM: (cardCode: string, sku: string) =>
+    `/v1/customers/${cardCode}/pricing/${encodeURIComponent(sku)}`,
 
   // Health
   HEALTH: "/health",

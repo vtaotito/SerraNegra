@@ -1,3 +1,4 @@
+import os
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,11 +28,31 @@ class OrderStateMachine:
 
 
 def load_state_machine() -> OrderStateMachine:
-    # No container, copiamos STATE_MACHINE.json para /app/STATE_MACHINE.json
-    path = Path(__file__).resolve().parent.parent / "STATE_MACHINE.json"
-    if not path.exists():
-        # fallback: /app/STATE_MACHINE.json
-        path = Path("/app/STATE_MACHINE.json")
+    """
+    Carrega o state machine de pedidos.
+
+    Ordem de busca:
+    - `STATE_MACHINE_PATH` (se definido)
+    - Raiz do repositório (../../..): `STATE_MACHINE.json`
+    - Container path: `/app/STATE_MACHINE.json`
+    """
+    candidates: list[Path] = []
+    env_path = os.getenv("STATE_MACHINE_PATH")
+    if env_path:
+        candidates.append(Path(env_path))
+
+    # repo root (core/app/ -> core/ -> repo/)
+    candidates.append(Path(__file__).resolve().parents[2] / "STATE_MACHINE.json")
+
+    # container fallback
+    candidates.append(Path("/app/STATE_MACHINE.json"))
+
+    path = next((p for p in candidates if p.exists()), None)
+    if not path:
+        raise FileNotFoundError(
+            "STATE_MACHINE.json não encontrado. Defina STATE_MACHINE_PATH ou garanta o arquivo na raiz do projeto."
+        )
+
     data = json.loads(path.read_text(encoding="utf-8"))
     transitions = [
         Transition(from_state=t["from"], event_type=t["eventType"], to_state=t["to"])

@@ -171,10 +171,10 @@ export function SapOrdersPreview() {
                 Total: {data?.count ?? items.length} pedido(s) aberto(s)
               </span>
               <Button variant="link" size="sm" asChild>
-                <a href="/pedidos" className="flex items-center gap-1">
+                <Link href="/pedidos" className="flex items-center gap-1">
                   Ver todos no WMS
                   <ExternalLink className="h-3 w-3" />
-                </a>
+                </Link>
               </Button>
             </div>
           </div>
