@@ -1434,10 +1434,6 @@ export async function registerSapRoutes(app: FastifyInstance) {
   // TABELAS DE PREÇO (ITM1 + OPLN)
   // ========================================
 
-  /**
-   * GET /api/sap/prices
-   * Retorna preços de venda por lista de preços ativa (SQLQuery ITM1+OPLN).
-   */
   app.get("/sap/prices", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
 
@@ -1458,6 +1454,81 @@ export async function registerSapRoutes(app: FastifyInstance) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
       req.log.error({ error, correlationId }, "Erro ao buscar tabelas de preço");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  // ========================================
+  // PREÇOS TRANSACIONAIS (baseados em vendas reais)
+  // ========================================
+
+  app.get("/sap/prices/practiced", async (req, reply) => {
+    try {
+      const { getDbPool } = await import("../scheduler/dailySync.js");
+      const db = getDbPool();
+
+      const sql = `
+        WITH line_data AS (
+          SELECT
+            l.item_code,
+            l.item_description,
+            l.unit_price,
+            l.line_total,
+            l.quantity,
+            l.discount_percent,
+            o.doc_date,
+            o.doc_num,
+            o.card_code,
+            o.card_name
+          FROM sap_sales_order_lines l
+          INNER JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
+          WHERE o.cancelled = 'N'
+            AND l.unit_price > 0
+            AND l.quantity > 0
+        )
+        SELECT
+          item_code,
+          MAX(item_description)                                         AS item_description,
+          ROUND(AVG(unit_price)::numeric, 2)::float                    AS avg_price,
+          MIN(unit_price)::float                                        AS min_price,
+          MAX(unit_price)::float                                        AS max_price,
+          ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY unit_price))::numeric, 2)::float AS median_price,
+          SUM(quantity)::float                                          AS total_qty_sold,
+          SUM(line_total)::float                                        AS total_revenue,
+          COUNT(*)::int                                                 AS sale_count,
+          COUNT(DISTINCT card_code)::int                                AS unique_clients,
+          MAX(doc_date)::text                                           AS last_sale_date,
+          (ARRAY_AGG(unit_price ORDER BY doc_date DESC))[1]::float      AS last_price,
+          ROUND(AVG(discount_percent)::numeric, 1)::float               AS avg_discount
+        FROM line_data
+        WHERE item_code IS NOT NULL AND item_code <> ''
+        GROUP BY item_code
+        ORDER BY total_revenue DESC
+      `;
+
+      const res = await db.query(sql);
+      const items = res.rows;
+
+      const totals = items.reduce(
+        (acc, r) => {
+          acc.totalRevenue += r.total_revenue;
+          acc.totalQty += r.total_qty_sold;
+          acc.totalSales += r.sale_count;
+          return acc;
+        },
+        { totalRevenue: 0, totalQty: 0, totalSales: 0 }
+      );
+
+      reply.code(200).send({
+        ok: true,
+        count: items.length,
+        items,
+        totals,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error }, "Erro ao buscar preços praticados");
       reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
     }
   });

@@ -413,3 +413,37 @@ export interface ItemPricesResult {
 export function fetchItemPrices(): Promise<ItemPricesResult> {
   return get("/sap/prices");
 }
+
+// ─── Preços Praticados (transacionais) ──────────────
+
+export interface PracticedPriceRow {
+  item_code: string;
+  item_description: string;
+  avg_price: number;
+  min_price: number;
+  max_price: number;
+  median_price: number;
+  total_qty_sold: number;
+  total_revenue: number;
+  sale_count: number;
+  unique_clients: number;
+  last_sale_date: string | null;
+  last_price: number;
+  avg_discount: number;
+}
+
+export interface PracticedPricesResult {
+  ok: boolean;
+  count: number;
+  items: PracticedPriceRow[];
+  totals: {
+    totalRevenue: number;
+    totalQty: number;
+    totalSales: number;
+  };
+  timestamp: string;
+}
+
+export function fetchPracticedPrices(): Promise<PracticedPricesResult> {
+  return get("/sap/prices/practiced");
+}

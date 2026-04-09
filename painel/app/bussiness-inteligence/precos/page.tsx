@@ -4,138 +4,62 @@ import { useState, useMemo, useCallback } from "react";
 import {
   DollarSign, Search, Download, ArrowUpDown, ArrowUp, ArrowDown,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
-  ListFilter, Hash, TrendingUp, Crown, X,
+  TrendingUp, ShoppingCart, Users, X, Calendar, Tag,
+  BarChart3, ChevronDown,
 } from "lucide-react";
-import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
+import { fmtBRL, fmtNum, fmtDateShort, exportCSV } from "@/lib/format";
 import {
-  fetchItemPrices, fetchCatalog,
-  type ItemPriceRow, type CatalogItem,
+  fetchPracticedPrices,
+  fetchItemPrices,
+  type PracticedPriceRow,
+  type ItemPriceRow,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 
-/* ── Pivot row: one row per ItemCode, dynamic price columns ── */
-interface PivotRow {
-  itemCode: string;
-  description: string;
-  prices: Record<string, number | null>;
-  minPrice: number;
-  maxPrice: number;
-  avgPrice: number;
-  listCount: number;
-}
-
-type SortKey = "itemCode" | "description" | "minPrice" | "maxPrice" | "avgPrice" | string;
+type SortKey = keyof PracticedPriceRow | "spread";
 type SortDir = "asc" | "desc";
+type Tab = "practiced" | "lists";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 30;
 
 export default function PrecosPage() {
-  const { data: priceData, loading: loadingPrices, error: errorPrices, refetch: refetchPrices } =
-    useFetch(() => fetchItemPrices(), []);
+  const {
+    data: practicedData,
+    loading: loadingPracticed,
+    error: errorPracticed,
+    refetch: refetchPracticed,
+  } = useFetch(() => fetchPracticedPrices(), []);
 
-  const { data: catalogData, loading: loadingCatalog } =
-    useFetch(() => fetchCatalog({ limit: 5000, active: true }), []);
+  const {
+    data: listData,
+    loading: loadingLists,
+  } = useFetch(() => fetchItemPrices(), []);
 
+  const [tab, setTab] = useState<Tab>("practiced");
   const [search, setSearch] = useState("");
-  const [selectedLists, setSelectedLists] = useState<Set<string>>(new Set());
-  const [priceMin, setPriceMin] = useState("");
-  const [priceMax, setPriceMax] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("itemCode");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortKey, setSortKey] = useState<SortKey>("total_revenue");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(0);
-  const [showListFilter, setShowListFilter] = useState(false);
+  const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [selectedList, setSelectedList] = useState<string>("");
 
-  const loading = loadingPrices || loadingCatalog;
-  const error = errorPrices;
+  const loading = loadingPracticed || loadingLists;
+  const error = errorPracticed;
 
-  const catalogMap = useMemo(() => {
-    const m = new Map<string, string>();
-    if (catalogData?.data) {
-      for (const c of catalogData.data) {
-        m.set(c.sku, c.description);
-      }
-    }
-    return m;
-  }, [catalogData]);
+  // ── Practiced prices logic ──
 
-  const priceLists = useMemo(
-    () => priceData?.priceLists ?? [],
-    [priceData],
-  );
-
-  const visibleLists = useMemo(
-    () => (selectedLists.size > 0 ? priceLists.filter(l => selectedLists.has(l)) : priceLists),
-    [priceLists, selectedLists],
-  );
-
-  const pivotRows = useMemo(() => {
-    if (!priceData?.items) return [];
-
-    const grouped = new Map<string, Map<string, number>>();
-    for (const row of priceData.items) {
-      let itemMap = grouped.get(row.ItemCode);
-      if (!itemMap) {
-        itemMap = new Map();
-        grouped.set(row.ItemCode, itemMap);
-      }
-      itemMap.set(row.ListName, row.Price);
-    }
-
-    const rows: PivotRow[] = [];
-    for (const [itemCode, priceMap] of grouped) {
-      const prices: Record<string, number | null> = {};
-      const vals: number[] = [];
-
-      for (const list of priceLists) {
-        const p = priceMap.get(list) ?? null;
-        prices[list] = p;
-        if (p !== null && p > 0) vals.push(p);
-      }
-
-      rows.push({
-        itemCode,
-        description: catalogMap.get(itemCode) ?? itemCode,
-        prices,
-        minPrice: vals.length > 0 ? Math.min(...vals) : 0,
-        maxPrice: vals.length > 0 ? Math.max(...vals) : 0,
-        avgPrice: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0,
-        listCount: vals.length,
-      });
-    }
-
-    return rows;
-  }, [priceData, priceLists, catalogMap]);
+  const practicedItems = useMemo(() => practicedData?.items ?? [], [practicedData]);
 
   const filtered = useMemo(() => {
-    let rows = pivotRows;
-
-    if (search) {
-      const q = search.toLowerCase();
-      rows = rows.filter(r =>
-        r.itemCode.toLowerCase().includes(q) ||
-        r.description.toLowerCase().includes(q)
-      );
-    }
-
-    const pMin = priceMin ? parseFloat(priceMin) : null;
-    const pMax = priceMax ? parseFloat(priceMax) : null;
-
-    if (pMin !== null || pMax !== null) {
-      rows = rows.filter(r => {
-        const hasAnyInRange = Object.entries(r.prices).some(([list, price]) => {
-          if (price === null || price <= 0) return false;
-          if (visibleLists.length > 0 && !visibleLists.includes(list)) return false;
-          if (pMin !== null && price < pMin) return false;
-          if (pMax !== null && price > pMax) return false;
-          return true;
-        });
-        return hasAnyInRange;
-      });
-    }
-
-    return rows;
-  }, [pivotRows, search, priceMin, priceMax, visibleLists]);
+    if (!search) return practicedItems;
+    const q = search.toLowerCase();
+    return practicedItems.filter(
+      (r) =>
+        r.item_code.toLowerCase().includes(q) ||
+        r.item_description.toLowerCase().includes(q),
+    );
+  }, [practicedItems, search]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -143,20 +67,25 @@ export default function PrecosPage() {
       let va: number | string;
       let vb: number | string;
 
-      if (sortKey === "itemCode") { va = a.itemCode; vb = b.itemCode; }
-      else if (sortKey === "description") { va = a.description; vb = b.description; }
-      else if (sortKey === "minPrice") { va = a.minPrice; vb = b.minPrice; }
-      else if (sortKey === "maxPrice") { va = a.maxPrice; vb = b.maxPrice; }
-      else if (sortKey === "avgPrice") { va = a.avgPrice; vb = b.avgPrice; }
-      else {
-        va = a.prices[sortKey] ?? -1;
-        vb = b.prices[sortKey] ?? -1;
+      if (sortKey === "item_code") {
+        va = a.item_code;
+        vb = b.item_code;
+      } else if (sortKey === "item_description") {
+        va = a.item_description;
+        vb = b.item_description;
+      } else if (sortKey === "spread") {
+        va = a.max_price - a.min_price;
+        vb = b.max_price - b.min_price;
+      } else {
+        va = (a as Record<string, unknown>)[sortKey] as number;
+        vb = (b as Record<string, unknown>)[sortKey] as number;
       }
 
-      if (typeof va === "string" && typeof vb === "string") {
+      if (typeof va === "string" && typeof vb === "string")
         return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
-      }
-      return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
+      return sortDir === "asc"
+        ? (va as number) - (vb as number)
+        : (vb as number) - (va as number);
     });
     return arr;
   }, [filtered, sortKey, sortDir]);
@@ -164,182 +93,313 @@ export default function PrecosPage() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const pageRows = sorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
+  // ── SAP Price Lists logic ──
+
+  const priceLists = useMemo(() => listData?.priceLists ?? [], [listData]);
+
+  const activeList = selectedList || priceLists[0] || "";
+
+  const listItems = useMemo(() => {
+    if (!listData?.items || !activeList) return [];
+    return listData.items
+      .filter((r) => r.ListName === activeList)
+      .sort((a, b) => b.Price - a.Price);
+  }, [listData, activeList]);
+
+  const listHasData = useMemo(
+    () => listData?.items?.some((r) => r.Price > 0) ?? false,
+    [listData],
+  );
+
+  // ── KPIs ──
+
+  const kpis = useMemo(() => {
+    if (!practicedData) return null;
+    const items = practicedData.items;
+    const t = practicedData.totals;
+
+    const avgPrice =
+      items.length > 0
+        ? items.reduce((sum, r) => sum + r.avg_price, 0) / items.length
+        : 0;
+
+    let topItem = { code: "—", price: 0 };
+    for (const r of items) {
+      if (r.max_price > topItem.price)
+        topItem = { code: r.item_code, price: r.max_price };
+    }
+
+    const uniqueClients = items.reduce(
+      (max, r) => Math.max(max, r.unique_clients),
+      0,
+    );
+    const totalClients = new Set(items.map((r) => r.unique_clients)).size;
+
+    return {
+      totalItems: items.length,
+      avgPrice,
+      topItem,
+      totalRevenue: t.totalRevenue,
+      totalSales: t.totalSales,
+      totalQty: t.totalQty,
+      uniqueClients,
+      totalClients,
+    };
+  }, [practicedData]);
+
+  // ── Handlers ──
+
   const handleSort = useCallback((key: SortKey) => {
-    setSortKey(prev => {
+    setSortKey((prev) => {
       if (prev === key) {
-        setSortDir(d => (d === "asc" ? "desc" : "asc"));
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
         return key;
       }
-      setSortDir("asc");
+      setSortDir(key === "item_code" || key === "item_description" ? "asc" : "desc");
       return key;
     });
     setPage(0);
   }, []);
 
-  const kpis = useMemo(() => {
-    if (!priceData?.items) return null;
-    const totalItems = pivotRows.length;
-    const totalLists = priceLists.length;
-    const allPrices = priceData.items.filter(r => r.Price > 0).map(r => r.Price);
-    const avgPrice = allPrices.length > 0 ? allPrices.reduce((a, b) => a + b, 0) / allPrices.length : 0;
-    let topItem = { code: "—", price: 0 };
-    for (const row of pivotRows) {
-      if (row.maxPrice > topItem.price) {
-        topItem = { code: row.itemCode, price: row.maxPrice };
-      }
-    }
-    return { totalItems, totalLists, avgPrice, topItem };
-  }, [priceData, pivotRows, priceLists]);
-
   const handleExport = useCallback(() => {
     if (!sorted.length) return;
-    const csvRows = sorted.map(r => {
-      const row: Record<string, unknown> = {
-        Codigo: r.itemCode,
-        Descricao: r.description,
-      };
-      for (const list of visibleLists) {
-        row[list] = r.prices[list] ?? "";
-      }
-      row["Menor Preco"] = r.minPrice;
-      row["Maior Preco"] = r.maxPrice;
-      row["Preco Medio"] = r.avgPrice.toFixed(2);
-      return row;
-    });
-    exportCSV(csvRows, `tabela-precos-${new Date().toISOString().slice(0, 10)}`);
-  }, [sorted, visibleLists]);
-
-  const toggleList = useCallback((list: string) => {
-    setSelectedLists(prev => {
-      const next = new Set(prev);
-      if (next.has(list)) next.delete(list);
-      else next.add(list);
-      return next;
-    });
-    setPage(0);
-  }, []);
+    const csvRows = sorted.map((r) => ({
+      Codigo: r.item_code,
+      Descricao: r.item_description,
+      "Ultimo Preco": r.last_price,
+      "Preco Medio": r.avg_price,
+      "Preco Minimo": r.min_price,
+      "Preco Maximo": r.max_price,
+      "Preco Mediano": r.median_price,
+      "Desconto Medio (%)": r.avg_discount,
+      "Qtd Vendida": r.total_qty_sold,
+      "Receita Total": r.total_revenue,
+      "Num Vendas": r.sale_count,
+      "Clientes Unicos": r.unique_clients,
+      "Ultima Venda": r.last_sale_date ?? "",
+    }));
+    exportCSV(csvRows, `precos-praticados-${new Date().toISOString().slice(0, 10)}`);
+  }, [sorted]);
 
   function SortIcon({ col }: { col: SortKey }) {
     if (sortKey !== col) return <ArrowUpDown className="w-3 h-3 opacity-40" />;
-    return sortDir === "asc"
-      ? <ArrowUp className="w-3 h-3 text-cockpit-accent" />
-      : <ArrowDown className="w-3 h-3 text-cockpit-accent" />;
+    return sortDir === "asc" ? (
+      <ArrowUp className="w-3 h-3 text-cockpit-accent" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-cockpit-accent" />
+    );
+  }
+
+  function PriceBar({ value, max }: { value: number; max: number }) {
+    const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+    return (
+      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div
+          className="h-full bg-cockpit-accent/60 rounded-full transition-all"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    );
   }
 
   if (loading) return <LoadingSkeleton rows={8} />;
-  if (error) return <ErrorState message={error} onRetry={refetchPrices} />;
+  if (error) return <ErrorState message={error} onRetry={refetchPracticed} />;
+
+  const maxRevenue = Math.max(...practicedItems.map((r) => r.total_revenue), 1);
 
   return (
-    <div className="space-y-4">
-      {/* ── KPI Cards ── */}
+    <div className="space-y-5">
+      {/* ── Tab Switcher ── */}
+      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit">
+        <button
+          type="button"
+          onClick={() => { setTab("practiced"); setPage(0); setSearch(""); }}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            tab === "practiced"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <ShoppingCart className="w-4 h-4" />
+          Preços Praticados
+        </button>
+        <button
+          type="button"
+          onClick={() => { setTab("lists"); setPage(0); setSearch(""); }}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+            tab === "lists"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Tag className="w-4 h-4" />
+          Listas de Preço SAP
+          {!listHasData && (
+            <span className="ml-1 px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded-full font-medium">
+              Sem dados
+            </span>
+          )}
+        </button>
+      </div>
+
+      {tab === "practiced" ? (
+        <PracticedTab
+          kpis={kpis}
+          search={search}
+          setSearch={(v) => { setSearch(v); setPage(0); }}
+          handleExport={handleExport}
+          filtered={filtered}
+          pageRows={pageRows}
+          page={page}
+          setPage={setPage}
+          totalPages={totalPages}
+          sorted={sorted}
+          handleSort={handleSort}
+          SortIcon={SortIcon}
+          PriceBar={PriceBar}
+          maxRevenue={maxRevenue}
+          expandedItem={expandedItem}
+          setExpandedItem={setExpandedItem}
+        />
+      ) : (
+        <ListsTab
+          priceLists={priceLists}
+          activeList={activeList}
+          setSelectedList={setSelectedList}
+          listItems={listItems}
+          listHasData={listHasData}
+          search={search}
+          setSearch={(v) => { setSearch(v); setPage(0); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   PRACTICED PRICES TAB
+   ══════════════════════════════════════════════ */
+
+function PracticedTab({
+  kpis,
+  search,
+  setSearch,
+  handleExport,
+  filtered,
+  pageRows,
+  page,
+  setPage,
+  totalPages,
+  sorted,
+  handleSort,
+  SortIcon,
+  PriceBar,
+  maxRevenue,
+  expandedItem,
+  setExpandedItem,
+}: {
+  kpis: {
+    totalItems: number;
+    avgPrice: number;
+    topItem: { code: string; price: number };
+    totalRevenue: number;
+    totalSales: number;
+    totalQty: number;
+    uniqueClients: number;
+    totalClients: number;
+  } | null;
+  search: string;
+  setSearch: (v: string) => void;
+  handleExport: () => void;
+  filtered: PracticedPriceRow[];
+  pageRows: PracticedPriceRow[];
+  page: number;
+  setPage: (v: number | ((p: number) => number)) => void;
+  totalPages: number;
+  sorted: PracticedPriceRow[];
+  handleSort: (key: SortKey) => void;
+  SortIcon: React.ComponentType<{ col: SortKey }>;
+  PriceBar: React.ComponentType<{ value: number; max: number }>;
+  maxRevenue: number;
+  expandedItem: string | null;
+  setExpandedItem: (v: string | null) => void;
+}) {
+  return (
+    <>
+      {/* KPIs */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KPICard
-            icon={Hash}
-            label="Itens com preço"
-            value={fmtNum(kpis.totalItems)}
-            accent="text-cockpit-accent"
-            bg="bg-red-50"
-          />
-          <KPICard
-            icon={ListFilter}
-            label="Listas ativas"
-            value={String(kpis.totalLists)}
-            accent="text-emerald-700"
-            bg="bg-emerald-50"
-          />
-          <KPICard
-            icon={TrendingUp}
-            label="Preço médio"
-            value={fmtBRL(kpis.avgPrice)}
-            accent="text-sky-700"
-            bg="bg-sky-50"
-          />
-          <KPICard
-            icon={Crown}
-            label="Item mais caro"
-            value={fmtBRL(kpis.topItem.price)}
-            sub={kpis.topItem.code}
-            accent="text-amber-700"
-            bg="bg-amber-50"
-          />
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-cockpit-muted">Receita Total</span>
+              <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+                <DollarSign className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-gray-900 tabular-nums">{fmtBRL(kpis.totalRevenue)}</p>
+            <p className="text-[11px] text-cockpit-muted mt-1">{fmtNum(kpis.totalSales)} vendas registradas</p>
+          </div>
+
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-cockpit-muted">Preço Médio</span>
+              <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
+                <TrendingUp className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-gray-900 tabular-nums">{fmtBRL(kpis.avgPrice)}</p>
+            <p className="text-[11px] text-cockpit-muted mt-1">{fmtNum(kpis.totalItems)} itens com preço</p>
+          </div>
+
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-cockpit-muted">Item Mais Caro</span>
+              <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+                <BarChart3 className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-gray-900 tabular-nums">{fmtBRL(kpis.topItem.price)}</p>
+            <p className="text-[11px] text-cockpit-muted mt-1 truncate" title={kpis.topItem.code}>{kpis.topItem.code}</p>
+          </div>
+
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-cockpit-muted">Quantidade Vendida</span>
+              <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+                <ShoppingCart className="w-4 h-4" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-gray-900 tabular-nums">{fmtNum(Math.round(kpis.totalQty))}</p>
+            <p className="text-[11px] text-cockpit-muted mt-1">unidades em pedidos</p>
+          </div>
         </div>
       )}
 
-      {/* ── Toolbar: Search + Filters + Export ── */}
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Buscar código ou descrição..."
+            placeholder="Buscar por código ou descrição..."
             value={search}
-            onChange={e => { setSearch(e.target.value); setPage(0); }}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-cockpit-border bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30"
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-cockpit-border bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30"
           />
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowListFilter(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-colors ${
-              selectedLists.size > 0
-                ? "border-cockpit-accent/40 bg-cockpit-accent/10 text-cockpit-accent"
-                : "border-cockpit-border bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            <ListFilter className="w-4 h-4" />
-            Listas{selectedLists.size > 0 ? ` (${selectedLists.size})` : ""}
-          </button>
-          {showListFilter && (
-            <div className="absolute z-20 top-full mt-1 left-0 bg-white rounded-lg border border-cockpit-border shadow-lg p-2 min-w-[200px] max-h-60 overflow-y-auto">
-              {priceLists.map(list => (
-                <label key={list} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedLists.has(list)}
-                    onChange={() => toggleList(list)}
-                    className="rounded border-gray-300 text-cockpit-accent focus:ring-cockpit-accent/30"
-                  />
-                  {list}
-                </label>
-              ))}
-              {selectedLists.size > 0 && (
-                <button
-                  type="button"
-                  onClick={() => { setSelectedLists(new Set()); setPage(0); }}
-                  className="w-full mt-1 px-2 py-1.5 text-xs text-cockpit-accent hover:bg-cockpit-accent/10 rounded text-center"
-                >
-                  Limpar filtros
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1 text-sm">
-          <input
-            type="number"
-            placeholder="R$ min"
-            value={priceMin}
-            onChange={e => { setPriceMin(e.target.value); setPage(0); }}
-            className="w-24 px-2 py-2 rounded-lg border border-cockpit-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30"
-          />
-          <span className="text-gray-400">–</span>
-          <input
-            type="number"
-            placeholder="R$ max"
-            value={priceMax}
-            onChange={e => { setPriceMax(e.target.value); setPage(0); }}
-            className="w-24 px-2 py-2 rounded-lg border border-cockpit-border bg-white text-sm focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30"
-          />
-          {(priceMin || priceMax) && (
-            <button type="button" onClick={() => { setPriceMin(""); setPriceMax(""); setPage(0); }} className="p-1 text-gray-400 hover:text-gray-600">
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-gray-600"
+            >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
+
+        <span className="text-xs text-cockpit-muted">
+          {fmtNum(filtered.length)} item(ns)
+        </span>
 
         <button
           type="button"
@@ -348,100 +408,344 @@ export default function PrecosPage() {
           className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-cockpit-border bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors ml-auto"
         >
           <Download className="w-4 h-4" />
-          CSV
+          Exportar CSV
         </button>
       </div>
 
-      {/* ── Results count ── */}
-      <p className="text-xs text-cockpit-muted">
-        {fmtNum(filtered.length)} item(ns) encontrado(s)
-        {selectedLists.size > 0 && ` · ${selectedLists.size} lista(s) selecionada(s)`}
-      </p>
-
-      {/* ── Pivot Table ── */}
+      {/* Table */}
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-cockpit-border bg-gray-50/80">
-                <th className="sticky left-0 z-10 bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                  <button type="button" onClick={() => handleSort("itemCode")} className="flex items-center gap-1">
-                    Código <SortIcon col="itemCode" />
-                  </button>
-                </th>
-                <th className="px-3 py-2.5 text-left font-medium text-gray-700 min-w-[200px]">
-                  <button type="button" onClick={() => handleSort("description")} className="flex items-center gap-1">
-                    Descrição <SortIcon col="description" />
-                  </button>
-                </th>
-                {visibleLists.map(list => (
-                  <th key={list} className="px-3 py-2.5 text-right font-medium text-gray-700 whitespace-nowrap">
-                    <button type="button" onClick={() => handleSort(list)} className="flex items-center gap-1 ml-auto">
-                      {list} <SortIcon col={list} />
-                    </button>
-                  </th>
-                ))}
-                <th className="px-3 py-2.5 text-right font-medium text-gray-700">
-                  <button type="button" onClick={() => handleSort("minPrice")} className="flex items-center gap-1 ml-auto">
-                    Menor <SortIcon col="minPrice" />
-                  </button>
-                </th>
-                <th className="px-3 py-2.5 text-right font-medium text-gray-700">
-                  <button type="button" onClick={() => handleSort("maxPrice")} className="flex items-center gap-1 ml-auto">
-                    Maior <SortIcon col="maxPrice" />
-                  </button>
-                </th>
-                <th className="px-3 py-2.5 text-right font-medium text-gray-700">
-                  <button type="button" onClick={() => handleSort("avgPrice")} className="flex items-center gap-1 ml-auto">
-                    Médio <SortIcon col="avgPrice" />
-                  </button>
-                </th>
+                <ThSort col="item_code" label="Código" onClick={handleSort} Icon={SortIcon} />
+                <ThSort col="item_description" label="Descrição" onClick={handleSort} Icon={SortIcon} className="min-w-[220px]" />
+                <ThSort col="last_price" label="Último Preço" onClick={handleSort} Icon={SortIcon} align="right" />
+                <ThSort col="avg_price" label="Preço Médio" onClick={handleSort} Icon={SortIcon} align="right" />
+                <ThSort col="min_price" label="Mínimo" onClick={handleSort} Icon={SortIcon} align="right" />
+                <ThSort col="max_price" label="Máximo" onClick={handleSort} Icon={SortIcon} align="right" />
+                <ThSort col="total_revenue" label="Receita" onClick={handleSort} Icon={SortIcon} align="right" />
+                <ThSort col="sale_count" label="Vendas" onClick={handleSort} Icon={SortIcon} align="right" />
+                <th className="px-3 py-2.5 text-center font-medium text-gray-700 text-xs w-10" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-cockpit-border/60">
+            <tbody className="divide-y divide-cockpit-border/50">
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleLists.length + 5} className="px-4 py-12 text-center text-cockpit-muted">
-                    Nenhum item encontrado.
+                  <td colSpan={9} className="px-4 py-16 text-center">
+                    <div className="flex flex-col items-center gap-2 text-cockpit-muted">
+                      <Search className="w-8 h-8 opacity-30" />
+                      <p className="text-sm font-medium">Nenhum item encontrado</p>
+                      <p className="text-xs">Tente buscar por outro termo</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                pageRows.map(row => (
-                  <tr key={row.itemCode} className="hover:bg-gray-50/60 transition-colors">
-                    <td className="sticky left-0 z-10 bg-white px-3 py-2 font-mono text-xs text-gray-800 whitespace-nowrap">
-                      {row.itemCode}
+                pageRows.map((row) => (
+                  <PracticedRow
+                    key={row.item_code}
+                    row={row}
+                    maxRevenue={maxRevenue}
+                    PriceBar={PriceBar}
+                    expanded={expandedItem === row.item_code}
+                    onToggle={() =>
+                      setExpandedItem(
+                        expandedItem === row.item_code ? null : row.item_code,
+                      )
+                    }
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={sorted.length}
+            pageSize={PAGE_SIZE}
+            setPage={setPage}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ── Practiced Row ── */
+function PracticedRow({
+  row,
+  maxRevenue,
+  PriceBar,
+  expanded,
+  onToggle,
+}: {
+  row: PracticedPriceRow;
+  maxRevenue: number;
+  PriceBar: React.ComponentType<{ value: number; max: number }>;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const spread = row.max_price - row.min_price;
+  const hasVariation = spread > 0;
+
+  return (
+    <>
+      <tr className="hover:bg-gray-50/60 transition-colors group">
+        <td className="px-3 py-2.5 font-mono text-xs text-gray-800 whitespace-nowrap">
+          {row.item_code}
+        </td>
+        <td
+          className="px-3 py-2.5 text-gray-600 text-xs truncate max-w-[280px]"
+          title={row.item_description}
+        >
+          {row.item_description}
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          <span className="font-mono text-xs font-semibold text-gray-900">
+            {fmtBRL(row.last_price)}
+          </span>
+        </td>
+        <td className="px-3 py-2.5 text-right font-mono text-xs text-gray-600">
+          {fmtBRL(row.avg_price)}
+        </td>
+        <td className="px-3 py-2.5 text-right font-mono text-xs text-emerald-600">
+          {fmtBRL(row.min_price)}
+        </td>
+        <td className="px-3 py-2.5 text-right font-mono text-xs text-cockpit-accent">
+          {fmtBRL(row.max_price)}
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          <div className="flex flex-col items-end gap-1">
+            <span className="font-mono text-xs text-gray-700">
+              {fmtBRL(row.total_revenue)}
+            </span>
+            <div className="w-16">
+              <PriceBar value={row.total_revenue} max={maxRevenue} />
+            </div>
+          </div>
+        </td>
+        <td className="px-3 py-2.5 text-right">
+          <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded-full tabular-nums">
+            {fmtNum(row.sale_count)}
+          </span>
+        </td>
+        <td className="px-3 py-2.5 text-center">
+          <button
+            type="button"
+            onClick={onToggle}
+            className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-400 hover:text-gray-600"
+            title="Ver detalhes"
+          >
+            <ChevronDown
+              className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            />
+          </button>
+        </td>
+      </tr>
+      {expanded && (
+        <tr>
+          <td colSpan={9} className="bg-gray-50/50 px-6 py-4 border-b border-cockpit-border/30">
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 text-xs">
+              <DetailCell
+                icon={<Calendar className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Última Venda"
+                value={fmtDateShort(row.last_sale_date)}
+              />
+              <DetailCell
+                icon={<DollarSign className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Preço Mediano"
+                value={fmtBRL(row.median_price)}
+              />
+              <DetailCell
+                icon={<TrendingUp className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Variação"
+                value={hasVariation ? fmtBRL(spread) : "Sem variação"}
+                valueClass={hasVariation ? "text-amber-700" : "text-gray-400"}
+              />
+              <DetailCell
+                icon={<Tag className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Desconto Médio"
+                value={`${row.avg_discount.toFixed(1)}%`}
+                valueClass={row.avg_discount > 0 ? "text-emerald-600" : "text-gray-400"}
+              />
+              <DetailCell
+                icon={<Users className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Clientes Únicos"
+                value={String(row.unique_clients)}
+              />
+              <DetailCell
+                icon={<ShoppingCart className="w-3.5 h-3.5 text-cockpit-muted" />}
+                label="Qtd Total Vendida"
+                value={fmtNum(Math.round(row.total_qty_sold))}
+              />
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function DetailCell({
+  icon,
+  label,
+  value,
+  valueClass,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <div className="flex items-start gap-2">
+      <div className="mt-0.5">{icon}</div>
+      <div>
+        <p className="text-cockpit-muted text-[10px] uppercase tracking-wider">{label}</p>
+        <p className={`font-medium text-sm tabular-nums ${valueClass ?? "text-gray-900"}`}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   SAP PRICE LISTS TAB
+   ══════════════════════════════════════════════ */
+
+function ListsTab({
+  priceLists,
+  activeList,
+  setSelectedList,
+  listItems,
+  listHasData,
+  search,
+  setSearch,
+}: {
+  priceLists: string[];
+  activeList: string;
+  setSelectedList: (v: string) => void;
+  listItems: ItemPriceRow[];
+  listHasData: boolean;
+  search: string;
+  setSearch: (v: string) => void;
+}) {
+  const filteredListItems = useMemo(() => {
+    if (!search) return listItems;
+    const q = search.toLowerCase();
+    return listItems.filter((r) => r.ItemCode.toLowerCase().includes(q));
+  }, [listItems, search]);
+
+  if (!listHasData) {
+    return (
+      <div className="rounded-xl border border-cockpit-border bg-white p-12">
+        <div className="flex flex-col items-center gap-4 text-center max-w-md mx-auto">
+          <div className="p-4 rounded-full bg-amber-50">
+            <Tag className="w-8 h-8 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-gray-900 font-semibold text-lg">Listas de preço sem valores</p>
+            <p className="text-sm text-cockpit-muted mt-2">
+              As listas de preço do SAP B1 ({priceLists.length} listas encontradas)
+              estão com todos os valores em R$ 0,00. Os preços devem ser configurados
+              diretamente no SAP B1 (ITM1/OPLN) para aparecerem aqui.
+            </p>
+          </div>
+          <div className="mt-2 px-4 py-3 bg-gray-50 rounded-lg text-xs text-cockpit-muted text-left w-full">
+            <p className="font-medium text-gray-700 mb-1">Listas encontradas:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {priceLists.map((l) => (
+                <span key={l} className="px-2 py-0.5 bg-white rounded border border-cockpit-border text-gray-600">
+                  {l}
+                </span>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-cockpit-muted">
+            Utilize a aba <strong>Preços Praticados</strong> para ver os preços reais
+            baseados em pedidos de venda.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* List selector + Search */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-cockpit-muted">Lista:</span>
+          <div className="flex flex-wrap gap-1">
+            {priceLists.map((list) => (
+              <button
+                key={list}
+                type="button"
+                onClick={() => setSelectedList(list)}
+                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                  activeList === list
+                    ? "border-cockpit-accent bg-cockpit-accent text-white"
+                    : "border-cockpit-border bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {list}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative flex-1 min-w-[160px] max-w-xs ml-auto">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar código..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-cockpit-border bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30"
+          />
+        </div>
+      </div>
+
+      <p className="text-xs text-cockpit-muted">
+        {fmtNum(filteredListItems.length)} itens na lista <strong>{activeList}</strong>
+      </p>
+
+      <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-cockpit-border bg-gray-50/80">
+                <th className="px-3 py-2.5 text-left font-medium text-gray-700 text-xs">
+                  Código
+                </th>
+                <th className="px-3 py-2.5 text-right font-medium text-gray-700 text-xs">
+                  Preço
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-cockpit-border/50">
+              {filteredListItems.length === 0 ? (
+                <tr>
+                  <td colSpan={2} className="px-4 py-12 text-center text-cockpit-muted text-sm">
+                    Nenhum item encontrado nesta lista.
+                  </td>
+                </tr>
+              ) : (
+                filteredListItems.slice(0, 100).map((r, i) => (
+                  <tr key={`${r.ItemCode}-${i}`} className="hover:bg-gray-50/60 transition-colors">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-800">
+                      {r.ItemCode}
                     </td>
-                    <td className="px-3 py-2 text-gray-600 text-xs truncate max-w-[280px]" title={row.description}>
-                      {row.description}
-                    </td>
-                    {visibleLists.map(list => {
-                      const price = row.prices[list];
-                      return (
-                        <td key={list} className="px-3 py-2 text-right font-mono text-xs whitespace-nowrap">
-                          {price !== null && price > 0 ? (
-                            <span className={
-                              price === row.maxPrice && row.listCount > 1
-                                ? "text-cockpit-accent font-semibold"
-                                : price === row.minPrice && row.listCount > 1
-                                  ? "text-emerald-600"
-                                  : "text-gray-700"
-                            }>
-                              {fmtBRL(price)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="px-3 py-2 text-right font-mono text-xs text-emerald-600 whitespace-nowrap">
-                      {fmtBRL(row.minPrice)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-cockpit-accent whitespace-nowrap">
-                      {fmtBRL(row.maxPrice)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-xs text-gray-600 whitespace-nowrap">
-                      {fmtBRL(row.avgPrice)}
+                    <td className="px-3 py-2 text-right font-mono text-xs">
+                      {r.Price > 0 ? (
+                        <span className="text-gray-900 font-medium">{fmtBRL(r.Price)}</span>
+                      ) : (
+                        <span className="text-gray-300">R$ 0,00</span>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -449,65 +753,108 @@ export default function PrecosPage() {
             </tbody>
           </table>
         </div>
-
-        {/* ── Pagination ── */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-cockpit-border bg-gray-50/50">
-            <span className="text-xs text-cockpit-muted">
-              {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, sorted.length)} de {fmtNum(sorted.length)}
-            </span>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setPage(0)} disabled={page === 0}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors">
-                <ChevronsLeft className="w-4 h-4" />
-              </button>
-              <button type="button" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors">
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2 text-xs text-gray-600">
-                {page + 1} / {totalPages}
-              </span>
-              <button type="button" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors">
-                <ChevronRight className="w-4 h-4" />
-              </button>
-              <button type="button" onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}
-                className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors">
-                <ChevronsRight className="w-4 h-4" />
-              </button>
-            </div>
+        {filteredListItems.length > 100 && (
+          <div className="px-4 py-3 border-t border-cockpit-border bg-gray-50/50 text-xs text-cockpit-muted text-center">
+            Mostrando 100 de {fmtNum(filteredListItems.length)} itens
           </div>
         )}
+      </div>
+    </>
+  );
+}
+
+/* ══════════════════════════════════════════════
+   SHARED COMPONENTS
+   ══════════════════════════════════════════════ */
+
+function ThSort({
+  col,
+  label,
+  onClick,
+  Icon,
+  align = "left",
+  className,
+}: {
+  col: SortKey;
+  label: string;
+  onClick: (key: SortKey) => void;
+  Icon: React.ComponentType<{ col: SortKey }>;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  return (
+    <th className={`px-3 py-2.5 font-medium text-gray-700 text-xs whitespace-nowrap ${className ?? ""}`}>
+      <button
+        type="button"
+        onClick={() => onClick(col)}
+        className={`flex items-center gap-1 ${align === "right" ? "ml-auto" : ""}`}
+      >
+        {label} <Icon col={col} />
+      </button>
+    </th>
+  );
+}
+
+function Pagination({
+  page,
+  totalPages,
+  totalItems,
+  pageSize,
+  setPage,
+}: {
+  page: number;
+  totalPages: number;
+  totalItems: number;
+  pageSize: number;
+  setPage: (v: number | ((p: number) => number)) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-t border-cockpit-border bg-gray-50/50">
+      <span className="text-xs text-cockpit-muted tabular-nums">
+        {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalItems)} de{" "}
+        {fmtNum(totalItems)}
+      </span>
+      <div className="flex items-center gap-1">
+        <PagBtn onClick={() => setPage(0)} disabled={page === 0}>
+          <ChevronsLeft className="w-4 h-4" />
+        </PagBtn>
+        <PagBtn onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
+          <ChevronLeft className="w-4 h-4" />
+        </PagBtn>
+        <span className="px-3 text-xs text-gray-600 tabular-nums">
+          {page + 1} / {totalPages}
+        </span>
+        <PagBtn
+          onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+          disabled={page >= totalPages - 1}
+        >
+          <ChevronRight className="w-4 h-4" />
+        </PagBtn>
+        <PagBtn onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>
+          <ChevronsRight className="w-4 h-4" />
+        </PagBtn>
       </div>
     </div>
   );
 }
 
-/* ── KPI Card ── */
-function KPICard({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  accent,
-  bg,
+function PagBtn({
+  children,
+  onClick,
+  disabled,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  sub?: string;
-  accent: string;
-  bg: string;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled: boolean;
 }) {
   return (
-    <div className={`rounded-xl border border-cockpit-border ${bg} p-4`}>
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className={`w-4 h-4 ${accent}`} />
-        <span className="text-xs text-cockpit-muted font-medium">{label}</span>
-      </div>
-      <p className={`text-lg font-bold ${accent}`}>{value}</p>
-      {sub && <p className="text-[10px] text-cockpit-muted mt-0.5 truncate">{sub}</p>}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors"
+    >
+      {children}
+    </button>
   );
 }
