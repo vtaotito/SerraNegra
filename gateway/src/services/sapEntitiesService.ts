@@ -1,6 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import { SapHttpError } from "../../../sap-connector/src/errors.js";
-import { WmsQueriesHelper, WMS_QUERIES, type EnrichedInventoryRow } from "../../../sap-connector/src/sqlQueries.js";
+import { WmsQueriesHelper, WMS_QUERIES, type EnrichedInventoryRow, type ItemPriceRow } from "../../../sap-connector/src/sqlQueries.js";
 
 /**
  * Serviço para sincronizar entidades adicionais do SAP B1:
@@ -716,6 +716,68 @@ export class SapEntitiesService {
     }
     console.log("[listBPGroups] Nenhum candidato funcionou - retornando vazio");
     return [];
+  }
+
+  // ========================================
+  // ITEM PRICES (Tabelas de Preço via SQLQuery ITM1+OPLN)
+  // ========================================
+
+  async listItemPrices(
+    correlationId?: string
+  ): Promise<ItemPriceRow[]> {
+    const helper = new WmsQueriesHelper(this.client);
+
+    try {
+      await helper.ensureQuery(WMS_QUERIES.ITEM_PRICES, { correlationId });
+      const result = await helper.getItemPrices({ correlationId });
+      const rows = result.value || [];
+      console.log(`[listItemPrices] SQLQuery OK - ${rows.length} linhas de preço`);
+      return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listItemPrices] SQLQuery falhou (${msg}), tentando fallback OData`);
+    }
+
+    // Fallback: OData /PriceLists + /Items com ItemPrices
+    try {
+      const plRes = await this.client.get<{ value: Array<{ PriceListNo: number; PriceListName: string; IsGrossPrice: string; Active: string }> }>(
+        `/PriceLists?$select=PriceListNo,PriceListName,Active&$filter=Active eq 'tYES'&$top=50`,
+        { correlationId }
+      );
+      const activeLists = plRes.data.value || [];
+      if (activeLists.length === 0) return [];
+
+      const listMap = new Map(activeLists.map(l => [l.PriceListNo, l.PriceListName]));
+
+      const allItems: Array<{ ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> }> = [];
+      const pageSize = 20;
+      let skip = 0;
+      while (allItems.length < 5000) {
+        const url = `/Items?$select=ItemCode&$expand=ItemPrices($select=PriceList,Price)&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
+        const res = await this.client.get<{ value: typeof allItems }>(url, { correlationId });
+        const page = res.data.value || [];
+        if (page.length === 0) break;
+        allItems.push(...page);
+        if (page.length < pageSize) break;
+        skip += pageSize;
+      }
+
+      const rows: ItemPriceRow[] = [];
+      for (const item of allItems) {
+        for (const ip of item.ItemPrices ?? []) {
+          const listName = listMap.get(ip.PriceList);
+          if (listName && ip.Price > 0) {
+            rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
+          }
+        }
+      }
+      console.log(`[listItemPrices] OData fallback OK - ${rows.length} linhas de preço`);
+      return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listItemPrices] OData fallback falhou: ${msg}`);
+      return [];
+    }
   }
 }
 

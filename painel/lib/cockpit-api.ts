@@ -392,3 +392,24 @@ export function sapHealth(): Promise<{
 export function refreshSession(): Promise<{ success: boolean; message: string }> {
   return post("/sap/session/refresh");
 }
+
+// ─── Tabelas de Preço (ITM1 + OPLN) ──────────────
+
+export interface ItemPriceRow {
+  ItemCode: string;
+  Price: number;
+  PriceList: number;
+  ListName: string;
+}
+
+export interface ItemPricesResult {
+  ok: boolean;
+  count: number;
+  items: ItemPriceRow[];
+  priceLists: string[];
+  timestamp: string;
+}
+
+export function fetchItemPrices(): Promise<ItemPricesResult> {
+  return get("/sap/prices");
+}

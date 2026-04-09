@@ -1430,5 +1430,37 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
-  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit e pedidos de venda)");
+  // ========================================
+  // TABELAS DE PREÇO (ITM1 + OPLN)
+  // ========================================
+
+  /**
+   * GET /api/sap/prices
+   * Retorna preços de venda por lista de preços ativa (SQLQuery ITM1+OPLN).
+   */
+  app.get("/sap/prices", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      const entSvc = getEntitiesService();
+      const rows = await entSvc.listItemPrices(correlationId);
+
+      const priceListSet = new Set<string>();
+      for (const r of rows) priceListSet.add(r.ListName);
+
+      reply.code(200).send({
+        ok: true,
+        count: rows.length,
+        items: rows,
+        priceLists: Array.from(priceListSet).sort(),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro ao buscar tabelas de preço");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit, pedidos de venda e tabelas de preço)");
 }
