@@ -735,43 +735,33 @@ export class SapEntitiesService {
       if (rows.length > 0) return rows;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[listItemPrices] SQLQuery falhou (${msg}), tentando fallback OData`);
+      console.warn(`[listItemPrices] SQLQuery falhou (${msg}), tentando fallbacks`);
     }
 
-    // Carregar listas de preços para mapear PriceList number -> name
     const listMap = await this.loadPriceLists(correlationId);
     if (listMap.size === 0) {
       console.warn("[listItemPrices] Nenhuma lista de preços encontrada");
       return [];
     }
 
-    // Nível 2: OData /Items com $expand=ItemPrices (nested $select)
-    const expandCandidates = [
-      "$expand=ItemPrices($select=PriceList,Price)",
-      "$expand=ItemPrices",
-    ];
-    for (let ci = 0; ci < expandCandidates.length; ci++) {
-      try {
-        const rows = await this.fetchItemPricesViaExpand(
-          expandCandidates[ci], listMap, correlationId
-        );
-        console.log(`[listItemPrices] $expand #${ci + 1} OK - ${rows.length} linhas`);
-        if (rows.length > 0) return rows;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn(`[listItemPrices] $expand #${ci + 1} falhou: ${msg}`);
-        if (!(err instanceof SapHttpError && err.status === 400)) break;
-      }
-    }
-
-    // Nível 3: Buscar itens individualmente via GET /Items(code) (lento mas confiável)
+    // Nível 2: /Items sem $select (retorna objeto completo com ItemPrices embutido)
     try {
-      const rows = await this.fetchItemPricesOneByOne(listMap, correlationId);
-      console.log(`[listItemPrices] Individual fetch OK - ${rows.length} linhas`);
+      const rows = await this.fetchItemPricesFullObject(listMap, correlationId);
+      console.log(`[listItemPrices] Full-object OK - ${rows.length} linhas`);
       if (rows.length > 0) return rows;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[listItemPrices] Individual fetch falhou: ${msg}`);
+      console.warn(`[listItemPrices] Full-object falhou: ${msg}`);
+    }
+
+    // Nível 3: GET individual /Items('code') para amostra e debug
+    try {
+      const rows = await this.fetchItemPricesSample(listMap, correlationId);
+      console.log(`[listItemPrices] Sample OK - ${rows.length} linhas`);
+      if (rows.length > 0) return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listItemPrices] Sample falhou: ${msg}`);
     }
 
     return [];
@@ -804,25 +794,51 @@ export class SapEntitiesService {
     return new Map();
   }
 
-  private async fetchItemPricesViaExpand(
-    expandClause: string,
+  /**
+   * Busca itens SEM $select (objeto completo) para obter ItemPrices embutido.
+   * SAP B1 SL retorna ItemPrices quando o item completo é solicitado.
+   */
+  private async fetchItemPricesFullObject(
     listMap: Map<number, string>,
     correlationId?: string
   ): Promise<ItemPriceRow[]> {
-    type ItemWithPrices = { ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> };
-    const allItems: ItemWithPrices[] = [];
+    type ItemFull = {
+      ItemCode: string;
+      ItemPrices?: Array<{ PriceList: number; Price: number; Currency?: string }>;
+    };
+
+    const allItems: ItemFull[] = [];
     const pageSize = 20;
     let skip = 0;
 
-    while (allItems.length < 5000) {
-      const url = `/Items?$select=ItemCode&${expandClause}&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
-      const res = await this.client.get<{ value: ItemWithPrices[] }>(url, { correlationId });
+    while (allItems.length < 3000) {
+      const url = `/Items?$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
+      const res = await this.client.get<{ value: ItemFull[] }>(url, { correlationId });
       const page = res.data.value || [];
       if (page.length === 0) break;
+
+      // Debug: log dos campos do primeiro item para entender a estrutura
+      if (allItems.length === 0 && page.length > 0) {
+        const keys = Object.keys(page[0]);
+        const hasItemPrices = keys.includes("ItemPrices");
+        console.log(`[fetchItemPricesFullObject] Campos do 1o item (${keys.length}): ${keys.slice(0, 15).join(", ")}...`);
+        console.log(`[fetchItemPricesFullObject] Tem ItemPrices: ${hasItemPrices}`);
+        if (hasItemPrices) {
+          const sample = (page[0] as ItemFull).ItemPrices;
+          console.log(`[fetchItemPricesFullObject] ItemPrices count: ${sample?.length ?? 0}, sample: ${JSON.stringify(sample?.[0])}`);
+        }
+      }
+
       allItems.push(...page);
       if (page.length < pageSize) break;
       skip += pageSize;
+
+      if (allItems.length % 200 === 0) {
+        console.log(`[fetchItemPricesFullObject] progresso: ${allItems.length} itens`);
+      }
     }
+
+    console.log(`[fetchItemPricesFullObject] Total: ${allItems.length} itens`);
 
     const rows: ItemPriceRow[] = [];
     for (const item of allItems) {
@@ -836,28 +852,38 @@ export class SapEntitiesService {
     return rows;
   }
 
-  private async fetchItemPricesOneByOne(
+  /**
+   * Busca uma amostra de itens individualmente para debug e dados mínimos.
+   * Limita a 50 itens para não causar timeout.
+   */
+  private async fetchItemPricesSample(
     listMap: Map<number, string>,
     correlationId?: string
   ): Promise<ItemPriceRow[]> {
-    type FullItem = { ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> };
+    type FullItem = Record<string, unknown> & {
+      ItemCode: string;
+      ItemPrices?: Array<{ PriceList: number; Price: number }>;
+    };
 
-    // Obter lista de códigos de itens ativos
-    const itemCodes: string[] = [];
-    const pageSize = 20;
-    let skip = 0;
-    while (itemCodes.length < 2000) {
-      const url = `/Items?$select=ItemCode&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
-      const res = await this.client.get<{ value: Array<{ ItemCode: string }> }>(url, { correlationId });
-      const page = res.data.value || [];
-      if (page.length === 0) break;
-      for (const it of page) itemCodes.push(it.ItemCode);
-      if (page.length < pageSize) break;
-      skip += pageSize;
-    }
-
-    console.log(`[fetchItemPricesOneByOne] ${itemCodes.length} itens para buscar preços`);
+    const codesRes = await this.client.get<{ value: Array<{ ItemCode: string }> }>(
+      "/Items?$select=ItemCode&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=50&$orderby=ItemCode asc",
+      { correlationId }
+    );
+    const itemCodes = (codesRes.data.value || []).map(i => i.ItemCode);
     if (itemCodes.length === 0) return [];
+
+    // Buscar primeiro item para entender a estrutura
+    const first = itemCodes[0];
+    const firstRes = await this.client.get<FullItem>(`/Items('${first}')`, { correlationId });
+    const firstItem = firstRes.data;
+    const keys = Object.keys(firstItem);
+    console.log(`[fetchItemPricesSample] Campos do item '${first}': ${keys.slice(0, 20).join(", ")}...`);
+    console.log(`[fetchItemPricesSample] ItemPrices existe: ${keys.includes("ItemPrices")}`);
+    if (firstItem.ItemPrices && firstItem.ItemPrices.length > 0) {
+      console.log(`[fetchItemPricesSample] 1o preço: ${JSON.stringify(firstItem.ItemPrices[0])}`);
+    } else {
+      console.log(`[fetchItemPricesSample] ItemPrices vazio ou inexistente. Valor: ${JSON.stringify(firstItem.ItemPrices)}`);
+    }
 
     const rows: ItemPriceRow[] = [];
     const CONCURRENCY = 5;
@@ -866,8 +892,7 @@ export class SapEntitiesService {
       const batch = itemCodes.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (code) => {
-          const encoded = encodeURIComponent(`'${code}'`);
-          const res = await this.client.get<FullItem>(`/Items(${encoded})`, { correlationId });
+          const res = await this.client.get<FullItem>(`/Items('${code}')`, { correlationId });
           return res.data;
         })
       );
@@ -881,10 +906,6 @@ export class SapEntitiesService {
             rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
           }
         }
-      }
-
-      if (i > 0 && i % 100 === 0) {
-        console.log(`[fetchItemPricesOneByOne] progresso: ${i}/${itemCodes.length} (${rows.length} preços)`);
       }
     }
 
