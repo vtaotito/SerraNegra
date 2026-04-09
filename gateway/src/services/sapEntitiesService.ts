@@ -744,24 +744,24 @@ export class SapEntitiesService {
       return [];
     }
 
-    // Nível 2: /Items sem $select (retorna objeto completo com ItemPrices embutido)
+    // Nível 2: /Items com $select=ItemCode,ItemPrices (menos dados)
     try {
-      const rows = await this.fetchItemPricesFullObject(listMap, correlationId);
+      const rows = await this.fetchItemPricesFullObject(listMap, correlationId, true);
+      console.log(`[listItemPrices] Select-mode OK - ${rows.length} linhas`);
+      if (rows.length > 0) return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listItemPrices] Select-mode falhou: ${msg}`);
+    }
+
+    // Nível 3: /Items sem $select (objeto completo, mais lento)
+    try {
+      const rows = await this.fetchItemPricesFullObject(listMap, correlationId, false);
       console.log(`[listItemPrices] Full-object OK - ${rows.length} linhas`);
       if (rows.length > 0) return rows;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[listItemPrices] Full-object falhou: ${msg}`);
-    }
-
-    // Nível 3: GET individual /Items('code') para amostra e debug
-    try {
-      const rows = await this.fetchItemPricesSample(listMap, correlationId);
-      console.log(`[listItemPrices] Sample OK - ${rows.length} linhas`);
-      if (rows.length > 0) return rows;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[listItemPrices] Sample falhou: ${msg}`);
     }
 
     return [];
@@ -800,7 +800,8 @@ export class SapEntitiesService {
    */
   private async fetchItemPricesFullObject(
     listMap: Map<number, string>,
-    correlationId?: string
+    correlationId: string | undefined,
+    useSelect: boolean
   ): Promise<ItemPriceRow[]> {
     type ItemFull = {
       ItemCode: string;
@@ -808,11 +809,12 @@ export class SapEntitiesService {
     };
 
     const allItems: ItemFull[] = [];
-    const pageSize = 20;
+    const pageSize = useSelect ? 100 : 20;
     let skip = 0;
 
     while (allItems.length < 3000) {
-      const url = `/Items?$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
+      const selectClause = useSelect ? "$select=ItemCode,ItemPrices&" : "";
+      const url = `/Items?${selectClause}$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
       const res = await this.client.get<{ value: ItemFull[] }>(url, { correlationId });
       const page = res.data.value || [];
       if (page.length === 0) break;
@@ -841,76 +843,20 @@ export class SapEntitiesService {
     console.log(`[fetchItemPricesFullObject] Total: ${allItems.length} itens`);
 
     const rows: ItemPriceRow[] = [];
+    let zeroCount = 0;
+    let noListCount = 0;
     for (const item of allItems) {
       for (const ip of item.ItemPrices ?? []) {
         const listName = listMap.get(ip.PriceList);
-        if (listName && ip.Price > 0) {
-          rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
-        }
+        if (!listName) { noListCount++; continue; }
+        if (ip.Price === 0) { zeroCount++; }
+        rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
       }
     }
+    console.log(`[fetchItemPricesFullObject] Resultado: ${rows.length} linhas (${zeroCount} com preço 0, ${noListCount} sem lista)`);
     return rows;
   }
 
-  /**
-   * Busca uma amostra de itens individualmente para debug e dados mínimos.
-   * Limita a 50 itens para não causar timeout.
-   */
-  private async fetchItemPricesSample(
-    listMap: Map<number, string>,
-    correlationId?: string
-  ): Promise<ItemPriceRow[]> {
-    type FullItem = Record<string, unknown> & {
-      ItemCode: string;
-      ItemPrices?: Array<{ PriceList: number; Price: number }>;
-    };
-
-    const codesRes = await this.client.get<{ value: Array<{ ItemCode: string }> }>(
-      "/Items?$select=ItemCode&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=50&$orderby=ItemCode asc",
-      { correlationId }
-    );
-    const itemCodes = (codesRes.data.value || []).map(i => i.ItemCode);
-    if (itemCodes.length === 0) return [];
-
-    // Buscar primeiro item para entender a estrutura
-    const first = itemCodes[0];
-    const firstRes = await this.client.get<FullItem>(`/Items('${first}')`, { correlationId });
-    const firstItem = firstRes.data;
-    const keys = Object.keys(firstItem);
-    console.log(`[fetchItemPricesSample] Campos do item '${first}': ${keys.slice(0, 20).join(", ")}...`);
-    console.log(`[fetchItemPricesSample] ItemPrices existe: ${keys.includes("ItemPrices")}`);
-    if (firstItem.ItemPrices && firstItem.ItemPrices.length > 0) {
-      console.log(`[fetchItemPricesSample] 1o preço: ${JSON.stringify(firstItem.ItemPrices[0])}`);
-    } else {
-      console.log(`[fetchItemPricesSample] ItemPrices vazio ou inexistente. Valor: ${JSON.stringify(firstItem.ItemPrices)}`);
-    }
-
-    const rows: ItemPriceRow[] = [];
-    const CONCURRENCY = 5;
-
-    for (let i = 0; i < itemCodes.length; i += CONCURRENCY) {
-      const batch = itemCodes.slice(i, i + CONCURRENCY);
-      const results = await Promise.allSettled(
-        batch.map(async (code) => {
-          const res = await this.client.get<FullItem>(`/Items('${code}')`, { correlationId });
-          return res.data;
-        })
-      );
-
-      for (const result of results) {
-        if (result.status !== "fulfilled" || !result.value) continue;
-        const item = result.value;
-        for (const ip of item.ItemPrices ?? []) {
-          const listName = listMap.get(ip.PriceList);
-          if (listName && ip.Price > 0) {
-            rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
-          }
-        }
-      }
-    }
-
-    return rows;
-  }
 }
 
 // ---- Tipos SAP ----
