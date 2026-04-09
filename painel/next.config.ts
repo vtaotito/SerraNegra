@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const gatewayUrl = process.env.GATEWAY_INTERNAL_URL ?? "http://gateway:3000";
+
 const nextConfig: NextConfig = {
   output: "standalone",
   images: {
@@ -10,6 +12,12 @@ const nextConfig: NextConfig = {
         pathname: "/wp-content/uploads/**",
       },
     ],
+  },
+  async rewrites() {
+    return [
+      { source: "/api/sap/:path*", destination: `${gatewayUrl}/sap/:path*` },
+      { source: "/api/v1/:path*", destination: `${gatewayUrl}/v1/:path*` },
+    ];
   },
 };
 
