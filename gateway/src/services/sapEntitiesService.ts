@@ -840,16 +840,21 @@ export class SapEntitiesService {
 
     const rows: ItemPriceRow[] = [];
     let zeroCount = 0;
+    let nullCount = 0;
+    let positiveCount = 0;
     let noListCount = 0;
     for (const item of allItems) {
       for (const ip of item.ItemPrices ?? []) {
         const listName = listMap.get(ip.PriceList);
         if (!listName) { noListCount++; continue; }
-        if (ip.Price === 0) { zeroCount++; }
-        rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
+        const price = typeof ip.Price === "number" ? ip.Price : 0;
+        if (ip.Price == null) nullCount++;
+        else if (price === 0) zeroCount++;
+        else positiveCount++;
+        rows.push({ ItemCode: item.ItemCode, Price: price, PriceList: ip.PriceList, ListName: listName });
       }
     }
-    console.log(`[fetchItemPricesFullObject] Resultado: ${rows.length} linhas (${zeroCount} com preço 0, ${noListCount} sem lista)`);
+    console.log(`[fetchItemPricesFullObject] Resultado: ${rows.length} linhas (positivos=${positiveCount}, zero=${zeroCount}, null=${nullCount}, sem-lista=${noListCount})`);
     return rows;
   }
 
