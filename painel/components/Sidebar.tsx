@@ -18,6 +18,8 @@ import {
   X,
   ExternalLink,
   Zap,
+  Tag,
+  UsersRound,
 } from "lucide-react";
 import { useState } from "react";
 import { WMS_BASE_URL } from "@/lib/config";
@@ -25,6 +27,8 @@ import { WMS_BASE_URL } from "@/lib/config";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
   { href: "/bussiness-inteligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
+  { href: "/bussiness-inteligence/produtos", label: "Produtos", icon: Tag, roles: null, module: "cockpit" as const },
+  { href: "/bussiness-inteligence/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
   { href: "/integracoes", label: "Integrações", icon: Zap, roles: ["admin", "supervisor"] },
 ];
@@ -89,9 +93,12 @@ export function Sidebar() {
         )}
         <div className="space-y-0.5">
           {filteredNav.map((item) => {
+            const hasChildRoutes = filteredNav.some((other) => other.href !== item.href && other.href.startsWith(item.href + "/"));
             const active = item.href === "/"
               ? pathname === "/"
-              : pathname === item.href || pathname.startsWith(item.href + "/");
+              : hasChildRoutes
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
                 key={item.href}
