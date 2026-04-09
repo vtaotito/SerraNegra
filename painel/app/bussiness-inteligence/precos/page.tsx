@@ -77,8 +77,9 @@ export default function PrecosPage() {
         va = a.max_price - a.min_price;
         vb = b.max_price - b.min_price;
       } else {
-        va = (a as Record<string, unknown>)[sortKey] as number;
-        vb = (b as Record<string, unknown>)[sortKey] as number;
+        const key = sortKey as keyof PracticedPriceRow;
+        va = (a[key] as number) ?? 0;
+        vb = (b[key] as number) ?? 0;
       }
 
       if (typeof va === "string" && typeof vb === "string")
