@@ -725,45 +725,156 @@ export class SapEntitiesService {
   async listItemPrices(
     correlationId?: string
   ): Promise<ItemPriceRow[]> {
-    const helper = new WmsQueriesHelper(this.client);
-
+    // Nível 1: SQLQuery (mais rápido, direto no HANA)
     try {
+      const helper = new WmsQueriesHelper(this.client);
       await helper.ensureQuery(WMS_QUERIES.ITEM_PRICES, { correlationId });
       const result = await helper.getItemPrices({ correlationId });
       const rows = result.value || [];
       console.log(`[listItemPrices] SQLQuery OK - ${rows.length} linhas de preço`);
-      return rows;
+      if (rows.length > 0) return rows;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[listItemPrices] SQLQuery falhou (${msg}), tentando fallback OData`);
     }
 
-    // Fallback: OData /PriceLists + /Items com ItemPrices
-    try {
-      const plRes = await this.client.get<{ value: Array<{ PriceListNo: number; PriceListName: string; IsGrossPrice: string; Active: string }> }>(
-        `/PriceLists?$select=PriceListNo,PriceListName,Active&$filter=Active eq 'tYES'&$top=50`,
-        { correlationId }
-      );
-      const activeLists = plRes.data.value || [];
-      if (activeLists.length === 0) return [];
+    // Carregar listas de preços para mapear PriceList number -> name
+    const listMap = await this.loadPriceLists(correlationId);
+    if (listMap.size === 0) {
+      console.warn("[listItemPrices] Nenhuma lista de preços encontrada");
+      return [];
+    }
 
-      const listMap = new Map(activeLists.map(l => [l.PriceListNo, l.PriceListName]));
-
-      const allItems: Array<{ ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> }> = [];
-      const pageSize = 20;
-      let skip = 0;
-      while (allItems.length < 5000) {
-        const url = `/Items?$select=ItemCode&$expand=ItemPrices($select=PriceList,Price)&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
-        const res = await this.client.get<{ value: typeof allItems }>(url, { correlationId });
-        const page = res.data.value || [];
-        if (page.length === 0) break;
-        allItems.push(...page);
-        if (page.length < pageSize) break;
-        skip += pageSize;
+    // Nível 2: OData /Items com $expand=ItemPrices (nested $select)
+    const expandCandidates = [
+      "$expand=ItemPrices($select=PriceList,Price)",
+      "$expand=ItemPrices",
+    ];
+    for (let ci = 0; ci < expandCandidates.length; ci++) {
+      try {
+        const rows = await this.fetchItemPricesViaExpand(
+          expandCandidates[ci], listMap, correlationId
+        );
+        console.log(`[listItemPrices] $expand #${ci + 1} OK - ${rows.length} linhas`);
+        if (rows.length > 0) return rows;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[listItemPrices] $expand #${ci + 1} falhou: ${msg}`);
+        if (!(err instanceof SapHttpError && err.status === 400)) break;
       }
+    }
 
-      const rows: ItemPriceRow[] = [];
-      for (const item of allItems) {
+    // Nível 3: Buscar itens individualmente via GET /Items(code) (lento mas confiável)
+    try {
+      const rows = await this.fetchItemPricesOneByOne(listMap, correlationId);
+      console.log(`[listItemPrices] Individual fetch OK - ${rows.length} linhas`);
+      if (rows.length > 0) return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listItemPrices] Individual fetch falhou: ${msg}`);
+    }
+
+    return [];
+  }
+
+  private async loadPriceLists(
+    correlationId?: string
+  ): Promise<Map<number, string>> {
+    const candidates = [
+      "/PriceLists?$select=PriceListNo,PriceListName,Active&$filter=Active eq 'tYES'&$top=50",
+      "/PriceLists?$select=PriceListNo,PriceListName&$top=50",
+      "/PriceLists?$top=50",
+    ];
+
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        const res = await this.client.get<{ value: Array<{ PriceListNo: number; PriceListName: string; Active?: string }> }>(
+          candidates[i], { correlationId }
+        );
+        const lists = (res.data.value || []).filter(
+          l => !l.Active || l.Active === "tYES"
+        );
+        console.log(`[loadPriceLists] Candidato #${i + 1} OK - ${lists.length} listas`);
+        return new Map(lists.map(l => [l.PriceListNo, l.PriceListName]));
+      } catch (err) {
+        if (err instanceof SapHttpError && err.status === 400) continue;
+        console.warn(`[loadPriceLists] Candidato #${i + 1} falhou:`, err instanceof Error ? err.message : err);
+      }
+    }
+    return new Map();
+  }
+
+  private async fetchItemPricesViaExpand(
+    expandClause: string,
+    listMap: Map<number, string>,
+    correlationId?: string
+  ): Promise<ItemPriceRow[]> {
+    type ItemWithPrices = { ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> };
+    const allItems: ItemWithPrices[] = [];
+    const pageSize = 20;
+    let skip = 0;
+
+    while (allItems.length < 5000) {
+      const url = `/Items?$select=ItemCode&${expandClause}&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
+      const res = await this.client.get<{ value: ItemWithPrices[] }>(url, { correlationId });
+      const page = res.data.value || [];
+      if (page.length === 0) break;
+      allItems.push(...page);
+      if (page.length < pageSize) break;
+      skip += pageSize;
+    }
+
+    const rows: ItemPriceRow[] = [];
+    for (const item of allItems) {
+      for (const ip of item.ItemPrices ?? []) {
+        const listName = listMap.get(ip.PriceList);
+        if (listName && ip.Price > 0) {
+          rows.push({ ItemCode: item.ItemCode, Price: ip.Price, PriceList: ip.PriceList, ListName: listName });
+        }
+      }
+    }
+    return rows;
+  }
+
+  private async fetchItemPricesOneByOne(
+    listMap: Map<number, string>,
+    correlationId?: string
+  ): Promise<ItemPriceRow[]> {
+    type FullItem = { ItemCode: string; ItemPrices?: Array<{ PriceList: number; Price: number }> };
+
+    // Obter lista de códigos de itens ativos
+    const itemCodes: string[] = [];
+    const pageSize = 20;
+    let skip = 0;
+    while (itemCodes.length < 2000) {
+      const url = `/Items?$select=ItemCode&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}&$orderby=ItemCode asc`;
+      const res = await this.client.get<{ value: Array<{ ItemCode: string }> }>(url, { correlationId });
+      const page = res.data.value || [];
+      if (page.length === 0) break;
+      for (const it of page) itemCodes.push(it.ItemCode);
+      if (page.length < pageSize) break;
+      skip += pageSize;
+    }
+
+    console.log(`[fetchItemPricesOneByOne] ${itemCodes.length} itens para buscar preços`);
+    if (itemCodes.length === 0) return [];
+
+    const rows: ItemPriceRow[] = [];
+    const CONCURRENCY = 5;
+
+    for (let i = 0; i < itemCodes.length; i += CONCURRENCY) {
+      const batch = itemCodes.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (code) => {
+          const encoded = encodeURIComponent(`'${code}'`);
+          const res = await this.client.get<FullItem>(`/Items(${encoded})`, { correlationId });
+          return res.data;
+        })
+      );
+
+      for (const result of results) {
+        if (result.status !== "fulfilled" || !result.value) continue;
+        const item = result.value;
         for (const ip of item.ItemPrices ?? []) {
           const listName = listMap.get(ip.PriceList);
           if (listName && ip.Price > 0) {
@@ -771,13 +882,13 @@ export class SapEntitiesService {
           }
         }
       }
-      console.log(`[listItemPrices] OData fallback OK - ${rows.length} linhas de preço`);
-      return rows;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[listItemPrices] OData fallback falhou: ${msg}`);
-      return [];
+
+      if (i > 0 && i % 100 === 0) {
+        console.log(`[fetchItemPricesOneByOne] progresso: ${i}/${itemCodes.length} (${rows.length} preços)`);
+      }
     }
+
+    return rows;
   }
 }
 
