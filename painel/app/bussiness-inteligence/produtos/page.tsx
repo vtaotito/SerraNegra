@@ -19,6 +19,7 @@ import {
   type ProductAnalyticsRow, type ProductOrderLine, type SapSalesPerson,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 
 const COD_NAMES: Record<string, string> = {
@@ -601,8 +602,14 @@ function ProdutosContent() {
   const date3mCutoff = useMemo(() => format(subMonths(new Date(), 3), "yyyy-MM-dd"), []);
   const todayStr = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
 
+  const { salesPersonCode, isComercial } = useSalesPersonFilter();
+
   const [estadoFilter, setEstadoFilter] = useState("");
   const [vendedorFilter, setVendedorFilter] = useState("");
+
+  const effectiveSalesPerson = isComercial && salesPersonCode != null
+    ? salesPersonCode
+    : vendedorFilter ? Number(vendedorFilter) : undefined;
 
   const { data: analyticsData, loading, error, refetch } = useFetch(
     () => fetchProductAnalytics({
@@ -610,9 +617,9 @@ function ProdutosContent() {
       dateTo: todayStr,
       date3mCutoff,
       estado: estadoFilter || undefined,
-      salesPerson: vendedorFilter ? Number(vendedorFilter) : undefined,
+      salesPerson: effectiveSalesPerson,
     }),
-    [date12mAgo, todayStr, date3mCutoff, estadoFilter, vendedorFilter],
+    [date12mAgo, todayStr, date3mCutoff, estadoFilter, effectiveSalesPerson],
   );
 
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);
@@ -965,6 +972,7 @@ function ProdutosContent() {
             </div>
           </div>
           <div className="sm:col-span-3">
+            {!isComercial && (
             <div className="relative">
               <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cockpit-muted pointer-events-none" />
               <select value={vendedorFilter} onChange={(e) => setVendedorFilter(e.target.value)}
@@ -973,6 +981,7 @@ function ProdutosContent() {
                 {vendedorOptions.map((v) => <option key={v.code} value={String(v.code)}>{v.name}</option>)}
               </select>
             </div>
+            )}
           </div>
           <div className="sm:col-span-3">
             <select value={codFilter} onChange={(e) => setCodFilter(e.target.value)}

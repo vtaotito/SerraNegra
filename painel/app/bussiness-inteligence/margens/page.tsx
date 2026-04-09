@@ -16,6 +16,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format } from "date-fns";
 
@@ -125,11 +126,12 @@ function ChartTooltip({ active, payload, label }: any) {
 
 export default function MargensPage() {
   const { label: periodoLabel, range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
   const { data: ordersData, loading, error, refetch } =
-    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
 
   const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
   const activeOrders = useMemo(() => orders.filter((o) => o.cancelled !== "Y"), [orders]);

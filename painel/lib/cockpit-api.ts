@@ -258,6 +258,7 @@ export function fetchSalesOrders(opts?: {
   dateFrom?: string;
   dateTo?: string;
   cardCode?: string;
+  salesPerson?: number;
   limit?: number;
   offset?: number;
 }): Promise<SalesOrdersResult> {
@@ -265,6 +266,7 @@ export function fetchSalesOrders(opts?: {
   if (opts?.dateFrom) p.dateFrom = opts.dateFrom;
   if (opts?.dateTo) p.dateTo = opts.dateTo;
   if (opts?.cardCode) p.cardCode = opts.cardCode;
+  if (opts?.salesPerson != null) p.salesPerson = String(opts.salesPerson);
   if (opts?.limit) p.limit = String(opts.limit);
   if (opts?.offset) p.offset = String(opts.offset);
   return get("/sap/sales-orders", p);

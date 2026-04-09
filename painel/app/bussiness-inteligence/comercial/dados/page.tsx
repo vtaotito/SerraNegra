@@ -9,6 +9,7 @@ import { fmtBRL, exportCSV } from "@/lib/format";
 import { fetchInvoices, type SapInvoice, type SapInvoiceLine } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -124,6 +125,7 @@ function DocDetailPanel({ lines }: { lines: SapInvoiceLine[] }) {
 
 export default function ComercialDadosPage() {
   const { label: periodoLabel, range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
 
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
@@ -135,8 +137,11 @@ export default function ComercialDadosPage() {
 
   const allDocs = useMemo(() => {
     if (!invoiceData?.items) return [];
-    return groupInvoices(invoiceData.items);
-  }, [invoiceData]);
+    const items = salesPersonCode != null
+      ? invoiceData.items.filter((inv) => inv.SalesPersonCode === salesPersonCode)
+      : invoiceData.items;
+    return groupInvoices(items);
+  }, [invoiceData, salesPersonCode]);
 
   const [search, setSearch] = useState("");
   const [canceladoFilter, setCanceladoFilter] = useState<"ALL" | "active" | "cancelled">("ALL");

@@ -17,6 +17,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format, subMonths, parseISO, differenceInDays, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -48,6 +49,7 @@ function CTooltip({ active, payload, label }: any) {
 
 export default function HomePage() {
   const { label: periodoLabel, range, monthsInRange } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
@@ -55,9 +57,9 @@ export default function HomePage() {
   const prevTo = format(subMonths(range.to, monthsInRange), "yyyy-MM-dd");
 
   const { data: ordersData, loading: loadOrd, error: errOrd, refetch } =
-    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000 }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
   const { data: prevOrdersData } =
-    useFetch(() => fetchSalesOrders({ dateFrom: prevFrom, dateTo: prevTo, limit: 50000 }), [prevFrom, prevTo]);
+    useFetch(() => fetchSalesOrders({ dateFrom: prevFrom, dateTo: prevTo, limit: 50000, salesPerson: salesPersonCode }), [prevFrom, prevTo, salesPersonCode]);
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);
   const { data: custData } = useFetch(() => fetchCustomers({ limit: 1 }), []);
 

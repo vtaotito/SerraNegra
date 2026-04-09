@@ -19,6 +19,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format, differenceInDays } from "date-fns";
 
@@ -223,8 +224,9 @@ export default function EstoquePage() {
     useFetch(() => fetchCatalog({ limit: 5000 }), []);
   const { data: invData, loading: l2, error: e2, refetch: r2 } =
     useFetch(() => fetchInventory({ limit: 5000 }), []);
+  const { salesPersonCode } = useSalesPersonFilter();
   const { data: ordData, loading: l3, error: e3, refetch: r3 } =
-    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000 }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
 
   const loading = l1 || l2 || l3;
   const error = e1 || e2 || e3;

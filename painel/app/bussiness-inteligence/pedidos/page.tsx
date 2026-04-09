@@ -24,6 +24,7 @@ import {
   type SalesOrderRow, type SalesOrderLine,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { getProductGroup } from "@/lib/format";
 import {
@@ -633,6 +634,7 @@ function PedidosContent() {
 
   // ─── Range global (unificado via BITopbar) ───
   const { range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
   const dayCount = differenceInDays(range.to, range.from) + 1;
@@ -640,8 +642,8 @@ function PedidosContent() {
 
   // ─── Fetch ───
   const { data, loading, error, refetch } = useFetch(
-    () => fetchSalesOrders({ dateFrom, dateTo, limit: 50000 }),
-    [dateFrom, dateTo]
+    () => fetchSalesOrders({ dateFrom, dateTo, limit: 50000, salesPerson: salesPersonCode }),
+    [dateFrom, dateTo, salesPersonCode]
   );
 
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);

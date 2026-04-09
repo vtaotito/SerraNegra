@@ -16,6 +16,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format, differenceInDays } from "date-fns";
 
@@ -416,11 +417,12 @@ function ClientModal({
 
 export default function ClientesPage() {
   const { label: periodoLabel, range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
   const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
-    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
   const { data: custData, loading: l2, error: e2, refetch: r2 } =
     useFetch(() => fetchCustomers({ limit: 5000 }), []);
   const { data: spData, loading: l3, error: e3, refetch: r3 } =

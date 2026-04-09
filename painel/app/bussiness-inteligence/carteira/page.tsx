@@ -6,6 +6,7 @@ import { fmtBRL } from "@/lib/format";
 import { fetchSalesOrders, fetchSalesPersons, type SalesOrderRow, type SapSalesPerson } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format } from "date-fns";
 
@@ -46,11 +47,12 @@ function buildCarteira(orders: SalesOrderRow[], persons: SapSalesPerson[]): Cart
 
 export default function CarteiraPage() {
   const { label: periodoLabel, range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
   const { data: ordersData, loading: l1, error: e1, refetch: r1 } =
-    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
   const { data: spData, loading: l2, error: e2, refetch: r2 } =
     useFetch(() => fetchSalesPersons(), []);
   const loading = l2;

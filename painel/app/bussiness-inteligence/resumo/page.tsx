@@ -17,6 +17,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
+import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 
@@ -46,6 +47,7 @@ function ChartTooltip({ active, payload, label }: any) {
 
 export default function ResumoPage() {
   const { label: periodoLabel, range } = useDateRange();
+  const { salesPersonCode } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
@@ -53,7 +55,7 @@ export default function ResumoPage() {
   const { data: invData, loading: l2 } = useFetch(() => fetchInventory({ limit: 1 }), []);
   const { data: custData, loading: l3 } = useFetch(() => fetchCustomers({ limit: 500 }), []);
   const { data: ordersData, loading: l4, error: e4, refetch: r4 } =
-    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo }), [dateFrom, dateTo]);
+    useFetch(() => fetchSalesOrders({ limit: 50000, dateFrom, dateTo, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
   const { data: spData, loading: l5, error: e5, refetch: r5 } =
     useFetch(() => fetchSalesPersons(), []);
 
