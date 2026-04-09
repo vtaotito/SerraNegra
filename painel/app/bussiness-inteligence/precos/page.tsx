@@ -93,15 +93,13 @@ export default function PrecosPage() {
         if (p !== null && p > 0) vals.push(p);
       }
 
-      if (vals.length === 0) continue;
-
       rows.push({
         itemCode,
         description: catalogMap.get(itemCode) ?? itemCode,
         prices,
-        minPrice: Math.min(...vals),
-        maxPrice: Math.max(...vals),
-        avgPrice: vals.reduce((a, b) => a + b, 0) / vals.length,
+        minPrice: vals.length > 0 ? Math.min(...vals) : 0,
+        maxPrice: vals.length > 0 ? Math.max(...vals) : 0,
+        avgPrice: vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0,
         listCount: vals.length,
       });
     }

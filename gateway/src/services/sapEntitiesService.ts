@@ -809,31 +809,27 @@ export class SapEntitiesService {
     };
 
     const allItems: ItemFull[] = [];
-    const pageSize = useSelect ? 100 : 20;
+    const requestTop = useSelect ? 100 : 50;
     let skip = 0;
 
     while (allItems.length < 3000) {
       const selectClause = useSelect ? "$select=ItemCode,ItemPrices&" : "";
-      const url = `/Items?${selectClause}$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${pageSize}&$skip=${skip}`;
+      const url = `/Items?${selectClause}$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=${requestTop}&$skip=${skip}`;
       const res = await this.client.get<{ value: ItemFull[] }>(url, { correlationId });
       const page = res.data.value || [];
       if (page.length === 0) break;
 
-      // Debug: log dos campos do primeiro item para entender a estrutura
       if (allItems.length === 0 && page.length > 0) {
         const keys = Object.keys(page[0]);
-        const hasItemPrices = keys.includes("ItemPrices");
-        console.log(`[fetchItemPricesFullObject] Campos do 1o item (${keys.length}): ${keys.slice(0, 15).join(", ")}...`);
-        console.log(`[fetchItemPricesFullObject] Tem ItemPrices: ${hasItemPrices}`);
-        if (hasItemPrices) {
-          const sample = (page[0] as ItemFull).ItemPrices;
-          console.log(`[fetchItemPricesFullObject] ItemPrices count: ${sample?.length ?? 0}, sample: ${JSON.stringify(sample?.[0])}`);
+        console.log(`[fetchItemPricesFullObject] Campos (${keys.length}): ${keys.slice(0, 10).join(", ")}... ItemPrices: ${keys.includes("ItemPrices")}`);
+        const sample = (page[0] as ItemFull).ItemPrices;
+        if (sample && sample.length > 0) {
+          console.log(`[fetchItemPricesFullObject] 1o preço: ${JSON.stringify(sample[0])}`);
         }
       }
 
       allItems.push(...page);
-      if (page.length < pageSize) break;
-      skip += pageSize;
+      skip += page.length;
 
       if (allItems.length % 200 === 0) {
         console.log(`[fetchItemPricesFullObject] progresso: ${allItems.length} itens`);
