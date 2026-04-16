@@ -34,8 +34,12 @@ function createSapClient() {
     error: (msg: string, extra?: unknown) => logger.error({ extra }, msg)
   };
 
+  const base = SAP_BASE_URL.endsWith("/b1s/v1")
+    ? SAP_BASE_URL
+    : `${SAP_BASE_URL.replace(/\/+$/, "")}/b1s/v1`;
+
   return new SapServiceLayerClient({
-    baseUrl: SAP_BASE_URL,
+    baseUrl: base,
     credentials: { companyDb: SAP_COMPANY_DB, username: SAP_USERNAME, password: SAP_PASSWORD },
     logger: sapLogger
   });
