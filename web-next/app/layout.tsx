@@ -6,8 +6,8 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "WMS/OMS - Sistema de Gestão de Pedidos",
-  description: "Sistema de gestão de pedidos com integração SAP B1",
+  title: "WMS Serra Negra - Sistema de Gestão de Pedidos",
+  description: "Sistema de gestão de pedidos e estoque da Garrafaria Serra Negra com integração SAP B1",
 };
 
 export default function RootLayout({

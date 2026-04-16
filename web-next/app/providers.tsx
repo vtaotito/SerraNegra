@@ -13,9 +13,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         position="top-right"
         richColors
         closeButton
-        toastOptions={{
-          duration: 4000,
-        }}
+        toastOptions={{ duration: 4000 }}
       />
       {process.env.NEXT_PUBLIC_ENABLE_DEVTOOLS === "true" && (
         <ReactQueryDevtools initialIsOpen={false} />

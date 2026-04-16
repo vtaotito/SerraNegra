@@ -12,31 +12,11 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 const menuItems = [
-  {
-    href: "/",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    href: "/pedidos",
-    label: "Pedidos",
-    icon: ShoppingCart,
-  },
-  {
-    href: "/produtos",
-    label: "Produtos",
-    icon: Package,
-  },
-  {
-    href: "/estoque",
-    label: "Estoque",
-    icon: Warehouse,
-  },
-  {
-    href: "/integracao",
-    label: "Integração",
-    icon: RefreshCw,
-  },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
+  { href: "/produtos", label: "Produtos", icon: Package },
+  { href: "/estoque", label: "Estoque", icon: Warehouse },
+  { href: "/integracao", label: "Integração", icon: RefreshCw },
 ];
 
 export function MobileNav() {
@@ -47,7 +27,10 @@ export function MobileNav() {
       <ul className="flex items-center justify-around">
         {menuItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(item.href);
 
           return (
             <li key={item.href} className="flex-1">
