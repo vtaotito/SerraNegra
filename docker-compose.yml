@@ -150,11 +150,14 @@ services:
       DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
       PANEL_JWT_SECRET: "${PANEL_JWT_SECRET:-painel-secret-change-me-in-production}"
       NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
+      GATEWAY_INTERNAL_URL: "http://gateway:3000"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
       - "3003:3000"
     depends_on:
       postgres:
+        condition: service_healthy
+      gateway:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

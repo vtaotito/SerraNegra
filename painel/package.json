@@ -8,8 +8,7 @@
     "start": "next start -p 3003",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node -e \"require('./database/migrate.js')\"",
-    "db:seed": "node -e \"require('./database/seed.js')\""
+    "db:migrate": "node ./database/run-migration.js"
   },
   "dependencies": {
     "autoprefixer": "^10.4.27",

@@ -136,9 +136,51 @@ services:
       timeout: 3s
       retries: 5
 
+  painel:
+    container_name: wms-painel
+    build:
+      context: ..
+      dockerfile: painel/Dockerfile
+    environment:
+      DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
+      PANEL_JWT_SECRET: "${PANEL_JWT_SECRET:-painel-secret-change-me-in-production}"
+      NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
+      GATEWAY_INTERNAL_URL: "http://gateway:3000"
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    ports:
+      - "3003:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/login').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cockpit:
+    container_name: wms-cockpit
+    build:
+      context: ..
+      dockerfile: cockpit/front-cockpit/Dockerfile
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/cockpit"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   nginx:
-    image: nginx:1.27-alpine
     container_name: wms-nginx
+    build:
+      context: ..
+      dockerfile: nginx/Dockerfile
     depends_on:
       web:
         condition: service_healthy
@@ -146,10 +188,10 @@ services:
         condition: service_healthy
       portalb2b:
         condition: service_healthy
+      cockpit:
+        condition: service_healthy
     ports:
       - "${WEB_PORT:-8080}:80"
-    volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost/health"]

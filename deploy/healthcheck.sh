@@ -14,7 +14,7 @@ fi
 WEB_PORT="${WEB_PORT:-8080}"
 
 for i in $(seq 1 "$MAX_RETRIES"); do
-  if curl -fsS "http://localhost:${WEB_PORT}/healthz" >/dev/null 2>&1; then
+  if curl -fsS "http://localhost:${WEB_PORT}/health" >/dev/null 2>&1; then
     echo "Healthcheck ok."
     exit 0
   fi
