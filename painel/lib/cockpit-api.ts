@@ -447,3 +447,65 @@ export interface PracticedPricesResult {
 export function fetchPracticedPrices(): Promise<PracticedPricesResult> {
   return get("/sap/prices/practiced");
 }
+
+// ─── MarkUp (Precificação) ──────────────────────────────────
+
+export interface MarkupItem {
+  itemCode: string;
+  itemName: string;
+  itemGroup: number | null;
+  manufacturer: string;
+
+  /** Valor sem impostos (milheiro) */
+  v: number;
+  /** Frete (milheiro) */
+  fr: number;
+  /** Embalagem / fardo / caixa (milheiro) */
+  sc: number;
+  /** Comissão (milheiro) */
+  co: number;
+  /** PIS/COFINS (%) */
+  pc: number;
+  /** ICMS compra (%) */
+  ic: number;
+  /** IPI (%) */
+  ip: number;
+
+  qtdPallet: number;
+  qtdSaco: number;
+  custoFixoSaco: number;
+  custoFixoPallet: number;
+
+  prices: Record<string, number>;
+  hasOverride: boolean;
+}
+
+export interface MarkupItemsResult {
+  ok: boolean;
+  count: number;
+  items: MarkupItem[];
+  timestamp: string;
+}
+
+export function fetchMarkupItems(): Promise<MarkupItemsResult> {
+  return get("/sap/markup/items");
+}
+
+export interface SaveMarkupOverrideInput {
+  itemCode: string;
+  frete?: number | null;
+  embalagem?: number | null;
+  comissao?: number | null;
+  pisCofins?: number | null;
+  icmsCompra?: number | null;
+  ipi?: number | null;
+  custoFixoSaco?: number | null;
+  custoFixoPallet?: number | null;
+  qtdPallet?: number | null;
+  qtdSaco?: number | null;
+  precoSemImp?: number | null;
+}
+
+export function saveMarkupOverride(data: SaveMarkupOverrideInput): Promise<{ ok: boolean }> {
+  return post("/sap/markup/overrides", data);
+}

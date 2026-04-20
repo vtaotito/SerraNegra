@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, FileText, Package,
-  Wallet, UserCircle, TrendingUp, BarChart3, Target, DollarSign,
+  Wallet, UserCircle, TrendingUp, BarChart3, Target, DollarSign, Calculator,
 } from "lucide-react";
 
 const BI_PREFIX = "/bussiness-inteligence";
@@ -20,6 +20,7 @@ const navItems = [
   { label: "Resumo", path: "/resumo", icon: BarChart3 },
   { label: "Faturamento", path: "/faturamento", icon: Target },
   { label: "Preços", path: "/precos", icon: DollarSign },
+  { label: "MarkUp", path: "/markup", icon: Calculator },
 ];
 
 export function BISubnav() {

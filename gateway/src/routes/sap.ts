@@ -1533,5 +1533,72 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
-  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit, pedidos de venda e tabelas de preço)");
+  // ─── MarkUp ─────────────────────────────────────────────────
+
+  app.get("/sap/markup/items", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const { MarkupService } = await import("../services/markupService.js");
+      const { getDbPool } = await import("../scheduler/dailySync.js");
+
+      let ent: SapEntitiesService | null = null;
+      try { ent = getEntitiesService(); } catch { /* SAP offline */ }
+
+      const svc = new MarkupService(getDbPool(), ent);
+      const items = await svc.listMarkupItems(correlationId);
+
+      reply.code(200).send({
+        ok: true,
+        count: items.length,
+        items,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro ao buscar markup items");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.post("/sap/markup/overrides", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const { MarkupService } = await import("../services/markupService.js");
+      const { getDbPool } = await import("../scheduler/dailySync.js");
+
+      let ent: SapEntitiesService | null = null;
+      try { ent = getEntitiesService(); } catch { /* SAP offline */ }
+
+      const svc = new MarkupService(getDbPool(), ent);
+      const body = req.body as any;
+
+      if (!body?.itemCode) {
+        return reply.code(400).send({ ok: false, message: "itemCode é obrigatório" });
+      }
+
+      await svc.saveOverride({
+        itemCode: body.itemCode,
+        frete: body.frete,
+        embalagem: body.embalagem,
+        comissao: body.comissao,
+        pisCofins: body.pisCofins,
+        icmsCompra: body.icmsCompra,
+        ipi: body.ipi,
+        custoFixoSaco: body.custoFixoSaco,
+        custoFixoPallet: body.custoFixoPallet,
+        qtdPallet: body.qtdPallet,
+        qtdSaco: body.qtdSaco,
+        precoSemImp: body.precoSemImp,
+        updatedBy: body.updatedBy ?? "painel",
+      });
+
+      reply.code(200).send({ ok: true, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro ao salvar markup override");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.log.info("Rotas SAP registradas (com cache, store, session management, sync de entidades, cockpit, pedidos de venda, tabelas de preço e markup)");
 }

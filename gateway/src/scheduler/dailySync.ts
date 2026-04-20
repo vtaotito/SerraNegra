@@ -193,6 +193,25 @@ async function ensureSchema() {
     WHERE entity = 'sales_orders'
     ORDER BY started_at DESC
     LIMIT 1;
+
+    -- Overrides de markup (custos que não existem no SAP ou divergem)
+    CREATE TABLE IF NOT EXISTS markup_overrides (
+      item_code         VARCHAR(50) PRIMARY KEY,
+      frete             NUMERIC(12,2),
+      embalagem         NUMERIC(12,2),
+      comissao          NUMERIC(12,2),
+      pis_cofins        NUMERIC(6,4),
+      icms_compra       NUMERIC(6,4),
+      ipi               NUMERIC(6,4),
+      custo_fixo_saco   NUMERIC(6,4) DEFAULT 0.06,
+      custo_fixo_pallet NUMERIC(6,4) DEFAULT 0.03,
+      qtd_pallet        INTEGER,
+      qtd_saco          INTEGER,
+      preco_sem_imp     NUMERIC(12,2),
+      updated_at        TIMESTAMPTZ DEFAULT NOW(),
+      updated_by        VARCHAR(100)
+    );
+    CREATE INDEX IF NOT EXISTS idx_markup_item ON markup_overrides (item_code);
   `);
 }
 
