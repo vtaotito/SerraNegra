@@ -15,6 +15,7 @@ import {
   Target,
   DollarSign,
   Calculator,
+  Megaphone,
 } from "lucide-react";
 import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 
@@ -24,6 +25,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Visão",
     items: [{ label: "Visão geral", path: "" }],
+  },
+  {
+    label: "Marketing",
+    items: [{ label: "Marketing & CRM", path: "/marketing" }],
   },
   {
     label: "Comercial",
@@ -62,6 +67,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/faturamento": Target,
   "/precos": DollarSign,
   "/markup": Calculator,
+  "/marketing": Megaphone,
 };
 
 export function BISubnav() {

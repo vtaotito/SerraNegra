@@ -19,6 +19,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
+import { ClientRdInsights } from "./ClientRdInsights";
 import { BiChartTooltip } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
 import { format, differenceInDays } from "date-fns";
@@ -79,6 +80,8 @@ function daysColor(d: number) {
 interface ClientAgg {
   cardCode: string;
   cardName: string;
+  /** E-mail SAP — usado pelo Cliente 360 RD (Marketing). */
+  email: string | null;
   city: string;
   state: string;
   region: string;
@@ -142,6 +145,7 @@ function buildClientAnalytics(
       return {
         cardCode: code,
         cardName: cust?.card_name || a.name || code,
+        email: cust?.email?.trim() || null,
         city,
         state: st,
         region: STATE_TO_REGION[st] ?? "Outro",
@@ -289,6 +293,8 @@ function ClientModal({
               </div>
             ))}
           </div>
+
+          <ClientRdInsights email={client.email} />
 
           {/* Período */}
           <div className="flex items-center gap-4 text-xs text-cockpit-muted">
@@ -447,8 +453,13 @@ export default function ClientesPage() {
   const filtered = useMemo(() => {
     return allClients.filter((c) => {
       const q = debouncedSearch.toLowerCase();
-      const matchSearch = c.cardName.toLowerCase().includes(q) || c.cardCode.toLowerCase().includes(q) ||
-        c.city.toLowerCase().includes(q) || c.vendorName.toLowerCase().includes(q);
+      const mail = c.email?.toLowerCase();
+      const matchSearch =
+        c.cardName.toLowerCase().includes(q) ||
+        c.cardCode.toLowerCase().includes(q) ||
+        c.city.toLowerCase().includes(q) ||
+        c.vendorName.toLowerCase().includes(q) ||
+        (mail ? mail.includes(q) : false);
       const matchClasse = classeFilter === "ALL" || c.classe === classeFilter;
       const matchEstado = estadoFilter === "ALL" || c.state === estadoFilter;
       return matchSearch && matchClasse && matchEstado;
