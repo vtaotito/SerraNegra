@@ -11,6 +11,8 @@
     "db:migrate": "node ./database/run-migration.js"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.5",
+    "@tanstack/react-virtual": "^3.13.24",
     "autoprefixer": "^10.4.27",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",

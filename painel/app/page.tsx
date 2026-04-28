@@ -41,7 +41,7 @@ const modules: {
     key: "cockpit",
     label: "Business Intelligence",
     description: "Dashboards de vendas, faturamento, margens e análise de clientes",
-    href: "/bussiness-inteligence",
+    href: "/business-intelligence",
     icon: BarChart3,
     gradient: "from-gsn-700 to-gsn-900",
     features: ["Faturamento", "Vendedores", "Margens", "Carteira"],

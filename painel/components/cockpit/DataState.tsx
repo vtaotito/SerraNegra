@@ -4,7 +4,7 @@ import { Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 
 export function LoadingSkeleton({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="space-y-4 animate-pulse">
+    <div className="space-y-4 animate-pulse motion-reduce:animate-none">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="rounded-xl border border-cockpit-border bg-white p-5 h-20">
@@ -31,7 +31,7 @@ export function LoadingOverlay() {
   return (
     <div className="flex items-center justify-center py-24">
       <div className="flex flex-col items-center gap-3">
-        <Loader2 className="w-8 h-8 text-cockpit-accent animate-spin" />
+        <Loader2 className="w-8 h-8 text-cockpit-accent animate-spin motion-reduce:animate-none" />
         <p className="text-sm text-cockpit-muted">Carregando dados do SAP B1...</p>
       </div>
     </div>

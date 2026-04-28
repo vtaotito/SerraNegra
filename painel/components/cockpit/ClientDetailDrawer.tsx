@@ -41,7 +41,7 @@ export function ClientDetailDrawer({ client, open, onClose }: ClientDetailDrawer
 
   if (!client) return null;
 
-  const pedidosUrl = `/bussiness-inteligence/pedidos?cardCode=${encodeURIComponent(client.codigo)}&clientName=${encodeURIComponent(client.cliente)}`;
+  const pedidosUrl = `/business-intelligence/pedidos?cardCode=${encodeURIComponent(client.codigo)}&clientName=${encodeURIComponent(client.cliente)}`;
 
   return (
     <>

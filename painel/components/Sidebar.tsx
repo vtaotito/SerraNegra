@@ -26,9 +26,9 @@ import { WMS_BASE_URL } from "@/lib/config";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
-  { href: "/bussiness-inteligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
-  { href: "/bussiness-inteligence/produtos", label: "Produtos", icon: Tag, roles: null, module: "cockpit" as const },
-  { href: "/bussiness-inteligence/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
+  { href: "/business-intelligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
+  { href: "/business-intelligence/produtos", label: "Produtos", icon: Tag, roles: null, module: "cockpit" as const },
+  { href: "/business-intelligence/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
   { href: "/integracoes", label: "Integrações", icon: Zap, roles: ["admin", "supervisor"] },
 ];

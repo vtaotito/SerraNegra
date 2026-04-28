@@ -7,6 +7,20 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyTimeout: 120_000,
   },
+  async redirects() {
+    return [
+      {
+        source: "/bussiness-inteligence",
+        destination: "/business-intelligence",
+        permanent: true,
+      },
+      {
+        source: "/bussiness-inteligence/:path*",
+        destination: "/business-intelligence/:path*",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
