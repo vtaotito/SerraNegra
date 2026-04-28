@@ -147,6 +147,9 @@ services:
       NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
       GATEWAY_INTERNAL_URL: "http://gateway:3000"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # RD Station (APIs Route Handlers /api/bi/rd — ver painel/.env.example)
+      RD_STATION_CRM_ACCESS_TOKEN: "${RD_STATION_CRM_ACCESS_TOKEN:-}"
+      RD_STATION_MARKETING_ACCESS_TOKEN: "${RD_STATION_MARKETING_ACCESS_TOKEN:-}"
     ports:
       - "3003:3000"
     depends_on:
