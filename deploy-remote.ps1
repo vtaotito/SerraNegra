@@ -1,8 +1,9 @@
 # Deploy remoto: atualiza o repositório no VPS e executa deploy/deploy.sh (releases + Docker Compose + healthcheck).
 #
 # Lê credenciais e caminhos do arquivo .env na raiz do repositório (mesma pasta deste script), se existir:
-#   WMS_SSH — host ou IP; se não tiver "@", combina com WMS_SSH_ROOT_USERNAME (padrão root)
-#   WMS_SSH_ROOT_USERNAME, WMS_SSH_ROOT_PASSWORD — opcional; com PuTTY plink no PATH, usa senha automaticamente
+#   WMS_SSH_HOST  — host ou usuario@host (compatível: WMS_SSH)
+#   WMS_SSH_USER  — usuário usado se WMS_SSH_HOST não tiver "@" (padrão: root; compat: WMS_SSH_ROOT_USERNAME)
+#   WMS_SSH_PASSWORD — opcional; com PuTTY plink.exe no PATH, login automático no Windows (compat: WMS_SSH_ROOT_PASSWORD)
 #   WMS_REMOTE_REPO_PATH, WMS_BASE_DIR, WMS_GIT_BRANCH — opcionais
 #
 # Precedência: parâmetros explícitos > variáveis de ambiente > chaves no .env > padrões.
@@ -77,11 +78,29 @@ $BaseDir = Get-WmsConfigValue -ParamValue $(if ($PSBoundParameters.ContainsKey('
 $Branch = Get-WmsConfigValue -ParamValue $(if ($PSBoundParameters.ContainsKey('Branch') -and -not [string]::IsNullOrWhiteSpace($Branch)) { $Branch } else { $null }) `
     -EnvName "WMS_GIT_BRANCH" -DotEnvKey "WMS_GIT_BRANCH" -Default "master"
 
-$resolvedSsh = Get-WmsConfigValue -ParamValue $(if ($PSBoundParameters.ContainsKey('SshTarget') -and -not [string]::IsNullOrWhiteSpace($SshTarget)) { $SshTarget } else { $null }) `
-    -EnvName "WMS_SSH" -DotEnvKey "WMS_SSH" -Default ""
+function Get-WmsFirstValue {
+    param([string[]] $EnvNames, [string[]] $DotEnvKeys)
+    foreach ($n in $EnvNames) {
+        $v = [Environment]::GetEnvironmentVariable($n, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($v)) { return $v.Trim() }
+    }
+    foreach ($k in $DotEnvKeys) {
+        if ($DotEnv.ContainsKey($k) -and -not [string]::IsNullOrWhiteSpace($DotEnv[$k])) {
+            return $DotEnv[$k].Trim()
+        }
+    }
+    return $null
+}
+
+if ($PSBoundParameters.ContainsKey('SshTarget') -and -not [string]::IsNullOrWhiteSpace($SshTarget)) {
+    $resolvedSsh = $SshTarget.Trim()
+}
+else {
+    $resolvedSsh = Get-WmsFirstValue -EnvNames @("WMS_SSH_HOST", "WMS_SSH") -DotEnvKeys @("WMS_SSH_HOST", "WMS_SSH")
+}
 
 if ([string]::IsNullOrWhiteSpace($resolvedSsh)) {
-    Write-Host "Defina WMS_SSH no .env na raiz do repo, ou -SshTarget 'usuario@host', ou `$env:WMS_SSH." -ForegroundColor Red
+    Write-Host "Defina WMS_SSH_HOST no .env (raiz do repo), ou -SshTarget 'usuario@host', ou `$env:WMS_SSH_HOST." -ForegroundColor Red
     if (Test-Path -LiteralPath $EnvFilePath) {
         Write-Host "Arquivo encontrado: $EnvFilePath" -ForegroundColor Gray
     }
@@ -92,15 +111,14 @@ if ([string]::IsNullOrWhiteSpace($resolvedSsh)) {
 }
 
 if ($resolvedSsh -notmatch '@') {
-    $sshUser = Get-WmsConfigValue -ParamValue $null -EnvName "WMS_SSH_ROOT_USERNAME" -DotEnvKey "WMS_SSH_ROOT_USERNAME" -Default "root"
+    $sshUser = Get-WmsFirstValue -EnvNames @("WMS_SSH_USER", "WMS_SSH_ROOT_USERNAME") -DotEnvKeys @("WMS_SSH_USER", "WMS_SSH_ROOT_USERNAME")
+    if ([string]::IsNullOrWhiteSpace($sshUser)) { $sshUser = "root" }
     $resolvedSsh = "$sshUser@$resolvedSsh"
 }
 
 $SshTarget = $resolvedSsh
-$SshPassword = $null
-if ($DotEnv.ContainsKey('WMS_SSH_ROOT_PASSWORD') -and -not [string]::IsNullOrWhiteSpace($DotEnv['WMS_SSH_ROOT_PASSWORD'])) {
-    $SshPassword = $DotEnv['WMS_SSH_ROOT_PASSWORD']
-}
+$SshPassword = Get-WmsFirstValue -EnvNames @("WMS_SSH_PASSWORD", "WMS_SSH_ROOT_PASSWORD") -DotEnvKeys @("WMS_SSH_PASSWORD", "WMS_SSH_ROOT_PASSWORD")
+$SshHostKey = Get-WmsFirstValue -EnvNames @("WMS_SSH_HOSTKEY") -DotEnvKeys @("WMS_SSH_HOSTKEY")
 
 $skipGitFlag = if ($SkipGit) { "1" } else { "0" }
 
@@ -146,6 +164,11 @@ $remote = $remote `
     -replace '__BD__', (Escape-BashSingleQuoted $BaseDir) `
     -replace '__SK__', (Escape-BashSingleQuoted $skipGitFlag)
 
+# Normaliza quebras de linha para LF — bash em Linux falha com CRLF
+# (ex.: "set -euo pipefail`r" vira `pipefail\r` e quebra parsing).
+$remote = $remote -replace "`r`n", "`n"
+$remote = $remote -replace "`r", "`n"
+
 Write-Host "Deploy remoto → $($SshTarget -replace '^[^@]+@', '***@')" -ForegroundColor Cyan
 Write-Host "  Repo:    $RemoteRepoPath" -ForegroundColor Gray
 Write-Host "  BaseDir: $BaseDir" -ForegroundColor Gray
@@ -164,15 +187,35 @@ if (-not $ForceSsh -and $null -ne $SshPassword) {
     if (-not $plExecutable) { $plExecutable = Get-Command plink -ErrorAction SilentlyContinue }
 }
 
-if ($plExecutable) {
-    Write-Host "Conexão SSH via plink (host: $($SshTarget -replace '^[^@]+@', '***@'))" -ForegroundColor DarkGray
-    $remote | & $plExecutable.Source -batch -ssh $SshTarget -pw $SshPassword "bash" "-s"
-}
-else {
-    if (-not $ForceSsh -and $null -ne $SshPassword) {
-        Write-Host "Instale PuTTY (plink.exe no PATH) para usar WMS_SSH_ROOT_PASSWORD automaticamente; usando OpenSSH." -ForegroundColor Yellow
+# Materializa o script em arquivo temporário com LF puro para evitar
+# qualquer conversão CRLF do pipeline do PowerShell ao redirecionar via stdin.
+$tmpScript = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "wms-deploy-$([System.Guid]::NewGuid().ToString('N')).sh")
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($tmpScript, $remote, $utf8NoBom)
+
+try {
+    if ($plExecutable) {
+        Write-Host "Conexão SSH via plink (host: $($SshTarget -replace '^[^@]+@', '***@'))" -ForegroundColor DarkGray
+        $plinkArgs = @("-batch", "-ssh", $SshTarget, "-pw", $SshPassword)
+        if (-not [string]::IsNullOrWhiteSpace($SshHostKey)) {
+            $plinkArgs += @("-hostkey", $SshHostKey)
+        }
+        $plinkArgs += @("bash", "-s")
+        & cmd.exe /c "type `"$tmpScript`" | `"$($plExecutable.Source)`" $($plinkArgs -join ' ')"
+        if ($LASTEXITCODE -ne 0 -and [string]::IsNullOrWhiteSpace($SshHostKey)) {
+            Write-Host "Falha SSH. Se for primeira conexão, defina WMS_SSH_HOSTKEY (fingerprint) no .env e tente novamente." -ForegroundColor Yellow
+            Write-Host "Para obter a fingerprint, conecte-se uma vez interativamente: plink -ssh $SshTarget" -ForegroundColor Yellow
+        }
     }
-    $remote | ssh $SshTarget bash
+    else {
+        if (-not $ForceSsh -and $null -ne $SshPassword) {
+            Write-Host "Instale PuTTY (plink.exe no PATH) para usar WMS_SSH_PASSWORD automaticamente; usando OpenSSH." -ForegroundColor Yellow
+        }
+        & cmd.exe /c "type `"$tmpScript`" | ssh $SshTarget bash"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tmpScript -ErrorAction SilentlyContinue
 }
 
 if ($LASTEXITCODE -ne 0) {
