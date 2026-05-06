@@ -15,7 +15,7 @@ param(
     [string] $SshTarget = $env:WMS_SSH,
     [string] $RemoteRepoPath = $(if ($env:WMS_REMOTE_REPO_PATH) { $env:WMS_REMOTE_REPO_PATH } else { "/opt/wms/repo" }),
     [string] $BaseDir = $(if ($env:WMS_BASE_DIR) { $env:WMS_BASE_DIR } else { "/opt/wms" }),
-    [string] $Branch = $(if ($env:WMS_GIT_BRANCH) { $env:WMS_GIT_BRANCH } else { "main" }),
+    [string] $Branch = $(if ($env:WMS_GIT_BRANCH) { $env:WMS_GIT_BRANCH } else { "master" }),
     [switch] $SkipGit,
     [switch] $DryRun
 )
