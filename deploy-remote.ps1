@@ -9,7 +9,7 @@
 #   $env:WMS_SSH = "deploy@203.0.113.10"
 #   .\deploy-remote.ps1
 #
-#   .\deploy-remote.ps1 -SshTarget "deploy@203.0.113.10" -Branch main -RemoteRepoPath "/opt/wms/repo"
+#   .\deploy-remote.ps1 -SshTarget "deploy@203.0.113.10" -Branch master -RemoteRepoPath "/opt/wms/repo"
 #
 param(
     [string] $SshTarget = $env:WMS_SSH,
