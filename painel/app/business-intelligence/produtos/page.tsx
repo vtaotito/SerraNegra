@@ -740,7 +740,7 @@ function ProdutosContent() {
       {/* Refresh indicator */}
       {isRefreshing && (
         <div className="fixed top-0 left-0 right-0 z-50 h-1 bg-cockpit-accent/20">
-          <div className="h-full bg-cockpit-accent animate-pulse rounded-full" style={{ width: "60%" }} />
+          <div className="h-full bg-cockpit-accent animate-pulse motion-reduce:animate-none rounded-full" style={{ width: "60%" }} />
         </div>
       )}
 

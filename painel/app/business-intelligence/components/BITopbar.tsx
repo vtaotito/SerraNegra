@@ -145,7 +145,7 @@ export function BITopbar() {
 
         <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
           <button type="button" onClick={handleRefresh} disabled={syncing}
-            className="p-2 rounded-lg text-cockpit-muted hover:bg-black/5 hover:text-gray-700 transition-colors disabled:opacity-50 min-w-[40px] min-h-[40px] flex items-center justify-center"
+            className="p-2 rounded-lg text-cockpit-muted hover:bg-black/5 hover:text-gray-700 motion-safe:transition-colors disabled:opacity-50 min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2"
             aria-label="Verificar conexão SAP">
             {syncing ? (
               <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
@@ -175,7 +175,7 @@ export function BITopbar() {
         <button
           type="button"
           onClick={() => setPickerOpen(!pickerOpen)}
-          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-2.5 sm:py-1.5 rounded-lg border motion-safe:transition-all text-sm min-h-[44px] sm:min-h-0 ${
+          className={`w-full sm:w-auto flex items-center gap-2 px-3 py-2.5 sm:py-1.5 rounded-lg border motion-safe:transition-all text-sm min-h-[44px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2 ${
             pickerOpen
               ? "bg-cockpit-accent/10 border-cockpit-accent/40 ring-1 ring-cockpit-accent/20"
               : "bg-white border-cockpit-border hover:border-cockpit-accent/40"
@@ -187,7 +187,7 @@ export function BITopbar() {
           <Calendar className="w-4 h-4 text-cockpit-accent shrink-0" />
           <span className="text-gray-600 flex-1 text-left truncate">{rangeLabel}</span>
           <span className="text-[10px] text-cockpit-muted tabular-nums shrink-0 hidden sm:inline">{dayCount}d</span>
-          <ChevronDown className={`w-3.5 h-3.5 text-cockpit-muted transition-transform duration-200 shrink-0 ${pickerOpen ? "rotate-180" : ""}`} />
+          <ChevronDown className={`w-3.5 h-3.5 text-cockpit-muted motion-safe:transition-transform motion-safe:duration-200 shrink-0 ${pickerOpen ? "motion-safe:rotate-180" : ""}`} />
         </button>
 
         {pickerOpen && (
@@ -205,7 +205,7 @@ export function BITopbar() {
                   <Calendar className="w-4 h-4 text-cockpit-accent" />
                   <span className="text-sm font-semibold text-gray-900">Período de análise</span>
                 </div>
-                <button type="button" onClick={() => setPickerOpen(false)} className="p-2 -mr-1 rounded-lg text-cockpit-muted hover:text-gray-900 hover:bg-black/5 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center" aria-label="Fechar">
+                <button type="button" onClick={() => setPickerOpen(false)} className="p-2 -mr-1 rounded-lg text-cockpit-muted hover:text-gray-900 hover:bg-black/5 motion-safe:transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2" aria-label="Fechar">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -247,26 +247,28 @@ export function BITopbar() {
                 <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-3 pt-3">Período personalizado</p>
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
-                    <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data inicial</label>
-                    <input type="text" inputMode="numeric" value={draftFrom} onChange={(e) => { setDraftFrom(applyDateMask(e.target.value)); setValidationErr(null); }}
+                    <label htmlFor="bi-draft-from" className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data inicial</label>
+                    <input id="bi-draft-from" type="text" inputMode="numeric" value={draftFrom} onChange={(e) => { setDraftFrom(applyDateMask(e.target.value)); setValidationErr(null); }}
                       placeholder="DD/MM/AAAA" maxLength={10}
-                      className="w-full px-3 py-2.5 sm:py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
-                      aria-label="Data inicial" />
+                      className="w-full px-3 py-2.5 sm:py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 motion-safe:transition-all"
+                      aria-invalid={validationErr != null ? true : undefined}
+                      aria-describedby={validationErr != null ? "bi-date-validation-err" : undefined} />
                   </div>
                   <div className="pb-3 sm:pb-2"><ArrowRight className="w-4 h-4 text-cockpit-muted" /></div>
                   <div className="flex-1">
-                    <label className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data final</label>
-                    <input type="text" inputMode="numeric" value={draftTo} onChange={(e) => { setDraftTo(applyDateMask(e.target.value)); setValidationErr(null); }}
+                    <label htmlFor="bi-draft-to" className="block text-xs text-cockpit-muted mb-1.5 font-medium">Data final</label>
+                    <input id="bi-draft-to" type="text" inputMode="numeric" value={draftTo} onChange={(e) => { setDraftTo(applyDateMask(e.target.value)); setValidationErr(null); }}
                       placeholder="DD/MM/AAAA" maxLength={10}
-                      className="w-full px-3 py-2.5 sm:py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 transition-all"
-                      aria-label="Data final" />
+                      className="w-full px-3 py-2.5 sm:py-2 rounded-lg bg-gray-50 border border-cockpit-border text-sm text-gray-700 tabular-nums focus:outline-none focus:ring-2 focus:ring-cockpit-accent/50 focus:border-cockpit-accent/40 motion-safe:transition-all"
+                      aria-invalid={validationErr != null ? true : undefined}
+                      aria-describedby={validationErr != null ? "bi-date-validation-err" : undefined} />
                   </div>
                 </div>
                 {validationErr && (
-                  <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><X className="w-3 h-3" /> {validationErr}</p>
+                  <p id="bi-date-validation-err" role="alert" className="text-xs text-red-600 mt-2 flex items-center gap-1"><X className="w-3 h-3 shrink-0" aria-hidden /> {validationErr}</p>
                 )}
                 <button type="button" onClick={validateAndApply}
-                  className="w-full mt-3 py-3 sm:py-2.5 rounded-lg bg-cockpit-accent text-white text-sm font-semibold hover:bg-cockpit-accentHover active:scale-[0.98] transition-all shadow-sm min-h-[48px] sm:min-h-0">
+                  className="w-full mt-3 py-3 sm:py-2.5 rounded-lg bg-cockpit-accent text-white text-sm font-semibold hover:bg-cockpit-accentHover motion-safe:active:scale-[0.98] motion-safe:transition-all shadow-sm min-h-[48px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-cockpit-accent">
                   Aplicar período personalizado
                 </button>
                 {preset === "custom" && (

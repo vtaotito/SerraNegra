@@ -305,27 +305,31 @@ export function ExecutiveDashboardCharts({
               Vendas por Dia da Semana
             </h2>
           </div>
-          <div className="h-48 sm:h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dowData} barCategoryGap="20%" margin={{ left: -10, right: 5, top: 5, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                <XAxis dataKey="name" tick={chartAxisTick("md")} axisLine={false} tickLine={false} />
-                <YAxis
-                  tick={chartAxisTick("sm")}
-                  axisLine={false}
-                  tickLine={false}
-                  width={40}
-                  tickFormatter={(v: number) => formatYAxisCompact(v)}
-                />
-                <Tooltip content={<BiChartTooltip variant="cockpit" />} />
-                <Bar dataKey="Faturamento" radius={[6, 6, 0, 0]}>
-                  {dowData.map((_, i) => (
-                    <Cell key={dowData[i].name} fill={DOW_COLORS[i]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {dowData.length === 0 ? (
+            <BiEmptyState title="Sem dados para o período" />
+          ) : (
+            <div className="h-48 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dowData} barCategoryGap="20%" margin={{ left: -10, right: 5, top: 5, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+                  <XAxis dataKey="name" tick={chartAxisTick("md")} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={chartAxisTick("sm")}
+                    axisLine={false}
+                    tickLine={false}
+                    width={40}
+                    tickFormatter={(v: number) => formatYAxisCompact(v)}
+                  />
+                  <Tooltip content={<BiChartTooltip variant="cockpit" />} />
+                  <Bar dataKey="Faturamento" radius={[6, 6, 0, 0]}>
+                    {dowData.map((_, i) => (
+                      <Cell key={dowData[i].name} fill={DOW_COLORS[i]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </section>
       </div>
 

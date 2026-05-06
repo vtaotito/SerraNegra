@@ -62,8 +62,10 @@ export function useRdContactMarketing(email: string | null | undefined) {
     queryKey: ["bi", "rd-contact", normalized],
     queryFn: async (): Promise<RdContactResponse> => {
       const res = await fetch(`/api/bi/rd/contact?email=${encodeURIComponent(normalized!)}`);
-      const j = (await res.json()) as RdContactResponse;
-      if (!res.ok && typeof j.error === "string") throw new Error(j.error);
+      const j = (await res.json()) as RdContactResponse & { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof j.error === "string" ? j.error : `Não foi possível carregar o contato (${res.status})`);
+      }
       return j;
     },
     enabled: normalized != null,

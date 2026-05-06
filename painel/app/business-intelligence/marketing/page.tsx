@@ -167,6 +167,10 @@ export default function MarketingCrmBiPage() {
             </>
           )}
         </p>
+        <p className="text-xs text-gray-600 mt-2 leading-relaxed max-w-3xl border-l-2 border-purple-200 pl-3 py-0.5">
+          <strong className="font-semibold text-gray-800">Separação de origem:</strong> funis, negócios e amostras vêm da API{" "}
+          <strong className="text-purple-900">RD Station</strong>; totais marcados como SAP usam os mesmos agregados ERP do cockpit, servidos pelo backend (nunca direto no navegador).
+        </p>
       </div>
 
       {/* KPIs CRM */}

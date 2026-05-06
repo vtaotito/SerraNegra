@@ -16,6 +16,8 @@ import {
   DollarSign,
   Calculator,
   Megaphone,
+  Users,
+  Layers,
 } from "lucide-react";
 import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 
@@ -38,6 +40,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { label: "Estoque", path: "/estoque" },
       { label: "Carteira", path: "/carteira" },
       { label: "Vendedores", path: "/vendedores" },
+      { label: "Clientes", path: "/clientes" },
+      { label: "Produtos", path: "/produtos" },
     ],
   },
   {
@@ -62,6 +66,8 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/estoque": Package,
   "/carteira": Wallet,
   "/vendedores": UserCircle,
+  "/clientes": Users,
+  "/produtos": Layers,
   "/margens": TrendingUp,
   "/resumo": BarChart3,
   "/faturamento": Target,
@@ -78,7 +84,16 @@ export function BISubnav() {
     const nav = navRef.current;
     if (!nav) return;
     const links = Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href^="/business-intelligence"]'));
+    if (links.length === 0) return;
     const i = links.findIndex((el) => el === document.activeElement);
+    if (delta === Number.NEGATIVE_INFINITY) {
+      links[0]?.focus();
+      return;
+    }
+    if (delta === Number.POSITIVE_INFINITY) {
+      links[links.length - 1]?.focus();
+      return;
+    }
     const next = i < 0 ? 0 : Math.min(Math.max(0, i + delta), links.length - 1);
     links[next]?.focus();
   }, []);
@@ -91,6 +106,12 @@ export function BISubnav() {
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         focusLinkByDelta(-1);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        focusLinkByDelta(Number.NEGATIVE_INFINITY);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        focusLinkByDelta(Number.POSITIVE_INFINITY);
       }
     },
     [focusLinkByDelta]
@@ -126,7 +147,7 @@ export function BISubnav() {
                   key={path}
                   href={href}
                   aria-current={isActive ? "page" : undefined}
-                  className={`flex items-center gap-1.5 px-3 py-2.5 sm:py-2 rounded-lg text-xs font-medium whitespace-nowrap motion-safe:transition-all motion-safe:duration-200 min-h-[44px] sm:min-h-0 shrink-0 ${
+                  className={`flex items-center gap-1.5 px-3 py-2.5 sm:py-2 rounded-lg text-xs font-medium whitespace-nowrap motion-safe:transition-all motion-safe:duration-200 min-h-[44px] sm:min-h-0 shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2 ${
                     isActive
                       ? "bg-cockpit-accent/10 text-cockpit-accent border border-cockpit-accent/20"
                       : "text-gray-500 hover:text-gray-700 hover:bg-gray-100 border border-transparent active:bg-gray-200"

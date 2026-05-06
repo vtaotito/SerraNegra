@@ -15,9 +15,9 @@ export default function BILayout({ children }: { children: React.ReactNode }) {
           <div className="max-w-[1600px] mx-auto w-full">
             <BITopbar />
             <BISubnav />
-            <div className="mt-4">
+            <main id="bi-main" className="mt-4" tabIndex={-1}>
               <BIErrorBoundary>{children}</BIErrorBoundary>
-            </div>
+            </main>
           </div>
         </SalesPersonFilterProvider>
       </DateRangeProvider>
