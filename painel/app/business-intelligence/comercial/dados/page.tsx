@@ -306,7 +306,7 @@ export default function ComercialDadosPage() {
           </p>
         </div>
         <button type="button" onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-gray-900 hover:border-cockpit-accent/40 transition-colors"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-gray-900 hover:border-cockpit-accent/40 motion-safe:transition-colors"
           aria-label="Exportar dados filtrados em CSV">
           <Download className="w-4 h-4" />
           <span className="hidden sm:inline">Exportar CSV</span>
@@ -322,7 +322,7 @@ export default function ComercialDadosPage() {
           </div>
           {hasFilters && (
             <button type="button" onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-cockpit-muted hover:text-gray-900 transition-colors"
+              className="flex items-center gap-1 text-xs text-cockpit-muted hover:text-gray-900 motion-safe:transition-colors"
               aria-label="Limpar filtros">
               <X className="w-3 h-3" /> Limpar
             </button>
@@ -350,7 +350,7 @@ export default function ComercialDadosPage() {
               return (
                 <button key={opt} type="button" onClick={() => setCanceladoFilter(opt)}
                   aria-pressed={canceladoFilter === opt}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors ${
                     canceladoFilter === opt
                       ? opt === "cancelled" ? "bg-red-500/20 text-red-400" : "bg-cockpit-accent/20 text-cockpit-accent"
                       : "text-cockpit-muted hover:text-gray-900"
@@ -369,7 +369,7 @@ export default function ComercialDadosPage() {
           { label: "Valor Total", value: fmtBRL(totalValor, 2), accent: true },
           { label: "Ticket Médio", value: filtered.length > 0 ? fmtBRL(totalValor / filtered.length, 2) : "—" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-colors">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-colors">
             <p className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</p>
             <p className={`text-xl font-bold mt-1 ${k.accent ? "text-cockpit-accent" : "text-gray-900"}`}>{k.value}</p>
           </div>
@@ -387,7 +387,7 @@ export default function ComercialDadosPage() {
           </p>
           <div className="flex gap-3 items-center">
             <button type="button" onClick={anyExpanded ? collapseAll : expandAll}
-              className="text-xs text-cockpit-muted hover:text-cockpit-accent transition-colors flex items-center gap-1">
+              className="text-xs text-cockpit-muted hover:text-cockpit-accent motion-safe:transition-colors flex items-center gap-1">
               {anyExpanded ? (
                 <><ChevronDown className="w-3 h-3" /> Recolher todos</>
               ) : (
@@ -463,7 +463,7 @@ export default function ComercialDadosPage() {
             </div>
             <div className="w-full h-1.5 rounded-full bg-cockpit-border/40 overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-500 ease-out"
+                className="h-full rounded-full motion-safe:transition-all duration-500 ease-out"
                 style={{
                   width: `${progressPct}%`,
                   background: progressPct >= 100
@@ -487,15 +487,16 @@ export default function ComercialDadosPage() {
                   bg-gradient-to-r from-cockpit-accent to-cockpit-accentHover
                   text-gray-900 shadow-lg shadow-cockpit-accent/20
                   hover:shadow-cockpit-accent/40 hover:brightness-110
-                  active:scale-[0.98]
+                  motion-safe:active:scale-[0.98]
                   disabled:opacity-60 disabled:cursor-wait
-                  transition-all duration-200
+                  motion-safe:transition-all motion-safe:duration-200
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2
                 "
               >
                 {loadingMore ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden />
                 ) : (
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4" aria-hidden />
                 )}
                 {loadingMore
                   ? "Carregando..."
@@ -515,7 +516,7 @@ export default function ComercialDadosPage() {
                     hover:bg-cockpit-gold/10 hover:border-cockpit-gold/60
                     active:scale-[0.98]
                     disabled:opacity-60 disabled:cursor-wait
-                    transition-all duration-200
+                    motion-safe:transition-all duration-200
                   "
                 >
                   Exibir todos ({filtered.length})
@@ -546,7 +547,7 @@ function InvoiceRow({ doc, isExpanded, onToggle }: {
       <tr
         onClick={onToggle}
         className={`
-          cursor-pointer border-b border-cockpit-border/40 transition-colors
+          cursor-pointer border-b border-cockpit-border/40 motion-safe:transition-colors
           ${isExpanded ? "bg-cockpit-accent/[0.06]" : "hover:bg-black/[0.03]"}
           ${doc.cancelado ? "opacity-50" : ""}
         `}

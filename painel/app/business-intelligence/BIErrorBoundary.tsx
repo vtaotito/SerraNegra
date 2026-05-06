@@ -5,6 +5,10 @@ import { ErrorState } from "@/components/cockpit/DataState";
 
 interface Props {
   children: ReactNode;
+  /** Rótulo em pt-BR da área protegida (ex.: "Gráfico de vendas"). Usado para enriquecer o log e a mensagem. */
+  area?: string;
+  /** Fallback custom; se fornecido, substitui o ErrorState padrão. */
+  fallback?: (info: { message: string; reset: () => void }) => ReactNode;
 }
 
 interface State {
@@ -20,17 +24,23 @@ export class BIErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(err: Error, info: ErrorInfo) {
-    console.error("BIErrorBoundary", err, info.componentStack);
+    const tag = this.props.area ? `BIErrorBoundary[${this.props.area}]` : "BIErrorBoundary";
+    console.error(tag, err, info.componentStack);
   }
+
+  private reset = () => this.setState({ hasError: false, message: "" });
 
   render() {
     if (this.state.hasError) {
+      const message = this.props.area
+        ? `${this.props.area}: ${this.state.message}`
+        : this.state.message;
+      if (this.props.fallback) {
+        return this.props.fallback({ message, reset: this.reset });
+      }
       return (
         <div className="rounded-xl border border-cockpit-border bg-white p-6">
-          <ErrorState
-            message={this.state.message}
-            onRetry={() => this.setState({ hasError: false, message: "" })}
-          />
+          <ErrorState message={message} onRetry={this.reset} />
         </div>
       );
     }

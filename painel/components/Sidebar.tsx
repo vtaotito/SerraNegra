@@ -105,7 +105,7 @@ export function Sidebar() {
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
                 className={cn(
-                  "group flex items-center gap-3 rounded-lg text-[13px] font-medium transition-all duration-200",
+                  "group flex items-center gap-3 rounded-lg text-[13px] font-medium motion-safe:transition-all duration-200",
                   collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5",
                   active
                     ? "bg-gsn-700 text-white shadow-md shadow-gsn-700/25"
@@ -113,7 +113,7 @@ export function Sidebar() {
                 )}
               >
                 <item.icon className={cn(
-                  "w-[18px] h-[18px] flex-shrink-0 transition-colors duration-200",
+                  "w-[18px] h-[18px] flex-shrink-0 motion-safe:transition-colors duration-200",
                   active ? "text-white" : "text-gray-400 group-hover:text-white"
                 )} />
                 {!collapsed && <span>{item.label}</span>}
@@ -141,15 +141,15 @@ export function Sidebar() {
                   target="_blank"
                   rel="noopener"
                   className={cn(
-                    "group flex items-center gap-3 rounded-lg text-[13px] font-medium text-gray-600 hover:bg-gsn-700 hover:text-white transition-all duration-200",
+                    "group flex items-center gap-3 rounded-lg text-[13px] font-medium text-gray-600 hover:bg-gsn-700 hover:text-white motion-safe:transition-all duration-200",
                     collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5"
                   )}
                 >
-                  <item.icon className="w-[18px] h-[18px] flex-shrink-0 text-gray-400 group-hover:text-white transition-colors duration-200" />
+                  <item.icon className="w-[18px] h-[18px] flex-shrink-0 text-gray-400 group-hover:text-white motion-safe:transition-colors duration-200" />
                   {!collapsed && (
                     <>
                       <span className="flex-1">{item.label}</span>
-                      <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-white/60 transition-colors duration-200" />
+                      <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-white/60 motion-safe:transition-colors duration-200" />
                     </>
                   )}
                 </a>
@@ -165,7 +165,7 @@ export function Sidebar() {
           href="/perfil"
           onClick={() => setMobileOpen(false)}
           className={cn(
-            "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 mb-1 transition-colors duration-200 hover:bg-gray-50",
+            "group flex items-center gap-3 rounded-lg px-2.5 py-2.5 mb-1 motion-safe:transition-colors duration-200 hover:bg-gray-50",
             collapsed && "justify-center px-0"
           )}
         >
@@ -174,7 +174,7 @@ export function Sidebar() {
           </div>
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-semibold text-gray-900 truncate group-hover:text-gsn-700 transition-colors">{user.displayName}</p>
+              <p className="text-[13px] font-semibold text-gray-900 truncate group-hover:text-gsn-700 motion-safe:transition-colors">{user.displayName}</p>
               <p className="text-[10px] text-gray-400 truncate capitalize">{user.role}</p>
             </div>
           )}
@@ -182,7 +182,7 @@ export function Sidebar() {
         <button
           onClick={logout}
           className={cn(
-            "flex items-center gap-3 w-full rounded-lg text-[13px] font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 transition-all duration-200",
+            "flex items-center gap-3 w-full rounded-lg text-[13px] font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 motion-safe:transition-all duration-200",
             collapsed ? "px-3 py-2 justify-center" : "px-3 py-2"
           )}
         >
@@ -214,13 +214,13 @@ export function Sidebar() {
       {/* Mobile sidebar */}
       <aside
         className={cn(
-          "lg:hidden fixed inset-y-0 left-0 z-[80] w-72 bg-white shadow-2xl shadow-black/10 transform transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          "lg:hidden fixed inset-y-0 left-0 z-[80] w-72 bg-white shadow-2xl shadow-black/10 transform motion-safe:transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <button
           onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 motion-safe:transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
@@ -230,14 +230,14 @@ export function Sidebar() {
       {/* Desktop sidebar */}
       <aside
         className={cn(
-          "hidden lg:flex flex-col bg-white border-r border-gray-100 transition-all duration-200 flex-shrink-0 relative",
+          "hidden lg:flex flex-col bg-white border-r border-gray-100 motion-safe:transition-all duration-200 flex-shrink-0 relative",
           collapsed ? "w-[72px]" : "w-[264px]"
         )}
       >
         {sidebarContent}
         <button
           onClick={() => setCollapsed((v) => !v)}
-          className="absolute bottom-24 -right-3 w-6 h-6 rounded-full bg-white text-gray-400 hover:text-gsn-700 flex items-center justify-center shadow-md ring-1 ring-gray-100 transition-colors duration-200"
+          className="absolute bottom-24 -right-3 w-6 h-6 rounded-full bg-white text-gray-400 hover:text-gsn-700 flex items-center justify-center shadow-md ring-1 ring-gray-100 motion-safe:transition-colors duration-200"
         >
           {collapsed ? (
             <ChevronRight className="w-3 h-3" />

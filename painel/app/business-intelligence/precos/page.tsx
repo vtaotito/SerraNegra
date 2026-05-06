@@ -196,7 +196,7 @@ export default function PrecosPage() {
     return (
       <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
         <div
-          className="h-full bg-cockpit-accent/60 rounded-full transition-all"
+          className="h-full bg-cockpit-accent/60 rounded-full motion-safe:transition-all"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -215,7 +215,7 @@ export default function PrecosPage() {
         <button
           type="button"
           onClick={() => { setTab("practiced"); setPage(0); setSearch(""); }}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg motion-safe:transition-all ${
             tab === "practiced"
               ? "bg-white text-gray-900 shadow-sm"
               : "text-gray-500 hover:text-gray-700"
@@ -227,7 +227,7 @@ export default function PrecosPage() {
         <button
           type="button"
           onClick={() => { setTab("lists"); setPage(0); setSearch(""); }}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg motion-safe:transition-all ${
             tab === "lists"
               ? "bg-white text-gray-900 shadow-sm"
               : "text-gray-500 hover:text-gray-700"
@@ -330,7 +330,7 @@ function PracticedTab({
       {/* KPIs */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 motion-safe:transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-cockpit-muted">Receita Total</span>
               <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
@@ -341,7 +341,7 @@ function PracticedTab({
             <p className="text-[11px] text-cockpit-muted mt-1">{fmtNum(kpis.totalSales)} vendas registradas</p>
           </div>
 
-          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 motion-safe:transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-cockpit-muted">Preço Médio</span>
               <div className="p-1.5 rounded-lg bg-sky-50 text-sky-600">
@@ -352,7 +352,7 @@ function PracticedTab({
             <p className="text-[11px] text-cockpit-muted mt-1">{fmtNum(kpis.totalItems)} itens com preço</p>
           </div>
 
-          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 motion-safe:transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-cockpit-muted">Item Mais Caro</span>
               <div className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
@@ -363,7 +363,7 @@ function PracticedTab({
             <p className="text-[11px] text-cockpit-muted mt-1 truncate" title={kpis.topItem.code}>{kpis.topItem.code}</p>
           </div>
 
-          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 transition-colors">
+          <div className="rounded-xl border border-cockpit-border bg-white p-4 hover:border-cockpit-accent/30 motion-safe:transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-cockpit-muted">Quantidade Vendida</span>
               <div className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
@@ -406,7 +406,7 @@ function PracticedTab({
           type="button"
           onClick={handleExport}
           disabled={sorted.length === 0}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-cockpit-border bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors ml-auto"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border border-cockpit-border bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 motion-safe:transition-colors ml-auto"
         >
           <Download className="w-4 h-4" />
           Exportar CSV
@@ -494,7 +494,7 @@ function PracticedRow({
 
   return (
     <>
-      <tr className="hover:bg-gray-50/60 transition-colors group">
+      <tr className="hover:bg-gray-50/60 motion-safe:transition-colors group">
         <td className="px-3 py-2.5 font-mono text-xs text-gray-800 whitespace-nowrap">
           {row.item_code}
         </td>
@@ -537,11 +537,11 @@ function PracticedRow({
           <button
             type="button"
             onClick={onToggle}
-            className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-400 hover:text-gray-600"
+            className="p-1 rounded hover:bg-gray-200 motion-safe:transition-colors text-gray-400 hover:text-gray-600"
             title="Ver detalhes"
           >
             <ChevronDown
-              className={`w-4 h-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+              className={`w-4 h-4 motion-safe:transition-transform ${expanded ? "rotate-180" : ""}`}
             />
           </button>
         </td>
@@ -687,7 +687,7 @@ function ListsTab({
                 key={list}
                 type="button"
                 onClick={() => setSelectedList(list)}
-                className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                className={`px-3 py-1.5 text-xs rounded-lg border motion-safe:transition-colors ${
                   activeList === list
                     ? "border-cockpit-accent bg-cockpit-accent text-white"
                     : "border-cockpit-border bg-white text-gray-600 hover:bg-gray-50"
@@ -737,7 +737,7 @@ function ListsTab({
                 </tr>
               ) : (
                 filteredListItems.slice(0, 100).map((r, i) => (
-                  <tr key={`${r.ItemCode}-${i}`} className="hover:bg-gray-50/60 transition-colors">
+                  <tr key={`${r.ItemCode}-${i}`} className="hover:bg-gray-50/60 motion-safe:transition-colors">
                     <td className="px-3 py-2 font-mono text-xs text-gray-800">
                       {r.ItemCode}
                     </td>
@@ -853,7 +853,7 @@ function PagBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors"
+      className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-30 motion-safe:transition-colors"
     >
       {children}
     </button>

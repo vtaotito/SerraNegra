@@ -269,7 +269,7 @@ function ClientModal({
               <span className="text-xs text-cockpit-muted">{client.vendorName}</span>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 motion-safe:transition-colors shrink-0">
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
@@ -368,7 +368,7 @@ function ClientModal({
                   {clientOrders.map((o) => {
                     const isCancelled = o.cancelled === "Y";
                     return (
-                      <tr key={o.doc_entry} className={`${isCancelled ? "opacity-50" : "hover:bg-cockpit-accent/[0.03]"} transition-colors`}>
+                      <tr key={o.doc_entry} className={`${isCancelled ? "opacity-50" : "hover:bg-cockpit-accent/[0.03]"} motion-safe:transition-colors`}>
                         <td className="py-2 px-3 font-mono font-medium text-gray-700">{o.doc_num}</td>
                         <td className="py-2 px-3 text-gray-600">{fmtDateShort(o.doc_date)}</td>
                         <td className="py-2 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(Number(o.doc_total))}</td>
@@ -402,7 +402,7 @@ function ClientModal({
         {/* Footer */}
         <div className="px-6 py-3 border-t border-cockpit-border bg-cockpit-bg/50 text-xs text-cockpit-muted flex items-center justify-between">
           <span>{clientOrders.length} pedidos · {fmtBRL(client.fat)} faturados · % do total: {client.pctFat.toFixed(2)}%</span>
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 transition-colors">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 motion-safe:transition-colors">
             Fechar
           </button>
         </div>
@@ -597,7 +597,7 @@ export default function ClientesPage() {
           { label: "Classe A (80%)", value: String(kpis.classeA), icon: Crown, color: "text-purple-500" },
           { label: "Recência Média", value: `${kpis.avgDays}d`, icon: Clock, color: "text-rose-500" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-all duration-200 shadow-sm">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-all duration-200 shadow-sm">
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -613,19 +613,19 @@ export default function ClientesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar cliente, código, cidade ou vendedor..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 focus:border-cockpit-accent/50 transition-all" />
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 focus:border-cockpit-accent/50 motion-safe:transition-all" />
         </div>
         <div className="flex gap-0.5 rounded-xl border border-cockpit-border bg-cockpit-bg p-0.5">
           {(["ALL", "A", "B", "C"] as const).map((opt) => (
             <button key={opt} onClick={() => setClasseFilter(opt)}
-              className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              className={`px-3 py-2 rounded-lg text-xs font-medium motion-safe:transition-all ${
                 classeFilter === opt ? "bg-cockpit-accent/20 text-cockpit-accent shadow-sm" : "text-cockpit-muted hover:text-gray-900 hover:bg-black/5"
               }`}>{opt === "ALL" ? "Todas" : `Classe ${opt}`}</button>
           ))}
         </div>
         {uniqueEstados.length > 1 && (
           <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 transition-all">
+            className="px-3 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 motion-safe:transition-all">
             <option value="ALL">Todos UFs</option>
             {uniqueEstados.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
@@ -640,7 +640,7 @@ export default function ClientesPage() {
           { id: "pareto", label: "Curva 80-20" },
         ] as const).map((t) => (
           <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== "geo") setSelectedState(null); }}
-            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold motion-safe:transition-all ${
               tab === t.id ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted hover:text-gray-700"
             }`}>{t.label}</button>
         ))}
@@ -717,11 +717,11 @@ export default function ClientesPage() {
               </h3>
               <div className="flex gap-0.5 rounded-lg border border-cockpit-border bg-cockpit-bg p-0.5">
                 <button onClick={() => setGeoMetric("fat")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium motion-safe:transition-all ${
                     geoMetric === "fat" ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted"
                   }`}>Faturamento</button>
                 <button onClick={() => setGeoMetric("count")}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium motion-safe:transition-all ${
                     geoMetric === "count" ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted"
                   }`}>Nº Clientes</button>
               </div>
@@ -744,7 +744,7 @@ export default function ClientesPage() {
                           gridRow: row + 1,
                           backgroundColor: hasData ? heatColor(val, maxGeoVal) : "#f9fafb",
                         }}
-                        className={`rounded-lg flex flex-col items-center justify-center transition-all text-center
+                        className={`rounded-lg flex flex-col items-center justify-center motion-safe:transition-all text-center
                           ${isSelected ? "ring-2 ring-cockpit-accent ring-offset-1 scale-105 z-10" : ""}
                           ${hasData ? "cursor-pointer hover:ring-2 hover:ring-cockpit-accent/40 hover:scale-[1.03] shadow-sm" : "opacity-30 cursor-default border border-gray-200"}
                         `}
@@ -832,7 +832,7 @@ export default function ClientesPage() {
                     <div className="space-y-1.5">
                       {geoData.slice(0, 8).map((g, i) => (
                         <button key={g.state} onClick={() => setSelectedState(g.state)}
-                          className="w-full flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg hover:bg-cockpit-accent/5 transition-colors group">
+                          className="w-full flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg hover:bg-cockpit-accent/5 motion-safe:transition-colors group">
                           <div className="flex items-center gap-2">
                             <span className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                             <span className="font-medium text-gray-700 group-hover:text-cockpit-accent">{g.state}</span>
@@ -903,12 +903,12 @@ export default function ClientesPage() {
               ) : (
                 filtered.map((r, i) => (
                   <tr key={r.cardCode} onClick={() => setModalClient(r)}
-                    className="hover:bg-cockpit-accent/[0.04] transition-colors cursor-pointer group">
+                    className="hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors cursor-pointer group">
                     <td className="py-2.5 px-4 text-cockpit-muted text-xs">{i + 1}</td>
                     <td className="py-2.5 px-4 max-w-[260px]">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-gray-900 truncate group-hover:text-cockpit-accent transition-colors" title={r.cardName}>{r.cardName}</span>
-                        <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        <span className="font-bold text-gray-900 truncate group-hover:text-cockpit-accent motion-safe:transition-colors" title={r.cardName}>{r.cardName}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 motion-safe:transition-opacity shrink-0" />
                       </div>
                       <div className="text-[10px] text-cockpit-muted font-mono mt-0.5">{r.cardCode}{r.city !== "—" ? ` · ${r.city}` : ""}</div>
                     </td>

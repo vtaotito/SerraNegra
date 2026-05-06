@@ -377,7 +377,7 @@ function UnifiedProductModal({
               )}
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 transition-colors shrink-0">
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 motion-safe:transition-colors shrink-0">
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
@@ -424,7 +424,7 @@ function UnifiedProductModal({
                   {product.variants.map((v, vi) => {
                     const pctVar = product.faturamento > 0 ? (v.faturamento / product.faturamento * 100) : 0;
                     return (
-                      <tr key={`${v.itemCode}-${v.embala}-${vi}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                      <tr key={`${v.itemCode}-${v.embala}-${vi}`} className="hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors">
                         <td className="py-1.5 px-3">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${v.embala === "UND" ? "bg-gray-100 text-gray-600" : "bg-amber-50 text-amber-700"}`}>
                             {v.embala}
@@ -461,8 +461,8 @@ function UnifiedProductModal({
 
           {/* Loading indicator for lazy-loaded data */}
           {ordersLoading && (
-            <div className="flex items-center justify-center gap-2 py-4 text-cockpit-muted">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div className="flex items-center justify-center gap-2 py-4 text-cockpit-muted" role="status" aria-live="polite">
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden />
               <span className="text-xs">Carregando histórico...</span>
             </div>
           )}
@@ -534,7 +534,7 @@ function UnifiedProductModal({
                     </thead>
                     <tbody className="divide-y divide-cockpit-border/50">
                       {productOrders.map((r, i) => (
-                        <tr key={`${r.docNum}-${i}`} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                        <tr key={`${r.docNum}-${i}`} className="hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors">
                           <td className="py-1.5 px-3 font-mono font-medium text-gray-700">{r.docNum}</td>
                           <td className="py-1.5 px-3 text-gray-600">{fmtDateShort(r.docDate)}</td>
                           <td className="py-1.5 px-3 text-gray-700 max-w-[140px] truncate" title={r.cardName}>{r.cardName}</td>
@@ -564,7 +564,7 @@ function UnifiedProductModal({
             {product.codName} · {product.vendas} vendas · {product.clientes} clientes · {pctTotal.toFixed(2)}% do total
             {hasMultipleVariants && ` · ${product.variants.length} embalagens`}
           </span>
-          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 transition-colors">
+          <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 motion-safe:transition-colors">
             Fechar
           </button>
         </div>
@@ -762,7 +762,7 @@ function ProdutosContent() {
           </div>
         </div>
         <button type="button" onClick={handleExport}
-          className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 transition-colors">
+          className="flex items-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 motion-safe:transition-colors">
           <Download className="w-4 h-4" /> Exportar CSV
         </button>
       </div>
@@ -777,9 +777,9 @@ function ProdutosContent() {
           { label: "R$/UND Mediana", value: fmtBRL(medianUndPrice, 2), icon: Hash, color: "text-teal-600" },
           { label: "Tipo Embala", value: String(embalaTypes.length), sub: embalaTypes.join(", "), icon: Layers, color: "text-amber-600" },
         ].map((kpi) => (
-          <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 transition-all duration-200 group">
+          <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 motion-safe:transition-all duration-200 group">
             <div className="flex items-center gap-2 mb-1.5">
-              <kpi.icon className={`w-4 h-4 ${kpi.color} transition-transform duration-200 group-hover:scale-110`} />
+              <kpi.icon className={`w-4 h-4 ${kpi.color} motion-safe:transition-transform duration-200 group-hover:scale-110`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{kpi.label}</span>
             </div>
             <p className="text-lg font-bold text-gray-900 tabular-nums leading-tight">{kpi.value}</p>
@@ -881,7 +881,7 @@ function ProdutosContent() {
                         <span className="w-6 text-[10px] font-bold text-center rounded py-0.5" style={{ background: (COD_COLORS[g.cod] ?? "#A81C2C") + "20", color: COD_COLORS[g.cod] ?? "#A81C2C" }}>{g.cod}</span>
                         <div className="flex-1">
                           <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: COD_COLORS[g.cod] ?? "#A81C2C" }} />
+                            <div className="h-full rounded-full motion-safe:transition-all duration-500" style={{ width: `${pct}%`, background: COD_COLORS[g.cod] ?? "#A81C2C" }} />
                           </div>
                         </div>
                         <span className="text-[10px] text-gray-600 tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
@@ -1002,42 +1002,42 @@ function ProdutosContent() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] text-cockpit-muted uppercase font-semibold">Filtros:</span>
             {estadoFilter && (
-              <button onClick={() => setEstadoFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors">
+              <button onClick={() => setEstadoFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 hover:bg-emerald-200 motion-safe:transition-colors">
                 <MapPin className="w-2.5 h-2.5" /> {UF_NAME[estadoFilter] ?? estadoFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {vendedorFilter && (
-              <button onClick={() => setVendedorFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors">
+              <button onClick={() => setVendedorFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 motion-safe:transition-colors">
                 <Briefcase className="w-2.5 h-2.5" /> {spMap.get(Number(vendedorFilter)) ?? vendedorFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {codFilter && (
-              <button onClick={() => setCodFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cockpit-accent/10 text-cockpit-accent hover:bg-cockpit-accent/20 transition-colors">
+              <button onClick={() => setCodFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cockpit-accent/10 text-cockpit-accent hover:bg-cockpit-accent/20 motion-safe:transition-colors">
                 {codFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {embalaFilter && (
-              <button onClick={() => setEmbalaFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 transition-colors">
+              <button onClick={() => setEmbalaFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 motion-safe:transition-colors">
                 {embalaFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {capFilter && (
-              <button onClick={() => setCapFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-100 text-sky-700 hover:bg-sky-200 transition-colors">
+              <button onClick={() => setCapFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-100 text-sky-700 hover:bg-sky-200 motion-safe:transition-colors">
                 {capFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {fechFilter && (
-              <button onClick={() => setFechFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors">
+              <button onClick={() => setFechFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 motion-safe:transition-colors">
                 {fechFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
             {search && (
-              <button onClick={() => setSearch("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+              <button onClick={() => setSearch("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 motion-safe:transition-colors">
                 &ldquo;{search}&rdquo; <X className="w-2.5 h-2.5" />
               </button>
             )}
             <button onClick={clearAllFilters}
-              className="text-[10px] text-cockpit-muted hover:text-cockpit-accent transition-colors underline">
+              className="text-[10px] text-cockpit-muted hover:text-cockpit-accent motion-safe:transition-colors underline">
               Limpar todos
             </button>
           </div>
@@ -1086,7 +1086,7 @@ function ProdutosContent() {
                 const hasMulti = p.variants.length > 1;
                 return (
                   <tr key={`${p.cod}-${p.subNome}`} onClick={() => setModalProduct(p)}
-                    className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.04] transition-colors cursor-pointer group ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
+                    className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors cursor-pointer group ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
                     <td className="py-2 px-2 align-top">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: (COD_COLORS[p.cod] ?? "#A81C2C") + "18", color: COD_COLORS[p.cod] ?? "#A81C2C" }}>
                         {p.cod}
@@ -1094,8 +1094,8 @@ function ProdutosContent() {
                     </td>
                     <td className="py-2 px-2 text-gray-700 max-w-[220px] align-top">
                       <div className="flex items-center gap-1.5">
-                        <span className="line-clamp-1 font-bold text-[11px] text-gray-900 group-hover:text-cockpit-accent transition-colors" title={`${p.itemCode} · ${p.subNome}`}>{p.subNome}</span>
-                        <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                        <span className="line-clamp-1 font-bold text-[11px] text-gray-900 group-hover:text-cockpit-accent motion-safe:transition-colors" title={`${p.itemCode} · ${p.subNome}`}>{p.subNome}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-cockpit-muted opacity-0 group-hover:opacity-100 motion-safe:transition-opacity shrink-0" />
                       </div>
                       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
                         <span className="font-mono text-[9px] text-blue-600">{p.itemCode}</span>

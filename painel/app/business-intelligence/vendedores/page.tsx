@@ -194,7 +194,7 @@ export default function VendedoresPage() {
           { label: "Mediana Fat.", value: fmtBRL(kpis.medianFat), icon: BarChart3, color: "text-amber-500" },
           { label: "Total Pedidos", value: fmtNum(kpis.totalPed), icon: ShoppingCart, color: "text-purple-500" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-all shadow-sm">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-all shadow-sm">
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -210,7 +210,7 @@ export default function VendedoresPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar vendedor..."
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 transition-all" />
+            className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 motion-safe:transition-all" />
         </div>
         <label className="flex items-center gap-2 text-xs text-cockpit-muted cursor-pointer select-none">
           <input type="checkbox" checked={showOnlyActive} onChange={(e) => setShowOnlyActive(e.target.checked)}
@@ -227,7 +227,7 @@ export default function VendedoresPage() {
           { id: "scatter", label: "Volume × Ticket" },
         ] as const).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold motion-safe:transition-all ${
               tab === t.id ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted hover:text-gray-700"
             }`}>{t.label}</button>
         ))}
@@ -358,7 +358,7 @@ export default function VendedoresPage() {
               ) : (
                 <>
                   {filtered.map((r) => (
-                    <tr key={r.code} className={`hover:bg-cockpit-accent/[0.04] transition-colors ${r.fat === 0 ? "opacity-50" : ""}`}>
+                    <tr key={r.code} className={`hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors ${r.fat === 0 ? "opacity-50" : ""}`}>
                       <td className="py-2.5 px-4">
                         {r.rank <= 3 && r.fat > 0 ? (
                           <span className={`text-sm ${r.rank === 1 ? "text-amber-500" : r.rank === 2 ? "text-gray-400" : "text-amber-700"}`}>

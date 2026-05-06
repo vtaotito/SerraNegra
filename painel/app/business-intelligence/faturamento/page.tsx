@@ -167,7 +167,7 @@ export default function FaturamentoPage() {
           { label: "Média/Dia", value: fmtBRL(kpis.mediaDiaria), icon: Target, color: "text-emerald-500" },
           { label: "Vendedores", value: String(kpis.vendedores), icon: Users, color: "text-purple-500" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-all shadow-sm">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-all shadow-sm">
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -186,7 +186,7 @@ export default function FaturamentoPage() {
           { id: "vendedor", label: "Por Vendedor" },
         ] as const).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 px-3 py-2 rounded-lg text-xs font-semibold motion-safe:transition-all ${
               tab === t.id ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted hover:text-gray-700"
             }`}>{t.label}</button>
         ))}
@@ -323,7 +323,7 @@ export default function FaturamentoPage() {
                     const diff = medianMonth > 0 ? ((r.fat - medianMonth) / medianMonth) * 100 : 0;
                     const above = r.fat >= medianMonth;
                     return (
-                      <tr key={r.month} className="hover:bg-cockpit-accent/[0.04] transition-colors">
+                      <tr key={r.month} className="hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{r.month}</td>
                         <td className="px-4 py-2.5 text-right text-cockpit-accent font-medium">{fmtBRL(r.fat)}</td>
                         <td className="px-4 py-2.5 text-right text-gray-600">{r.pedidos}</td>

@@ -229,7 +229,7 @@ export function BITopbar() {
                     const isActive = preset === key;
                     return (
                       <button key={key} type="button" onClick={() => handlePreset(key)}
-                        className={`group flex items-center justify-between px-3 py-3 sm:py-2.5 rounded-lg text-left transition-all min-h-[48px] sm:min-h-0 ${
+                        className={`group flex items-center justify-between px-3 py-3 sm:py-2.5 rounded-lg text-left motion-safe:transition-all min-h-[48px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-1 ${
                           isActive ? "bg-cockpit-accent/15 border border-cockpit-accent/30 text-cockpit-accent" : "border border-transparent text-gray-600 hover:bg-black/5 hover:border-cockpit-border active:bg-black/10"
                         }`}>
                         <div>

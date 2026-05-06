@@ -100,7 +100,7 @@ export default function CarteiraPage() {
           { label: "Fat. Total", value: fmtBRL(totalFat), icon: DollarSign, color: "text-sky-500" },
           { label: "Ticket Médio", value: totalPedidos > 0 ? fmtBRL(totalFat / totalPedidos) : "—", icon: TrendingUp, color: "text-amber-500" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 transition-colors flex flex-col gap-2">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-5 hover:border-cockpit-accent/30 motion-safe:transition-colors flex flex-col gap-2">
             <div className="flex items-center gap-2"><k.icon className={`h-4 w-4 ${k.color}`} /><span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span></div>
             <span className="text-xl font-bold text-gray-900">{k.value}</span>
           </div>

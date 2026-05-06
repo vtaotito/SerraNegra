@@ -530,7 +530,7 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
                 const embalas = [...new Set(g.variants.map((v) => v.embala))];
 
                 return (
-                  <tr key={g.undItemCode || idx} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] transition-colors duration-150">
+                  <tr key={g.undItemCode || idx} className="border-b border-cockpit-border/10 last:border-b-0 hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors duration-150">
                     <td className="py-1.5 px-2 text-cockpit-muted tabular-nums">{idx + 1}</td>
                     <td className="py-1.5 px-2">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-700">{g.cod}</span>
@@ -865,12 +865,12 @@ function PedidosContent() {
         </div>
         <div className="flex items-center gap-2">
           <button type="button" onClick={handleSync} disabled={syncing}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg bg-cockpit-accent text-white font-medium hover:bg-cockpit-accent/90 transition-colors disabled:opacity-50 shadow-sm min-h-[44px] sm:min-h-0">
-            {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg bg-cockpit-accent text-white font-medium hover:bg-cockpit-accent/90 motion-safe:transition-colors disabled:opacity-50 shadow-sm min-h-[44px] sm:min-h-0">
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="w-4 h-4" aria-hidden />}
             {syncing ? "Sync..." : "Sync SAP"}
           </button>
           <button type="button" onClick={handleExportCSV}
-            className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 transition-colors min-h-[44px] sm:min-h-0">
+            className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 motion-safe:transition-colors min-h-[44px] sm:min-h-0">
             <Download className="w-4 h-4" /> <span className="hidden sm:inline">CSV</span>
           </button>
         </div>
@@ -888,7 +888,7 @@ function PedidosContent() {
           <p className="text-sm text-gray-700">
             Pedidos do cliente: <strong className="text-cockpit-accent">{clientNameFromUrl || clienteFilter}</strong>
           </p>
-          <Link href="/business-intelligence/pedidos" className="text-sm font-medium text-cockpit-accent hover:text-cockpit-accent/80 transition-colors flex items-center gap-1.5">
+          <Link href="/business-intelligence/pedidos" className="text-sm font-medium text-cockpit-accent hover:text-cockpit-accent/80 motion-safe:transition-colors flex items-center gap-1.5">
             <X className="w-4 h-4" /> Limpar filtro
           </Link>
         </div>
@@ -905,9 +905,9 @@ function PedidosContent() {
             { label: "Clientes", value: fmtNum(uniqueClients), icon: Users, color: "text-teal-600" },
             { label: "Qtd Total", value: fmtQty(totalQty), sub: `${cancelledDocs} cancelados`, icon: Package, color: "text-amber-600" },
           ].map((kpi) => (
-            <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 transition-all duration-200 group">
+            <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 motion-safe:transition-all duration-200 group">
               <div className="flex items-center gap-2 mb-1.5">
-                <kpi.icon className={`w-4 h-4 ${kpi.color} transition-transform duration-200 group-hover:scale-110`} />
+                <kpi.icon className={`w-4 h-4 ${kpi.color} motion-safe:transition-transform duration-200 group-hover:scale-110`} />
                 <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{kpi.label}</span>
               </div>
               <p className="text-lg font-bold text-gray-900 tabular-nums leading-tight">{kpi.value}</p>
@@ -946,7 +946,7 @@ function PedidosContent() {
               const labels: Record<string, string> = { all: "Todos", open: "Abertos", closed: "Fechados", cancelled: "Cancel." };
               return (
                 <button key={s} type="button" onClick={() => setStatusFilter(s)}
-                  className={`flex-1 py-2.5 sm:py-2 text-[11px] sm:text-xs font-medium transition-colors min-h-[44px] sm:min-h-0 ${statusFilter === s ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-500 hover:bg-black/5 hover:text-gray-700"}`}>
+                  className={`flex-1 py-2.5 sm:py-2 text-[11px] sm:text-xs font-medium motion-safe:transition-colors min-h-[44px] sm:min-h-0 ${statusFilter === s ? "bg-cockpit-accent text-white shadow-sm" : "text-gray-500 hover:bg-black/5 hover:text-gray-700"}`}>
                   {labels[s]} <span className="opacity-70 hidden sm:inline">({counts[s]})</span>
                 </button>
               );
@@ -964,7 +964,7 @@ function PedidosContent() {
           </p>
           {filtered.length > 0 && (
             <button type="button" onClick={expanded.size > 0 ? collapseAll : expandAll}
-              className="text-[11px] sm:text-xs text-cockpit-accent hover:text-cockpit-accent/80 font-medium transition-colors whitespace-nowrap">
+              className="text-[11px] sm:text-xs text-cockpit-accent hover:text-cockpit-accent/80 font-medium motion-safe:transition-colors whitespace-nowrap">
               {expanded.size > 0 ? "Recolher" : "Expandir visíveis"}
             </button>
           )}

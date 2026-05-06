@@ -44,7 +44,7 @@ function EditField({
 }) {
   return (
     <div className="flex items-center justify-between py-2 group">
-      <span className="text-xs text-gray-600 group-hover:text-gray-900 transition-colors">{label}</span>
+      <span className="text-xs text-gray-600 group-hover:text-gray-900 motion-safe:transition-colors">{label}</span>
       <div className="flex items-center gap-1.5">
         {prefix && <span className="text-xs font-semibold text-gray-500">{prefix}</span>}
         <input
@@ -155,7 +155,7 @@ function IcmsCard({
               key={m}
               type="button"
               onClick={() => setModo(m)}
-              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-md text-[10px] font-semibold motion-safe:transition-all ${
                 modo === m ? "bg-white shadow-sm" : "text-white/80 hover:text-white hover:bg-white/10"
               }`}
               style={modo === m ? { color } : undefined}
@@ -293,7 +293,7 @@ export default function MarkupDetailPage() {
         <button
           type="button"
           onClick={() => router.push("/business-intelligence/markup")}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cockpit-border text-sm text-cockpit-accent hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cockpit-border text-sm text-cockpit-accent hover:bg-gray-50 motion-safe:transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> Voltar à lista
         </button>
@@ -313,7 +313,7 @@ export default function MarkupDetailPage() {
           <button
             type="button"
             onClick={() => router.push("/business-intelligence/markup")}
-            className="hover:text-cockpit-accent transition-colors"
+            className="hover:text-cockpit-accent motion-safe:transition-colors"
           >
             MarkUp
           </button>
@@ -324,7 +324,7 @@ export default function MarkupDetailPage() {
           <button
             type="button"
             onClick={() => router.push("/business-intelligence/markup")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cockpit-border text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cockpit-border text-xs text-gray-600 hover:bg-gray-50 motion-safe:transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Voltar
           </button>
@@ -332,7 +332,7 @@ export default function MarkupDetailPage() {
             type="button"
             onClick={handleSave}
             disabled={!hasChanges || saving}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white transition-all ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold text-white motion-safe:transition-all ${
               !hasChanges
                 ? "bg-gray-300 cursor-not-allowed"
                 : saving
@@ -386,7 +386,7 @@ export default function MarkupDetailPage() {
               key={key}
               type="button"
               onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 px-5 py-3 text-xs font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-1.5 px-5 py-3 text-xs font-medium border-b-2 motion-safe:transition-colors ${
                 tab === key
                   ? "border-cockpit-accent text-cockpit-accent"
                   : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"

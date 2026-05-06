@@ -51,7 +51,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
           <button
             type="button"
             onClick={onRetry}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cockpit-accent/20 text-cockpit-accent text-sm font-medium hover:bg-cockpit-accent/30 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cockpit-accent/20 text-cockpit-accent text-sm font-medium hover:bg-cockpit-accent/30 motion-safe:transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cockpit-accent focus-visible:ring-offset-2"
           >
             <RefreshCw className="w-4 h-4" />
             Tentar novamente

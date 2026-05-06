@@ -46,7 +46,7 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+      className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-25 disabled:cursor-not-allowed motion-safe:transition-colors"
     >
       {children}
     </button>
@@ -200,7 +200,7 @@ export default function MarkupPage() {
         <button
           type="button"
           onClick={refetch}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-gray-600 border border-cockpit-border hover:bg-gray-50 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-gray-600 border border-cockpit-border hover:bg-gray-50 motion-safe:transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />Atualizar
         </button>
@@ -262,7 +262,7 @@ export default function MarkupPage() {
           <button
             type="button"
             onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 motion-safe:transition-colors"
           >
             <Download className="w-3.5 h-3.5" />Exportar CSV
           </button>
@@ -294,7 +294,7 @@ export default function MarkupPage() {
                 ] as [SortKey, string, string][]).map(([key, label, cls]) => (
                   <th
                     key={key}
-                    className={`px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-800 transition-colors ${cls}`}
+                    className={`px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-800 motion-safe:transition-colors ${cls}`}
                     onClick={() => handleSort(key)}
                   >
                     <span className="inline-flex items-center gap-1">{label}<SortIcon col={key} /></span>
@@ -305,7 +305,7 @@ export default function MarkupPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pageItems.map((item, idx) => (
-                <tr key={item.itemCode} className={`group transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"} hover:bg-cockpit-accent/5`}>
+                <tr key={item.itemCode} className={`group motion-safe:transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"} hover:bg-cockpit-accent/5`}>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1.5">
                       <Link
@@ -332,7 +332,7 @@ export default function MarkupPage() {
                   <td className="px-3 py-3 text-right">
                     <Link
                       href={`/business-intelligence/markup/${encodeURIComponent(item.itemCode)}`}
-                      className="opacity-0 group-hover:opacity-100 inline-flex p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 transition-all"
+                      className="opacity-0 group-hover:opacity-100 inline-flex p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 motion-safe:transition-all"
                       title="Detalhar produto"
                     >
                       <ChevronRight className="w-4 h-4" />

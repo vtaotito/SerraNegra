@@ -189,7 +189,7 @@ function StockBar({ total, available, minStock }: { total: number; available: nu
   return (
     <div className="flex items-center gap-1.5 min-w-[100px]" title={`${fmtNum(available)} de ${fmtNum(total)} disponível (${pct.toFixed(0)}%)`}>
       <div className="flex-1 h-2 bg-gray-100 rounded-full relative overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
+        <div className="h-full rounded-full motion-safe:transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: color }} />
         {minPct > 0 && <div className="absolute top-0 h-full w-0.5 bg-red-400/70" style={{ left: `${minPct}%` }} />}
       </div>
       <span className={`text-[10px] tabular-nums font-medium w-9 text-right ${pct < 30 ? "text-amber-600" : "text-gray-500"}`}>{pct.toFixed(0)}%</span>
@@ -614,7 +614,7 @@ export default function EstoquePage() {
         ].map((k) => {
           const Icon = k.icon;
           return (
-            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-3.5 hover:border-gray-300 transition-all group">
+            <div key={k.title} className="rounded-xl border border-cockpit-border bg-white p-3.5 hover:border-gray-300 motion-safe:transition-all group">
               <div className="flex items-center gap-2.5">
                 <div className={`w-9 h-9 rounded-lg ${k.accent} flex items-center justify-center shrink-0`}>
                   <Icon className={`w-4.5 h-4.5 ${k.color}`} />
@@ -634,12 +634,12 @@ export default function EstoquePage() {
       <section className="flex flex-wrap items-center gap-1.5">
         <Tag className="w-3.5 h-3.5 text-cockpit-muted mr-0.5" />
         <button onClick={() => { setCatFilter("ALL"); resetPage(); }}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all ${catFilter === "ALL" ? "border-gray-900 bg-gray-900 text-white shadow-sm" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium motion-safe:transition-all ${catFilter === "ALL" ? "border-gray-900 bg-gray-900 text-white shadow-sm" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
           Todas <span className="tabular-nums opacity-60">{allItems.length}</span>
         </button>
         {categoryDistrib.map(({ cat, count, label, color, bg }) => (
           <button key={cat} onClick={() => { setCatFilter(catFilter === cat ? "ALL" : cat); resetPage(); }}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium transition-all ${catFilter === cat ? `border-gray-400 ${bg} ${color} shadow-sm` : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs font-medium motion-safe:transition-all ${catFilter === cat ? `border-gray-400 ${bg} ${color} shadow-sm` : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}>
             {label} <span className="tabular-nums opacity-60">{count}</span>
           </button>
         ))}
@@ -723,7 +723,7 @@ export default function EstoquePage() {
                   return (
                     <div key={d.name} className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded text-[9px] font-bold flex items-center justify-center shrink-0" style={{ background: d.fill + "20", color: d.fill }}>{d.name}</span>
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: d.fill }} /></div>
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5"><div className="h-1.5 rounded-full motion-safe:transition-all" style={{ width: `${pct}%`, background: d.fill }} /></div>
                       <span className="text-[10px] tabular-nums text-gray-600 w-16 text-right"><strong>{d.skus}</strong> · {pct.toFixed(0)}%</span>
                     </div>
                   );
@@ -865,7 +865,7 @@ export default function EstoquePage() {
               { key: "semVenda", label: "Sem Venda" },
             ] as const).map(({ key, label }) => (
               <button key={key} onClick={() => { setQuickFilter(key); resetPage(); }}
-                className={`px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors whitespace-nowrap ${
                   quickFilter === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{label}</button>
             ))}
@@ -875,7 +875,7 @@ export default function EstoquePage() {
           <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "A", "B", "C"] as const).map((opt) => (
               <button key={opt} onClick={() => { setCurvaFilter(opt); resetPage(); }}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors min-w-[32px] ${
+                className={`px-2.5 py-1.5 rounded-md text-xs font-semibold motion-safe:transition-colors min-w-[32px] ${
                   curvaFilter === opt ? opt === "ALL" ? "bg-white text-gray-900 shadow-sm" : "text-white shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`} style={curvaFilter === opt && opt !== "ALL" ? { backgroundColor: CURVA_COLORS[opt] } : {}}>{opt === "ALL" ? "ABC" : opt}</button>
             ))}
@@ -883,7 +883,7 @@ export default function EstoquePage() {
           <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "alto", "medio", "baixo", "parado"] as const).map((opt) => (
               <button key={opt} onClick={() => { setGiroFilter(opt); resetPage(); }}
-                className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`px-2 py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors ${
                   giroFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{opt === "ALL" ? "Giro" : GIRO_CFG[opt].label}</button>
             ))}
@@ -891,7 +891,7 @@ export default function EstoquePage() {
           <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {(["ALL", "critico", "atencao", "ok", "excesso"] as const).map((opt) => (
               <button key={opt} onClick={() => { setCobFilter(opt); resetPage(); }}
-                className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`px-2 py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors ${
                   cobFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{opt === "ALL" ? "Cobert." : COB_CFG[opt].label}</button>
             ))}
@@ -980,7 +980,7 @@ export default function EstoquePage() {
                 return (
                   <tbody key={item.sku}>
                     <tr
-                      className={`group border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] transition-colors cursor-pointer ${rowBg}`}
+                      className={`group border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors cursor-pointer ${rowBg}`}
                       onClick={() => setExpandedSku(isExpanded ? null : item.sku)}>
                       <td className="py-2.5 px-1 text-center">
                         <span className="inline-block w-6 text-center py-0.5 rounded text-[10px] font-bold text-white" style={{ backgroundColor: CURVA_COLORS[item.curva] }}>{item.curva}</span>
@@ -994,7 +994,7 @@ export default function EstoquePage() {
                               {item.skuCount > 1 && <span className="ml-1 px-1 py-0 rounded bg-blue-50 text-blue-600 font-bold text-[9px]">{item.skuCount} SKUs</span>}
                             </p>
                           </div>
-                          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
+                          <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 motion-safe:transition-transform group-hover:text-gray-600 ${isExpanded ? "rotate-180 text-cockpit-accent" : ""}`} />
                         </div>
                       </td>
                       <td className="py-2.5 px-1 text-center hidden lg:table-cell">
@@ -1155,11 +1155,11 @@ export default function EstoquePage() {
               </p>
               <div className="flex items-center gap-1">
                 <button onClick={() => goToPage(1)} disabled={safePage <= 1}
-                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed motion-safe:transition-colors">
                   <ChevronsLeft className="w-3.5 h-3.5 text-gray-600" />
                 </button>
                 <button onClick={() => goToPage(safePage - 1)} disabled={safePage <= 1}
-                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed motion-safe:transition-colors">
                   <ChevronLeft className="w-3.5 h-3.5 text-gray-600" />
                 </button>
                 {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
@@ -1170,17 +1170,17 @@ export default function EstoquePage() {
                   else { pageNum = safePage - 3 + i; }
                   return (
                     <button key={pageNum} onClick={() => goToPage(pageNum)}
-                      className={`min-w-[28px] h-7 rounded text-[11px] font-medium transition-colors ${
+                      className={`min-w-[28px] h-7 rounded text-[11px] font-medium motion-safe:transition-colors ${
                         pageNum === safePage ? "bg-cockpit-accent text-white" : "text-gray-500 hover:bg-gray-200"
                       }`}>{pageNum}</button>
                   );
                 })}
                 <button onClick={() => goToPage(safePage + 1)} disabled={safePage >= totalPages}
-                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed motion-safe:transition-colors">
                   <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
                 </button>
                 <button onClick={() => goToPage(totalPages)} disabled={safePage >= totalPages}
-                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                  className="p-1 rounded hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed motion-safe:transition-colors">
                   <ChevronsRight className="w-3.5 h-3.5 text-gray-600" />
                 </button>
               </div>

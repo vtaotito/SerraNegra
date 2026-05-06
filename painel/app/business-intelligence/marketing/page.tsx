@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { format } from "date-fns";
 import {
   Megaphone,
@@ -12,24 +13,30 @@ import {
   BarChart3,
   CircleDollarSign,
 } from "lucide-react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from "recharts";
 import { fmtBRL, fmtNum } from "@/lib/format";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
-import { BiChartTooltip } from "@/components/cockpit/ChartTooltip";
-import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick } from "@/lib/chart-theme";
 import { useRdOverviewBi } from "@/hooks/useCockpitQueries";
 import { BiEmptyState } from "@/components/cockpit/BiEmptyState";
 import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
+
+const MarketingFunnelChart = dynamic(
+  () =>
+    import("./MarketingFunnelChart").then((m) => ({
+      default: m.MarketingFunnelChart,
+    })),
+  {
+    loading: () => (
+      <div
+        className="h-72 rounded-lg border border-cockpit-border bg-white animate-pulse motion-reduce:animate-none"
+        aria-busy="true"
+        aria-label="Carregando gráfico"
+      />
+    ),
+    ssr: false,
+  }
+);
 
 function formatShortDate(iso?: string | null) {
   if (!iso) return "—";
@@ -226,7 +233,7 @@ export default function MarketingCrmBiPage() {
         ).map((k) => (
           <div
             key={k.title}
-            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-purple-400/35 transition-colors"
+            className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-purple-400/35 motion-safe:transition-colors"
           >
             <div className="flex items-center gap-2 mb-2">
               <div className={`rounded-md p-1 ${k.bgClass}`}>
@@ -269,26 +276,20 @@ export default function MarketingCrmBiPage() {
         </div>
       )}
 
-      {/* Gráfico por funil */}
-      <section className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-1">Negociações em aberto por funil</h2>
-        <p className="text-xs text-cockpit-muted mb-4">Contagem atual de deals com status <code className="text-[10px]">ongoing</code>.</p>
+      <section
+        className="rounded-xl border border-cockpit-border bg-cockpit-surface p-6"
+        aria-labelledby="marketing-funnel-heading"
+      >
+        <h2 id="marketing-funnel-heading" className="text-sm font-semibold text-gray-900 mb-1">
+          Negociações em aberto por funil
+        </h2>
+        <p className="text-xs text-cockpit-muted mb-4">
+          Contagem atual de deals com status <code className="text-[10px]">ongoing</code>.
+        </p>
         {chartRows.length === 0 ? (
           <BiEmptyState title="Nenhuma negociação em aberto retornada" />
         ) : (
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartRows} layout="vertical" margin={{ left: 4, right: 24, top: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_AXIS_LINE} horizontal={false} />
-                <XAxis type="number" tick={{ ...chartAxisTick("sm"), fontSize: 10 }} stroke={CHART_MUTED} allowDecimals={false} />
-                <YAxis type="category" dataKey="name" width={180} tick={{ ...chartAxisTick("sm"), fontSize: 9 }} stroke={CHART_MUTED} />
-                <Tooltip
-                  content={<BiChartTooltip variant="cockpit" formatValue={(_, v) => fmtNum(Number(v))} />}
-                />
-                <Bar dataKey="abertos" name="Em aberto" fill="#7c3aed" radius={[0, 6, 6, 0]} maxBarSize={22} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <MarketingFunnelChart rows={chartRows} />
         )}
       </section>
 
@@ -314,7 +315,7 @@ export default function MarketingCrmBiPage() {
             </thead>
             <tbody className="divide-y divide-cockpit-border/60">
               {(data.pipelinesWithCounts ?? []).map((p) => (
-                <tr key={p.id} className="hover:bg-cockpit-accent/[0.03] transition-colors">
+                <tr key={p.id} className="hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors">
                   <td className="py-2.5 px-4 font-medium text-gray-800">{p.name}</td>
                   <td className="py-2.5 px-4 text-center font-mono text-gray-600">{p.stageCount}</td>
                   <td className="py-2.5 px-4 text-center">

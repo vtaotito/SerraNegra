@@ -29,7 +29,7 @@ export function KPICard({
           : "flat";
 
   return (
-    <div className="rounded-xl border border-cockpit-border bg-white p-5 hover:border-cockpit-accent/30 transition-colors">
+    <div className="rounded-xl border border-cockpit-border bg-white p-5 hover:border-cockpit-accent/30 motion-safe:transition-colors">
       <div className="flex items-start justify-between">
         <p className="text-sm font-medium text-cockpit-muted">{title}</p>
         {icon && (

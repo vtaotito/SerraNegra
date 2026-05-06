@@ -149,7 +149,7 @@ export default function ResumoPage() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         {kpis.map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-all shadow-sm">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-all shadow-sm">
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -265,7 +265,7 @@ export default function ResumoPage() {
                 { ind: "Produtos no Catálogo", cat: "estoque", val: fmtNum(catData?.total ?? 0) },
                 { ind: "Posições de Estoque", cat: "estoque", val: fmtNum(invData?.total ?? 0) },
               ].map((r) => (
-                <tr key={r.ind} className="hover:bg-cockpit-accent/[0.04] transition-colors">
+                <tr key={r.ind} className="hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors">
                   <td className="px-4 py-2.5 font-medium text-gray-900">{r.ind}</td>
                   <td className="px-4 py-2.5">
                     <span className="rounded-full bg-black/5 px-2 py-0.5 text-xs text-cockpit-muted capitalize">{r.cat}</span>

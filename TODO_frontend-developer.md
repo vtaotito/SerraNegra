@@ -262,7 +262,20 @@ cd painel && npm run lint
 | **GSN-BI-FE-PERF-1** | `prefers-reduced-motion`: chevron do período com `motion-safe:rotate`; botão aplicar sem `active:scale` sem `motion-safe`; barra de refresh em `produtos` com `motion-reduce:animate-none`. |
 | **GSN-BI-FE-PLAN-5** | `useRdContactMarketing`: mensagem pt-BR quando `!res.ok` mesmo sem `error` no JSON. |
 
-Checklist QA manual (**GSN-BI-FE-QA-***) permanece pendente até validação humana nos browsers. **`npm run typecheck`** executado sem erros. **`npm run lint`** solicitou configurador interativo do Next neste ambiente — rodar ESLint localmente se já houver `eslint.config` no projeto.
+## Registro de execução (sprint complementar — 2026-05-06, tarde)
+
+| ID | O que foi feito |
+|----|------------------|
+| **GSN-BI-FE-PERF-1** | Padronização ampla `prefers-reduced-motion`: 120 transições (`transition-{colors,all,opacity,transform}`) prefixadas com `motion-safe:` em **14 arquivos** das páginas BI (`carteira`, `clientes`, `comercial/dados`, `estoque`, `faturamento`, `margens`, `markup`, `markup/[itemCode]`, `pedidos`, `precos`, `produtos`, `resumo`, `vendedores`) e em `components/Sidebar.tsx`; mantém ressalva existente em `motion-safe:` no que já estava correto. |
+| **GSN-BI-FE-PERF-1** | Spinners com `motion-reduce:animate-none` adicionados em `pedidos/page.tsx` (botão Sync SAP), `produtos/page.tsx` (loading histórico) e `comercial/dados/page.tsx` (botão "Carregar mais"); ícones marcados com `aria-hidden` e wrapper de loading com `role="status"`/`aria-live="polite"`. |
+| **GSN-BI-FE-PERF-1** | Componentes compartilhados: `KPICard` e `DataState.ErrorState` ganharam prefixo `motion-safe:` em `transition-colors` e `focus-visible:ring` no botão "Tentar novamente"; `BITopbar` (preset rápidos) e `comercial/dados` (loadMore) com `motion-safe:active:scale`. |
+| **GSN-BI-FE-PLAN-3** | `BIErrorBoundary` agora aceita `area` (rótulo pt-BR concatenado na mensagem e no log) e `fallback?: ({ message, reset }) => ReactNode` para envoltórios granulares de sub-features sem derrubar a página. |
+| **GSN-BI-FE-PLAN-4** | `marketing/page.tsx`: chart de funil RD extraído para `MarketingFunnelChart.tsx` e carregado via `next/dynamic` (`ssr:false` + skeleton de altura fixa com `aria-busy`/`aria-label`), seguindo o padrão já usado em `ExecutiveDashboardCharts`. Adicionado `aria-labelledby` na `<section>` e `<title>` no SVG do gráfico. |
+| **GSN-BI-FE-PERF-2** | Hooks BI já estão com `staleTime` alinhado (60–120s) em `useExecutiveSummary`, `useRdOverviewBi`, `useRdContactMarketing` — checklist confirmado sem novas hooks adicionando churn no gateway. |
+| **GSN-BI-FE-CQ-TYPES** | `MarketingFunnelChart` exportado com tipo explícito `MarketingFunnelChartRow` — sem `any` introduzido. Toda a base BI já está sob `tsc --noEmit` limpo. |
+| **GSN-BI-FE-QA-TS** | `npm run typecheck` confirmado sem erros após todas as alterações. |
+
+> Itens **GSN-BI-FE-QA-LH** (Lighthouse), **GSN-BI-FE-QA-BP** (breakpoints 320–2560px), **GSN-BI-FE-QA-KB**, **GSN-BI-FE-QA-CONTR** e **GSN-BI-FE-QA-XB** continuam dependendo de validação humana nos browsers (não automatizáveis no agente). **`npm run lint`** ainda solicita configurador interativo do Next neste ambiente — `next lint` é deprecated em Next 16 (rodar `npx eslint .` após migrar config local).
 
 ---
 

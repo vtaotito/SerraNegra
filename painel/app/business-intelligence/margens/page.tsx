@@ -200,7 +200,7 @@ export default function MargensPage() {
           { label: "Desc. Médio", value: `${kpis.avgDiscount.toFixed(1)}%`, icon: Percent, color: "text-red-500" },
           { label: "Grupos", value: String(kpis.groups), icon: Package, color: "text-emerald-500" },
         ].map((k) => (
-          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 transition-all shadow-sm">
+          <div key={k.label} className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 hover:border-cockpit-accent/30 motion-safe:transition-all shadow-sm">
             <div className="flex items-center gap-2">
               <k.icon className={`h-4 w-4 ${k.color}`} />
               <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{k.label}</span>
@@ -215,7 +215,7 @@ export default function MargensPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cockpit-muted" />
         <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar grupo de produto..."
-          className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 transition-all" />
+          className="w-full pl-9 pr-4 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 placeholder:text-cockpit-muted focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 motion-safe:transition-all" />
       </div>
 
       {/* Tabs */}
@@ -226,7 +226,7 @@ export default function MargensPage() {
           { id: "scatter", label: "Volume × Preço" },
         ] as const).map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold motion-safe:transition-all ${
               tab === t.id ? "bg-white text-cockpit-accent shadow-sm" : "text-cockpit-muted hover:text-gray-700"
             }`}>{t.label}</button>
         ))}
@@ -414,7 +414,7 @@ export default function MargensPage() {
               ) : (
                 <>
                   {filtered.map((r, i) => (
-                    <tr key={r.group} className="hover:bg-cockpit-accent/[0.04] transition-colors">
+                    <tr key={r.group} className="hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors">
                       <td className="py-2.5 px-4">
                         <span className="inline-flex items-center gap-1.5">
                           <span className="w-3 h-3 rounded" style={{ background: COLORS[i % COLORS.length] }} />
