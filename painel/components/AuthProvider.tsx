@@ -21,7 +21,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha"];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PanelUser | null>(null);
