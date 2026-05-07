@@ -95,14 +95,36 @@ async function run() {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES panel_users(id) ON DELETE CASCADE,
       token_hash VARCHAR(255) NOT NULL UNIQUE,
-      expires_at TIMESTAMP NOT NULL,
-      used_at TIMESTAMP,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
       requested_ip VARCHAR(50),
       consumed_ip VARCHAR(50),
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
   console.log("[OK] Tabela panel_password_reset_tokens");
+
+  // Migra colunas existentes para TIMESTAMPTZ caso a tabela tenha sido criada
+  // antes da correção de timezone (banco em UTC, driver pg-node converte Date
+  // para hora local quando a coluna é TIMESTAMP sem zona).
+  await pool.query(`
+    ALTER TABLE panel_password_reset_tokens
+      ALTER COLUMN expires_at TYPE TIMESTAMPTZ USING expires_at AT TIME ZONE 'UTC',
+      ALTER COLUMN used_at    TYPE TIMESTAMPTZ USING used_at    AT TIME ZONE 'UTC',
+      ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'
+  `);
+  console.log("[OK] Colunas de panel_password_reset_tokens migradas para TIMESTAMPTZ");
+
+  // Apaga tokens potencialmente inconsistentes gerados antes da correção.
+  const cleanup = await pool.query(
+    `DELETE FROM panel_password_reset_tokens
+     WHERE expires_at < NOW() - INTERVAL '2 hours'
+        OR (used_at IS NULL AND created_at < NOW() - INTERVAL '2 hours')
+     RETURNING id`
+  );
+  if (cleanup.rowCount > 0) {
+    console.log(`[OK] ${cleanup.rowCount} token(s) antigo(s)/inconsistente(s) removido(s)`);
+  }
 
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_password_reset_user_id ON panel_password_reset_tokens(user_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_password_reset_token_hash ON panel_password_reset_tokens(token_hash)`);

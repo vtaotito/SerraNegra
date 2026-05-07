@@ -10,7 +10,6 @@ import {
   Users,
   Plus,
   Search,
-  MoreVertical,
   Shield,
   Check,
   X,
@@ -19,6 +18,13 @@ import {
   Trash2,
   Eye,
   EyeOff,
+  KeyRound,
+  Copy,
+  Share2,
+  ExternalLink,
+  Mail,
+  CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -30,6 +36,14 @@ export default function UsuariosPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<PanelUser | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  const [resetTarget, setResetTarget] = useState<PanelUser | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetData, setResetData] = useState<{
+    url: string;
+    expiresAt: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [form, setForm] = useState({
     username: "",
@@ -167,6 +181,110 @@ export default function UsuariosPage() {
         ? prev.allowedModules.filter((m) => m !== mod)
         : [...prev.allowedModules, mod],
     }));
+  };
+
+  const openResetLink = (u: PanelUser) => {
+    setResetTarget(u);
+    setResetData(null);
+    setCopied(false);
+  };
+
+  const closeResetLink = () => {
+    setResetTarget(null);
+    setResetData(null);
+    setCopied(false);
+  };
+
+  const generateResetLink = async (u: PanelUser) => {
+    setResetLoading(true);
+    try {
+      const res = await fetch(`/api/usuarios/${u.id}/reset-link`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error ?? "Não foi possível gerar o link.");
+      }
+      setResetData({ url: data.data.resetUrl, expiresAt: data.data.expiresAt });
+      setCopied(false);
+      toast.success("Link de redefinição gerado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Erro ao gerar link."
+      );
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const copyResetLink = async () => {
+    if (!resetData) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(resetData.url);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = resetData.url;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      toast.success("Link copiado!");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Não foi possível copiar. Selecione e copie manualmente.");
+    }
+  };
+
+  const shareResetLink = async () => {
+    if (!resetData || !resetTarget) return;
+    const expiresLabel = new Date(resetData.expiresAt).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
+    const text =
+      `Olá, ${resetTarget.displayName}.\n\n` +
+      `Use o link abaixo para definir uma nova senha no Painel GSN ` +
+      `(válido até ${expiresLabel} e de uso único):\n\n${resetData.url}`;
+
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.share === "function"
+    ) {
+      try {
+        await navigator.share({
+          title: "Redefinição de senha — Painel GSN",
+          text,
+          url: resetData.url,
+        });
+      } catch {
+        // usuário cancelou ou navegador bloqueou — sem feedback negativo
+      }
+      return;
+    }
+    await copyResetLink();
+  };
+
+  const openMailto = () => {
+    if (!resetData || !resetTarget) return;
+    const expiresLabel = new Date(resetData.expiresAt).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
+    const subject = "Redefinição de senha — Painel GSN";
+    const body =
+      `Olá, ${resetTarget.displayName}.\n\n` +
+      `Use o link abaixo para definir uma nova senha no Painel GSN ` +
+      `(válido até ${expiresLabel} e de uso único):\n\n` +
+      `${resetData.url}\n\n` +
+      `Se você não solicitou essa alteração, ignore este e-mail.`;
+    const href = `mailto:${encodeURIComponent(resetTarget.email)}` +
+      `?subject=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
+    window.location.href = href;
   };
 
   const roleBadgeColor: Record<UserRole, string> = {
@@ -320,6 +438,18 @@ export default function UsuariosPage() {
                       {isAdmin && (
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openResetLink(u)}
+                              disabled={!u.isActive}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-amber-600 hover:bg-amber-50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              title={
+                                u.isActive
+                                  ? "Gerar link de redefinição de senha"
+                                  : "Usuário inativo"
+                              }
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => openEdit(u)}
                               className="p-1.5 rounded-lg text-gray-400 hover:text-gsn-700 hover:bg-gsn-50 transition"
@@ -508,6 +638,203 @@ export default function UsuariosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-link-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeResetLink();
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-start gap-3">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex-shrink-0">
+                  <KeyRound className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <h3
+                    id="reset-link-title"
+                    className="text-lg font-semibold text-gray-900"
+                  >
+                    Link de redefinição de senha
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {resetTarget.displayName} · {resetTarget.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closeResetLink}
+                className="p-1 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100"
+                aria-label="Fechar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {!resetData ? (
+                <>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-medium">Atenção</p>
+                    <ul className="mt-1.5 list-disc list-inside space-y-0.5 text-amber-800">
+                      <li>O link gerado é de <strong>uso único</strong>.</li>
+                      <li>Validade de <strong>1 hora</strong> a partir da geração.</li>
+                      <li>
+                        Tokens anteriores ainda pendentes deste usuário serão
+                        invalidados ao consumir o novo.
+                      </li>
+                      <li>
+                        Compartilhe apenas por canal seguro com o próprio usuário.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={closeResetLink}
+                      className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => generateResetLink(resetTarget)}
+                      disabled={resetLoading}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm shadow-gsn-700/25"
+                    >
+                      {resetLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <KeyRound className="w-4 h-4" aria-hidden="true" />
+                      )}
+                      {resetLoading ? "Gerando..." : "Gerar link"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label
+                      htmlFor="reset-link-url"
+                      className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1.5"
+                    >
+                      Link gerado
+                    </label>
+                    <div className="flex items-stretch gap-2">
+                      <input
+                        id="reset-link-url"
+                        type="text"
+                        readOnly
+                        value={resetData.url}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-xs font-mono bg-gray-50 text-gray-800 focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={copyResetLink}
+                        className={cn(
+                          "inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition flex-shrink-0",
+                          copied
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        )}
+                        title="Copiar link"
+                      >
+                        {copied ? (
+                          <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+                        ) : (
+                          <Copy className="w-4 h-4" aria-hidden="true" />
+                        )}
+                        {copied ? "Copiado" : "Copiar"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center justify-between gap-3">
+                    <span>
+                      Expira em:{" "}
+                      <strong className="text-gray-900">
+                        {new Date(resetData.expiresAt).toLocaleString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </strong>
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-amber-700">
+                      <Shield className="w-3 h-3" aria-hidden="true" />
+                      Uso único
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <button
+                      type="button"
+                      onClick={shareResetLink}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
+                      title="Compartilhar"
+                    >
+                      <Share2 className="w-4 h-4" aria-hidden="true" />
+                      Compartilhar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openMailto}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
+                      title="Enviar por e-mail"
+                    >
+                      <Mail className="w-4 h-4" aria-hidden="true" />
+                      E-mail
+                    </button>
+                    <a
+                      href={resetData.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition"
+                      title="Abrir link"
+                    >
+                      <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                      Abrir
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => generateResetLink(resetTarget)}
+                      disabled={resetLoading}
+                      className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                      title="Gerar novo link (invalida o anterior)"
+                    >
+                      {resetLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                      )}
+                      Novo
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={closeResetLink}
+                      className="flex-1 py-2.5 px-4 rounded-lg text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

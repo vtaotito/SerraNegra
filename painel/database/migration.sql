@@ -81,15 +81,18 @@ CREATE INDEX idx_panel_activity_log_created_at ON panel_activity_log(created_at)
 
 -- Tabela de tokens de reset de senha (single-use, com expiração)
 -- Apenas o hash SHA-256 do token é persistido; o token bruto só viaja no e-mail.
+-- Usamos TIMESTAMPTZ porque o driver pg-node converte Date objects para
+-- horário local quando a coluna é TIMESTAMP sem zona, o que causa drift
+-- de 3h em servidores com TZ=America/Sao_Paulo.
 CREATE TABLE IF NOT EXISTS panel_password_reset_tokens (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES panel_users(id) ON DELETE CASCADE,
     token_hash VARCHAR(255) NOT NULL UNIQUE,
-    expires_at TIMESTAMP NOT NULL,
-    used_at TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at TIMESTAMPTZ,
     requested_ip VARCHAR(50),
     consumed_ip VARCHAR(50),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_panel_password_reset_user_id ON panel_password_reset_tokens(user_id);
