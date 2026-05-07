@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
+import { randomBytes, createHash } from "crypto";
 import { cookies } from "next/headers";
 import { query, queryOne } from "./db";
 import type { PanelUser, SessionPayload, PanelModule, UserRole } from "./types";
@@ -287,6 +288,104 @@ export async function logActivity(
     `INSERT INTO panel_activity_log (user_id, action, details, ip_address) VALUES ($1, $2, $3::jsonb, $4)`,
     [userId, action, details ? JSON.stringify(details) : null, ip ?? null]
   );
+}
+
+// --- Password reset tokens ---
+
+const PASSWORD_RESET_TTL_MINUTES = 60;
+const PASSWORD_RESET_REQUEST_WINDOW_MINUTES = 15;
+const PASSWORD_RESET_MAX_REQUESTS_PER_USER = 5;
+
+export interface PasswordResetTokenRow {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  used_at: string | null;
+  requested_ip: string | null;
+  consumed_ip: string | null;
+  created_at: string;
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Cria um token de reset (32 bytes random, base64url) e persiste apenas o hash.
+ * Retorna o token bruto — deve ser entregue ao usuário (ex.: por e-mail) e nunca persistido.
+ */
+export async function createPasswordResetToken(
+  userId: string,
+  ip: string | null
+): Promise<{ token: string; expiresAt: Date }> {
+  const token = randomBytes(32).toString("base64url");
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60_000);
+
+  await query(
+    `INSERT INTO panel_password_reset_tokens (user_id, token_hash, expires_at, requested_ip)
+     VALUES ($1, $2, $3, $4)`,
+    [userId, tokenHash, expiresAt, ip]
+  );
+
+  return { token, expiresAt };
+}
+
+/**
+ * Valida um token bruto contra a base. Retorna o user_id se válido (não usado e não expirado).
+ */
+export async function findValidPasswordResetToken(
+  rawToken: string
+): Promise<{ id: string; userId: string; expiresAt: string } | null> {
+  if (!rawToken || rawToken.length < 16) return null;
+  const tokenHash = hashToken(rawToken);
+  const row = await queryOne<PasswordResetTokenRow>(
+    `SELECT * FROM panel_password_reset_tokens
+     WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+     LIMIT 1`,
+    [tokenHash]
+  );
+  if (!row) return null;
+  return { id: row.id, userId: row.user_id, expiresAt: row.expires_at };
+}
+
+/**
+ * Marca o token como usado e invalida quaisquer outros tokens pendentes do mesmo usuário.
+ */
+export async function consumePasswordResetToken(
+  tokenId: string,
+  userId: string,
+  ip: string | null
+): Promise<void> {
+  await query(
+    `UPDATE panel_password_reset_tokens
+     SET used_at = NOW(), consumed_ip = $1
+     WHERE id = $2`,
+    [ip, tokenId]
+  );
+  await query(
+    `UPDATE panel_password_reset_tokens
+     SET used_at = NOW()
+     WHERE user_id = $1 AND used_at IS NULL`,
+    [userId]
+  );
+}
+
+/**
+ * Limita pedidos de reset por usuário (anti-abuso simples).
+ * Retorna true se o limite foi atingido na janela recente.
+ */
+export async function isPasswordResetRateLimited(
+  userId: string
+): Promise<boolean> {
+  const row = await queryOne<{ count: string }>(
+    `SELECT COUNT(*)::int AS count FROM panel_password_reset_tokens
+     WHERE user_id = $1 AND created_at > NOW() - ($2 || ' minutes')::interval`,
+    [userId, PASSWORD_RESET_REQUEST_WINDOW_MINUTES]
+  );
+  const count = Number(row?.count ?? 0);
+  return count >= PASSWORD_RESET_MAX_REQUESTS_PER_USER;
 }
 
 // --- Auth Guard (server-side) ---

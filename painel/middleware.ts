@@ -5,7 +5,15 @@ const JWT_SECRET = new TextEncoder().encode(
   process.env.PANEL_JWT_SECRET ?? "painel-secret-change-me-in-production"
 );
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/registro"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/esqueci-senha",
+  "/redefinir-senha",
+  "/api/auth/login",
+  "/api/auth/registro",
+  "/api/auth/esqueci-senha",
+  "/api/auth/redefinir-senha",
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

@@ -79,6 +79,24 @@ CREATE INDEX idx_panel_activity_log_user_id ON panel_activity_log(user_id);
 CREATE INDEX idx_panel_activity_log_action ON panel_activity_log(action);
 CREATE INDEX idx_panel_activity_log_created_at ON panel_activity_log(created_at);
 
+-- Tabela de tokens de reset de senha (single-use, com expiração)
+-- Apenas o hash SHA-256 do token é persistido; o token bruto só viaja no e-mail.
+CREATE TABLE IF NOT EXISTS panel_password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES panel_users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    used_at TIMESTAMP,
+    requested_ip VARCHAR(50),
+    consumed_ip VARCHAR(50),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_panel_password_reset_user_id ON panel_password_reset_tokens(user_id);
+CREATE INDEX idx_panel_password_reset_token_hash ON panel_password_reset_tokens(token_hash);
+CREATE INDEX idx_panel_password_reset_expires_at ON panel_password_reset_tokens(expires_at);
+
 COMMENT ON TABLE panel_users IS 'Usuários do painel administrativo';
 COMMENT ON TABLE panel_sessions IS 'Sessões ativas do painel';
 COMMENT ON TABLE panel_activity_log IS 'Log de atividades do painel';
+COMMENT ON TABLE panel_password_reset_tokens IS 'Tokens de redefinição de senha (single-use, hash SHA-256)';
