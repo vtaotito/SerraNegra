@@ -15,6 +15,72 @@ export function rdStationMarketingConfigured(): boolean {
   return Boolean(process.env.RD_STATION_MARKETING_ACCESS_TOKEN?.trim());
 }
 
+/**
+ * Snapshot agregado das integrações RD Station — sem expor tokens.
+ * Usado pela tela de Integrações.
+ */
+export function rdStationStatus(): {
+  crm: {
+    configured: boolean;
+    hasClientCredentials: boolean;
+    redirectUri: string | null;
+  };
+  marketing: {
+    configured: boolean;
+    hasClientCredentials: boolean;
+    redirectUri: string | null;
+  };
+} {
+  return {
+    crm: {
+      configured: rdStationCrmConfigured(),
+      hasClientCredentials: Boolean(
+        process.env.RD_STATION_CRM_CLIENT_ID?.trim() &&
+          process.env.RD_STATION_CRM_CLIENT_SECRET?.trim(),
+      ),
+      redirectUri: process.env.RD_STATION_CRM_REDIRECT_URI?.trim() ?? null,
+    },
+    marketing: {
+      configured: rdStationMarketingConfigured(),
+      hasClientCredentials: Boolean(
+        process.env.RD_STATION_MARKETING_CLIENT_ID?.trim() &&
+          process.env.RD_STATION_MARKETING_CLIENT_SECRET?.trim(),
+      ),
+      redirectUri:
+        process.env.RD_STATION_MARKETING_REDIRECT_URI?.trim() ?? null,
+    },
+  };
+}
+
+/**
+ * Validação leve do token CRM — chama /pipelines com page-size=1
+ * só para confirmar que o Bearer responde 2xx.
+ */
+export async function rdCrmPing(): Promise<{
+  ok: boolean;
+  pipelinesCount: number | null;
+  reason?: string;
+}> {
+  if (!rdStationCrmConfigured()) {
+    return {
+      ok: false,
+      pipelinesCount: null,
+      reason: "Token CRM ausente (RD_STATION_CRM_ACCESS_TOKEN).",
+    };
+  }
+  try {
+    const payload = await rdCrmJson<RdListEnvelope<RdCrmPipeline>>(
+      "/pipelines",
+      { "page[number]": "1", "page[size]": "1" },
+    );
+    const list = pickData<RdCrmPipeline>(payload);
+    return { ok: true, pipelinesCount: list.length > 0 ? list.length : 0 };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Falha ao consultar RD CRM.";
+    return { ok: false, pipelinesCount: null, reason };
+  }
+}
+
 async function rdCrmJson<T>(
   path: string,
   searchParams?: Record<string, string>

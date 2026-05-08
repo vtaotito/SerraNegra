@@ -74,6 +74,82 @@ export function isMailerConfigured(): boolean {
   return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
 }
 
+/**
+ * Resumo da configuração SMTP — usado pela tela de Integrações.
+ * Nunca expõe a senha; apenas se ela está presente.
+ */
+export function smtpStatus(): {
+  configured: boolean;
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  hasPassword: boolean;
+  from: string;
+} {
+  return {
+    configured: isMailerConfigured(),
+    host: SMTP_HOST ?? null,
+    port: SMTP_PORT,
+    secure: SMTP_PORT === 465,
+    user: SMTP_USER ?? null,
+    hasPassword: Boolean(SMTP_PASS),
+    from: SMTP_FROM,
+  };
+}
+
+/**
+ * Envia um e-mail curto de teste para validar o transporte SMTP.
+ * Usado pela página de Integrações (admin/supervisor).
+ */
+export async function sendTestEmail(params: {
+  to: string;
+  triggeredBy: string;
+}): Promise<{ ok: boolean; reason?: string }> {
+  const { to, triggeredBy } = params;
+  const transporter = await getTransporter();
+  if (!transporter) {
+    return {
+      ok: false,
+      reason:
+        "SMTP não configurado. Defina SMTP_HOST, SMTP_USER e SMTP_PASS no ambiente.",
+    };
+  }
+
+  const subject = "Teste de envio — Painel GSN";
+  const sentAt = new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+  const text =
+    `Este é um e-mail de teste enviado pelo Painel GSN em ${sentAt}.\n` +
+    `Disparado por: ${triggeredBy}.\n\n` +
+    `Se você recebeu esta mensagem, sua configuração SMTP está funcionando.`;
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
+      <div style="padding: 20px 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
+        <h2 style="margin: 0 0 8px; color: #7f1d1d;">Painel GSN — Teste SMTP</h2>
+        <p style="margin: 0 0 12px; color: #4b5563;">
+          Este é um e-mail de <strong>teste</strong> disparado em
+          <strong>${escapeHtml(sentAt)}</strong> por <strong>${escapeHtml(
+            triggeredBy,
+          )}</strong>.
+        </p>
+        <p style="margin: 0; color: #059669; font-weight: 600;">
+          Se você recebeu esta mensagem, sua configuração SMTP está funcionando.
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({ from: SMTP_FROM, to, subject, text, html });
+    return { ok: true };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Falha ao enviar e-mail";
+    return { ok: false, reason };
+  }
+}
+
 interface PasswordResetEmailParams {
   to: string;
   displayName: string;

@@ -2,147 +2,842 @@
 
 import { ProtectedLayout } from "@/components/ProtectedLayout";
 import { useAuth } from "@/components/AuthProvider";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
-  Zap, Loader2, CheckCircle2, XCircle,
-  RefreshCw, Wifi, WifiOff, Database, ArrowDownToLine,
+  Zap,
+  Loader2,
+  CheckCircle2,
+  RefreshCw,
+  Database,
+  ArrowDownToLine,
+  Mail,
+  Send,
+  Workflow,
+  Megaphone,
+  Search,
+  AlertCircle,
 } from "lucide-react";
-import { syncSAP, sapHealth } from "@/lib/cockpit-api";
+import { syncSAP } from "@/lib/cockpit-api";
+import {
+  IntegrationCard,
+  type IntegrationStatus,
+} from "@/components/integrations/IntegrationCard";
 
-const SYNC_ENDPOINTS = [
-  { key: "cockpit" as const, label: "Sync Completo", desc: "Todas as entidades do SAP", icon: Database },
-  { key: "invoices" as const, label: "Notas Fiscais", desc: "A/R Invoices", icon: ArrowDownToLine },
-  { key: "products" as const, label: "Produtos", desc: "Items + UDFs", icon: ArrowDownToLine },
-  { key: "inventory" as const, label: "Estoque", desc: "Warehouse info", icon: ArrowDownToLine },
-  { key: "customers" as const, label: "Clientes", desc: "BusinessPartners", icon: ArrowDownToLine },
-  { key: "salespersons" as const, label: "Vendedores", desc: "SalesPersons", icon: ArrowDownToLine },
+type SyncKey =
+  | "cockpit"
+  | "invoices"
+  | "products"
+  | "inventory"
+  | "customers"
+  | "salespersons";
+
+const SYNC_ENDPOINTS: Array<{
+  key: SyncKey;
+  label: string;
+  desc: string;
+}> = [
+  { key: "cockpit", label: "Sync Completo", desc: "Todas as entidades" },
+  { key: "invoices", label: "Notas Fiscais", desc: "A/R Invoices" },
+  { key: "products", label: "Produtos", desc: "Items + UDFs" },
+  { key: "inventory", label: "Estoque", desc: "Warehouse info" },
+  { key: "customers", label: "Clientes", desc: "BusinessPartners" },
+  { key: "salespersons", label: "Vendedores", desc: "SalesPersons" },
 ];
+
+interface SapStatus {
+  configured: boolean;
+  healthy: boolean;
+  responseTimeMs: number | null;
+  message: string | null;
+  baseUrl: string | null;
+}
+interface SmtpStatus {
+  configured: boolean;
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  hasPassword: boolean;
+  from: string;
+}
+interface RdStatus {
+  configured: boolean;
+  hasClientCredentials: boolean;
+  redirectUri: string | null;
+}
+
+interface IntegrationsStatusResp {
+  success: boolean;
+  data?: {
+    sap: SapStatus;
+    smtp: SmtpStatus;
+    rdCrm: RdStatus;
+    rdMarketing: RdStatus;
+  };
+  error?: string;
+}
+
+interface RdMarketingContact {
+  uuid?: string;
+  name: string | null;
+  email: string | null;
+  jobTitle?: string | null;
+  city?: string | null;
+  state?: string | null;
+  lastConversionDate?: string | null;
+  lifecycle?: string | null;
+  tags?: string[];
+}
+
+function fmtDateTime(iso?: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+}
 
 export default function IntegracoesPage() {
   const { user } = useAuth();
-  const [syncStates, setSyncStates] = useState<Record<string, "idle" | "loading" | "ok" | "error">>({});
-  const [sapStatus, setSapStatus] = useState<{ connected: boolean; ms: number } | null>(null);
-  const [checkingHealth, setCheckingHealth] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [status, setStatus] = useState<IntegrationsStatusResp["data"] | null>(
+    null,
+  );
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [lastChecked, setLastChecked] = useState<string | null>(null);
 
-  const handleSync = useCallback(async (endpoint: string) => {
-    setSyncStates((prev) => ({ ...prev, [endpoint]: "loading" }));
+  const fetchStatus = useCallback(async () => {
+    setStatusLoading(true);
+    setStatusError(null);
     try {
-      await syncSAP(endpoint as any);
-      setSyncStates((prev) => ({ ...prev, [endpoint]: "ok" }));
-      setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 4000);
-    } catch {
-      setSyncStates((prev) => ({ ...prev, [endpoint]: "error" }));
-      setTimeout(() => setSyncStates((prev) => ({ ...prev, [endpoint]: "idle" })), 5000);
-    }
-  }, []);
-
-  const checkHealth = useCallback(async () => {
-    setCheckingHealth(true);
-    try {
-      const data = await sapHealth();
-      setSapStatus({ connected: data.sap_connected, ms: data.response_time_ms });
-    } catch {
-      setSapStatus({ connected: false, ms: 0 });
+      const res = await fetch("/api/integrations/status", {
+        cache: "no-store",
+      });
+      const body = (await res.json()) as IntegrationsStatusResp;
+      if (!res.ok || !body.success || !body.data) {
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      setStatus(body.data);
+      setLastChecked(new Date().toISOString());
+    } catch (e) {
+      setStatusError(e instanceof Error ? e.message : "Falha ao carregar");
     } finally {
-      setCheckingHealth(false);
+      setStatusLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (user) fetchStatus();
+  }, [user, fetchStatus]);
 
   if (!user) return null;
 
+  const allowed = user.role === "admin" || user.role === "supervisor";
+
   return (
     <ProtectedLayout>
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-6xl mx-auto pb-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-gsn-50">
               <Zap className="w-5 h-5 text-gsn-700" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Integrações</h1>
-              <p className="text-sm text-gray-500">SAP Business One · Service Layer</p>
+              <p className="text-sm text-gray-500">
+                SAP Business One · SMTP · RD Station CRM/Marketing
+              </p>
             </div>
           </div>
-          <button
-            onClick={checkHealth}
-            disabled={checkingHealth}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
-          >
-            {checkingHealth ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Verificar conexão
-          </button>
+          <div className="flex items-center gap-2">
+            {lastChecked && (
+              <span className="text-[11px] text-gray-400 hidden sm:inline">
+                Última verificação: {fmtDateTime(lastChecked)}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={fetchStatus}
+              disabled={statusLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
+            >
+              {statusLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Recarregar status
+            </button>
+          </div>
         </div>
 
-        {sapStatus && (
-          <div className={`rounded-xl border p-4 mb-6 flex items-center gap-3 ${
-            sapStatus.connected
-              ? "border-emerald-200 bg-emerald-50"
-              : "border-red-200 bg-red-50"
-          }`}>
-            {sapStatus.connected ? (
-              <>
-                <Wifi className="w-5 h-5 text-emerald-600" />
-                <div>
-                  <p className="text-sm font-medium text-emerald-800">SAP conectado</p>
-                  <p className="text-xs text-emerald-600">Tempo de resposta: {sapStatus.ms}ms</p>
-                </div>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-5 h-5 text-red-600" />
-                <div>
-                  <p className="text-sm font-medium text-red-800">SAP offline</p>
-                  <p className="text-xs text-red-600">Verifique a conexão com o Service Layer</p>
-                </div>
-              </>
-            )}
+        {!allowed && (
+          <div
+            role="alert"
+            className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2"
+          >
+            <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              Apenas <strong>admin</strong> e <strong>supervisor</strong> podem
+              testar as integrações. Você vê os status mas as ações estão
+              desabilitadas.
+            </span>
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-            <h2 className="text-sm font-semibold text-gray-900">Sincronização de dados</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Clique para sincronizar cada entidade com o SAP B1</p>
+        {statusError && (
+          <div
+            role="alert"
+            className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          >
+            Falha ao carregar status: {statusError}
           </div>
-          <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {SYNC_ENDPOINTS.map((ep) => {
-              const state = syncStates[ep.key] || "idle";
-              const Icon = ep.icon;
-              return (
-                <button
-                  key={ep.key}
-                  onClick={() => handleSync(ep.key)}
-                  disabled={state === "loading"}
-                  className={`rounded-xl p-4 border text-left transition-all duration-200 ${
-                    state === "ok"
-                      ? "border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200"
-                      : state === "error"
-                      ? "border-red-300 bg-red-50 ring-1 ring-red-200"
-                      : state === "loading"
-                      ? "border-gsn-300 bg-gsn-50/50"
-                      : "border-gray-200 bg-white hover:border-gsn-300 hover:shadow-sm"
-                  } disabled:cursor-wait`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Icon className={`w-4 h-4 ${
-                        state === "ok" ? "text-emerald-600" :
-                        state === "error" ? "text-red-500" :
-                        state === "loading" ? "text-gsn-600" : "text-gray-400"
-                      }`} />
-                      <p className="text-sm font-semibold text-gray-900">{ep.label}</p>
-                    </div>
-                    {state === "loading" && <Loader2 className="w-4 h-4 text-gsn-600 animate-spin" />}
-                    {state === "ok" && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
-                    {state === "error" && <XCircle className="w-4 h-4 text-red-500" />}
-                  </div>
-                  <p className="text-xs text-gray-500">{ep.desc}</p>
-                </button>
-              );
-            })}
-          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* SAP */}
+          <SapCard
+            sap={status?.sap ?? null}
+            allowed={allowed}
+            loading={statusLoading && !status}
+            onAfterSync={fetchStatus}
+          />
+
+          {/* SMTP */}
+          <SmtpCard
+            smtp={status?.smtp ?? null}
+            allowed={allowed}
+            loading={statusLoading && !status}
+            currentEmail={user.email ?? null}
+          />
+
+          {/* RD CRM */}
+          <RdCrmCard
+            rd={status?.rdCrm ?? null}
+            allowed={allowed}
+            loading={statusLoading && !status}
+          />
+
+          {/* RD Marketing */}
+          <RdMarketingCard
+            rd={status?.rdMarketing ?? null}
+            allowed={allowed}
+            loading={statusLoading && !status}
+          />
         </div>
       </div>
     </ProtectedLayout>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   SAP Card — status + 6 botões de sync
+   ════════════════════════════════════════════════════════════ */
+
+function sapStatusToBadge(sap: SapStatus | null): IntegrationStatus {
+  if (!sap) return "unknown";
+  if (!sap.configured) return "not_configured";
+  if (sap.healthy) return "ok";
+  return "error";
+}
+
+function SapCard({
+  sap,
+  allowed,
+  loading,
+  onAfterSync,
+}: {
+  sap: SapStatus | null;
+  allowed: boolean;
+  loading: boolean;
+  onAfterSync: () => void;
+}) {
+  const [syncStates, setSyncStates] = useState<
+    Record<string, "idle" | "loading" | "ok" | "error">
+  >({});
+
+  const handleSync = useCallback(
+    async (endpoint: SyncKey) => {
+      setSyncStates((p) => ({ ...p, [endpoint]: "loading" }));
+      try {
+        await syncSAP(endpoint);
+        setSyncStates((p) => ({ ...p, [endpoint]: "ok" }));
+        setTimeout(() => {
+          setSyncStates((p) => ({ ...p, [endpoint]: "idle" }));
+          onAfterSync();
+        }, 3000);
+      } catch {
+        setSyncStates((p) => ({ ...p, [endpoint]: "error" }));
+        setTimeout(
+          () => setSyncStates((p) => ({ ...p, [endpoint]: "idle" })),
+          5000,
+        );
+      }
+    },
+    [onAfterSync],
+  );
+
+  return (
+    <IntegrationCard
+      span={2}
+      icon={Database}
+      iconColor="text-cockpit-accent"
+      iconBg="bg-cockpit-accent/10"
+      title="SAP Business One"
+      subtitle="Service Layer · sincronização e healthcheck"
+      status={loading ? "unknown" : sapStatusToBadge(sap)}
+      details={
+        sap
+          ? [
+              { label: "Base URL", value: sap.baseUrl, mono: true },
+              {
+                label: "Tempo de resposta",
+                value:
+                  sap.responseTimeMs != null
+                    ? `${sap.responseTimeMs} ms`
+                    : null,
+              },
+              { label: "Status", value: sap.message ?? null },
+            ]
+          : undefined
+      }
+      envHints={[
+        { key: "SAP_B1_BASE_URL", required: true },
+        { key: "SAP_B1_COMPANY_DB", required: true },
+        { key: "SAP_B1_USERNAME", required: true },
+        { key: "SAP_B1_PASSWORD", required: true },
+      ]}
+    >
+      <div>
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+          Sincronização de entidades
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {SYNC_ENDPOINTS.map((ep) => {
+            const state = syncStates[ep.key] ?? "idle";
+            return (
+              <button
+                key={ep.key}
+                type="button"
+                onClick={() => handleSync(ep.key)}
+                disabled={!allowed || state === "loading"}
+                className={`group rounded-lg p-3 border text-left motion-safe:transition-all duration-200 ${
+                  state === "ok"
+                    ? "border-emerald-300 bg-emerald-50"
+                    : state === "error"
+                    ? "border-red-300 bg-red-50"
+                    : state === "loading"
+                    ? "border-gsn-300 bg-gsn-50/50"
+                    : "border-gray-200 bg-white hover:border-gsn-400 hover:shadow-sm"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <p className="text-xs font-semibold text-gray-900">
+                    {ep.label}
+                  </p>
+                  {state === "loading" && (
+                    <Loader2 className="w-3.5 h-3.5 text-gsn-600 animate-spin motion-reduce:animate-none" />
+                  )}
+                  {state === "ok" && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  )}
+                  {state === "error" && (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500" />
+                  )}
+                  {state === "idle" && (
+                    <ArrowDownToLine className="w-3.5 h-3.5 text-gray-300 group-hover:text-gsn-600 motion-safe:transition-colors" />
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-500">{ep.desc}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </IntegrationCard>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   SMTP Card — input email + envio teste
+   ════════════════════════════════════════════════════════════ */
+
+function smtpStatusToBadge(smtp: SmtpStatus | null): IntegrationStatus {
+  if (!smtp) return "unknown";
+  if (!smtp.configured) return "not_configured";
+  return "ok";
+}
+
+function SmtpCard({
+  smtp,
+  allowed,
+  loading,
+  currentEmail,
+}: {
+  smtp: SmtpStatus | null;
+  allowed: boolean;
+  loading: boolean;
+  currentEmail: string | null;
+}) {
+  const [target, setTarget] = useState(currentEmail ?? "");
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState<
+    { kind: "ok" | "error"; text: string } | null
+  >(null);
+
+  useEffect(() => {
+    if (currentEmail && !target) setTarget(currentEmail);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEmail]);
+
+  const handleTest = useCallback(async () => {
+    setSending(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/integrations/smtp/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: target.trim() }),
+      });
+      const body = (await res.json()) as {
+        success: boolean;
+        error?: string;
+        data?: { sentTo: string; sentAt: string };
+      };
+      if (!res.ok || !body.success) {
+        setFeedback({
+          kind: "error",
+          text: body.error ?? `Falha (HTTP ${res.status})`,
+        });
+      } else {
+        setFeedback({
+          kind: "ok",
+          text: `E-mail de teste enviado para ${
+            body.data?.sentTo ?? target
+          }. Verifique a caixa de entrada e a pasta de spam.`,
+        });
+      }
+    } catch (e) {
+      setFeedback({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Falha de rede",
+      });
+    } finally {
+      setSending(false);
+    }
+  }, [target]);
+
+  const canSend = allowed && !sending && smtp?.configured && target.trim().length > 0;
+
+  return (
+    <IntegrationCard
+      icon={Mail}
+      iconColor="text-amber-700"
+      iconBg="bg-amber-100"
+      title="SMTP"
+      subtitle="Envio de e-mails (reset de senha + alertas)"
+      status={loading ? "unknown" : smtpStatusToBadge(smtp)}
+      details={
+        smtp
+          ? [
+              {
+                label: "Host:Porta",
+                value: smtp.host
+                  ? `${smtp.host}:${smtp.port}${smtp.secure ? " (TLS)" : ""}`
+                  : null,
+                mono: true,
+              },
+              { label: "Usuário", value: smtp.user, mono: true },
+              { label: "Remetente", value: smtp.from, mono: true },
+              {
+                label: "Credencial",
+                value: smtp.hasPassword ? "✓ presente" : "ausente",
+              },
+            ]
+          : undefined
+      }
+      envHints={[
+        { key: "SMTP_HOST", required: true, note: "ex.: smtp.hostinger.com" },
+        { key: "SMTP_PORT", note: "padrão 587 (STARTTLS) ou 465 (SSL)" },
+        { key: "SMTP_USER", required: true },
+        { key: "SMTP_PASS", required: true },
+        { key: "SMTP_FROM", note: 'ex.: "Painel GSN <noreply@…>"' },
+      ]}
+      message={feedback}
+    >
+      <div>
+        <label
+          htmlFor="smtp-test-target"
+          className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5"
+        >
+          Enviar e-mail de teste para
+        </label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              id="smtp-test-target"
+              type="email"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder="email@exemplo.com.br"
+              autoComplete="off"
+              disabled={!smtp?.configured || !allowed}
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400/60 disabled:bg-gray-50 disabled:text-gray-400"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={!canSend}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {sending ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            Enviar
+          </button>
+        </div>
+      </div>
+    </IntegrationCard>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   RD CRM Card — botão validar token
+   ════════════════════════════════════════════════════════════ */
+
+function rdStatusToBadge(rd: RdStatus | null): IntegrationStatus {
+  if (!rd) return "unknown";
+  if (!rd.configured) return "not_configured";
+  return "ok";
+}
+
+function RdCrmCard({
+  rd,
+  allowed,
+  loading,
+}: {
+  rd: RdStatus | null;
+  allowed: boolean;
+  loading: boolean;
+}) {
+  const [testing, setTesting] = useState(false);
+  const [feedback, setFeedback] = useState<
+    { kind: "ok" | "error"; text: string } | null
+  >(null);
+
+  const handleTest = useCallback(async () => {
+    setTesting(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/integrations/rd-crm/test", {
+        method: "POST",
+      });
+      const body = (await res.json()) as {
+        success: boolean;
+        error?: string;
+        data?: {
+          pipelinesCount: number | null;
+          responseTimeMs: number;
+          checkedAt: string;
+        };
+      };
+      if (!res.ok || !body.success) {
+        setFeedback({
+          kind: "error",
+          text: body.error ?? `Falha (HTTP ${res.status})`,
+        });
+      } else {
+        setFeedback({
+          kind: "ok",
+          text: `Token CRM válido — ${body.data?.pipelinesCount ?? 0} pipeline(s) acessível(is) (${body.data?.responseTimeMs ?? 0} ms).`,
+        });
+      }
+    } catch (e) {
+      setFeedback({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Falha de rede",
+      });
+    } finally {
+      setTesting(false);
+    }
+  }, []);
+
+  return (
+    <IntegrationCard
+      icon={Workflow}
+      iconColor="text-violet-700"
+      iconBg="bg-violet-100"
+      title="RD Station CRM"
+      subtitle="Pipelines · negociações · funil de vendas"
+      status={loading ? "unknown" : rdStatusToBadge(rd)}
+      details={
+        rd
+          ? [
+              {
+                label: "Access token",
+                value: rd.configured ? "✓ presente" : "ausente",
+              },
+              {
+                label: "Client credentials",
+                value: rd.hasClientCredentials ? "✓ presente" : "ausente",
+              },
+              { label: "Redirect URI", value: rd.redirectUri, mono: true },
+            ]
+          : undefined
+      }
+      envHints={[
+        {
+          key: "RD_STATION_CRM_ACCESS_TOKEN",
+          required: true,
+          note: "Bearer obtido após OAuth (POST /oauth2/token)",
+        },
+        { key: "RD_STATION_CRM_CLIENT_ID" },
+        { key: "RD_STATION_CRM_CLIENT_SECRET" },
+        { key: "RD_STATION_CRM_REDIRECT_URI" },
+      ]}
+      message={feedback}
+      actions={
+        <button
+          type="button"
+          onClick={handleTest}
+          disabled={!allowed || testing || !rd?.configured}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {testing ? (
+            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+          Validar token
+        </button>
+      }
+    />
+  );
+}
+
+/* ════════════════════════════════════════════════════════════
+   RD Marketing Card — buscar contato por e-mail
+   ════════════════════════════════════════════════════════════ */
+
+function RdMarketingCard({
+  rd,
+  allowed,
+  loading,
+}: {
+  rd: RdStatus | null;
+  allowed: boolean;
+  loading: boolean;
+}) {
+  const [email, setEmail] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [result, setResult] = useState<{
+    found: boolean;
+    contact: RdMarketingContact | null;
+    elapsed: number;
+  } | null>(null);
+  const [feedback, setFeedback] = useState<
+    { kind: "ok" | "error" | "warn"; text: string } | null
+  >(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleSearch = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      const target = email.trim().toLowerCase();
+      if (!target) {
+        inputRef.current?.focus();
+        return;
+      }
+      setSearching(true);
+      setFeedback(null);
+      setResult(null);
+      try {
+        const res = await fetch("/api/integrations/rd-marketing/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: target }),
+        });
+        const body = (await res.json()) as {
+          success: boolean;
+          error?: string;
+          data?: {
+            found: boolean;
+            contact: RdMarketingContact | null;
+            responseTimeMs: number;
+          };
+        };
+        if (!res.ok || !body.success) {
+          setFeedback({
+            kind: "error",
+            text: body.error ?? `Falha (HTTP ${res.status})`,
+          });
+          return;
+        }
+        const found = body.data?.found ?? false;
+        setResult({
+          found,
+          contact: body.data?.contact ?? null,
+          elapsed: body.data?.responseTimeMs ?? 0,
+        });
+        if (!found) {
+          setFeedback({
+            kind: "warn",
+            text: `Token válido — mas o contato ${target} não está na base.`,
+          });
+        } else {
+          setFeedback({
+            kind: "ok",
+            text: `Contato encontrado em ${body.data?.responseTimeMs ?? 0} ms.`,
+          });
+        }
+      } catch (err) {
+        setFeedback({
+          kind: "error",
+          text: err instanceof Error ? err.message : "Falha de rede",
+        });
+      } finally {
+        setSearching(false);
+      }
+    },
+    [email],
+  );
+
+  return (
+    <IntegrationCard
+      icon={Megaphone}
+      iconColor="text-pink-700"
+      iconBg="bg-pink-100"
+      title="RD Station Marketing"
+      subtitle="Base de contatos · automações · Cliente 360"
+      status={loading ? "unknown" : rdStatusToBadge(rd)}
+      details={
+        rd
+          ? [
+              {
+                label: "Access token",
+                value: rd.configured ? "✓ presente" : "ausente",
+              },
+              {
+                label: "Client credentials",
+                value: rd.hasClientCredentials ? "✓ presente" : "ausente",
+              },
+              { label: "Redirect URI", value: rd.redirectUri, mono: true },
+            ]
+          : undefined
+      }
+      envHints={[
+        {
+          key: "RD_STATION_MARKETING_ACCESS_TOKEN",
+          required: true,
+          note: "Bearer da API Platform (Contacts)",
+        },
+        { key: "RD_STATION_MARKETING_CLIENT_ID" },
+        { key: "RD_STATION_MARKETING_CLIENT_SECRET" },
+        { key: "RD_STATION_MARKETING_REDIRECT_URI" },
+      ]}
+      message={feedback}
+    >
+      <form onSubmit={handleSearch}>
+        <label
+          htmlFor="rd-marketing-test-email"
+          className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5"
+        >
+          Buscar contato por e-mail
+        </label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              ref={inputRef}
+              id="rd-marketing-test-email"
+              type="email"
+              value={email}
+              onChange={(ev) => setEmail(ev.target.value)}
+              placeholder="cliente@empresa.com.br"
+              autoComplete="off"
+              disabled={!rd?.configured || !allowed}
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-pink-400/40 focus:border-pink-400/60 disabled:bg-gray-50 disabled:text-gray-400"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={
+              !allowed || searching || !rd?.configured || email.trim().length === 0
+            }
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {searching ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}
+            Buscar
+          </button>
+        </div>
+      </form>
+
+      {result && result.found && result.contact && (
+        <div className="rounded-lg border border-pink-200 bg-pink-50/40 p-3 text-xs space-y-1.5">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-pink-600" />
+            <span className="font-semibold text-gray-800">
+              {result.contact.name ?? "(sem nome)"}
+            </span>
+          </div>
+          <Field label="E-mail" value={result.contact.email} mono />
+          <Field label="Cargo" value={result.contact.jobTitle} />
+          <Field
+            label="Cidade/UF"
+            value={[result.contact.city, result.contact.state]
+              .filter(Boolean)
+              .join(" / ") || null}
+          />
+          <Field label="Lifecycle" value={result.contact.lifecycle} />
+          <Field
+            label="Última conversão"
+            value={fmtDateTime(result.contact.lastConversionDate)}
+          />
+          {result.contact.tags && result.contact.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {result.contact.tags.slice(0, 8).map((t) => (
+                <span
+                  key={t}
+                  className="px-1.5 py-0.5 rounded bg-white border border-pink-200 text-pink-700 text-[10px] font-medium"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </IntegrationCard>
+  );
+}
+
+function Field({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string | null | undefined;
+  mono?: boolean;
+}) {
+  if (!value) return null;
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-gray-500 shrink-0">{label}</span>
+      <span
+        className={`text-gray-800 truncate ${mono ? "font-mono text-[11px]" : ""}`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
