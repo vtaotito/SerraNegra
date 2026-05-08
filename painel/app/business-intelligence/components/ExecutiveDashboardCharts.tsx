@@ -381,7 +381,7 @@ export function ExecutiveDashboardCharts({
               </>
             )}
             <Link
-              href={`${BI_ROUTE_PREFIX}/clientes`}
+              href="/clientes"
               className="text-[11px] text-cockpit-accent hover:underline font-medium"
             >
               Ver →

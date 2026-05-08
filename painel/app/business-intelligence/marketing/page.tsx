@@ -19,7 +19,6 @@ import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { useRdOverviewBi } from "@/hooks/useCockpitQueries";
 import { BiEmptyState } from "@/components/cockpit/BiEmptyState";
-import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 
 const MarketingFunnelChart = dynamic(
   () =>
@@ -111,7 +110,7 @@ export default function MarketingCrmBiPage() {
                 com o Bearer OAuth da API CRM v2 para funis e negociações, e opcionalmente{" "}
                 <code className="bg-white/70 px-1 rounded text-xs font-mono">RD_STATION_MARKETING_ACCESS_TOKEN</code>{" "}
                 para o bloco &quot;Cliente 360&quot; em{" "}
-                <Link href={`${BI_ROUTE_PREFIX}/clientes`} className="font-medium underline underline-offset-2">
+                <Link href="/clientes" className="font-medium underline underline-offset-2">
                   Clientes
                 </Link>
                 .
