@@ -20,6 +20,7 @@ import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { DateRangePicker } from "@/components/cockpit/DateRangePicker";
+import { BrazilMap, type BrazilStateDatum } from "@/components/cockpit/BrazilMap";
 import { ClientRdInsights } from "./ClientRdInsights";
 import { BiChartTooltip } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
@@ -30,17 +31,6 @@ const COLORS = [
   "#0891b2", "#dc2626", "#4f46e5", "#16a34a", "#ea580c",
 ];
 const PIE_COLORS = ["#A81C2C", "#2563eb", "#059669", "#d97706", "#7c3aed", "#6b7280"];
-
-const CARTO: Array<[string, number, number]> = [
-  ["RR", 3, 0], ["AP", 4, 0],
-  ["AM", 0, 1], ["PA", 2, 1], ["MA", 3, 1], ["PI", 4, 1], ["CE", 5, 1], ["RN", 6, 1],
-  ["AC", 0, 2], ["TO", 2, 2], ["BA", 4, 2], ["PB", 5, 2], ["PE", 6, 2],
-  ["RO", 0, 3], ["MT", 1, 3], ["GO", 2, 3], ["DF", 3, 3], ["MG", 4, 3], ["AL", 5, 3], ["SE", 6, 3],
-  ["MS", 1, 4], ["SP", 3, 4], ["RJ", 4, 4], ["ES", 5, 4],
-  ["PR", 2, 5],
-  ["SC", 2, 6],
-  ["RS", 2, 7],
-];
 
 const UF_NAME: Record<string, string> = {
   AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
@@ -61,15 +51,6 @@ function extractUF(addr: string | null | undefined): string | null {
 function daysSince(dateStr: string): number {
   const d = dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T00:00:00");
   return Math.max(0, differenceInDays(new Date(), d));
-}
-
-function heatColor(value: number, max: number): string {
-  if (!max || value === 0) return "#f3f4f6";
-  const t = Math.pow(Math.min(value / max, 1), 0.45);
-  const r = Math.round(243 + (168 - 243) * t);
-  const g = Math.round(244 + (28 - 244) * t);
-  const b = Math.round(246 + (44 - 246) * t);
-  return `rgb(${r},${g},${b})`;
 }
 
 function daysColor(d: number) {
@@ -516,14 +497,6 @@ export default function ClientesPage() {
   }, [allClients, selectedState]);
 
   const selectedStateData = selectedState ? stateMap.get(selectedState) : null;
-  const maxGeoVal = useMemo(() => {
-    let m = 0;
-    for (const v of stateMap.values()) {
-      const val = geoMetric === "fat" ? v.fat : v.count;
-      if (val > m) m = val;
-    }
-    return m;
-  }, [stateMap, geoMetric]);
 
   const carteiraChartData = useMemo(() => {
     return filtered.slice(0, 15).map((c) => ({
@@ -734,47 +707,37 @@ export default function ClientesPage() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              {/* Cartogram */}
+              {/* Mapa do Brasil (SVG) */}
               <div className="lg:col-span-3">
-                <div className="inline-grid gap-1.5" style={{ gridTemplateColumns: "repeat(7, 56px)", gridTemplateRows: "repeat(8, 48px)" }}>
-                  {CARTO.map(([uf, col, row]) => {
-                    const sd = stateMap.get(uf);
-                    const val = sd ? (geoMetric === "fat" ? sd.fat : sd.count) : 0;
-                    const isSelected = selectedState === uf;
-                    const hasData = !!sd;
-                    return (
-                      <button key={uf}
-                        onClick={() => setSelectedState(isSelected ? null : uf)}
-                        style={{
-                          gridColumn: col + 1,
-                          gridRow: row + 1,
-                          backgroundColor: hasData ? heatColor(val, maxGeoVal) : "#f9fafb",
-                        }}
-                        className={`rounded-lg flex flex-col items-center justify-center motion-safe:transition-all text-center
-                          ${isSelected ? "ring-2 ring-cockpit-accent ring-offset-1 scale-105 z-10" : ""}
-                          ${hasData ? "cursor-pointer hover:ring-2 hover:ring-cockpit-accent/40 hover:scale-[1.03] shadow-sm" : "opacity-30 cursor-default border border-gray-200"}
-                        `}
-                        title={hasData ? `${UF_NAME[uf]}: ${geoMetric === "fat" ? fmtBRL(sd!.fat) : `${sd!.count} clientes`}` : UF_NAME[uf]}
-                      >
-                        <span className={`text-xs font-bold ${hasData && val > maxGeoVal * 0.5 ? "text-white" : "text-gray-700"}`}>{uf}</span>
-                        {hasData && (
-                          <span className={`text-[8px] font-medium leading-none mt-0.5 ${val > maxGeoVal * 0.5 ? "text-white/80" : "text-gray-500"}`}>
-                            {geoMetric === "fat" ? (sd!.fat >= 1000 ? `${(sd!.fat / 1000).toFixed(0)}k` : fmtNum(Math.round(sd!.fat))) : sd!.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="rounded-xl border border-cockpit-border bg-cockpit-bg/40 p-3 sm:p-4">
+                  <BrazilMap
+                    data={geoData as BrazilStateDatum[]}
+                    metric={geoMetric}
+                    selectedState={selectedState}
+                    onStateClick={setSelectedState}
+                  />
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-[10px] text-cockpit-muted">
+                <div className="mt-3 flex items-center gap-2 text-[10px] text-cockpit-muted flex-wrap">
                   <span>Menor</span>
-                  <div className="flex gap-0.5">
-                    {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => (
-                      <div key={t} className="w-6 h-3 rounded-sm" style={{ backgroundColor: heatColor(t * maxGeoVal, maxGeoVal) }} />
-                    ))}
+                  <div className="flex gap-0.5" aria-hidden>
+                    {[0.1, 0.3, 0.5, 0.7, 0.9].map((t) => {
+                      const r = Math.round(243 + (168 - 243) * Math.pow(t, 0.45));
+                      const g = Math.round(244 + (28 - 244) * Math.pow(t, 0.45));
+                      const b = Math.round(246 + (44 - 246) * Math.pow(t, 0.45));
+                      return (
+                        <div
+                          key={t}
+                          className="w-6 h-3 rounded-sm border border-white/40"
+                          style={{ backgroundColor: `rgb(${r},${g},${b})` }}
+                        />
+                      );
+                    })}
                   </div>
                   <span>Maior</span>
-                  <span className="ml-2">· Clique em um estado para detalhes</span>
+                  <span className="text-cockpit-border">·</span>
+                  <span>Passe o mouse sobre um estado para ver os detalhes</span>
+                  <span className="text-cockpit-border">·</span>
+                  <span>Clique para fixar a seleção</span>
                 </div>
               </div>
 
