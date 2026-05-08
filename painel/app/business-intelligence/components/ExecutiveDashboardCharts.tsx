@@ -255,7 +255,7 @@ export function ExecutiveDashboardCharts({
               </h2>
             </div>
             <Link
-              href={`${BI_ROUTE_PREFIX}/produtos`}
+              href="/catalogo"
               className="text-[11px] text-cockpit-accent hover:underline font-medium"
             >
               Ver →

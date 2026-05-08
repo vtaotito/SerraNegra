@@ -14,8 +14,6 @@ import {
   DollarSign,
   Calculator,
   Megaphone,
-  Users,
-  Layers,
 } from "lucide-react";
 import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 
@@ -38,8 +36,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { label: "Estoque", path: "/estoque" },
       { label: "Carteira", path: "/carteira" },
       { label: "Vendedores", path: "/vendedores" },
-      { label: "Clientes", path: "/clientes" },
-      { label: "Produtos", path: "/produtos" },
     ],
   },
   {
@@ -62,8 +58,6 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/estoque": Package,
   "/carteira": Wallet,
   "/vendedores": UserCircle,
-  "/clientes": Users,
-  "/produtos": Layers,
   "/faturamento": Target,
   "/precos": DollarSign,
   "/markup": Calculator,
