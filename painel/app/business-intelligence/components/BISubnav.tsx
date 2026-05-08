@@ -10,8 +10,6 @@ import {
   Package,
   Wallet,
   UserCircle,
-  TrendingUp,
-  BarChart3,
   Target,
   DollarSign,
   Calculator,
@@ -47,8 +45,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Financeiro",
     items: [
-      { label: "Margens", path: "/margens" },
-      { label: "Resumo", path: "/resumo" },
       { label: "Faturamento", path: "/faturamento" },
       { label: "Preços", path: "/precos" },
     ],
@@ -68,8 +64,6 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/vendedores": UserCircle,
   "/clientes": Users,
   "/produtos": Layers,
-  "/margens": TrendingUp,
-  "/resumo": BarChart3,
   "/faturamento": Target,
   "/precos": DollarSign,
   "/markup": Calculator,
