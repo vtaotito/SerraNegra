@@ -106,10 +106,11 @@ function redirectWithMessage(
   kind: "ok" | "error",
   message: string,
 ): NextResponse {
-  const base = request.nextUrl.clone();
-  base.pathname = "/integracoes";
-  base.search = "";
-  base.searchParams.set("rd_oauth", kind);
-  base.searchParams.set("rd_msg", message);
-  return NextResponse.redirect(base, { status: 302 });
+  const publicUrl =
+    process.env.PANEL_PUBLIC_URL?.replace(/\/$/, "") ??
+    `${request.nextUrl.protocol}//${request.headers.get("host") ?? request.nextUrl.host}`;
+  const target = new URL("/integracoes", publicUrl);
+  target.searchParams.set("rd_oauth", kind);
+  target.searchParams.set("rd_msg", message);
+  return NextResponse.redirect(target.toString(), { status: 302 });
 }
