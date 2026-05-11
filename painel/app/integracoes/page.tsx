@@ -67,6 +67,7 @@ interface SmtpStatus {
 }
 interface RdStatus {
   configured: boolean;
+  hasApiToken?: boolean;
   hasClientCredentials: boolean;
   redirectUri: string | null;
 }
@@ -754,11 +755,18 @@ function RdCrmCard({
 
 const RD_MARKETING_FIELDS: ConfigFieldDef[] = [
   {
-    key: "RD_STATION_MARKETING_ACCESS_TOKEN",
-    label: "Access Token (Bearer)",
+    key: "RD_STATION_API_TOKEN",
+    label: "API Token (conversões)",
     type: "password",
     required: true,
-    hint: "Obtido após OAuth: POST /oauth2/token (escopo Marketing)",
+    hint: "Chave fixa — para envio de conversões e criação de contatos. Não expira.",
+    span: 2,
+  },
+  {
+    key: "RD_STATION_MARKETING_ACCESS_TOKEN",
+    label: "Access Token (Bearer OAuth)",
+    type: "password",
+    hint: "Obtido após OAuth: POST /oauth2/token — usado pelo Cliente 360 para consulta de contatos.",
     span: 2,
   },
   {
@@ -797,6 +805,7 @@ function RdMarketingCard({
   const [email, setEmail] = useState("");
   const [searching, setSearching] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [testingApiToken, setTestingApiToken] = useState(false);
   const [result, setResult] = useState<{
     found: boolean;
     contact: RdMarketingContact | null;
@@ -806,6 +815,46 @@ function RdMarketingCard({
     { kind: "ok" | "error" | "warn"; text: string } | null
   >(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleTestApiToken = useCallback(async () => {
+    setTestingApiToken(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/integrations/rd-marketing/conversion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "teste-api-token@garrafariaserranegra.com.br",
+          conversion_identifier: "painel-gsn-api-token-test",
+          name: "Teste API Token (Painel GSN)",
+          tags: ["teste-painel"],
+        }),
+      });
+      const body = (await res.json()) as {
+        success: boolean;
+        error?: string;
+        data?: { responseTimeMs: number };
+      };
+      if (!res.ok || !body.success) {
+        setFeedback({
+          kind: "error",
+          text: body.error ?? `Falha (HTTP ${res.status})`,
+        });
+      } else {
+        setFeedback({
+          kind: "ok",
+          text: `API Token válido — conversão de teste enviada (${body.data?.responseTimeMs ?? 0} ms).`,
+        });
+      }
+    } catch (e) {
+      setFeedback({
+        kind: "error",
+        text: e instanceof Error ? e.message : "Falha de rede",
+      });
+    } finally {
+      setTestingApiToken(false);
+    }
+  }, []);
 
   const handleSearch = useCallback(
     async (e?: React.FormEvent) => {
@@ -881,7 +930,11 @@ function RdMarketingCard({
         rd
           ? [
               {
-                label: "Access token",
+                label: "API Token (conversões)",
+                value: rd.hasApiToken ? "✓ presente" : "ausente",
+              },
+              {
+                label: "Access token (OAuth)",
                 value: rd.configured ? "✓ presente" : "ausente",
               },
               {
@@ -894,9 +947,13 @@ function RdMarketingCard({
       }
       envHints={[
         {
-          key: "RD_STATION_MARKETING_ACCESS_TOKEN",
+          key: "RD_STATION_API_TOKEN",
           required: true,
-          note: "Bearer da API Platform (Contacts)",
+          note: "Chave fixa da conta — para conversões (não expira)",
+        },
+        {
+          key: "RD_STATION_MARKETING_ACCESS_TOKEN",
+          note: "Bearer OAuth — para consulta de contatos (Cliente 360)",
         },
         { key: "RD_STATION_MARKETING_CLIENT_ID" },
         { key: "RD_STATION_MARKETING_CLIENT_SECRET" },
@@ -904,15 +961,30 @@ function RdMarketingCard({
       ]}
       message={feedback}
       actions={
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          disabled={!allowed}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
-        >
-          <Pencil className="w-4 h-4" />
-          {editing ? "Fechar" : "Editar configuração"}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={handleTestApiToken}
+            disabled={!allowed || testingApiToken || !rd?.hasApiToken}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {testingApiToken ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            Testar API Token
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            disabled={!allowed}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
+          >
+            <Pencil className="w-4 h-4" />
+            {editing ? "Fechar" : "Editar configuração"}
+          </button>
+        </>
       }
     >
       <form onSubmit={handleSearch}>

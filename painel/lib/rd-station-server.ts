@@ -25,6 +25,7 @@ export const RD_MARKETING_KEYS = [
   "RD_STATION_MARKETING_CLIENT_ID",
   "RD_STATION_MARKETING_CLIENT_SECRET",
   "RD_STATION_MARKETING_REDIRECT_URI",
+  "RD_STATION_API_TOKEN",
 ] as const;
 
 export const RD_SECRET_KEYS: ReadonlySet<string> = new Set([
@@ -32,6 +33,7 @@ export const RD_SECRET_KEYS: ReadonlySet<string> = new Set([
   "RD_STATION_CRM_CLIENT_SECRET",
   "RD_STATION_MARKETING_ACCESS_TOKEN",
   "RD_STATION_MARKETING_CLIENT_SECRET",
+  "RD_STATION_API_TOKEN",
 ]);
 
 export function invalidateRdCache(): void {
@@ -59,6 +61,7 @@ export async function rdStationStatus(): Promise<{
   };
   marketing: {
     configured: boolean;
+    hasApiToken: boolean;
     hasClientCredentials: boolean;
     redirectUri: string | null;
   };
@@ -74,6 +77,7 @@ export async function rdStationStatus(): Promise<{
     },
     marketing: {
       configured: Boolean(all.RD_STATION_MARKETING_ACCESS_TOKEN),
+      hasApiToken: Boolean(all.RD_STATION_API_TOKEN),
       hasClientCredentials: Boolean(
         all.RD_STATION_MARKETING_CLIENT_ID &&
           all.RD_STATION_MARKETING_CLIENT_SECRET,
@@ -340,5 +344,143 @@ function normalizeMarketingContact(
     lifecycle:
       typeof body.lifecycle_stage === "string" ? body.lifecycle_stage : null,
     cfCustomFields,
+  };
+}
+
+/* ════════════════════════════════════════════════════════════════
+   RD Marketing — Conversions via API Key
+   POST https://api.rd.services/platform/conversions?api_key=...
+   Docs: https://developers.rdstation.com/reference/conversao
+   ════════════════════════════════════════════════════════════════ */
+
+export async function rdMarketingApiTokenConfigured(): Promise<boolean> {
+  const tok = await getSetting("RD_STATION_API_TOKEN");
+  return Boolean(tok);
+}
+
+export interface RdConversionPayload {
+  email: string;
+  conversion_identifier: string;
+  name?: string;
+  job_title?: string;
+  state?: string;
+  city?: string;
+  country?: string;
+  personal_phone?: string;
+  mobile_phone?: string;
+  company_name?: string;
+  tags?: string[];
+  cf_custom_fields?: Record<string, string | number | boolean>;
+}
+
+export interface RdConversionResult {
+  ok: boolean;
+  status: number;
+  reason?: string;
+  responseTimeMs: number;
+}
+
+/**
+ * Envia um evento de conversão para o RD Station Marketing via API Key.
+ *
+ * A API Key (`RD_STATION_API_TOKEN`) é passada como query param `api_key`,
+ * sem Bearer. Cria ou atualiza o contato na base de leads e registra o
+ * evento de conversão para dashboards, segmentação e automações.
+ *
+ * Ref: https://developers.rdstation.com/reference/conversao
+ */
+export async function rdMarketingSendConversion(
+  payload: RdConversionPayload,
+): Promise<RdConversionResult> {
+  const apiKey = await getSetting("RD_STATION_API_TOKEN");
+  if (!apiKey) {
+    return {
+      ok: false,
+      status: 0,
+      reason: "API Token não configurado (RD_STATION_API_TOKEN).",
+      responseTimeMs: 0,
+    };
+  }
+
+  const url = `${PLATFORM_BASE}/platform/conversions?api_key=${encodeURIComponent(apiKey)}`;
+
+  const body = {
+    event_type: "CONVERSION",
+    event_family: "CDP",
+    payload: {
+      conversion_identifier: payload.conversion_identifier,
+      email: payload.email.trim().toLowerCase(),
+      ...(payload.name ? { name: payload.name } : {}),
+      ...(payload.job_title ? { job_title: payload.job_title } : {}),
+      ...(payload.state ? { state: payload.state } : {}),
+      ...(payload.city ? { city: payload.city } : {}),
+      ...(payload.country ? { country: payload.country } : {}),
+      ...(payload.personal_phone
+        ? { personal_phone: payload.personal_phone }
+        : {}),
+      ...(payload.mobile_phone
+        ? { mobile_phone: payload.mobile_phone }
+        : {}),
+      ...(payload.company_name
+        ? { company_name: payload.company_name }
+        : {}),
+      ...(payload.tags && payload.tags.length > 0
+        ? { tags: payload.tags }
+        : {}),
+      ...(payload.cf_custom_fields
+        ? { cf_custom_fields: payload.cf_custom_fields }
+        : {}),
+    },
+  };
+
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const elapsed = Date.now() - t0;
+
+    if (res.ok) {
+      return { ok: true, status: res.status, responseTimeMs: elapsed };
+    }
+
+    const text = await res.text();
+    return {
+      ok: false,
+      status: res.status,
+      reason: `RD Marketing ${res.status}${text ? `: ${text.slice(0, 300)}` : ""}`,
+      responseTimeMs: elapsed,
+    };
+  } catch (err) {
+    const elapsed = Date.now() - t0;
+    const reason = err instanceof Error ? err.message : "Falha de rede";
+    return { ok: false, status: 0, reason, responseTimeMs: elapsed };
+  }
+}
+
+/**
+ * Ping leve: envia uma conversão de teste para validar o API Token.
+ */
+export async function rdMarketingApiTokenPing(): Promise<{
+  ok: boolean;
+  reason?: string;
+  responseTimeMs: number;
+}> {
+  const result = await rdMarketingSendConversion({
+    email: "teste-api-token@garrafariaserranegra.com.br",
+    conversion_identifier: "painel-gsn-api-token-test",
+    name: "Teste API Token (Painel GSN)",
+    tags: ["teste-painel"],
+  });
+  return {
+    ok: result.ok,
+    reason: result.reason,
+    responseTimeMs: result.responseTimeMs,
   };
 }
