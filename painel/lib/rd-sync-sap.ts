@@ -3,17 +3,12 @@ import "server-only";
 /**
  * Motor de sincronização SAP Business One → RD Station Marketing.
  *
- * Lê clientes do gateway (SAP) e envia conversões para o RD Marketing
- * via API Key, criando/atualizando leads automaticamente.
+ * Usa a **mesma fonte de dados** da página /clientes: busca pedidos de
+ * venda (sales-orders) + cadastro de customers e cruza. Isso pega os
+ * ~5000 clientes reais, não apenas os ~20 do cadastro de BusinessPartners.
  *
- * Tags inteligentes (derivadas dos dados SAP):
- *  - `sap-cliente`: identifica a origem SAP
- *  - `sap-ativo` / `sap-inativo`: status do cadastro
- *  - `uf-SP`, `uf-MG`, etc: UF do endereço
- *  - `regiao-sudeste`, `regiao-sul`, etc: macro-região
- *  - `tipo-cliente` / `tipo-fornecedor`: card_type
- *
- * Log em `panel_rd_sync_log` para auditoria e rastreamento.
+ * Para cada cliente único com e-mail, envia uma conversão ao RD Marketing
+ * e aplica tags inteligentes via endpoint POST /tag.
  */
 
 import { gatewayGet } from "@/lib/gateway-fetch";
@@ -25,6 +20,23 @@ import {
 } from "@/lib/rd-station-server";
 import { query } from "@/lib/db";
 import { STATE_TO_REGION } from "@/lib/format";
+
+interface GatewaySalesOrder {
+  card_code: string;
+  card_name: string;
+  doc_total: number;
+  doc_date: string;
+  cancelled: string;
+  sales_person_code: number | null;
+  address?: string | null;
+  address2?: string | null;
+}
+
+interface GatewaySalesOrdersResult {
+  ok: boolean;
+  items: GatewaySalesOrder[];
+  total: number;
+}
 
 interface GatewayCustomer {
   card_code: string;
@@ -42,11 +54,26 @@ interface GatewayCustomersResult {
   total: number;
 }
 
+interface MergedClient {
+  cardCode: string;
+  cardName: string;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  state: string | null;
+  isActive: boolean;
+  cardType: string;
+  fat: number;
+  pedidos: number;
+}
+
 export interface SapRdSyncOptions {
   triggeredBy?: string | null;
   dryRun?: boolean;
   conversionIdentifier?: string;
   maxContacts?: number;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export interface SapRdSyncResult {
@@ -74,19 +101,25 @@ export interface SapRdSyncDetail {
   tagsNote?: string;
 }
 
-function buildTags(c: GatewayCustomer): string[] {
+function extractUF(addr: string | null | undefined): string | null {
+  if (!addr) return null;
+  const m = addr.match(/-([A-Z]{2})\s*[\r\n]/);
+  return m && STATE_TO_REGION[m[1]] ? m[1] : null;
+}
+
+function buildTags(c: MergedClient): string[] {
   const tags: string[] = ["sap-cliente"];
 
-  if (c.is_active) tags.push("sap-ativo");
+  if (c.isActive) tags.push("sap-ativo");
   else tags.push("sap-inativo");
 
-  if (c.card_type === "C" || c.card_type === "cCustomer") {
+  if (c.cardType === "C" || c.cardType === "cCustomer") {
     tags.push("tipo-cliente");
-  } else if (c.card_type === "S" || c.card_type === "cSupplier") {
+  } else if (c.cardType === "S" || c.cardType === "cSupplier") {
     tags.push("tipo-fornecedor");
   }
 
-  if (c.state) {
+  if (c.state && c.state !== "—") {
     const uf = c.state.trim().toUpperCase();
     if (uf.length === 2) {
       tags.push(`uf-${uf}`);
@@ -97,10 +130,20 @@ function buildTags(c: GatewayCustomer): string[] {
     }
   }
 
+  if (c.fat > 0) {
+    if (c.fat >= 100000) tags.push("faturamento-alto");
+    else if (c.fat >= 10000) tags.push("faturamento-medio");
+    else tags.push("faturamento-baixo");
+  }
+
   return tags;
 }
 
-async function logSyncEntry(detail: SapRdSyncDetail, convId: string, triggeredBy?: string | null): Promise<void> {
+async function logSyncEntry(
+  detail: SapRdSyncDetail,
+  convId: string,
+  triggeredBy?: string | null,
+): Promise<void> {
   try {
     await query(
       `INSERT INTO panel_rd_sync_log
@@ -120,16 +163,91 @@ async function logSyncEntry(detail: SapRdSyncDetail, convId: string, triggeredBy
       ],
     );
   } catch (err) {
-    console.error("[rd-sync] Falha ao gravar log:", err instanceof Error ? err.message : err);
+    console.error(
+      "[rd-sync] Falha ao gravar log:",
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
 /**
- * Executa o sync: busca clientes SAP no gateway, filtra os que têm e-mail,
- * e envia uma conversão para cada um no RD Station Marketing.
- *
- * A conversão usa `conversion_identifier` como ponto de rastreamento —
- * visível nos dashboards e automações do RD.
+ * Busca pedidos SAP + cadastro de clientes, cruza para obter a lista
+ * completa de clientes com dados de contato enriquecidos.
+ */
+async function fetchMergedClients(
+  dateFrom: string,
+  dateTo: string,
+): Promise<MergedClient[]> {
+  const [ordersRes, custRes] = await Promise.all([
+    gatewayGet<GatewaySalesOrdersResult>("/sap/sales-orders", {
+      limit: "50000",
+      dateFrom,
+      dateTo,
+    }),
+    gatewayGet<GatewayCustomersResult>("/v1/customers", {
+      limit: "5000",
+    }),
+  ]);
+
+  const orders = ordersRes.items ?? [];
+  const customers = custRes.data ?? [];
+
+  const custMap = new Map<string, GatewayCustomer>();
+  for (const c of customers) custMap.set(c.card_code, c);
+
+  const clientAgg = new Map<
+    string,
+    {
+      name: string;
+      fat: number;
+      pedidos: number;
+      uf: string | null;
+      city: string | null;
+    }
+  >();
+
+  for (const o of orders) {
+    if (o.cancelled === "Y") continue;
+    const cur = clientAgg.get(o.card_code) ?? {
+      name: o.card_name,
+      fat: 0,
+      pedidos: 0,
+      uf: null,
+      city: null,
+    };
+    cur.fat += Number(o.doc_total) || 0;
+    cur.pedidos += 1;
+    if (!cur.name && o.card_name) cur.name = o.card_name;
+    if (!cur.uf) {
+      cur.uf =
+        extractUF(o.address) ?? extractUF(o.address2) ?? null;
+    }
+    clientAgg.set(o.card_code, cur);
+  }
+
+  const merged: MergedClient[] = [];
+  for (const [cardCode, agg] of clientAgg) {
+    const cust = custMap.get(cardCode);
+    merged.push({
+      cardCode,
+      cardName: cust?.card_name ?? agg.name ?? cardCode,
+      email: cust?.email?.trim() || null,
+      phone: cust?.phone || null,
+      city: cust?.city || agg.city || null,
+      state: cust?.state || agg.uf || null,
+      isActive: cust?.is_active ?? true,
+      cardType: cust?.card_type ?? "C",
+      fat: agg.fat,
+      pedidos: agg.pedidos,
+    });
+  }
+
+  return merged.sort((a, b) => b.fat - a.fat);
+}
+
+/**
+ * Executa o sync completo: lê pedidos SAP + cadastro, cruza para obter
+ * todos os clientes reais, e envia conversão + tags para cada um com e-mail.
  */
 export async function runSapToRdSync(
   opts: SapRdSyncOptions = {},
@@ -139,25 +257,26 @@ export async function runSapToRdSync(
     triggeredBy = null,
     dryRun = false,
     conversionIdentifier = "sync-sap-cliente",
-    maxContacts = 500,
+    maxContacts = 5000,
+    dateFrom = "2024-01-01",
+    dateTo = new Date().toISOString().slice(0, 10),
   } = opts;
 
   if (!dryRun && !(await rdMarketingApiTokenConfigured())) {
     throw new Error(
-      "API Token do RD Station Marketing não configurado. Vá em Integrações e salve o RD_STATION_API_TOKEN.",
+      "API Token do RD Station Marketing não configurado.",
     );
   }
 
-  const customersRes = await gatewayGet<GatewayCustomersResult>(
-    "/v1/customers",
-    { limit: String(maxContacts), active: "true" },
-  );
+  const allClients = await fetchMergedClients(dateFrom, dateTo);
 
-  const allCustomers = customersRes.data ?? [];
-  const withEmail = allCustomers.filter(
-    (c) => c.email && c.email.includes("@") && c.email.trim().length > 3,
-  );
-  const skippedNoEmail = allCustomers.length - withEmail.length;
+  const withEmail = allClients
+    .filter(
+      (c) => c.email && c.email.includes("@") && c.email.trim().length > 3,
+    )
+    .slice(0, maxContacts);
+
+  const skippedNoEmail = allClients.length - withEmail.length;
 
   const details: SapRdSyncDetail[] = [];
   let succeeded = 0;
@@ -169,8 +288,8 @@ export async function runSapToRdSync(
 
     if (dryRun) {
       details.push({
-        cardCode: c.card_code,
-        cardName: c.card_name,
+        cardCode: c.cardCode,
+        cardName: c.cardName,
         email,
         tags,
         ok: true,
@@ -178,7 +297,7 @@ export async function runSapToRdSync(
         reason: "dry-run",
         responseTimeMs: 0,
         tagsApplied: 0,
-        tagsNote: "dry-run — tags seriam aplicadas via endpoint dedicado",
+        tagsNote: "dry-run",
       });
       succeeded++;
       continue;
@@ -189,15 +308,17 @@ export async function runSapToRdSync(
       result = await rdMarketingSendConversion({
         email,
         conversion_identifier: conversionIdentifier,
-        name: c.card_name,
+        name: c.cardName,
         city: c.city ?? undefined,
         state: c.state ?? undefined,
         personal_phone: c.phone ?? undefined,
-        company_name: c.card_name,
+        company_name: c.cardName,
         tags,
         cf_custom_fields: {
-          cf_sap_card_code: c.card_code,
-          cf_sap_card_type: c.card_type,
+          cf_sap_card_code: c.cardCode,
+          cf_sap_card_type: c.cardType,
+          cf_sap_faturamento: c.fat,
+          cf_sap_pedidos: c.pedidos,
         },
       });
     } catch (err) {
@@ -221,8 +342,8 @@ export async function runSapToRdSync(
     }
 
     const detail: SapRdSyncDetail = {
-      cardCode: c.card_code,
-      cardName: c.card_name,
+      cardCode: c.cardCode,
+      cardName: c.cardName,
       email,
       tags,
       ok: result.ok,
@@ -239,14 +360,13 @@ export async function runSapToRdSync(
     details.push(detail);
     await logSyncEntry(detail, conversionIdentifier, triggeredBy);
 
-    // Rate limiting suave — RD aceita ~10 req/s, mas vamos ser conservadores
     if (withEmail.indexOf(c) < withEmail.length - 1) {
       await new Promise((r) => setTimeout(r, 120));
     }
   }
 
   return {
-    totalSapCustomers: allCustomers.length,
+    totalSapCustomers: allClients.length,
     withEmail: withEmail.length,
     sent: details.length,
     succeeded,
@@ -258,9 +378,6 @@ export async function runSapToRdSync(
   };
 }
 
-/**
- * Consulta o histórico de syncs recentes.
- */
 export async function getRecentSyncLogs(limit = 50): Promise<
   Array<{
     id: string;
@@ -302,6 +419,9 @@ export async function getRecentSyncLogs(limit = 50): Promise<
     rdOk: r.rd_ok,
     rdReason: r.rd_reason,
     rdResponseMs: r.rd_response_ms,
-    createdAt: typeof r.created_at === "string" ? r.created_at : new Date(r.created_at as unknown as Date).toISOString(),
+    createdAt:
+      typeof r.created_at === "string"
+        ? r.created_at
+        : new Date(r.created_at as unknown as Date).toISOString(),
   }));
 }
