@@ -13,7 +13,17 @@ import {
   ReferenceLine, ComposedChart, Line,
 } from "recharts";
 import { format, subMonths } from "date-fns";
-import { fmtBRL, fmtNum, fmtDateShort, exportCSV, getProductGroup, STATE_TO_REGION } from "@/lib/format";
+import {
+  fmtBRL,
+  fmtNum,
+  fmtDateShort,
+  exportCSV,
+  getProductGroup,
+  STATE_TO_REGION,
+  PRODUCT_GROUP_NAMES,
+  PRODUCT_GROUP_COLORS,
+  PRODUCT_GROUP_HIDDEN,
+} from "@/lib/format";
 import {
   fetchProductAnalytics, fetchProductOrders, fetchSalesPersons,
   type ProductAnalyticsRow, type ProductOrderLine, type SapSalesPerson,
@@ -24,22 +34,14 @@ import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
 
-const COD_NAMES: Record<string, string> = {
-  GN: "Garrafa Normal", GI: "Garrafa Importada", PO: "Pote",
-  TM: "Tampa Metálica", TA: "Tampa Alumínio", TP: "Tampa Plástica",
-  RO: "Rolha", LA: "Lacre",
-};
-
-const COD_COLORS: Record<string, string> = {
-  GN: "#A81C2C", GI: "#c42538", PO: "#0ea5e9", TM: "#f59e0b",
-  TA: "#8b5cf6", TP: "#10b981", RO: "#ec4899", LA: "#78696c",
-};
-
 /**
- * Grupos ocultos da UI (auxiliares logísticos / não-vendáveis).
- * Filtrados em `buildFromAnalytics` — afeta KPIs, charts, tabela e selects.
+ * Aliases locais para legibilidade — apontam para a fonte unica em
+ * `lib/format.ts` (PRODUCT_GROUP_*).  Toda a app usa o mesmo dicionario
+ * para evitar drift entre paginas.
  */
-const HIDDEN_GROUPS: ReadonlySet<string> = new Set(["CH", "EM", "MO", "PA"]);
+const COD_NAMES = PRODUCT_GROUP_NAMES;
+const COD_COLORS = PRODUCT_GROUP_COLORS;
+const HIDDEN_GROUPS = PRODUCT_GROUP_HIDDEN;
 
 const PIE_COLORS = ["#A81C2C", "#0ea5e9", "#f59e0b", "#8b5cf6", "#10b981", "#ec4899", "#6366f1", "#14b8a6"];
 

@@ -42,6 +42,85 @@ export function getProductGroup(itemCode: string | undefined | null): string {
   return prefix || "Outro";
 }
 
+/**
+ * Catálogo de grupos de produto comerciais.
+ * Single source of truth — altere aqui para refletir em toda a aplicação.
+ */
+export const PRODUCT_GROUP_NAMES: Record<string, string> = {
+  AR: "Garrafas Artesanais",
+  EQ: "Equipamentos",
+  GF: "Garrafão",
+  GI: "Garrafa Importada",
+  GN: "Garrafa Nacional",
+  IS: "Insumos",
+  LA: "Lacre",
+  ME: "Medidores",
+  PO: "Pote",
+  RO: "Rolha",
+  TA: "Tampa Aluminio",
+  TM: "Tampa Metálica",
+  TP: "Tampa Plástica",
+};
+
+/**
+ * Paleta cromática estável por grupo (usada em charts, badges e progress bars).
+ * Grupos sem cor explícita caem em #A81C2C (accent do cockpit).
+ */
+export const PRODUCT_GROUP_COLORS: Record<string, string> = {
+  AR: "#d97706", // âmbar (artesanal)
+  EQ: "#475569", // slate (equipamento)
+  GF: "#14b8a6", // teal (garrafão)
+  GI: "#c42538", // vermelho importado
+  GN: "#A81C2C", // accent (nacional / principal)
+  IS: "#65a30d", // verde-musgo (insumo)
+  LA: "#78696c", // taupe (lacre)
+  ME: "#6366f1", // indigo (medidor)
+  PO: "#0ea5e9", // sky (pote)
+  RO: "#ec4899", // rosa (rolha)
+  TA: "#8b5cf6", // violeta (tampa alumínio)
+  TM: "#f59e0b", // amber (tampa metálica)
+  TP: "#10b981", // emerald (tampa plástica)
+};
+
+/**
+ * Grupos auxiliares (logística / consumo interno) — escondidos das
+ * visualizações comerciais.
+ */
+export const PRODUCT_GROUP_HIDDEN: ReadonlySet<string> = new Set([
+  "CH", // Chapa
+  "EM", // EM (placeholder)
+  "MO", // Moldura
+  "PA", // Palete
+]);
+
+/**
+ * Devolve o nome amigável do grupo. Aceita tanto a sigla pura ("GN") quanto
+ * um itemCode completo ("GN1234").
+ */
+export function getProductGroupName(codeOrItemCode: string | undefined | null): string {
+  if (!codeOrItemCode) return "Outro";
+  const code = codeOrItemCode.length === 2
+    ? codeOrItemCode.toUpperCase()
+    : getProductGroup(codeOrItemCode);
+  return PRODUCT_GROUP_NAMES[code] ?? code;
+}
+
+export function getProductGroupColor(codeOrItemCode: string | undefined | null): string {
+  if (!codeOrItemCode) return "#A81C2C";
+  const code = codeOrItemCode.length === 2
+    ? codeOrItemCode.toUpperCase()
+    : getProductGroup(codeOrItemCode);
+  return PRODUCT_GROUP_COLORS[code] ?? "#A81C2C";
+}
+
+export function isProductGroupHidden(codeOrItemCode: string | undefined | null): boolean {
+  if (!codeOrItemCode) return false;
+  const code = codeOrItemCode.length === 2
+    ? codeOrItemCode.toUpperCase()
+    : getProductGroup(codeOrItemCode);
+  return PRODUCT_GROUP_HIDDEN.has(code);
+}
+
 export function fmtDate(date: Date): string {
   return date.toLocaleDateString("pt-BR", {
     day: "2-digit",

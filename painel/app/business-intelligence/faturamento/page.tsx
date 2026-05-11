@@ -45,6 +45,8 @@ import {
   getProductGroup,
   STATE_TO_REGION,
   exportCSV,
+  PRODUCT_GROUP_NAMES,
+  PRODUCT_GROUP_COLORS,
 } from "@/lib/format";
 import {
   fetchSalesOrders,
@@ -1078,7 +1080,10 @@ function FaturamentoUnifiedInner() {
             footer={`${filteredGroups.length} grupos de produto · Prefixo SKU (ex: GN, TA, GI)`}
             scrollable
           >
-            {filteredGroups.map((r, i) => (
+            {filteredGroups.map((r) => {
+              const groupColor = PRODUCT_GROUP_COLORS[r.group] ?? "#A81C2C";
+              const groupName = PRODUCT_GROUP_NAMES[r.group];
+              return (
               <tr
                 key={r.group}
                 className="hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors"
@@ -1087,9 +1092,14 @@ function FaturamentoUnifiedInner() {
                   <span className="inline-flex items-center gap-1.5">
                     <span
                       className="w-3 h-3 rounded"
-                      style={{ background: COLORS[i % COLORS.length] }}
+                      style={{ background: groupColor }}
                     />
                     <span className="font-bold text-gray-900">{r.group}</span>
+                    {groupName && (
+                      <span className="text-xs text-cockpit-muted font-normal">
+                        — {groupName}
+                      </span>
+                    )}
                   </span>
                 </td>
                 <td className="py-2.5 px-4 text-right text-cockpit-accent font-medium tabular-nums">
@@ -1127,7 +1137,8 @@ function FaturamentoUnifiedInner() {
                   {r.pctFat.toFixed(1)}%
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </DataTable>
         </div>
       )}
