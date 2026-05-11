@@ -2,7 +2,8 @@
 
 import { ProtectedLayout } from "@/components/ProtectedLayout";
 import { useAuth } from "@/components/AuthProvider";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Zap,
   Loader2,
@@ -106,13 +107,37 @@ function fmtDateTime(iso?: string | null): string {
 }
 
 export default function IntegracoesPage() {
+  return (
+    <Suspense>
+      <IntegracoesContent />
+    </Suspense>
+  );
+}
+
+function IntegracoesContent() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
   const [statusLoading, setStatusLoading] = useState(true);
   const [status, setStatus] = useState<IntegrationsStatusResp["data"] | null>(
     null,
   );
   const [statusError, setStatusError] = useState<string | null>(null);
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [oauthBanner, setOauthBanner] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    const kind = searchParams?.get("rd_oauth") as "ok" | "error" | null;
+    const msg = searchParams?.get("rd_msg");
+    if (kind && msg) {
+      setOauthBanner({ kind, text: msg });
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("rd_oauth");
+        url.searchParams.delete("rd_msg");
+        window.history.replaceState({}, "", url.pathname);
+      }
+    }
+  }, [searchParams]);
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -200,6 +225,33 @@ export default function IntegracoesPage() {
             className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
           >
             Falha ao carregar status: {statusError}
+          </div>
+        )}
+
+        {oauthBanner && (
+          <div
+            role="alert"
+            className={`mb-5 rounded-xl border px-4 py-3 text-sm flex items-start gap-2 ${
+              oauthBanner.kind === "ok"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-800"
+            }`}
+          >
+            {oauthBanner.kind === "ok" ? (
+              <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+            )}
+            <div>
+              <strong>OAuth RD Station:</strong> {oauthBanner.text}
+              <button
+                type="button"
+                onClick={() => setOauthBanner(null)}
+                className="ml-3 text-xs underline opacity-60 hover:opacity-100"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         )}
 

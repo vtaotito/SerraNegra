@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/api/auth/registro",
   "/api/auth/esqueci-senha",
   "/api/auth/redefinir-senha",
+  "/api/webhooks/",
 ];
 
 export async function middleware(request: NextRequest) {
