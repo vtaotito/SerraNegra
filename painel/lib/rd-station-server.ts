@@ -484,3 +484,69 @@ export async function rdMarketingApiTokenPing(): Promise<{
     responseTimeMs: result.responseTimeMs,
   };
 }
+
+/* ════════════════════════════════════════════════════════════════
+   RD Marketing — Tags de contato via Bearer OAuth
+   POST https://api.rd.services/platform/contacts/email:{email}/tag
+   Docs: https://developers.rdstation.com/reference/post_platform-contacts-identifier-value-tag
+   ════════════════════════════════════════════════════════════════ */
+
+/**
+ * Adiciona tags a um contato existente no RD Station Marketing.
+ *
+ * REQUER `RD_STATION_MARKETING_ACCESS_TOKEN` (Bearer OAuth).
+ * Diferente da conversão (api_key), este endpoint acumula tags
+ * sem substituir as existentes — é o método correto para tagging.
+ *
+ * Retorna `{ ok, addedTags, reason? }`. Se o Bearer não estiver
+ * configurado, retorna ok=false silenciosamente (não é erro fatal).
+ */
+export async function rdMarketingAddTags(
+  email: string,
+  tags: string[],
+): Promise<{ ok: boolean; addedTags: number; reason?: string; responseTimeMs: number }> {
+  if (tags.length === 0) {
+    return { ok: true, addedTags: 0, responseTimeMs: 0 };
+  }
+
+  const token = await getSetting("RD_STATION_MARKETING_ACCESS_TOKEN");
+  if (!token) {
+    return {
+      ok: false,
+      addedTags: 0,
+      reason: "Bearer OAuth não configurado — tags não aplicadas ao contato (apenas à conversão).",
+      responseTimeMs: 0,
+    };
+  }
+
+  const emailLower = email.trim().toLowerCase();
+  let totalAdded = 0;
+  const t0 = Date.now();
+
+  for (const tag of tags) {
+    const url = `${PLATFORM_BASE}/platform/contacts/email:${encodeURIComponent(emailLower)}/tag`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ tag }),
+        cache: "no-store",
+      });
+      if (res.ok || res.status === 200 || res.status === 201) {
+        totalAdded++;
+      }
+    } catch {
+      // Falha silenciosa por tag individual — não aborta o fluxo
+    }
+  }
+
+  return {
+    ok: totalAdded > 0,
+    addedTags: totalAdded,
+    responseTimeMs: Date.now() - t0,
+  };
+}

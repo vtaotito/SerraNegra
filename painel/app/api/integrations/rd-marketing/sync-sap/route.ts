@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
           tags: d.tags,
           ok: d.ok,
           reason: d.reason,
+          tagsApplied: d.tagsApplied,
+          tagsNote: d.tagsNote,
         })),
       },
     });

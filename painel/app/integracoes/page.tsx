@@ -818,7 +818,7 @@ function RdMarketingCard({
     skippedNoEmail: number;
     elapsedMs: number;
     dryRun: boolean;
-    sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string }>;
+    sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string; tagsApplied?: number; tagsNote?: string }>;
   } | null>(null);
   const [result, setResult] = useState<{
     found: boolean;
@@ -892,7 +892,7 @@ function RdMarketingCard({
           skippedNoEmail: number;
           dryRun: boolean;
           elapsedMs: number;
-          sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string }>;
+          sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string; tagsApplied?: number; tagsNote?: string }>;
         };
       };
       if (!res.ok || !body.success) {
@@ -1225,7 +1225,8 @@ function RdMarketingCard({
                         <th className="py-1.5 px-2 text-left">Código</th>
                         <th className="py-1.5 px-2 text-left">E-mail</th>
                         <th className="py-1.5 px-2 text-left">Tags</th>
-                        <th className="py-1.5 px-2 text-center">OK</th>
+                        <th className="py-1.5 px-2 text-center">Conv.</th>
+                        <th className="py-1.5 px-2 text-center">Tags</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-pink-50">
@@ -1242,12 +1243,31 @@ function RdMarketingCard({
                             </div>
                           </td>
                           <td className="py-1 px-2 text-center">{d.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500 inline" />}</td>
+                          <td className="py-1 px-2 text-center">
+                            {typeof d.tagsApplied === "number" && d.tagsApplied > 0
+                              ? <span className="text-emerald-600 font-semibold">{d.tagsApplied}</span>
+                              : <span className="text-gray-400 text-[9px]" title={d.tagsNote ?? ""}>—</span>}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               </details>
+            )}
+            {!rd?.configured && syncResult.sampleDetails?.some(d => d.tagsNote) && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 flex items-start gap-2 mt-2">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>
+                  <strong>Conversões criadas com sucesso</strong>, mas as tags de contato não foram aplicadas
+                  porque o <code className="bg-white px-1 rounded text-[10px] font-mono border border-amber-200">RD_STATION_MARKETING_ACCESS_TOKEN</code> (Bearer OAuth)
+                  não está configurado. As conversões ficam registradas no RD, mas as tags como{" "}
+                  <code className="bg-white px-1 rounded text-[10px]">sap-ativo</code>,{" "}
+                  <code className="bg-white px-1 rounded text-[10px]">uf-SP</code> etc. só são
+                  atribuídas ao contato quando o Bearer estiver ativo.
+                  Configure em &ldquo;Editar configuração&rdquo; acima.
+                </span>
+              </div>
             )}
           </div>
         )}

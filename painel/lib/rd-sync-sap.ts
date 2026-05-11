@@ -20,6 +20,7 @@ import { gatewayGet } from "@/lib/gateway-fetch";
 import {
   rdMarketingSendConversion,
   rdMarketingApiTokenConfigured,
+  rdMarketingAddTags,
   type RdConversionResult,
 } from "@/lib/rd-station-server";
 import { query } from "@/lib/db";
@@ -69,6 +70,8 @@ export interface SapRdSyncDetail {
   status: number;
   reason?: string;
   responseTimeMs: number;
+  tagsApplied: number;
+  tagsNote?: string;
 }
 
 function buildTags(c: GatewayCustomer): string[] {
@@ -174,6 +177,8 @@ export async function runSapToRdSync(
         status: 0,
         reason: "dry-run",
         responseTimeMs: 0,
+        tagsApplied: 0,
+        tagsNote: "dry-run — tags seriam aplicadas via endpoint dedicado",
       });
       succeeded++;
       continue;
@@ -204,6 +209,17 @@ export async function runSapToRdSync(
       };
     }
 
+    let tagsApplied = 0;
+    let tagsNote: string | undefined;
+
+    if (result.ok) {
+      const tagResult = await rdMarketingAddTags(email, tags);
+      tagsApplied = tagResult.addedTags;
+      if (!tagResult.ok && tagResult.reason) {
+        tagsNote = tagResult.reason;
+      }
+    }
+
     const detail: SapRdSyncDetail = {
       cardCode: c.card_code,
       cardName: c.card_name,
@@ -213,6 +229,8 @@ export async function runSapToRdSync(
       status: result.status,
       reason: result.reason,
       responseTimeMs: result.responseTimeMs,
+      tagsApplied,
+      tagsNote,
     };
 
     if (result.ok) succeeded++;
