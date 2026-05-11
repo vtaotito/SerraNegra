@@ -130,6 +130,29 @@ async function run() {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_password_reset_token_hash ON panel_password_reset_tokens(token_hash)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_password_reset_expires_at ON panel_password_reset_tokens(expires_at)`);
 
+  // Configuracoes de integracoes (SMTP, RD Station, ...) editaveis via UI.
+  // Secrets sao criptografados com AES-256-GCM antes de persistir (ver lib/settings.ts).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS panel_settings (
+      key        TEXT PRIMARY KEY,
+      value      TEXT,
+      is_secret  BOOLEAN NOT NULL DEFAULT false,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by UUID REFERENCES panel_users(id) ON DELETE SET NULL
+    );
+  `);
+  console.log("[OK] Tabela panel_settings");
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_settings_updated_at ON panel_settings(updated_at)`);
+
+  try {
+    await pool.query(
+      `CREATE TRIGGER trigger_panel_settings_updated_at BEFORE UPDATE ON panel_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()`,
+    );
+    console.log("[OK] Trigger updated_at em panel_settings");
+  } catch (e) {
+    console.log("[SKIP] Trigger panel_settings ja existe");
+  }
+
   // Seed admin user
   const bcrypt = require("bcryptjs");
   const password = "Admin@2026";

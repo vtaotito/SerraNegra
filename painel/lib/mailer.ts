@@ -1,15 +1,38 @@
 import "server-only";
 
+import { getSettings, clearSettingsCache } from "@/lib/settings";
+
 /**
- * Mailer simples para o painel.
+ * Mailer do painel — config lida dinamicamente de `panel_settings` (DB) com
+ * fallback para `process.env`. Quem precisa enviar mail chama
+ * `getResolvedSmtpConfig()` que sempre devolve a config mais atual.
  *
- * SMTP é opcional: quando as variáveis SMTP_* não estão definidas, o link de
- * redefinição é apenas logado no console do servidor (útil em dev/local).
- * Em produção, defina SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS e SMTP_FROM.
- *
- * O nodemailer é importado dinamicamente para que o build do painel não quebre
- * caso a dependência ainda não esteja instalada em ambientes de CI/lint.
+ * SMTP é opcional: quando faltam HOST/USER/PASS, os e-mails são apenas
+ * logados. Em produção, configure pela tela `/integracoes` (admin).
  */
+
+export const SMTP_KEYS = [
+  "SMTP_HOST",
+  "SMTP_PORT",
+  "SMTP_USER",
+  "SMTP_PASS",
+  "SMTP_FROM",
+] as const;
+
+export type SmtpKey = (typeof SMTP_KEYS)[number];
+
+export const SMTP_SECRET_KEYS: ReadonlySet<SmtpKey> = new Set(["SMTP_PASS"]);
+
+interface ResolvedSmtpConfig {
+  host: string | null;
+  port: number;
+  secure: boolean;
+  user: string | null;
+  pass: string | null;
+  from: string;
+}
+
+const DEFAULT_FROM = "Painel GSN <noreply@garrafariaserranegra.com.br>";
 
 type Transporter = {
   sendMail: (opts: {
@@ -21,29 +44,49 @@ type Transporter = {
   }) => Promise<unknown>;
 };
 
-const SMTP_HOST = process.env.SMTP_HOST;
-const SMTP_PORT = Number(process.env.SMTP_PORT ?? 587);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const SMTP_FROM =
-  process.env.SMTP_FROM ?? "Painel GSN <noreply@garrafariaserranegra.com.br>";
-
 let cachedTransporter: Transporter | null | undefined;
-let warnedNoSmtp = false;
+let cachedSig: string | null = null;
 
-async function getTransporter(): Promise<Transporter | null> {
-  if (cachedTransporter !== undefined) return cachedTransporter;
+export async function getResolvedSmtpConfig(): Promise<ResolvedSmtpConfig> {
+  const cfg = await getSettings([...SMTP_KEYS]);
+  const port = Number(cfg.SMTP_PORT ?? 587);
+  return {
+    host: cfg.SMTP_HOST ?? null,
+    port: Number.isFinite(port) && port > 0 ? port : 587,
+    secure: Number.isFinite(port) && port === 465,
+    user: cfg.SMTP_USER ?? null,
+    pass: cfg.SMTP_PASS ?? null,
+    from: cfg.SMTP_FROM ?? DEFAULT_FROM,
+  };
+}
 
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-    if (!warnedNoSmtp) {
-      console.warn(
-        "[MAILER] SMTP não configurado (SMTP_HOST/SMTP_USER/SMTP_PASS). " +
-          "Os e-mails serão apenas logados no servidor."
-      );
-      warnedNoSmtp = true;
-    }
+/**
+ * Invalida o transporte cacheado — chame após salvar nova config SMTP.
+ */
+export function invalidateMailerCache(): void {
+  cachedTransporter = undefined;
+  cachedSig = null;
+  clearSettingsCache("SMTP_");
+}
+
+function configSignature(cfg: ResolvedSmtpConfig): string {
+  return [cfg.host, cfg.port, cfg.user, cfg.pass ? "<set>" : "<empty>"].join("|");
+}
+
+async function getTransporter(): Promise<{
+  transporter: Transporter | null;
+  cfg: ResolvedSmtpConfig;
+}> {
+  const cfg = await getResolvedSmtpConfig();
+  const sig = configSignature(cfg);
+  if (cachedTransporter !== undefined && cachedSig === sig) {
+    return { transporter: cachedTransporter, cfg };
+  }
+
+  if (!cfg.host || !cfg.user || !cfg.pass) {
     cachedTransporter = null;
-    return null;
+    cachedSig = sig;
+    return { transporter: null, cfg };
   }
 
   try {
@@ -54,31 +97,34 @@ async function getTransporter(): Promise<Transporter | null> {
     const factory = mod.createTransport ?? mod.default?.createTransport;
     if (!factory) throw new Error("nodemailer.createTransport indisponível");
     cachedTransporter = factory({
-      host: SMTP_HOST,
-      port: SMTP_PORT,
-      secure: SMTP_PORT === 465,
-      auth: { user: SMTP_USER, pass: SMTP_PASS },
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: { user: cfg.user, pass: cfg.pass },
     });
-    return cachedTransporter;
+    cachedSig = sig;
+    return { transporter: cachedTransporter, cfg };
   } catch (err) {
     console.error(
       "[MAILER] Falha ao iniciar nodemailer. Instale 'nodemailer' no painel para envio real.",
-      err
+      err,
     );
     cachedTransporter = null;
-    return null;
+    cachedSig = sig;
+    return { transporter: null, cfg };
   }
 }
 
-export function isMailerConfigured(): boolean {
-  return Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS);
+export async function isMailerConfigured(): Promise<boolean> {
+  const cfg = await getResolvedSmtpConfig();
+  return Boolean(cfg.host && cfg.user && cfg.pass);
 }
 
 /**
- * Resumo da configuração SMTP — usado pela tela de Integrações.
+ * Snapshot da configuração SMTP — usado pela tela de Integrações.
  * Nunca expõe a senha; apenas se ela está presente.
  */
-export function smtpStatus(): {
+export async function smtpStatus(): Promise<{
   configured: boolean;
   host: string | null;
   port: number;
@@ -86,33 +132,30 @@ export function smtpStatus(): {
   user: string | null;
   hasPassword: boolean;
   from: string;
-} {
+}> {
+  const cfg = await getResolvedSmtpConfig();
   return {
-    configured: isMailerConfigured(),
-    host: SMTP_HOST ?? null,
-    port: SMTP_PORT,
-    secure: SMTP_PORT === 465,
-    user: SMTP_USER ?? null,
-    hasPassword: Boolean(SMTP_PASS),
-    from: SMTP_FROM,
+    configured: Boolean(cfg.host && cfg.user && cfg.pass),
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    user: cfg.user,
+    hasPassword: Boolean(cfg.pass),
+    from: cfg.from,
   };
 }
 
-/**
- * Envia um e-mail curto de teste para validar o transporte SMTP.
- * Usado pela página de Integrações (admin/supervisor).
- */
 export async function sendTestEmail(params: {
   to: string;
   triggeredBy: string;
 }): Promise<{ ok: boolean; reason?: string }> {
   const { to, triggeredBy } = params;
-  const transporter = await getTransporter();
+  const { transporter, cfg } = await getTransporter();
   if (!transporter) {
     return {
       ok: false,
       reason:
-        "SMTP não configurado. Defina SMTP_HOST, SMTP_USER e SMTP_PASS no ambiente.",
+        "SMTP não configurado. Defina HOST/USER/PASS na página de Integrações.",
     };
   }
 
@@ -142,7 +185,7 @@ export async function sendTestEmail(params: {
   `;
 
   try {
-    await transporter.sendMail({ from: SMTP_FROM, to, subject, text, html });
+    await transporter.sendMail({ from: cfg.from, to, subject, text, html });
     return { ok: true };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Falha ao enviar e-mail";
@@ -157,12 +200,8 @@ interface PasswordResetEmailParams {
   expiresAt: Date;
 }
 
-/**
- * Envia o e-mail de redefinição de senha. Retorna true se o e-mail foi enviado
- * via SMTP, ou false se caiu no fallback de log (sem SMTP / falha de envio).
- */
 export async function sendPasswordResetEmail(
-  params: PasswordResetEmailParams
+  params: PasswordResetEmailParams,
 ): Promise<boolean> {
   const { to, displayName, resetUrl, expiresAt } = params;
   const expiresLabel = expiresAt.toLocaleString("pt-BR", {
@@ -207,21 +246,21 @@ export async function sendPasswordResetEmail(
     </div>
   `;
 
-  const transporter = await getTransporter();
+  const { transporter, cfg } = await getTransporter();
   if (!transporter) {
     console.warn(
-      `[MAILER] (fallback) Link de redefinição para ${to} (válido até ${expiresLabel}): ${resetUrl}`
+      `[MAILER] (fallback) Link de redefinição para ${to} (válido até ${expiresLabel}): ${resetUrl}`,
     );
     return false;
   }
 
   try {
-    await transporter.sendMail({ from: SMTP_FROM, to, subject, text, html });
+    await transporter.sendMail({ from: cfg.from, to, subject, text, html });
     return true;
   } catch (err) {
     console.error("[MAILER] Falha ao enviar e-mail de reset:", err);
     console.warn(
-      `[MAILER] (fallback) Link de redefinição para ${to} (válido até ${expiresLabel}): ${resetUrl}`
+      `[MAILER] (fallback) Link de redefinição para ${to} (válido até ${expiresLabel}): ${resetUrl}`,
     );
     return false;
   }

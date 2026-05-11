@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!rdStationMarketingConfigured()) {
+  if (!(await rdStationMarketingConfigured())) {
     return NextResponse.json(
       {
         success: false,

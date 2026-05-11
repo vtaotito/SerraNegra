@@ -4,7 +4,7 @@ import { rdMarketingContactByEmail, rdStationMarketingConfigured } from "@/lib/r
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function GET(req: NextRequest) {
-  if (!rdStationMarketingConfigured()) {
+  if (!(await rdStationMarketingConfigured())) {
     return NextResponse.json({
       configured: false as const,
       found: false as const,

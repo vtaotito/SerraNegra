@@ -88,8 +88,8 @@ export async function GET() {
 
   const [sap, smtp, rd] = await Promise.all([
     probeSap(),
-    Promise.resolve(smtpStatus()),
-    Promise.resolve(rdStationStatus()),
+    smtpStatus(),
+    rdStationStatus(),
   ]);
 
   return NextResponse.json({

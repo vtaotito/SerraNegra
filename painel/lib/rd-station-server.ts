@@ -2,24 +2,56 @@
  * Chamadas RD Station apenas no servidor (Route Handlers).
  * CRM API v2: https://developers.rdstation.com/crm-v2 — OAuth Bearer.
  * Marketing (contatos por e-mail): https://developers.rdstation.com — Bearer.
+ *
+ * Configs lidas de `panel_settings` (DB) com fallback para `process.env`.
+ * Toda função que precisa do token chama `getRdToken()` para sempre pegar
+ * o valor mais recente (sem reiniciar o container ao trocar a credencial).
  */
+
+import { getSetting, getSettings, clearSettingsCache } from "@/lib/settings";
 
 const CRM_BASE = "https://api.rd.services/crm/v2";
 const PLATFORM_BASE = "https://api.rd.services";
 
-export function rdStationCrmConfigured(): boolean {
-  return Boolean(process.env.RD_STATION_CRM_ACCESS_TOKEN?.trim());
+export const RD_CRM_KEYS = [
+  "RD_STATION_CRM_ACCESS_TOKEN",
+  "RD_STATION_CRM_CLIENT_ID",
+  "RD_STATION_CRM_CLIENT_SECRET",
+  "RD_STATION_CRM_REDIRECT_URI",
+] as const;
+
+export const RD_MARKETING_KEYS = [
+  "RD_STATION_MARKETING_ACCESS_TOKEN",
+  "RD_STATION_MARKETING_CLIENT_ID",
+  "RD_STATION_MARKETING_CLIENT_SECRET",
+  "RD_STATION_MARKETING_REDIRECT_URI",
+] as const;
+
+export const RD_SECRET_KEYS: ReadonlySet<string> = new Set([
+  "RD_STATION_CRM_ACCESS_TOKEN",
+  "RD_STATION_CRM_CLIENT_SECRET",
+  "RD_STATION_MARKETING_ACCESS_TOKEN",
+  "RD_STATION_MARKETING_CLIENT_SECRET",
+]);
+
+export function invalidateRdCache(): void {
+  clearSettingsCache("RD_STATION_");
 }
 
-export function rdStationMarketingConfigured(): boolean {
-  return Boolean(process.env.RD_STATION_MARKETING_ACCESS_TOKEN?.trim());
+export async function rdStationCrmConfigured(): Promise<boolean> {
+  const tok = await getSetting("RD_STATION_CRM_ACCESS_TOKEN");
+  return Boolean(tok);
+}
+
+export async function rdStationMarketingConfigured(): Promise<boolean> {
+  const tok = await getSetting("RD_STATION_MARKETING_ACCESS_TOKEN");
+  return Boolean(tok);
 }
 
 /**
  * Snapshot agregado das integrações RD Station — sem expor tokens.
- * Usado pela tela de Integrações.
  */
-export function rdStationStatus(): {
+export async function rdStationStatus(): Promise<{
   crm: {
     configured: boolean;
     hasClientCredentials: boolean;
@@ -30,42 +62,41 @@ export function rdStationStatus(): {
     hasClientCredentials: boolean;
     redirectUri: string | null;
   };
-} {
+}> {
+  const all = await getSettings([...RD_CRM_KEYS, ...RD_MARKETING_KEYS]);
   return {
     crm: {
-      configured: rdStationCrmConfigured(),
+      configured: Boolean(all.RD_STATION_CRM_ACCESS_TOKEN),
       hasClientCredentials: Boolean(
-        process.env.RD_STATION_CRM_CLIENT_ID?.trim() &&
-          process.env.RD_STATION_CRM_CLIENT_SECRET?.trim(),
+        all.RD_STATION_CRM_CLIENT_ID && all.RD_STATION_CRM_CLIENT_SECRET,
       ),
-      redirectUri: process.env.RD_STATION_CRM_REDIRECT_URI?.trim() ?? null,
+      redirectUri: all.RD_STATION_CRM_REDIRECT_URI ?? null,
     },
     marketing: {
-      configured: rdStationMarketingConfigured(),
+      configured: Boolean(all.RD_STATION_MARKETING_ACCESS_TOKEN),
       hasClientCredentials: Boolean(
-        process.env.RD_STATION_MARKETING_CLIENT_ID?.trim() &&
-          process.env.RD_STATION_MARKETING_CLIENT_SECRET?.trim(),
+        all.RD_STATION_MARKETING_CLIENT_ID &&
+          all.RD_STATION_MARKETING_CLIENT_SECRET,
       ),
-      redirectUri:
-        process.env.RD_STATION_MARKETING_REDIRECT_URI?.trim() ?? null,
+      redirectUri: all.RD_STATION_MARKETING_REDIRECT_URI ?? null,
     },
   };
 }
 
 /**
- * Validação leve do token CRM — chama /pipelines com page-size=1
- * só para confirmar que o Bearer responde 2xx.
+ * Validação leve do token CRM — chama /pipelines com page-size=1.
  */
 export async function rdCrmPing(): Promise<{
   ok: boolean;
   pipelinesCount: number | null;
   reason?: string;
 }> {
-  if (!rdStationCrmConfigured()) {
+  const token = await getSetting("RD_STATION_CRM_ACCESS_TOKEN");
+  if (!token) {
     return {
       ok: false,
       pipelinesCount: null,
-      reason: "Token CRM ausente (RD_STATION_CRM_ACCESS_TOKEN).",
+      reason: "Token CRM ausente. Configure em Integrações.",
     };
   }
   try {
@@ -83,9 +114,9 @@ export async function rdCrmPing(): Promise<{
 
 async function rdCrmJson<T>(
   path: string,
-  searchParams?: Record<string, string>
+  searchParams?: Record<string, string>,
 ): Promise<T> {
-  const token = process.env.RD_STATION_CRM_ACCESS_TOKEN?.trim();
+  const token = await getSetting("RD_STATION_CRM_ACCESS_TOKEN");
   if (!token) {
     throw new Error("Credencial CRM não configurada (RD_STATION_CRM_ACCESS_TOKEN).");
   }
@@ -127,13 +158,20 @@ interface RdListEnvelope<T> {
 }
 
 function pickData<T>(payload: RdListEnvelope<T> | unknown): T[] {
-  if (payload && typeof payload === "object" && Array.isArray((payload as RdListEnvelope<T>).data)) {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    Array.isArray((payload as RdListEnvelope<T>).data)
+  ) {
     return ((payload as RdListEnvelope<T>).data ?? []) as T[];
   }
   return [];
 }
 
-async function fetchOngoingDeals(): Promise<{ deals: RdDeal[]; truncated: boolean }> {
+async function fetchOngoingDeals(): Promise<{
+  deals: RdDeal[];
+  truncated: boolean;
+}> {
   try {
     const payload = await rdCrmJson<RdListEnvelope<RdDeal>>("/deals", {
       "page[number]": "1",
@@ -175,10 +213,10 @@ export async function rdCrmOverviewData(): Promise<{
     stageBuckets: Record<string, number>;
   };
 }> {
-  const pipePayload = await rdCrmJson<RdListEnvelope<RdCrmPipeline>>("/pipelines", {
-    "page[number]": "1",
-    "page[size]": "50",
-  });
+  const pipePayload = await rdCrmJson<RdListEnvelope<RdCrmPipeline>>(
+    "/pipelines",
+    { "page[number]": "1", "page[size]": "50" },
+  );
   const pipelines = pickData<RdCrmPipeline>(pipePayload);
 
   const { deals: ongoingDeals, truncated } = await fetchOngoingDeals();
@@ -222,11 +260,17 @@ export async function rdCrmOverviewData(): Promise<{
 
 /** Contato RD Marketing por e-mail — base de leads. */
 export async function rdMarketingContactByEmail(
-  emailRaw: string
-): Promise<{ found: boolean; contact: RdMarketingContactSnippet | null; status?: number }> {
-  const token = process.env.RD_STATION_MARKETING_ACCESS_TOKEN?.trim();
+  emailRaw: string,
+): Promise<{
+  found: boolean;
+  contact: RdMarketingContactSnippet | null;
+  status?: number;
+}> {
+  const token = await getSetting("RD_STATION_MARKETING_ACCESS_TOKEN");
   if (!token) {
-    throw new Error("Credencial Marketing não configurada (RD_STATION_MARKETING_ACCESS_TOKEN).");
+    throw new Error(
+      "Credencial Marketing não configurada (RD_STATION_MARKETING_ACCESS_TOKEN).",
+    );
   }
   const email = emailRaw.trim().toLowerCase();
   const path = `/platform/contacts/email:${encodeURIComponent(email)}`;
@@ -240,7 +284,9 @@ export async function rdMarketingContactByEmail(
   if (res.status === 404) return { found: false, contact: null, status: 404 };
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`RD Marketing ${res.status}${text ? `: ${text.slice(0, 240)}` : ""}`);
+    throw new Error(
+      `RD Marketing ${res.status}${text ? `: ${text.slice(0, 240)}` : ""}`,
+    );
   }
   const body = (await res.json()) as Record<string, unknown>;
   const contact = normalizeMarketingContact(body);
@@ -260,16 +306,23 @@ export interface RdMarketingContactSnippet {
   cfCustomFields?: Record<string, string | number | boolean | null>;
 }
 
-function normalizeMarketingContact(body: Record<string, unknown>): RdMarketingContactSnippet {
+function normalizeMarketingContact(
+  body: Record<string, unknown>,
+): RdMarketingContactSnippet {
   const tagsRaw = body.tags ?? body.cf_tags;
   let tags: string[] | undefined;
   if (Array.isArray(tagsRaw)) tags = tagsRaw.map(String);
-  else if (tagsRaw && typeof tagsRaw === "object") tags = Object.values(tagsRaw).map(String);
+  else if (tagsRaw && typeof tagsRaw === "object")
+    tags = Object.values(tagsRaw).map(String);
 
   const cf = body.cf_custom_fields ?? body.custom_fields;
-  let cfCustomFields: Record<string, string | number | boolean | null> | undefined;
+  let cfCustomFields:
+    | Record<string, string | number | boolean | null>
+    | undefined;
   if (cf && typeof cf === "object" && !Array.isArray(cf)) {
-    cfCustomFields = { ...(cf as Record<string, string | number | boolean | null>) };
+    cfCustomFields = {
+      ...(cf as Record<string, string | number | boolean | null>),
+    };
   }
 
   return {
@@ -280,9 +333,12 @@ function normalizeMarketingContact(body: Record<string, unknown>): RdMarketingCo
     city: typeof body.city === "string" ? body.city : null,
     state: typeof body.state === "string" ? body.state : null,
     lastConversionDate:
-      typeof body.last_conversion_date === "string" ? body.last_conversion_date : null,
+      typeof body.last_conversion_date === "string"
+        ? body.last_conversion_date
+        : null,
     tags,
-    lifecycle: typeof body.lifecycle_stage === "string" ? body.lifecycle_stage : null,
+    lifecycle:
+      typeof body.lifecycle_stage === "string" ? body.lifecycle_stage : null,
     cfCustomFields,
   };
 }

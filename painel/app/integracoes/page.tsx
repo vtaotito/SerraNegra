@@ -16,12 +16,17 @@ import {
   Megaphone,
   Search,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { syncSAP } from "@/lib/cockpit-api";
 import {
   IntegrationCard,
   type IntegrationStatus,
 } from "@/components/integrations/IntegrationCard";
+import {
+  IntegrationConfigForm,
+  type ConfigFieldDef,
+} from "@/components/integrations/IntegrationConfigForm";
 
 type SyncKey =
   | "cockpit"
@@ -209,6 +214,7 @@ export default function IntegracoesPage() {
             allowed={allowed}
             loading={statusLoading && !status}
             currentEmail={user.email ?? null}
+            onConfigSaved={fetchStatus}
           />
 
           {/* RD CRM */}
@@ -216,6 +222,7 @@ export default function IntegracoesPage() {
             rd={status?.rdCrm ?? null}
             allowed={allowed}
             loading={statusLoading && !status}
+            onConfigSaved={fetchStatus}
           />
 
           {/* RD Marketing */}
@@ -223,6 +230,7 @@ export default function IntegracoesPage() {
             rd={status?.rdMarketing ?? null}
             allowed={allowed}
             loading={statusLoading && !status}
+            onConfigSaved={fetchStatus}
           />
         </div>
       </div>
@@ -368,19 +376,64 @@ function smtpStatusToBadge(smtp: SmtpStatus | null): IntegrationStatus {
   return "ok";
 }
 
+const SMTP_FIELDS: ConfigFieldDef[] = [
+  {
+    key: "SMTP_HOST",
+    label: "Host SMTP",
+    type: "text",
+    required: true,
+    placeholder: "smtp.hostinger.com",
+    span: 1,
+  },
+  {
+    key: "SMTP_PORT",
+    label: "Porta",
+    type: "number",
+    placeholder: "587",
+    hint: "587 (STARTTLS) ou 465 (SSL)",
+    span: 1,
+  },
+  {
+    key: "SMTP_USER",
+    label: "Usuário",
+    type: "email",
+    required: true,
+    placeholder: "noreply@garrafariaserranegra.com.br",
+    span: 1,
+  },
+  {
+    key: "SMTP_PASS",
+    label: "Senha",
+    type: "password",
+    required: true,
+    span: 1,
+  },
+  {
+    key: "SMTP_FROM",
+    label: "Remetente (From)",
+    type: "text",
+    placeholder: 'Painel GSN <noreply@garrafariaserranegra.com.br>',
+    hint: 'Formato: "Nome <email@dominio>"',
+    span: 2,
+  },
+];
+
 function SmtpCard({
   smtp,
   allowed,
   loading,
   currentEmail,
+  onConfigSaved,
 }: {
   smtp: SmtpStatus | null;
   allowed: boolean;
   loading: boolean;
   currentEmail: string | null;
+  onConfigSaved: () => void;
 }) {
   const [target, setTarget] = useState(currentEmail ?? "");
   const [sending, setSending] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState<
     { kind: "ok" | "error"; text: string } | null
   >(null);
@@ -464,6 +517,17 @@ function SmtpCard({
         { key: "SMTP_FROM", note: 'ex.: "Painel GSN <noreply@…>"' },
       ]}
       message={feedback}
+      actions={
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          disabled={!allowed}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
+        >
+          <Pencil className="w-4 h-4" />
+          {editing ? "Fechar" : "Editar configuração"}
+        </button>
+      }
     >
       <div>
         <label
@@ -501,6 +565,16 @@ function SmtpCard({
           </button>
         </div>
       </div>
+
+      <IntegrationConfigForm
+        group="smtp"
+        accent="amber"
+        fields={SMTP_FIELDS}
+        enabled={allowed}
+        open={editing}
+        onClose={() => setEditing(false)}
+        onSaved={onConfigSaved}
+      />
     </IntegrationCard>
   );
 }
@@ -515,16 +589,50 @@ function rdStatusToBadge(rd: RdStatus | null): IntegrationStatus {
   return "ok";
 }
 
+const RD_CRM_FIELDS: ConfigFieldDef[] = [
+  {
+    key: "RD_STATION_CRM_ACCESS_TOKEN",
+    label: "Access Token (Bearer)",
+    type: "password",
+    required: true,
+    hint: "Obtido após OAuth: POST /oauth2/token",
+    span: 2,
+  },
+  {
+    key: "RD_STATION_CRM_CLIENT_ID",
+    label: "Client ID",
+    type: "text",
+    placeholder: "uuid do app no App Publisher",
+    span: 1,
+  },
+  {
+    key: "RD_STATION_CRM_CLIENT_SECRET",
+    label: "Client Secret",
+    type: "password",
+    span: 1,
+  },
+  {
+    key: "RD_STATION_CRM_REDIRECT_URI",
+    label: "Redirect URI",
+    type: "url",
+    placeholder: "https://painel.garrafariaserranegra.com.br/api/webhooks/rd-station/crm",
+    span: 2,
+  },
+];
+
 function RdCrmCard({
   rd,
   allowed,
   loading,
+  onConfigSaved,
 }: {
   rd: RdStatus | null;
   allowed: boolean;
   loading: boolean;
+  onConfigSaved: () => void;
 }) {
   const [testing, setTesting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState<
     { kind: "ok" | "error"; text: string } | null
   >(null);
@@ -601,21 +709,42 @@ function RdCrmCard({
       ]}
       message={feedback}
       actions={
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={!allowed || testing || !rd?.configured}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {testing ? (
-            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
-          ) : (
-            <RefreshCw className="w-4 h-4" />
-          )}
-          Validar token
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={!allowed || testing || !rd?.configured}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {testing ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            Validar token
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing((v) => !v)}
+            disabled={!allowed}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
+          >
+            <Pencil className="w-4 h-4" />
+            {editing ? "Fechar" : "Editar configuração"}
+          </button>
+        </>
       }
-    />
+    >
+      <IntegrationConfigForm
+        group="rd-crm"
+        accent="violet"
+        fields={RD_CRM_FIELDS}
+        enabled={allowed}
+        open={editing}
+        onClose={() => setEditing(false)}
+        onSaved={onConfigSaved}
+      />
+    </IntegrationCard>
   );
 }
 
@@ -623,17 +752,51 @@ function RdCrmCard({
    RD Marketing Card — buscar contato por e-mail
    ════════════════════════════════════════════════════════════ */
 
+const RD_MARKETING_FIELDS: ConfigFieldDef[] = [
+  {
+    key: "RD_STATION_MARKETING_ACCESS_TOKEN",
+    label: "Access Token (Bearer)",
+    type: "password",
+    required: true,
+    hint: "Obtido após OAuth: POST /oauth2/token (escopo Marketing)",
+    span: 2,
+  },
+  {
+    key: "RD_STATION_MARKETING_CLIENT_ID",
+    label: "Client ID",
+    type: "text",
+    placeholder: "uuid do app no App Publisher",
+    span: 1,
+  },
+  {
+    key: "RD_STATION_MARKETING_CLIENT_SECRET",
+    label: "Client Secret",
+    type: "password",
+    span: 1,
+  },
+  {
+    key: "RD_STATION_MARKETING_REDIRECT_URI",
+    label: "Redirect URI",
+    type: "url",
+    placeholder: "https://painel.garrafariaserranegra.com.br/api/webhooks/rd-station/marketing",
+    span: 2,
+  },
+];
+
 function RdMarketingCard({
   rd,
   allowed,
   loading,
+  onConfigSaved,
 }: {
   rd: RdStatus | null;
   allowed: boolean;
   loading: boolean;
+  onConfigSaved: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [searching, setSearching] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [result, setResult] = useState<{
     found: boolean;
     contact: RdMarketingContact | null;
@@ -740,6 +903,17 @@ function RdMarketingCard({
         { key: "RD_STATION_MARKETING_REDIRECT_URI" },
       ]}
       message={feedback}
+      actions={
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          disabled={!allowed}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
+        >
+          <Pencil className="w-4 h-4" />
+          {editing ? "Fechar" : "Editar configuração"}
+        </button>
+      }
     >
       <form onSubmit={handleSearch}>
         <label
@@ -815,6 +989,16 @@ function RdMarketingCard({
           )}
         </div>
       )}
+
+      <IntegrationConfigForm
+        group="rd-marketing"
+        accent="pink"
+        fields={RD_MARKETING_FIELDS}
+        enabled={allowed}
+        open={editing}
+        onClose={() => setEditing(false)}
+        onSaved={onConfigSaved}
+      />
     </IntegrationCard>
   );
 }

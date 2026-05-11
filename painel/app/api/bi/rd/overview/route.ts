@@ -14,7 +14,7 @@ interface SalesOrdersResult {
 
 /** Resposta agregada — Marketing & CRM BI + métricas SAP opcionais (periodo igual ao BI). */
 export async function GET(req: NextRequest) {
-  if (!rdStationCrmConfigured()) {
+  if (!(await rdStationCrmConfigured())) {
     return NextResponse.json({
       configured: false as const,
       error: null as string | null,
