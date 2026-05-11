@@ -20,6 +20,7 @@ import {
   Zap,
   Tag,
   UsersRound,
+  Radio,
 } from "lucide-react";
 import { useState } from "react";
 import { WMS_BASE_URL } from "@/lib/config";
@@ -27,6 +28,7 @@ import { WMS_BASE_URL } from "@/lib/config";
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
   { href: "/business-intelligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
+  { href: "/crm", label: "CRM", icon: Radio, roles: null, module: "cockpit" as const },
   { href: "/catalogo", label: "Catálogo", icon: Tag, roles: null, module: "cockpit" as const },
   { href: "/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
