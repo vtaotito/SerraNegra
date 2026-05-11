@@ -153,6 +153,29 @@ async function run() {
     console.log("[SKIP] Trigger panel_settings ja existe");
   }
 
+  // Log de syncs SAP -> RD Station (rastreamento de conversoes enviadas)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS panel_rd_sync_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      card_code TEXT NOT NULL,
+      card_name TEXT,
+      email TEXT NOT NULL,
+      conversion_identifier TEXT NOT NULL,
+      tags TEXT[],
+      rd_status INTEGER,
+      rd_ok BOOLEAN NOT NULL DEFAULT false,
+      rd_reason TEXT,
+      rd_response_ms INTEGER,
+      triggered_by UUID REFERENCES panel_users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log("[OK] Tabela panel_rd_sync_log");
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_rd_sync_log_email ON panel_rd_sync_log(email)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_rd_sync_log_card_code ON panel_rd_sync_log(card_code)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_rd_sync_log_created_at ON panel_rd_sync_log(created_at)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_panel_rd_sync_log_conversion ON panel_rd_sync_log(conversion_identifier)`);
+
   // Seed admin user
   const bcrypt = require("bcryptjs");
   const password = "Admin@2026";

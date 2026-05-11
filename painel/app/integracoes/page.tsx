@@ -17,6 +17,9 @@ import {
   Search,
   AlertCircle,
   Pencil,
+  ArrowRightLeft,
+  Play,
+  Eye,
 } from "lucide-react";
 import { syncSAP } from "@/lib/cockpit-api";
 import {
@@ -806,6 +809,17 @@ function RdMarketingCard({
   const [searching, setSearching] = useState(false);
   const [editing, setEditing] = useState(false);
   const [testingApiToken, setTestingApiToken] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{
+    succeeded: number;
+    failed: number;
+    withEmail: number;
+    totalSap: number;
+    skippedNoEmail: number;
+    elapsedMs: number;
+    dryRun: boolean;
+    sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string }>;
+  } | null>(null);
   const [result, setResult] = useState<{
     found: boolean;
     contact: RdMarketingContact | null;
@@ -853,6 +867,59 @@ function RdMarketingCard({
       });
     } finally {
       setTestingApiToken(false);
+    }
+  }, []);
+
+  const handleSapSync = useCallback(async (dryRun: boolean) => {
+    setSyncing(true);
+    setFeedback(null);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/integrations/rd-marketing/sync-sap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun }),
+      });
+      const body = (await res.json()) as {
+        success: boolean;
+        error?: string;
+        data?: {
+          totalSapCustomers: number;
+          withEmail: number;
+          sent: number;
+          succeeded: number;
+          failed: number;
+          skippedNoEmail: number;
+          dryRun: boolean;
+          elapsedMs: number;
+          sampleDetails?: Array<{ cardCode: string; email: string; tags: string[]; ok: boolean; reason?: string }>;
+        };
+      };
+      if (!res.ok || !body.success) {
+        setFeedback({ kind: "error", text: body.error ?? `Falha (HTTP ${res.status})` });
+      } else if (body.data) {
+        const d = body.data;
+        setSyncResult({
+          succeeded: d.succeeded,
+          failed: d.failed,
+          withEmail: d.withEmail,
+          totalSap: d.totalSapCustomers,
+          skippedNoEmail: d.skippedNoEmail,
+          elapsedMs: d.elapsedMs,
+          dryRun: d.dryRun,
+          sampleDetails: d.sampleDetails,
+        });
+        setFeedback({
+          kind: d.failed > 0 ? "warn" : "ok",
+          text: dryRun
+            ? `Simulação: ${d.withEmail} clientes com e-mail de ${d.totalSapCustomers} SAP (${d.skippedNoEmail} sem e-mail).`
+            : `Sync concluído: ${d.succeeded} enviados, ${d.failed} falhas, ${d.skippedNoEmail} sem e-mail (${(d.elapsedMs / 1000).toFixed(1)}s).`,
+        });
+      }
+    } catch (e) {
+      setFeedback({ kind: "error", text: e instanceof Error ? e.message : "Falha de rede" });
+    } finally {
+      setSyncing(false);
     }
   }, []);
 
@@ -1071,6 +1138,120 @@ function RdMarketingCard({
         onClose={() => setEditing(false)}
         onSaved={onConfigSaved}
       />
+
+      {/* Sync SAP → RD Station */}
+      <div className="rounded-lg border border-pink-200 bg-pink-50/30 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ArrowRightLeft className="w-4 h-4 text-pink-600" />
+            <h4 className="text-xs font-semibold text-gray-800 uppercase tracking-wider">
+              Sync SAP → RD Station
+            </h4>
+          </div>
+          <span className="text-[10px] text-cockpit-muted">
+            Cria leads e tageia contatos automaticamente
+          </span>
+        </div>
+        <p className="text-xs text-gray-600 leading-relaxed">
+          Busca todos os clientes ativos no SAP e envia uma <strong>conversão</strong> para cada um que tenha e-mail.
+          Tags automáticas: <code className="text-[10px] bg-white px-1 rounded border border-pink-200">sap-ativo</code>{" "}
+          <code className="text-[10px] bg-white px-1 rounded border border-pink-200">uf-SP</code>{" "}
+          <code className="text-[10px] bg-white px-1 rounded border border-pink-200">regiao-sudeste</code>{" "}
+          <code className="text-[10px] bg-white px-1 rounded border border-pink-200">tipo-cliente</code>
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handleSapSync(true)}
+            disabled={!allowed || syncing || !rd?.hasApiToken}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-pink-300 bg-white text-sm font-medium text-pink-700 hover:bg-pink-50 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {syncing ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Eye className="w-4 h-4" />
+            )}
+            Simulação (dry run)
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSapSync(false)}
+            disabled={!allowed || syncing || !rd?.hasApiToken}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-pink-600 text-sm font-semibold text-white hover:bg-pink-700 motion-safe:transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {syncing ? (
+              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            Executar sync
+          </button>
+          {!rd?.hasApiToken && (
+            <span className="text-[10px] text-red-500 italic">
+              Configure o API Token primeiro
+            </span>
+          )}
+        </div>
+
+        {syncResult && (
+          <div className="rounded-lg border border-pink-200 bg-white p-3 space-y-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs tabular-nums">
+              <div className="rounded-md bg-gray-50 p-2 text-center">
+                <span className="block text-[10px] text-cockpit-muted uppercase">SAP Total</span>
+                <span className="block text-base font-bold text-gray-900">{syncResult.totalSap}</span>
+              </div>
+              <div className="rounded-md bg-emerald-50 p-2 text-center">
+                <span className="block text-[10px] text-cockpit-muted uppercase">Enviados</span>
+                <span className="block text-base font-bold text-emerald-700">{syncResult.succeeded}</span>
+              </div>
+              <div className="rounded-md bg-red-50 p-2 text-center">
+                <span className="block text-[10px] text-cockpit-muted uppercase">Falhas</span>
+                <span className="block text-base font-bold text-red-600">{syncResult.failed}</span>
+              </div>
+              <div className="rounded-md bg-gray-50 p-2 text-center">
+                <span className="block text-[10px] text-cockpit-muted uppercase">Sem e-mail</span>
+                <span className="block text-base font-bold text-gray-500">{syncResult.skippedNoEmail}</span>
+              </div>
+            </div>
+            {syncResult.sampleDetails && syncResult.sampleDetails.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-pink-700 font-medium hover:underline">
+                  {syncResult.dryRun ? "Preview" : "Detalhes"} ({syncResult.sampleDetails.length} primeiros)
+                </summary>
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-pink-100">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-pink-50 text-pink-900/60 text-[10px] uppercase">
+                        <th className="py-1.5 px-2 text-left">Código</th>
+                        <th className="py-1.5 px-2 text-left">E-mail</th>
+                        <th className="py-1.5 px-2 text-left">Tags</th>
+                        <th className="py-1.5 px-2 text-center">OK</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-pink-50">
+                      {syncResult.sampleDetails.map((d, i) => (
+                        <tr key={i} className="hover:bg-pink-50/40">
+                          <td className="py-1 px-2 font-mono text-gray-700">{d.cardCode}</td>
+                          <td className="py-1 px-2 text-gray-600 truncate max-w-[140px]" title={d.email}>{d.email}</td>
+                          <td className="py-1 px-2">
+                            <div className="flex flex-wrap gap-0.5">
+                              {d.tags.slice(0, 4).map((t) => (
+                                <span key={t} className="px-1 py-0.5 rounded bg-pink-100 text-pink-700 text-[9px]">{t}</span>
+                              ))}
+                              {d.tags.length > 4 && <span className="text-[9px] text-gray-400">+{d.tags.length - 4}</span>}
+                            </div>
+                          </td>
+                          <td className="py-1 px-2 text-center">{d.ok ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 inline" /> : <AlertCircle className="w-3.5 h-3.5 text-red-500 inline" />}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
     </IntegrationCard>
   );
 }
