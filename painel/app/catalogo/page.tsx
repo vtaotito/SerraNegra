@@ -27,14 +27,19 @@ import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from 
 const COD_NAMES: Record<string, string> = {
   GN: "Garrafa Normal", GI: "Garrafa Importada", PO: "Pote",
   TM: "Tampa Metálica", TA: "Tampa Alumínio", TP: "Tampa Plástica",
-  RO: "Rolha", LA: "Lacre", CH: "Chapa", PA: "Palete", MO: "Moldura",
+  RO: "Rolha", LA: "Lacre",
 };
 
 const COD_COLORS: Record<string, string> = {
   GN: "#A81C2C", GI: "#c42538", PO: "#0ea5e9", TM: "#f59e0b",
   TA: "#8b5cf6", TP: "#10b981", RO: "#ec4899", LA: "#78696c",
-  CH: "#6366f1", PA: "#14b8a6", MO: "#f97316",
 };
+
+/**
+ * Grupos ocultos da UI (auxiliares logísticos / não-vendáveis).
+ * Filtrados em `buildFromAnalytics` — afeta KPIs, charts, tabela e selects.
+ */
+const HIDDEN_GROUPS: ReadonlySet<string> = new Set(["CH", "EM", "MO", "PA"]);
 
 const PIE_COLORS = ["#A81C2C", "#0ea5e9", "#f59e0b", "#8b5cf6", "#10b981", "#ec4899", "#6366f1", "#14b8a6"];
 
@@ -181,34 +186,47 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
   products: ProductRow[];
   codGroups: CodGroup[];
   clientsByItem: Map<string, number>;
+  hiddenSkuCount: number;
+  hiddenRevenue: number;
 } {
-  const products: ProductRow[] = rows.map((r) => {
-    const info = parseItemInfo(r.item_code, r.item_description);
-    const qtdEmb = r.total_qty;
-    const qtdUnd = qtdEmb * info.embalaQty;
-    const fat = r.total_revenue;
-    return {
-      itemCode: r.item_code,
-      cod: info.cod,
-      codName: COD_NAMES[info.cod] ?? info.cod,
-      subNome: info.subNome,
-      capacidade: info.capacidade,
-      cor: info.cor,
-      fechamento: info.fechamento,
-      embala: info.embala,
-      embalaQty: info.embalaQty,
-      qtdEmb,
-      qtdUnd,
-      faturamento: fat,
-      precoEmbMedio: qtdEmb > 0 ? fat / qtdEmb : 0,
-      precoUndMedio: qtdUnd > 0 ? fat / qtdUnd : 0,
-      vendas: r.sale_count,
-      clientes: r.unique_clients,
-      maxSaleValue: r.max_sale ?? 0,
-      minSaleValue: r.min_sale ?? 0,
-      qty3mUnd: (r.qty_3m ?? 0) * info.embalaQty,
-    };
-  }).sort((a, b) => b.faturamento - a.faturamento);
+  let hiddenSkuCount = 0;
+  let hiddenRevenue = 0;
+
+  const products: ProductRow[] = rows
+    .map((r) => {
+      const info = parseItemInfo(r.item_code, r.item_description);
+      if (HIDDEN_GROUPS.has(info.cod)) {
+        hiddenSkuCount += 1;
+        hiddenRevenue += r.total_revenue;
+        return null;
+      }
+      const qtdEmb = r.total_qty;
+      const qtdUnd = qtdEmb * info.embalaQty;
+      const fat = r.total_revenue;
+      return {
+        itemCode: r.item_code,
+        cod: info.cod,
+        codName: COD_NAMES[info.cod] ?? info.cod,
+        subNome: info.subNome,
+        capacidade: info.capacidade,
+        cor: info.cor,
+        fechamento: info.fechamento,
+        embala: info.embala,
+        embalaQty: info.embalaQty,
+        qtdEmb,
+        qtdUnd,
+        faturamento: fat,
+        precoEmbMedio: qtdEmb > 0 ? fat / qtdEmb : 0,
+        precoUndMedio: qtdUnd > 0 ? fat / qtdUnd : 0,
+        vendas: r.sale_count,
+        clientes: r.unique_clients,
+        maxSaleValue: r.max_sale ?? 0,
+        minSaleValue: r.min_sale ?? 0,
+        qty3mUnd: (r.qty_3m ?? 0) * info.embalaQty,
+      } satisfies ProductRow;
+    })
+    .filter((p): p is ProductRow => p !== null)
+    .sort((a, b) => b.faturamento - a.faturamento);
 
   const clientsByItem = new Map<string, number>();
   for (const p of products) clientsByItem.set(p.itemCode, p.clientes);
@@ -229,7 +247,7 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
     mediana: median(g.unitPrices),
   })).sort((a, b) => b.faturamento - a.faturamento);
 
-  return { products, codGroups, clientsByItem };
+  return { products, codGroups, clientsByItem, hiddenSkuCount, hiddenRevenue };
 }
 
 function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number>): UnifiedProductRow[] {
@@ -620,7 +638,7 @@ function ProdutosContent() {
     [analyticsData, spMap],
   );
 
-  const { products, codGroups, clientsByItem } = useMemo(
+  const { products, codGroups, clientsByItem, hiddenSkuCount, hiddenRevenue } = useMemo(
     () => buildFromAnalytics(analyticsData?.products ?? []),
     [analyticsData],
   );
@@ -634,6 +652,10 @@ function ProdutosContent() {
 
   const embalaDist = useMemo(() => embalaDistribution(products), [products]);
   const top10 = useMemo(() => unifiedProducts.slice(0, 10), [unifiedProducts]);
+  const top10Mean = useMemo(
+    () => (top10.length > 0 ? top10.reduce((s, p) => s + p.faturamento, 0) / top10.length : 0),
+    [top10],
+  );
   const codMedianAll = useMemo(() => median(codGroups.map((g) => g.faturamento)), [codGroups]);
 
   const [search, setSearch] = useState("");
@@ -760,6 +782,18 @@ function ProdutosContent() {
                 </span>
               )}
             </p>
+            {hiddenSkuCount > 0 && (
+              <p
+                className="mt-1 inline-flex items-center gap-1.5 text-[10px] text-gray-400 italic"
+                title="Grupos auxiliares (logística/insumo) — escondidos das visualizações comerciais."
+              >
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-300" aria-hidden />
+                {hiddenSkuCount} SKUs auxiliares ocultos (CH · EM · MO · PA)
+                {hiddenRevenue > 0 && (
+                  <span className="text-gray-400"> · {fmtBRL(hiddenRevenue, 0)}</span>
+                )}
+              </p>
+            )}
           </div>
         </div>
         <button type="button" onClick={handleExport}
@@ -792,146 +826,446 @@ function ProdutosContent() {
       {/* ═══ Charts ═══ */}
       {codGroups.length > 0 && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-2 rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+          <section
+            aria-label="Faturamento por grupo de produto"
+            className="xl:col-span-2 rounded-xl border border-cockpit-border bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-cockpit-accent" />
                 <h2 className="text-sm font-semibold text-gray-900">Faturamento por Grupo</h2>
               </div>
-              {codMedianAll > 0 && (
-                <span className="text-[10px] text-cockpit-muted">
-                  Mediana: <strong className="text-blue-600">{fmtBRL(codMedianAll)}</strong>
+              <div className="flex items-center gap-3 text-[10px] text-cockpit-muted">
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-sm bg-cockpit-accent"
+                    aria-hidden
+                  />
+                  Faturamento
                 </span>
-              )}
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-[2px] bg-gray-400"
+                    style={{ borderTop: "1px dashed #94a3b8", height: 0 }}
+                    aria-hidden
+                  />
+                  Nº SKUs
+                </span>
+                {codMedianAll > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-[2px]"
+                      style={{ borderTop: "1.5px dashed #3b82f6", height: 0 }}
+                      aria-hidden
+                    />
+                    Mediana
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="h-56">
+            <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={codGroups} barCategoryGap="15%">
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_AXIS_LINE} />
-                  <XAxis dataKey="cod" tick={{ ...chartAxisTick("md"), fontWeight: 600 }} />
-                  <YAxis yAxisId="fat" tick={chartAxisTick("sm")} tickFormatter={(v) => formatYAxisCompact(Number(v))} width={50} />
-                  <YAxis yAxisId="skus" orientation="right" tick={chartAxisTick("sm")} width={30} />
-                  <Tooltip content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const d = payload[0]?.payload as CodGroup;
-                    return (
-                      <CockpitTooltipFrame>
-                        <p className="font-semibold text-gray-800">{d.cod} — {d.name}</p>
-                        <p className="text-cockpit-accent font-bold">{fmtBRL(d.faturamento)}</p>
-                        <p className="text-gray-500">{fmtNum(d.skus)} SKUs · {fmtNum(d.vendas)} vendas</p>
-                        <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · R$/UND: {fmtBRL(d.precoUndMedio, 2)}</p>
-                      </CockpitTooltipFrame>
-                    );
-                  }} />
-                  <Bar yAxisId="fat" dataKey="faturamento" radius={[4, 4, 0, 0]}>
-                    {codGroups.map((g) => <Cell key={g.cod} fill={COD_COLORS[g.cod] ?? "#A81C2C"} fillOpacity={0.85} />)}
+                <ComposedChart
+                  data={codGroups}
+                  barCategoryGap="18%"
+                  margin={{ top: 18, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_AXIS_LINE} vertical={false} />
+                  <XAxis
+                    dataKey="cod"
+                    tick={{ ...chartAxisTick("md"), fontWeight: 700 }}
+                    axisLine={{ stroke: CHART_AXIS_LINE }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="fat"
+                    tick={chartAxisTick("sm")}
+                    tickFormatter={(v) => formatYAxisCompact(Number(v))}
+                    width={50}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    yAxisId="skus"
+                    orientation="right"
+                    tick={{ ...chartAxisTick("sm"), fill: CHART_MUTED }}
+                    width={30}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(168,28,44,0.06)" }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0]?.payload as CodGroup;
+                      const pctTotal = totalFat > 0 ? (d.faturamento / totalFat) * 100 : 0;
+                      return (
+                        <CockpitTooltipFrame>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className="inline-block w-3 h-3 rounded"
+                              style={{ background: COD_COLORS[d.cod] ?? "#A81C2C" }}
+                            />
+                            <p className="font-semibold text-gray-800">
+                              {d.cod} — {d.name}
+                            </p>
+                          </div>
+                          <p className="text-cockpit-accent font-bold tabular-nums">
+                            {fmtBRL(d.faturamento)}{" "}
+                            <span className="text-[10px] font-medium text-gray-500">
+                              ({pctTotal.toFixed(1)}% do total)
+                            </span>
+                          </p>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1 text-[11px] text-gray-600 tabular-nums">
+                            <span className="text-gray-400">SKUs</span>
+                            <span className="text-right">{fmtNum(d.skus)}</span>
+                            <span className="text-gray-400">Vendas</span>
+                            <span className="text-right">{fmtNum(d.vendas)}</span>
+                            <span className="text-gray-400">UND</span>
+                            <span className="text-right">{fmtNum(d.qtdUnd)}</span>
+                            <span className="text-gray-400">R$/UND</span>
+                            <span className="text-right text-teal-700">
+                              {fmtBRL(d.precoUndMedio, 2)}
+                            </span>
+                          </div>
+                        </CockpitTooltipFrame>
+                      );
+                    }}
+                  />
+                  {codMedianAll > 0 && (
+                    <ReferenceLine
+                      yAxisId="fat"
+                      y={codMedianAll}
+                      stroke="#3b82f6"
+                      strokeDasharray="5 4"
+                      strokeWidth={1.4}
+                      ifOverflow="extendDomain"
+                      label={{
+                        value: `Mediana ${fmtBRL(codMedianAll, 0)}`,
+                        position: "insideTopRight",
+                        fill: "#3b82f6",
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                      }}
+                    />
+                  )}
+                  <Bar
+                    yAxisId="fat"
+                    dataKey="faturamento"
+                    radius={[6, 6, 0, 0]}
+                    animationDuration={650}
+                    animationEasing="ease-out"
+                    label={{
+                      position: "top",
+                      formatter: (v) => formatYAxisCompact(Number(v)),
+                      fontSize: 10,
+                      fill: "#374151",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {codGroups.map((g) => (
+                      <Cell
+                        key={g.cod}
+                        fill={COD_COLORS[g.cod] ?? "#A81C2C"}
+                        fillOpacity={0.92}
+                      />
+                    ))}
                   </Bar>
-                  <Line yAxisId="skus" type="monotone" dataKey="skus" stroke={CHART_MUTED} strokeWidth={1.5} strokeDasharray="4 3" dot={{ r: 3, fill: CHART_MUTED }} />
-                  {codMedianAll > 0 && <ReferenceLine yAxisId="fat" y={codMedianAll} stroke="#3b82f6" strokeDasharray="6 4" strokeWidth={1} />}
+                  <Line
+                    yAxisId="skus"
+                    type="monotone"
+                    dataKey="skus"
+                    stroke="#94a3b8"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    dot={{ r: 3.5, fill: "#fff", stroke: "#94a3b8", strokeWidth: 1.5 }}
+                    activeDot={{ r: 5, fill: "#94a3b8" }}
+                    animationDuration={900}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
+          <section
+            aria-label="Mix de embalagens e ranking de grupos"
+            className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm"
+          >
             <div className="flex items-center gap-2 mb-3">
               <Layers className="w-4 h-4 text-cockpit-accent" />
               <h2 className="text-sm font-semibold text-gray-900">Mix de Embalagens</h2>
             </div>
             {embalaDist.length > 0 ? (
               <>
-                <div className="h-32 flex items-center">
-                  <ResponsiveContainer width="55%" height="100%">
-                    <PieChart>
-                      <Pie data={embalaDist} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={3}>
-                        {embalaDist.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
-                        const pct = totalFat > 0 ? ((d.value / totalFat) * 100).toFixed(1) : "0";
-                        return (
-                          <CockpitTooltipFrame>
-                            <p className="font-semibold text-gray-800">{d.name}</p>
-                            <p className="text-cockpit-accent font-bold">{fmtBRL(d.value)} ({pct}%)</p>
-                            <p className="text-gray-500">{fmtNum(d.qty)} UND</p>
-                          </CockpitTooltipFrame>
-                        );
-                      }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="flex-1 space-y-1.5 pl-2">
+                <div className="h-40 flex items-center gap-1">
+                  <div className="relative w-1/2 h-full flex items-center justify-center">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={embalaDist}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={38}
+                          outerRadius={62}
+                          paddingAngle={3}
+                          stroke="#fff"
+                          strokeWidth={2}
+                          animationDuration={700}
+                        >
+                          {embalaDist.map((_, i) => (
+                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload;
+                            const pct = totalFat > 0
+                              ? ((d.value / totalFat) * 100).toFixed(1)
+                              : "0";
+                            return (
+                              <CockpitTooltipFrame>
+                                <p className="font-semibold text-gray-800">{d.name}</p>
+                                <p className="text-cockpit-accent font-bold tabular-nums">
+                                  {fmtBRL(d.value)}{" "}
+                                  <span className="text-[10px] font-medium text-gray-500">
+                                    ({pct}%)
+                                  </span>
+                                </p>
+                                <p className="text-gray-500 text-[11px] tabular-nums">
+                                  {fmtNum(d.qty)} UND
+                                </p>
+                              </CockpitTooltipFrame>
+                            );
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    {/* Label central — total de tipos de embalagem */}
+                    <div
+                      className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center"
+                      aria-hidden
+                    >
+                      <span className="text-base font-bold text-gray-900 tabular-nums leading-none">
+                        {embalaDist.length}
+                      </span>
+                      <span className="text-[9px] text-cockpit-muted uppercase tracking-wider mt-0.5">
+                        tipos
+                      </span>
+                    </div>
+                  </div>
+                  <ul className="flex-1 space-y-1.5 pl-2 max-h-36 overflow-y-auto pr-1">
                     {embalaDist.map((e, i) => {
-                      const pct = totalFat > 0 ? (e.value / totalFat * 100).toFixed(1) : "0";
+                      const pct = totalFat > 0
+                        ? (e.value / totalFat * 100).toFixed(1)
+                        : "0";
                       return (
-                        <div key={e.name} className="flex items-center gap-2 text-xs">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                          <span className="text-gray-600">{e.name}</span>
-                          <span className="ml-auto font-semibold text-gray-900 tabular-nums">{pct}%</span>
-                        </div>
+                        <li
+                          key={e.name}
+                          className="flex items-center gap-2 text-xs hover:bg-gray-50 rounded px-1 py-0.5 motion-safe:transition-colors"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
+                            aria-hidden
+                          />
+                          <span className="text-gray-700 font-medium">{e.name}</span>
+                          <span className="ml-auto font-semibold text-gray-900 tabular-nums">
+                            {pct}%
+                          </span>
+                        </li>
                       );
                     })}
-                  </div>
+                  </ul>
                 </div>
                 <div className="mt-4 pt-3 border-t border-cockpit-border/50 space-y-2">
-                  <p className="text-[10px] text-cockpit-muted uppercase tracking-wider font-semibold mb-2">Grupos de Produto</p>
+                  <p className="text-[10px] text-cockpit-muted uppercase tracking-wider font-semibold mb-2">
+                    Top grupos por faturamento
+                  </p>
                   {codGroups.slice(0, 5).map((g) => {
                     const pct = totalFat > 0 ? (g.faturamento / totalFat * 100) : 0;
+                    const color = COD_COLORS[g.cod] ?? "#A81C2C";
                     return (
-                      <div key={g.cod} className="flex items-center gap-2">
-                        <span className="w-6 text-[10px] font-bold text-center rounded py-0.5" style={{ background: (COD_COLORS[g.cod] ?? "#A81C2C") + "20", color: COD_COLORS[g.cod] ?? "#A81C2C" }}>{g.cod}</span>
+                      <div
+                        key={g.cod}
+                        className="flex items-center gap-2 group"
+                        title={`${g.name} · ${fmtNum(g.skus)} SKU(s)`}
+                      >
+                        <span
+                          className="w-7 text-[10px] font-bold text-center rounded py-0.5 motion-safe:transition-colors"
+                          style={{ background: `${color}1f`, color }}
+                        >
+                          {g.cod}
+                        </span>
                         <div className="flex-1">
-                          <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                            <div className="h-full rounded-full motion-safe:transition-all duration-500" style={{ width: `${pct}%`, background: COD_COLORS[g.cod] ?? "#A81C2C" }} />
+                          <div className="h-2 rounded-full bg-gray-100 overflow-hidden relative">
+                            <div
+                              className="h-full rounded-full motion-safe:transition-all duration-700 ease-out"
+                              style={{ width: `${pct}%`, background: color }}
+                            />
                           </div>
                         </div>
-                        <span className="text-[10px] text-gray-600 tabular-nums w-10 text-right">{pct.toFixed(0)}%</span>
-                        <span className="text-[10px] text-cockpit-accent font-semibold tabular-nums w-16 text-right">{fmtBRL(g.faturamento)}</span>
+                        <span className="text-[10px] text-gray-500 tabular-nums w-9 text-right">
+                          {pct.toFixed(0)}%
+                        </span>
+                        <span className="text-[10px] text-cockpit-accent font-semibold tabular-nums w-16 text-right">
+                          {fmtBRL(g.faturamento, 0)}
+                        </span>
                       </div>
                     );
                   })}
                 </div>
               </>
-            ) : <p className="text-xs text-cockpit-muted text-center py-6">Sem dados</p>}
-          </div>
+            ) : (
+              <p className="text-xs text-cockpit-muted text-center py-6">Sem dados</p>
+            )}
+          </section>
         </div>
       )}
 
       {/* Top 10 Produtos */}
       {top10.length > 0 && (
-        <div className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-cockpit-accent" />
-            <h2 className="text-sm font-semibold text-gray-900">Top 10 Produtos por Faturamento</h2>
+        <section
+          aria-label="Top 10 produtos por faturamento"
+          className="rounded-xl border border-cockpit-border bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-cockpit-accent" />
+              <h2 className="text-sm font-semibold text-gray-900">
+                Top 10 Produtos por Faturamento
+              </h2>
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-cockpit-muted">
+              {top10Mean > 0 && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block w-3 h-[2px]"
+                    style={{ borderTop: "1.5px dashed #3b82f6", height: 0 }}
+                    aria-hidden
+                  />
+                  Média {fmtBRL(top10Mean, 0)}
+                </span>
+              )}
+              <span className="hidden sm:inline italic">
+                clique em uma barra para detalhar
+              </span>
+            </div>
           </div>
-          <div className="h-64">
+          <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={top10} layout="vertical" barCategoryGap="12%">
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_AXIS_LINE} />
-                <XAxis type="number" tick={chartAxisTick("sm")} tickFormatter={(v) => formatYAxisCompact(Number(v))} />
-                <YAxis dataKey="subNome" type="category" tick={{ ...chartAxisTick("sm"), fontSize: 9 }} width={160}
-                  tickFormatter={(v: string) => v.length > 28 ? v.substring(0, 28) + "…" : v} />
-                <Tooltip content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
-                  const d = payload[0]?.payload as UnifiedProductRow;
-                  return (
-                    <CockpitTooltipFrame>
-                      <p className="font-semibold text-gray-800">{d.subNome}</p>
-                      <p className="text-gray-500 text-[10px] font-mono mb-1">{d.itemCode} · {d.cod}</p>
-                      <p className="text-cockpit-accent font-bold">{fmtBRL(d.faturamento)}</p>
-                      <p className="text-gray-500">{fmtNum(d.qtdUnd)} UND · {d.variants.length} emb · {fmtNum(d.vendas)} vendas</p>
-                      <p className="text-teal-700">R$/UND: {fmtBRL(d.precoUndMedio, 2)}</p>
-                    </CockpitTooltipFrame>
-                  );
-                }} />
-                <Bar dataKey="faturamento" radius={[0, 4, 4, 0]} barSize={18} cursor="pointer"
-                  onClick={(d) => { if (d) setModalProduct(d as unknown as UnifiedProductRow); }}>
-                  {top10.map((p) => <Cell key={p.itemCode} fill={COD_COLORS[p.cod] ?? "#A81C2C"} fillOpacity={0.8} />)}
+              <BarChart
+                data={top10}
+                layout="vertical"
+                barCategoryGap="14%"
+                margin={{ top: 4, right: 56, left: 0, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={CHART_AXIS_LINE}
+                  horizontal={false}
+                />
+                <XAxis
+                  type="number"
+                  tick={chartAxisTick("sm")}
+                  tickFormatter={(v) => formatYAxisCompact(Number(v))}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  dataKey="subNome"
+                  type="category"
+                  tick={{ ...chartAxisTick("sm"), fontSize: 10 }}
+                  width={184}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: string, i: number) => {
+                    const rank = `#${i + 1}`.padStart(3, " ");
+                    const trimmed = v.length > 28 ? v.substring(0, 28) + "…" : v;
+                    return `${rank}  ${trimmed}`;
+                  }}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(168,28,44,0.06)" }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null;
+                    const d = payload[0]?.payload as UnifiedProductRow;
+                    const idx = top10.findIndex((p) => p.itemCode === d.itemCode);
+                    return (
+                      <CockpitTooltipFrame>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span
+                            className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold text-white"
+                            style={{ background: COD_COLORS[d.cod] ?? "#A81C2C" }}
+                          >
+                            {idx >= 0 ? idx + 1 : "?"}
+                          </span>
+                          <p className="font-semibold text-gray-800 text-[12px]">
+                            {d.subNome}
+                          </p>
+                        </div>
+                        <p className="text-gray-500 text-[10px] font-mono mb-1">
+                          {d.itemCode} · {d.cod}
+                        </p>
+                        <p className="text-cockpit-accent font-bold tabular-nums">
+                          {fmtBRL(d.faturamento)}
+                        </p>
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1 text-[11px] text-gray-600 tabular-nums">
+                          <span className="text-gray-400">UND</span>
+                          <span className="text-right">{fmtNum(d.qtdUnd)}</span>
+                          <span className="text-gray-400">Vendas</span>
+                          <span className="text-right">{fmtNum(d.vendas)}</span>
+                          <span className="text-gray-400">Embalagens</span>
+                          <span className="text-right">{d.variants.length}</span>
+                          <span className="text-gray-400">R$/UND</span>
+                          <span className="text-right text-teal-700">
+                            {fmtBRL(d.precoUndMedio, 2)}
+                          </span>
+                        </div>
+                      </CockpitTooltipFrame>
+                    );
+                  }}
+                />
+                {top10Mean > 0 && (
+                  <ReferenceLine
+                    x={top10Mean}
+                    stroke="#3b82f6"
+                    strokeDasharray="5 4"
+                    strokeWidth={1.4}
+                  />
+                )}
+                <Bar
+                  dataKey="faturamento"
+                  radius={[0, 6, 6, 0]}
+                  barSize={20}
+                  cursor="pointer"
+                  animationDuration={700}
+                  animationEasing="ease-out"
+                  onClick={(d) => {
+                    if (d) setModalProduct(d as unknown as UnifiedProductRow);
+                  }}
+                  label={{
+                    position: "right",
+                    formatter: (v) => fmtBRL(Number(v), 0),
+                    fontSize: 10,
+                    fill: "#374151",
+                    fontWeight: 600,
+                  }}
+                >
+                  {top10.map((p) => (
+                    <Cell
+                      key={p.itemCode}
+                      fill={COD_COLORS[p.cod] ?? "#A81C2C"}
+                      fillOpacity={0.88}
+                    />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </section>
       )}
 
       {/* ═══ Filtros ═══ */}
