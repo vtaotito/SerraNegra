@@ -106,7 +106,7 @@ interface RdMarketingContact {
 }
 
 function fmtDateTime(iso?: string | null): string {
-  if (!iso) return "â€”";
+  if (!iso) return "—";
   return new Date(iso).toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
   });
@@ -183,16 +183,16 @@ function IntegracoesContent() {
               <Zap className="w-5 h-5 text-gsn-700" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">IntegraÃ§Ãµes</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Integrações</h1>
               <p className="text-sm text-gray-500">
-                SAP Business One Â· SMTP Â· RD Station CRM/Marketing
+                SAP Business One · SMTP · RD Station CRM/Marketing
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {lastChecked && (
               <span className="text-[11px] text-gray-400 hidden sm:inline">
-                Ãšltima verificaÃ§Ã£o: {fmtDateTime(lastChecked)}
+                Última verificação: {fmtDateTime(lastChecked)}
               </span>
             )}
             <button
@@ -219,7 +219,7 @@ function IntegracoesContent() {
             <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>
               Apenas <strong>admin</strong> e <strong>supervisor</strong> podem
-              testar as integraÃ§Ãµes. VocÃª vÃª os status mas as aÃ§Ãµes estÃ£o
+              testar as integrações. Você vê os status mas as ações estão
               desabilitadas.
             </span>
           </div>
@@ -293,9 +293,9 @@ function IntegracoesContent() {
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   SAP Card â€” status + 6 botÃµes de sync
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════
+   SAP Card — status + 6 botões de sync
+   ═══════════════════════════════════════════════════════════ */
 
 function sapStatusToBadge(sap: SapStatus | null): IntegrationStatus {
   if (!sap) return "unknown";
@@ -347,7 +347,7 @@ function SapCard({
       iconColor="text-cockpit-accent"
       iconBg="bg-cockpit-accent/10"
       title="SAP Business One"
-      subtitle="Service Layer Â· sincronizaÃ§Ã£o e healthcheck"
+      subtitle="Service Layer · sincronização e healthcheck"
       status={loading ? "unknown" : sapStatusToBadge(sap)}
       details={
         sap
@@ -373,7 +373,7 @@ function SapCard({
     >
       <div>
         <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
-          SincronizaÃ§Ã£o de entidades
+          Sincronização de entidades
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {SYNC_ENDPOINTS.map((ep) => {
@@ -421,9 +421,9 @@ function SapCard({
   );
 }
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-   SMTP Card â€” input email + envio teste
-   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ═══════════════════════════════════════════════════════════
+   SMTP Card — input email + envio teste
+   ═══════════════════════════════════════════════════════════ */
 
 function smtpStatusToBadge(smtp: SmtpStatus | null): IntegrationStatus {
   if (!smtp) return "unknown";
@@ -450,7 +450,7 @@ const SMTP_FIELDS: ConfigFieldDef[] = [
   },
   {
     key: "SMTP_USER",
-    label: "UsuÃ¡rio",
+    label: "Usuário",
     type: "email",
     required: true,
     placeholder: "noreply@garrafariaserranegra.com.br",
@@ -555,7 +555,7 @@ function SmtpCard({
                   : null,
                 mono: true,
               },
-              { label: "UsuÃ¡rio", value: smtp.user, mono: true },
+              { label: "Usuário", value: smtp.user, mono: true },
               { label: "Remetente", value: smtp.from, mono: true },
               {
                 label: "Credencial",
@@ -566,10 +566,10 @@ function SmtpCard({
       }
       envHints={[
         { key: "SMTP_HOST", required: true, note: "ex.: smtp.hostinger.com" },
-        { key: "SMTP_PORT", note: "padrÃ£o 587 (STARTTLS) ou 465 (SSL)" },
+        { key: "SMTP_PORT", note: "padrão 587 (STARTTLS) ou 465 (SSL)" },
         { key: "SMTP_USER", required: true },
         { key: "SMTP_PASS", required: true },
-        { key: "SMTP_FROM", note: 'ex.: "Painel GSN <noreply@â€¦>"' },
+        { key: "SMTP_FROM", note: 'ex.: "Painel GSN <noreply@…>"' },
       ]}
       message={feedback}
       actions={
@@ -580,7 +580,7 @@ function SmtpCard({
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 motion-safe:transition-colors disabled:opacity-50"
         >
           <Pencil className="w-4 h-4" />
-          {editing ? "Fechar" : "Editar configuraÃ§Ã£o"}
+          {editing ? "Fechar" : "Editar configuração"}
         </button>
       }
     >

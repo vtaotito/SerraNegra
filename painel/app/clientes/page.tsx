@@ -605,7 +605,7 @@ export default function ClientesPage() {
         {uniqueEstados.length > 1 && (
           <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)}
             className="px-3 py-2 rounded-xl bg-cockpit-bg border border-cockpit-border text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-cockpit-accent/30 motion-safe:transition-all">
-            <option value="ALL">Todos UFs</option>
+            <option value="ALL">Todas as UFs</option>
             {uniqueEstados.map((e) => <option key={e} value={e}>{e}</option>)}
           </select>
         )}
