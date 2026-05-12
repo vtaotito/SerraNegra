@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, querySalesOrders, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, runInvoicesSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1233,6 +1233,59 @@ export async function registerSapRoutes(app: FastifyInstance) {
       results,
       timestamp: new Date().toISOString(),
     });
+  });
+
+  // ========================================
+  // NOTAS FISCAIS — base local (PostgreSQL)
+  // ========================================
+
+  /**
+   * GET /api/sap/invoices
+   * Consulta notas fiscais da base local (sincronizada do SAP).
+   * Query: dateFrom, dateTo, cardCode, salesPerson, cancelled (active|cancelled), search, limit, offset
+   */
+  app.get("/sap/invoices", async (req, reply) => {
+    const query = req.query as any;
+    try {
+      const result = await queryInvoices({
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        cardCode: query.cardCode,
+        salesPerson: query.salesPerson ? Number(query.salesPerson) : undefined,
+        cancelled: query.cancelled,
+        search: query.search,
+        limit: query.limit ? Number(query.limit) : undefined,
+        offset: query.offset ? Number(query.offset) : undefined,
+      });
+
+      reply.code(200).send({
+        ok: true,
+        total: result.total,
+        count: result.items.length,
+        items: result.items,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/invoices/sync
+   * Dispara sync manual: busca notas do SAP e persiste no PostgreSQL.
+   */
+  app.post("/sap/invoices/sync", async (req, reply) => {
+    try {
+      const result = await runInvoicesSync();
+      reply.code(result.ok ? 200 : 500).send({
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
   });
 
   // ========================================

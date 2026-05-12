@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Análise E2E — Pedidos SAP B1 → Painel BI | GSN WMS</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--bg2:#161822;--bg3:#1c1f2e;--bg4:#232639;
+  --surface:#1e2235;--surface2:#252a40;
+  --border:#2a2f48;--border2:#353b58;
+  --text:#e4e6f0;--text2:#a0a5c0;--text3:#6b7194;
+  --accent:#a81c2c;--accent2:#d4a853;--accent3:#e8c06a;
+  --green:#10b981;--blue:#3b82f6;--violet:#8b5cf6;--amber:#f59e0b;--red:#ef4444;--teal:#14b8a6;--sky:#0ea5e9;
+  --radius:12px;--radius-sm:8px;--radius-xs:6px;
+  --shadow:0 2px 12px rgba(0,0,0,.35);
+  --mono:'JetBrains Mono','Fira Code','Consolas',monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+html{scroll-behavior:smooth;font-size:15px}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ─── SIDEBAR NAV ─── */
+.sidebar{position:fixed;top:0;left:0;width:260px;height:100vh;background:var(--bg2);border-right:1px solid var(--border);padding:24px 0;overflow-y:auto;z-index:100;transition:transform .3s ease}
+.sidebar-brand{padding:0 20px 20px;border-bottom:1px solid var(--border)}
+.sidebar-brand h2{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:.5px;text-transform:uppercase}
+.sidebar-brand p{font-size:11px;color:var(--text3);margin-top:4px}
+.nav-group{padding:16px 0}
+.nav-group-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);padding:0 20px 8px}
+.nav-link{display:block;padding:7px 20px 7px 28px;font-size:13px;color:var(--text2);text-decoration:none;border-left:2px solid transparent;transition:all .15s}
+.nav-link:hover{color:var(--text);background:var(--bg3);border-left-color:var(--border2)}
+.nav-link.active{color:var(--accent3);border-left-color:var(--accent);background:rgba(168,28,44,.06)}
+.nav-link .badge{display:inline-block;font-size:9px;padding:1px 6px;border-radius:10px;background:var(--bg4);color:var(--text3);margin-left:6px;vertical-align:1px}
+
+/* Mobile toggle */
+.menu-toggle{display:none;position:fixed;top:12px;left:12px;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs);width:40px;height:40px;cursor:pointer;color:var(--text)}
+.menu-toggle svg{width:20px;height:20px}
+
+/* ─── MAIN ─── */
+.main{margin-left:260px;min-height:100vh}
+
+/* Hero */
+.hero{background:linear-gradient(135deg,var(--bg2) 0%,var(--bg3) 100%);border-bottom:1px solid var(--border);padding:48px 48px 40px}
+.hero h1{font-size:28px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,var(--text) 40%,var(--accent3));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero .subtitle{font-size:15px;color:var(--text2);margin-top:8px;max-width:680px}
+.hero-meta{display:flex;gap:16px;margin-top:20px;flex-wrap:wrap}
+.hero-meta span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);background:var(--bg);padding:5px 12px;border-radius:20px;border:1px solid var(--border)}
+.hero-meta .dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+
+/* Content */
+.content{max-width:960px;padding:40px 48px 80px}
+
+/* ─── ARCHITECTURE FLOW ─── */
+.flow-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:24px 0}
+.flow-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 16px;text-align:center;position:relative;transition:border-color .2s,transform .2s}
+.flow-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.flow-card .flow-num{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--accent);color:#fff;font-size:10px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.flow-card .flow-icon{font-size:28px;margin-bottom:8px}
+.flow-card h4{font-size:13px;font-weight:700;color:var(--text)}
+.flow-card p{font-size:11px;color:var(--text3);margin-top:4px}
+.flow-arrow{display:flex;align-items:center;justify-content:center;color:var(--accent);font-size:18px}
+
+/* ─── SECTIONS ─── */
+.section{margin-top:48px;scroll-margin-top:24px}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.section-header .sec-badge{width:32px;height:32px;border-radius:var(--radius-xs);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0}
+.section-header h2{font-size:20px;font-weight:700}
+.section-header h3{font-size:16px;font-weight:600}
+
+/* Color coding per layer */
+.layer-sap{background:rgba(59,130,246,.12);color:var(--blue);border:1px solid rgba(59,130,246,.2)}
+.layer-gw{background:rgba(168,28,44,.12);color:var(--accent);border:1px solid rgba(168,28,44,.2)}
+.layer-pg{background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+.layer-fe{background:rgba(212,168,83,.12);color:var(--accent2);border:1px solid rgba(212,168,83,.2)}
+
+/* ─── TABLES ─── */
+.table-wrap{overflow-x:auto;margin:16px 0;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:var(--bg3)}
+th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--text2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+td code{font-family:var(--mono);font-size:12px;color:var(--accent3);background:var(--bg);padding:1px 6px;border-radius:4px}
+td .type-pill{font-family:var(--mono);font-size:10px;color:var(--teal);background:rgba(20,184,166,.1);padding:2px 8px;border-radius:4px;white-space:nowrap}
+td .method{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap}
+.method-get{background:rgba(16,185,129,.12);color:var(--green)}
+.method-post{background:rgba(59,130,246,.12);color:var(--blue)}
+
+/* ─── CODE BLOCKS ─── */
+.code-block{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 20px;margin:16px 0;overflow-x:auto;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--text2);tab-size:2}
+.code-block .kw{color:var(--blue)}
+.code-block .type{color:var(--teal)}
+.code-block .str{color:var(--green)}
+.code-block .num{color:var(--amber)}
+.code-block .comment{color:var(--text3);font-style:italic}
+
+/* ─── INFO BOXES ─── */
+.info-box{border-radius:var(--radius-sm);padding:14px 18px;margin:16px 0;font-size:13px;line-height:1.6;display:flex;gap:12px;align-items:flex-start}
+.info-box .info-icon{font-size:18px;flex-shrink:0;margin-top:1px}
+.info-box.info{background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18);color:var(--text2)}
+.info-box.warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.18);color:var(--text2)}
+.info-box.danger{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);color:var(--text2)}
+.info-box strong{color:var(--text)}
+
+/* ─── STEPS ─── */
+.steps{margin:16px 0;display:flex;flex-direction:column;gap:8px}
+.step{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xs)}
+.step-num{width:24px;height:24px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-text{font-size:13px;color:var(--text2)}
+.step-text strong{color:var(--text)}
+
+/* ─── KPI GRID ─── */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin:16px 0}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;transition:border-color .2s}
+.kpi:hover{border-color:var(--accent)}
+.kpi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text3)}
+.kpi-value{font-size:16px;font-weight:700;color:var(--text);margin-top:4px}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* ─── DIAGRAM ─── */
+.diagram-wrap{margin:24px 0;overflow-x:auto}
+.diagram{min-width:700px;display:flex;flex-direction:column;gap:0;align-items:center}
+.diagram-layer{width:100%;max-width:700px;border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative}
+.diagram-layer h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.diagram-layer .tag{font-size:10px;padding:2px 8px;border-radius:10px}
+.diagram-boxes{display:flex;gap:8px;flex-wrap:wrap}
+.diagram-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);padding:8px 14px;font-size:11px;font-family:var(--mono)}
+.diagram-box span{display:block;font-size:9px;color:var(--text3);font-family:var(--sans);margin-top:2px}
+.diagram-arrow{display:flex;justify-content:center;padding:8px 0;color:var(--accent);font-size:20px}
+.diagram-detail{font-size:11px;color:var(--text3);margin-top:8px;padding-left:12px;border-left:2px solid var(--border)}
+.diagram-detail code{font-family:var(--mono);font-size:11px;color:var(--accent3)}
+
+/* ─── PILLS ─── */
+.pill{display:inline-block;font-size:10px;font-weight:600;padding:3px 10px;border-radius:12px;margin:2px}
+.pill-blue{background:rgba(59,130,246,.12);color:var(--blue)}
+.pill-green{background:rgba(16,185,129,.12);color:var(--green)}
+.pill-red{background:rgba(239,68,68,.12);color:var(--red)}
+.pill-amber{background:rgba(245,158,11,.12);color:var(--amber)}
+.pill-violet{background:rgba(139,92,246,.12);color:var(--violet)}
+.pill-teal{background:rgba(20,184,166,.12);color:var(--teal)}
+
+/* ─── SUB SECTION ─── */
+.sub-section{margin-top:28px}
+.sub-section h3{font-size:15px;font-weight:700;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.sub-section h3 .num{color:var(--text3);font-weight:400}
+p{font-size:13.5px;color:var(--text2);margin:8px 0;line-height:1.7}
+
+/* ─── FOOTER ─── */
+.footer{border-top:1px solid var(--border);padding:24px 48px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--text3)}
+
+/* ─── COLLAPSIBLE ─── */
+details{margin:12px 0;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden}
+details[open]{background:var(--surface)}
+summary{padding:12px 16px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;background:var(--surface);transition:background .15s;list-style:none;display:flex;align-items:center;gap:8px}
+summary::-webkit-details-marker{display:none}
+summary::before{content:'▸';color:var(--text3);font-size:12px;transition:transform .2s}
+details[open] summary::before{transform:rotate(90deg)}
+summary:hover{background:var(--bg3)}
+details .detail-body{padding:16px}
+
+/* ─── RESPONSIVE ─── */
+@media(max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:translateX(0)}
+  .menu-toggle{display:flex;align-items:center;justify-content:center}
+  .main{margin-left:0}
+  .hero{padding:24px}
+  .content{padding:24px}
+  .flow-grid{grid-template-columns:1fr 1fr}
+  .footer{padding:20px 24px;flex-direction:column;gap:8px}
+}
+@media(max-width:600px){
+  .flow-grid{grid-template-columns:1fr}
+  .kpi-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- Mobile menu toggle -->
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')" aria-label="Menu">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+  <div class="sidebar-brand">
+    <h2>GSN WMS</h2>
+    <p>Garrafaria Serra Negra</p>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">Visão Geral</div>
+    <a class="nav-link active" href="#arquitetura">Arquitetura</a>
+    <a class="nav-link" href="#fluxo-visual">Fluxo Visual</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">Camadas do Sistema</div>
+    <a class="nav-link" href="#sap">SAP Business One <span class="badge">Origem</span></a>
+    <a class="nav-link" href="#gateway">Gateway Fastify <span class="badge">Sync</span></a>
+    <a class="nav-link" href="#postgresql">PostgreSQL <span class="badge">SQL</span></a>
+    <a class="nav-link" href="#frontend">Frontend React <span class="badge">UI</span></a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">Detalhes Técnicos</div>
+    <a class="nav-link" href="#schema">Schema do Banco</a>
+    <a class="nav-link" href="#queries">Queries SQL</a>
+    <a class="nav-link" href="#kpis">Cálculo dos KPIs</a>
+    <a class="nav-link" href="#graficos">Agregações / Gráficos</a>
+    <a class="nav-link" href="#detalhe-pedido">Detalhe do Pedido</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title">Referência</div>
+    <a class="nav-link" href="#paginas-bi">Mapa de Páginas BI</a>
+    <a class="nav-link" href="#rotas-api">Rotas da API</a>
+    <a class="nav-link" href="#pontos-criticos">Pontos Críticos</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- Hero -->
+  <header class="hero">
+    <h1>Análise E2E — Pedidos SAP B1 → Painel BI</h1>
+    <p class="subtitle">Documentação completa do fluxo de dados desde o SAP Business One até os números exibidos nas telas de Business Intelligence do Painel GSN.</p>
+    <div class="hero-meta">
+      <span><span class="dot" style="background:var(--blue)"></span>SAP B1 Service Layer</span>
+      <span><span class="dot" style="background:var(--accent)"></span>Gateway Fastify</span>
+      <span><span class="dot" style="background:var(--green)"></span>PostgreSQL</span>
+      <span><span class="dot" style="background:var(--accent2)"></span>Painel Next.js</span>
+      <span>12/05/2026</span>
+    </div>
+  </header>
+
+  <div class="content">
+
+    <!-- ═══ 1. ARQUITETURA ═══ -->
+    <section class="section" id="arquitetura">
+      <div class="section-header">
+        <div class="sec-badge" style="background:var(--bg3);color:var(--text)">1</div>
+        <h2>Visão Geral da Arquitetura</h2>
+      </div>
+
+      <div class="flow-grid">
+        <div class="flow-card">
+          <div class="flow-num">1</div>
+          <div class="flow-icon">🏢</div>
+          <h4>SAP B1</h4>
+          <p>Service Layer OData<br>Fonte de verdade</p>
+        </div>
+        <div class="flow-card">
+          <div class="flow-num">2</div>
+          <div class="flow-icon">⚡</div>
+          <h4>Gateway</h4>
+          <p>Fastify :4000<br>Sync + Cache + API</p>
+        </div>
+        <div class="flow-card">
+          <div class="flow-num">3</div>
+          <div class="flow-icon">🗄️</div>
+          <h4>PostgreSQL</h4>
+          <p>Persistência local<br>Tabelas + Views + SQL</p>
+        </div>
+        <div class="flow-card">
+          <div class="flow-num">4</div>
+          <div class="flow-icon">📊</div>
+          <h4>Painel Next.js</h4>
+          <p>React + Recharts<br>Agregação client-side</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Camada</th><th>Tecnologia</th><th>Função</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill pill-blue">Origem</span></td><td>SAP B1 Service Layer (OData)</td><td>Fonte de verdade dos dados transacionais</td></tr>
+            <tr><td><span class="pill pill-red">Gateway</span></td><td>Fastify (:4000)</td><td>Sync periódico, cache, API REST</td></tr>
+            <tr><td><span class="pill pill-green">Persistência</span></td><td>PostgreSQL</td><td>Armazenamento local dos pedidos</td></tr>
+            <tr><td><span class="pill pill-amber">Frontend</span></td><td>Next.js (React)</td><td>Agregação client-side + visualização</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══ FLUXO VISUAL ═══ -->
+    <section class="section" id="fluxo-visual">
+      <div class="section-header">
+        <div class="sec-badge layer-sap">⬇</div>
+        <h2>Diagrama de Fluxo E2E</h2>
+      </div>
+
+      <div class="diagram-wrap">
+        <div class="diagram">
+          <!-- SAP -->
+          <div class="diagram-layer" style="border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.03)">
+            <h4 style="color:var(--blue)">
+              <span class="tag" style="background:rgba(59,130,246,.15);color:var(--blue)">CAMADA 1</span>
+              SAP BUSINESS ONE
+            </h4>
+            <div class="diagram-boxes">
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">ORDR<span>Sales Orders</span></div>
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">RDR1<span>Order Lines</span></div>
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">OINV<span>Invoices</span></div>
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">OSLP<span>SalesPersons</span></div>
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">OCRD<span>Customers</span></div>
+              <div class="diagram-box" style="border-color:rgba(59,130,246,.2)">OITM<span>Items</span></div>
+            </div>
+            <div class="diagram-detail">
+              Acesso via <code>GET /Orders?$top=500&amp;$skip=N</code> + <code>GET /Orders({DocEntry})</code>
+            </div>
+          </div>
+
+          <div class="diagram-arrow">▼</div>
+
+          <!-- Gateway -->
+          <div class="diagram-layer" style="border-color:rgba(168,28,44,.3);background:rgba(168,28,44,.03)">
+            <h4 style="color:var(--accent)">
+              <span class="tag" style="background:rgba(168,28,44,.15);color:var(--accent)">CAMADA 2</span>
+              GATEWAY FASTIFY (:4000)
+            </h4>
+            <div class="diagram-boxes">
+              <div class="diagram-box" style="border-color:rgba(168,28,44,.2)">Scheduler<span>Cron: cada hora</span></div>
+              <div class="diagram-box" style="border-color:rgba(168,28,44,.2)">Normalização<span>tYES→Y, bost_Open→O</span></div>
+              <div class="diagram-box" style="border-color:rgba(168,28,44,.2)">UPSERT<span>ON CONFLICT DO UPDATE</span></div>
+              <div class="diagram-box" style="border-color:rgba(168,28,44,.2)">API REST<span>9 rotas principais</span></div>
+            </div>
+            <div class="diagram-detail">
+              Sync: pagina /Orders em lotes de 500, normaliza e persiste via upsert atômico.<br>
+              Linhas carregadas sob demanda (lazy load) via <code>GET /Orders({docEntry})</code>
+            </div>
+          </div>
+
+          <div class="diagram-arrow">▼</div>
+
+          <!-- PostgreSQL -->
+          <div class="diagram-layer" style="border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.03)">
+            <h4 style="color:var(--green)">
+              <span class="tag" style="background:rgba(16,185,129,.15);color:var(--green)">CAMADA 3</span>
+              POSTGRESQL
+            </h4>
+            <div class="diagram-boxes">
+              <div class="diagram-box" style="border-color:rgba(16,185,129,.2)">sap_sales_orders<span>Cabeçalho (PK: doc_entry)</span></div>
+              <div class="diagram-box" style="border-color:rgba(16,185,129,.2)">sap_sales_order_lines<span>Linhas (FK: doc_entry)</span></div>
+              <div class="diagram-box" style="border-color:rgba(16,185,129,.2)">sap_sync_log<span>Histórico de syncs</span></div>
+              <div class="diagram-box" style="border-color:rgba(16,185,129,.2)">markup_overrides<span>Custos editáveis</span></div>
+            </div>
+            <div class="diagram-detail">
+              6 Views: <code>vw_pedidos_resumo</code>, <code>vw_pedidos_por_cliente</code>, <code>vw_pedidos_por_vendedor</code>,
+              <code>vw_itens_mais_vendidos</code>, <code>vw_pedidos_por_mes</code>, <code>vw_ultimo_sync</code>
+            </div>
+          </div>
+
+          <div class="diagram-arrow">▼</div>
+
+          <!-- Frontend -->
+          <div class="diagram-layer" style="border-color:rgba(212,168,83,.3);background:rgba(212,168,83,.03)">
+            <h4 style="color:var(--accent2)">
+              <span class="tag" style="background:rgba(212,168,83,.15);color:var(--accent2)">CAMADA 4</span>
+              PAINEL NEXT.JS (React)
+            </h4>
+            <div class="diagram-boxes">
+              <div class="diagram-box" style="border-color:rgba(212,168,83,.2)">cockpit-api.ts<span>fetchSalesOrders()</span></div>
+              <div class="diagram-box" style="border-color:rgba(212,168,83,.2)">useFetch()<span>orders[], spMap, custMap</span></div>
+              <div class="diagram-box" style="border-color:rgba(212,168,83,.2)">useMemo()<span>KPIs + Stats + Charts</span></div>
+              <div class="diagram-box" style="border-color:rgba(212,168,83,.2)">Recharts<span>Gráficos + Tabela Virtual</span></div>
+            </div>
+            <div class="diagram-detail">
+              Agregação <strong>100% client-side</strong>: totalDocs, activeValue, ticketMédio, mediana,
+              aggregateByDay, statusAggregate, histogramBins, etc.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 2. SAP B1 ═══ -->
+    <section class="section" id="sap">
+      <div class="section-header">
+        <div class="sec-badge layer-sap">2</div>
+        <h2>SAP Business One (Origem)</h2>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">2.1</span> Conexão</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Parâmetro</th><th>Configuração</th></tr></thead>
+            <tbody>
+              <tr><td>URL Base</td><td><code>SAP_B1_BASE_URL</code> — Service Layer HTTPS, porta 50000</td></tr>
+              <tr><td>Banco</td><td><code>SAP_B1_COMPANY_DB</code> (SBO_GARRAFARIA_PRD)</td></tr>
+              <tr><td>Autenticação</td><td>Login/Password via <code>POST /Login</code></td></tr>
+              <tr><td>Timeout</td><td>120s por request, max 3 tentativas</td></tr>
+              <tr><td>Concorrência</td><td>Max 4 requests simultâneos, 5 RPS</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">2.2</span> Entidades OData Consultadas</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Endpoint OData</th><th>Entidade SAP</th><th>Tabela HANA</th><th>Retorno</th></tr></thead>
+            <tbody>
+              <tr><td><code>/Orders</code></td><td>Sales Orders</td><td><code>ORDR + RDR1</code></td><td>Pedidos de venda com DocumentLines</td></tr>
+              <tr><td><code>/Orders({DocEntry})</code></td><td>Sales Order Detail</td><td><code>ORDR + RDR1</code></td><td>Pedido individual com linhas</td></tr>
+              <tr><td><code>/Invoices</code></td><td>A/R Invoices</td><td><code>OINV + INV1</code></td><td>Notas fiscais de saída</td></tr>
+              <tr><td><code>/Invoices({DocEntry})</code></td><td>Invoice Detail</td><td><code>OINV + INV1</code></td><td>NF individual com linhas</td></tr>
+              <tr><td><code>/SalesPersons</code></td><td>Vendedores</td><td><code>OSLP</code></td><td>Código e nome dos vendedores</td></tr>
+              <tr><td><code>/BusinessPartners</code></td><td>Clientes</td><td><code>OCRD</code></td><td>Dados cadastrais dos clientes</td></tr>
+              <tr><td><code>/Items</code></td><td>Produtos</td><td><code>OITM</code></td><td>Catálogo de produtos</td></tr>
+              <tr><td><code>/PriceLists</code></td><td>Listas de Preço</td><td><code>OPLN</code></td><td>Tabelas de preço</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">2.3</span> Campos de /Orders (Sales Orders)</h3>
+        <div class="info-box info">
+          <span class="info-icon">ℹ️</span>
+          <div>A busca é feita em <strong>2 fases</strong>: Phase 1 busca headers paginados em lotes de 500 (<code>GET /Orders?$top=500&amp;$skip=N</code>). Phase 2 enriquece cada pedido individualmente com DocumentLines.</div>
+        </div>
+
+        <details>
+          <summary>Mapeamento de Campos — Header (ORDR)</summary>
+          <div class="detail-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Campo SAP</th><th>Campo Local (PG)</th><th>Tipo</th><th>Descrição</th></tr></thead>
+                <tbody>
+                  <tr><td><code>DocEntry</code></td><td><code>doc_entry</code></td><td><span class="type-pill">INTEGER PK</span></td><td>Identificador único interno do SAP</td></tr>
+                  <tr><td><code>DocNum</code></td><td><code>doc_num</code></td><td><span class="type-pill">INTEGER</span></td><td>Número do documento visível ao usuário</td></tr>
+                  <tr><td><code>DocDate</code></td><td><code>doc_date</code></td><td><span class="type-pill">DATE</span></td><td>Data de emissão do pedido</td></tr>
+                  <tr><td><code>DocDueDate</code></td><td><code>doc_due_date</code></td><td><span class="type-pill">DATE</span></td><td>Data de entrega prevista</td></tr>
+                  <tr><td><code>CardCode</code></td><td><code>card_code</code></td><td><span class="type-pill">TEXT</span></td><td>Código do cliente (ex: C00001)</td></tr>
+                  <tr><td><code>CardName</code></td><td><code>card_name</code></td><td><span class="type-pill">TEXT</span></td><td>Nome/razão social do cliente</td></tr>
+                  <tr><td><code>DocTotal</code></td><td><code>doc_total</code></td><td><span class="type-pill">NUMERIC(18,2)</span></td><td>Valor total do pedido em BRL</td></tr>
+                  <tr><td><code>DocStatus</code></td><td><code>doc_status</code></td><td><span class="type-pill">TEXT</span></td><td>O = Aberto, C = Fechado</td></tr>
+                  <tr><td><code>SalesPersonCode</code></td><td><code>sales_person_code</code></td><td><span class="type-pill">INTEGER</span></td><td>Código do vendedor (FK → OSLP)</td></tr>
+                  <tr><td><code>Cancelled</code></td><td><code>cancelled</code></td><td><span class="type-pill">TEXT</span></td><td>Y = Cancelado, N = Ativo</td></tr>
+                  <tr><td><code>Comments</code></td><td><code>comments</code></td><td><span class="type-pill">TEXT</span></td><td>Observações do pedido</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Mapeamento de Campos — Linhas (RDR1)</summary>
+          <div class="detail-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Campo SAP</th><th>Campo Local (PG)</th><th>Tipo</th><th>Descrição</th></tr></thead>
+                <tbody>
+                  <tr><td><code>LineNum</code></td><td><code>line_num</code></td><td><span class="type-pill">INTEGER</span></td><td>Número da linha no pedido</td></tr>
+                  <tr><td><code>ItemCode</code></td><td><code>item_code</code></td><td><span class="type-pill">TEXT</span></td><td>SKU do produto</td></tr>
+                  <tr><td><code>ItemDescription</code></td><td><code>item_description</code></td><td><span class="type-pill">TEXT</span></td><td>Descrição do produto</td></tr>
+                  <tr><td><code>Quantity</code></td><td><code>quantity</code></td><td><span class="type-pill">NUMERIC(18,4)</span></td><td>Quantidade vendida</td></tr>
+                  <tr><td><code>UnitPrice</code></td><td><code>unit_price</code></td><td><span class="type-pill">NUMERIC(18,4)</span></td><td>Preço unitário</td></tr>
+                  <tr><td><code>LineTotal</code></td><td><code>line_total</code></td><td><span class="type-pill">NUMERIC(18,2)</span></td><td>Total da linha (Qty × Price − Desc)</td></tr>
+                  <tr><td><code>DiscountPercent</code></td><td><code>discount_percent</code></td><td><span class="type-pill">NUMERIC(8,2)</span></td><td>Percentual de desconto</td></tr>
+                  <tr><td><code>WarehouseCode</code></td><td><code>warehouse_code</code></td><td><span class="type-pill">TEXT</span></td><td>Código do depósito</td></tr>
+                  <tr><td><code>CFOPCode</code></td><td><code>cfop_code</code></td><td><span class="type-pill">TEXT</span></td><td>CFOP da operação fiscal</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ═══ 3. GATEWAY ═══ -->
+    <section class="section" id="gateway">
+      <div class="section-header">
+        <div class="sec-badge layer-gw">3</div>
+        <h2>Gateway Fastify (Sync + API)</h2>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">3.1</span> Processo de Sincronização</h3>
+        <div class="info-box info">
+          <span class="info-icon">🔄</span>
+          <div>O scheduler roda automaticamente via <strong>cron a cada hora</strong> (<code>0 * * * *</code>) + sync inicial 15s após boot. Também pode ser disparado manualmente via <code>POST /api/sap/sales-orders/sync</code>.</div>
+        </div>
+
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div class="step-text"><strong>ensureSchema()</strong> — Cria/migra tabelas no PostgreSQL (CREATE TABLE IF NOT EXISTS + índices + views)</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Paginação SAP</strong> — Busca pedidos em lotes de 500 via <code>GET /Orders?$top=500&amp;$skip=N</code></div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-text"><strong>upsertOrderHeaders()</strong> — Salva cabeçalhos no PostgreSQL via INSERT ... ON CONFLICT (upsert atômico)</div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-text"><strong>Loop até 50.000</strong> — Continua até acabar páginas ou atingir o limite</div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-text"><strong>Log de sync</strong> — Registra resultado na tabela <code>sap_sync_log</code></div></div>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">3.2</span> Normalização dos Dados</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Campo</th><th>Valor SAP</th><th>Valor Normalizado</th><th>Função</th></tr></thead>
+            <tbody>
+              <tr><td><code>Cancelled</code></td><td><code>tYES</code></td><td><span class="pill pill-red">Y</span></td><td><code>normCancelled()</code></td></tr>
+              <tr><td><code>Cancelled</code></td><td>qualquer outro</td><td><span class="pill pill-green">N</span></td><td><code>normCancelled()</code></td></tr>
+              <tr><td><code>DocumentStatus</code></td><td><code>bost_Open</code> ou <code>O</code></td><td><span class="pill pill-green">O</span></td><td><code>normDocStatus()</code></td></tr>
+              <tr><td><code>DocumentStatus</code></td><td><code>bost_Close</code> ou <code>C</code></td><td><span class="pill pill-amber">C</span></td><td><code>normDocStatus()</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">3.3</span> Lazy Loading de Linhas</h3>
+        <p>O sync principal salva apenas headers (sem linhas) para ser rápido. As linhas são carregadas sob demanda:</p>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div class="step-text">Verifica se existem linhas na tabela <code>sap_sales_order_lines</code> para o <code>doc_entry</code></div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-text">Se sim → retorna do <strong>cache local</strong> (source: <code>cache</code>)</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-text">Se não → busca no SAP via <code>GET /Orders({docEntry})</code></div></div>
+          <div class="step"><div class="step-num">4</div><div class="step-text">Salva as linhas no PostgreSQL para cache futuro</div></div>
+          <div class="step"><div class="step-num">5</div><div class="step-text">Atualiza <code>num_lines</code> e <code>total_quantity</code> no header</div></div>
+        </div>
+      </div>
+
+      <div class="sub-section" id="rotas-api">
+        <h3><span class="num">3.4</span> Rotas da API</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rota</th><th>Método</th><th>Descrição</th><th>Fonte</th></tr></thead>
+            <tbody>
+              <tr><td><code>/api/sap/sales-orders</code></td><td><span class="method method-get">GET</span></td><td>Lista pedidos com filtros</td><td>PostgreSQL</td></tr>
+              <tr><td><code>/api/sap/sales-orders/sync</code></td><td><span class="method method-post">POST</span></td><td>Dispara sync manual SAP → PG</td><td>SAP → PostgreSQL</td></tr>
+              <tr><td><code>/api/sap/sales-orders/:docEntry/lines</code></td><td><span class="method method-get">GET</span></td><td>Linhas de um pedido</td><td>PostgreSQL ou SAP</td></tr>
+              <tr><td><code>/api/sap/products/analytics</code></td><td><span class="method method-get">GET</span></td><td>Análise agregada de produtos</td><td>PostgreSQL</td></tr>
+              <tr><td><code>/api/sap/products/orders</code></td><td><span class="method method-get">GET</span></td><td>Linhas por itemCodes</td><td>PostgreSQL</td></tr>
+              <tr><td><code>/api/sap/sync/invoices</code></td><td><span class="method method-post">POST</span></td><td>Busca notas fiscais</td><td>SAP direto</td></tr>
+              <tr><td><code>/api/sap/sync/salespersons</code></td><td><span class="method method-post">POST</span></td><td>Busca vendedores</td><td>SAP direto</td></tr>
+              <tr><td><code>/api/sap/sync/bp-groups</code></td><td><span class="method method-post">POST</span></td><td>Busca grupos de BP</td><td>SAP direto</td></tr>
+              <tr><td><code>/api/sap/prices/practiced</code></td><td><span class="method method-get">GET</span></td><td>Preços praticados</td><td>PostgreSQL</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 4. POSTGRESQL ═══ -->
+    <section class="section" id="postgresql">
+      <div class="section-header">
+        <div class="sec-badge layer-pg">4</div>
+        <h2>PostgreSQL (Queries SQL)</h2>
+      </div>
+
+      <div class="sub-section" id="schema">
+        <h3><span class="num">4.1</span> Schema do Banco</h3>
+
+        <details open>
+          <summary>Tabela: <code>sap_sales_orders</code> (Cabeçalho)</summary>
+          <div class="detail-body">
+            <div class="code-block"><span class="kw">CREATE TABLE</span> sap_sales_orders (
+  doc_entry         <span class="type">INTEGER PRIMARY KEY</span>,
+  doc_num           <span class="type">INTEGER NOT NULL</span>,
+  doc_date          <span class="type">DATE</span>,
+  doc_due_date      <span class="type">DATE</span>,
+  card_code         <span class="type">TEXT</span>,
+  card_name         <span class="type">TEXT</span>,
+  doc_total         <span class="type">NUMERIC(18,2)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  doc_currency      <span class="type">TEXT</span> <span class="kw">DEFAULT</span> <span class="str">'BRL'</span>,
+  doc_status        <span class="type">TEXT</span>,          <span class="comment">-- O = Aberto, C = Fechado</span>
+  document_status   <span class="type">TEXT</span>,
+  sales_person_code <span class="type">INTEGER</span>,
+  cancelled         <span class="type">TEXT</span> <span class="kw">DEFAULT</span> <span class="str">'N'</span>,  <span class="comment">-- Y ou N</span>
+  comments          <span class="type">TEXT</span>,
+  num_lines         <span class="type">INTEGER</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  total_quantity    <span class="type">NUMERIC(18,4)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  raw_json          <span class="type">JSONB</span>,
+  created_at        <span class="type">TIMESTAMPTZ</span> <span class="kw">DEFAULT</span> NOW(),
+  synced_at         <span class="type">TIMESTAMPTZ</span> <span class="kw">DEFAULT</span> NOW()
+);</div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Tabela: <code>sap_sales_order_lines</code> (Linhas)</summary>
+          <div class="detail-body">
+            <div class="code-block"><span class="kw">CREATE TABLE</span> sap_sales_order_lines (
+  id                <span class="type">SERIAL PRIMARY KEY</span>,
+  doc_entry         <span class="type">INTEGER NOT NULL</span> <span class="kw">REFERENCES</span> sap_sales_orders(doc_entry) <span class="kw">ON DELETE CASCADE</span>,
+  line_num          <span class="type">INTEGER</span>,
+  item_code         <span class="type">TEXT</span>,
+  item_description  <span class="type">TEXT</span>,
+  quantity          <span class="type">NUMERIC(18,4)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  unit_price        <span class="type">NUMERIC(18,4)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  line_total        <span class="type">NUMERIC(18,2)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  discount_percent  <span class="type">NUMERIC(8,2)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  warehouse_code    <span class="type">TEXT</span>,
+  price             <span class="type">NUMERIC(18,4)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  cfop_code         <span class="type">TEXT</span>,
+  weight            <span class="type">NUMERIC(18,4)</span> <span class="kw">DEFAULT</span> <span class="num">0</span>,
+  tax_code          <span class="type">TEXT</span>,
+  usage_code        <span class="type">INTEGER</span>,
+  <span class="kw">UNIQUE</span> (doc_entry, line_num)
+);</div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Índices</summary>
+          <div class="detail-body">
+            <div class="code-block"><span class="kw">CREATE INDEX</span> idx_so_doc_date      <span class="kw">ON</span> sap_sales_orders (doc_date <span class="kw">DESC</span>);
+<span class="kw">CREATE INDEX</span> idx_so_card_code     <span class="kw">ON</span> sap_sales_orders (card_code);
+<span class="kw">CREATE INDEX</span> idx_so_doc_status    <span class="kw">ON</span> sap_sales_orders (doc_status);
+<span class="kw">CREATE INDEX</span> idx_so_synced        <span class="kw">ON</span> sap_sales_orders (synced_at <span class="kw">DESC</span>);
+<span class="kw">CREATE INDEX</span> idx_so_sales_person  <span class="kw">ON</span> sap_sales_orders (sales_person_code);
+<span class="kw">CREATE INDEX</span> idx_sol_doc_entry    <span class="kw">ON</span> sap_sales_order_lines (doc_entry);
+<span class="kw">CREATE INDEX</span> idx_sol_item_code    <span class="kw">ON</span> sap_sales_order_lines (item_code);</div>
+          </div>
+        </details>
+      </div>
+
+      <div class="sub-section" id="queries">
+        <h3><span class="num">4.2</span> Queries Principais</h3>
+
+        <details>
+          <summary><code>querySalesOrders()</code> — Página de Pedidos</summary>
+          <div class="detail-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Aspecto</th><th>Detalhe</th></tr></thead>
+                <tbody>
+                  <tr><td>Filtros</td><td><code>doc_date &gt;= dateFrom</code>, <code>doc_date &lt;= dateTo</code>, <code>card_code</code>, <code>sales_person_code</code>, status, search (ILIKE)</td></tr>
+                  <tr><td>Ordenação</td><td><code>doc_date DESC, doc_num DESC</code></td></tr>
+                  <tr><td>Limite</td><td>Default 50.000 registros</td></tr>
+                  <tr><td>Linhas</td><td><code>COALESCE(json_agg de lines, json_agg de raw_json-&gt;'DocumentLines', '[]')</code></td></tr>
+                  <tr><td>Campos extras</td><td>PaymentMethod, ShipToCode, Address, Address2 extraídos do <code>raw_json</code></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary><code>queryProductAnalytics()</code> — Análise de Produtos</summary>
+          <div class="detail-body">
+            <p>Agregação server-side que retorna ~200-500 linhas ao invés de 50k orders.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Métrica</th><th>SQL</th><th>Frontend</th></tr></thead>
+                <tbody>
+                  <tr><td><code>total_qty</code></td><td><code>SUM(quantity)</code></td><td>Quantidade total vendida</td></tr>
+                  <tr><td><code>total_revenue</code></td><td><code>SUM(line_total)</code></td><td>Faturamento do produto</td></tr>
+                  <tr><td><code>sale_count</code></td><td><code>COUNT(*)</code></td><td>Número de transações</td></tr>
+                  <tr><td><code>unique_clients</code></td><td><code>COUNT(DISTINCT card_code)</code></td><td>Clientes únicos</td></tr>
+                  <tr><td><code>qty_3m</code></td><td><code>SUM(CASE WHEN doc_date &gt;= cutoff)</code></td><td>Qtd nos últimos 3 meses</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Preços Praticados — <code>GET /sap/prices/practiced</code></summary>
+          <div class="detail-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Métrica</th><th>SQL</th><th>Descrição</th></tr></thead>
+                <tbody>
+                  <tr><td><code>avg_price</code></td><td><code>ROUND(AVG(unit_price), 2)</code></td><td>Preço médio praticado</td></tr>
+                  <tr><td><code>median_price</code></td><td><code>PERCENTILE_CONT(0.5) WITHIN GROUP</code></td><td>Mediana do preço</td></tr>
+                  <tr><td><code>last_price</code></td><td><code>ARRAY_AGG(... ORDER BY doc_date DESC)[1]</code></td><td>Último preço praticado</td></tr>
+                  <tr><td><code>avg_discount</code></td><td><code>ROUND(AVG(discount_percent), 1)</code></td><td>Desconto médio</td></tr>
+                  <tr><td><code>total_revenue</code></td><td><code>SUM(line_total)</code></td><td>Receita total</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details>
+          <summary>Views Materializadas</summary>
+          <div class="detail-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>View</th><th>Agregação</th><th>Uso</th></tr></thead>
+                <tbody>
+                  <tr><td><code>vw_pedidos_resumo</code></td><td>Seleção simples ordenada por data</td><td>Consulta rápida</td></tr>
+                  <tr><td><code>vw_pedidos_por_cliente</code></td><td>GROUP BY card_code</td><td>Ranking de clientes</td></tr>
+                  <tr><td><code>vw_pedidos_por_vendedor</code></td><td>GROUP BY sales_person_code</td><td>Ranking de vendedores</td></tr>
+                  <tr><td><code>vw_itens_mais_vendidos</code></td><td>GROUP BY item_code</td><td>Ranking de produtos</td></tr>
+                  <tr><td><code>vw_pedidos_por_mes</code></td><td>DATE_TRUNC('month')</td><td>Tendência mensal</td></tr>
+                  <tr><td><code>vw_ultimo_sync</code></td><td>Último registro de sap_sync_log</td><td>Status da sincronização</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ═══ 5. FRONTEND ═══ -->
+    <section class="section" id="frontend">
+      <div class="section-header">
+        <div class="sec-badge layer-fe">5</div>
+        <h2>Frontend (Painel Next.js)</h2>
+      </div>
+
+      <div class="sub-section" id="paginas-bi">
+        <h3><span class="num">5.1</span> Mapa de Páginas BI</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Página</th><th>Rota</th><th>API</th><th>Dados</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Visão Executiva</strong></td><td><code>/business-intelligence</code></td><td><span class="method method-get">GET</span> <code>/api/bi/executive-summary</code></td><td>KPIs, Rankings, Trends</td></tr>
+              <tr><td><strong>Pedidos de Venda</strong></td><td><code>/business-intelligence/pedidos</code></td><td><span class="method method-get">GET</span> <code>/api/sap/sales-orders</code></td><td>Tabela + KPIs + gráficos</td></tr>
+              <tr><td><strong>Comercial/Dados</strong></td><td><code>/business-intelligence/comercial/dados</code></td><td><span class="method method-post">POST</span> <code>/api/sap/sync/invoices</code></td><td>Notas fiscais expandíveis</td></tr>
+              <tr><td><strong>Faturamento</strong></td><td><code>/business-intelligence/faturamento</code></td><td><span class="method method-get">GET</span> <code>/api/sap/sales-orders</code></td><td>Análise temporal</td></tr>
+              <tr><td><strong>Clientes</strong></td><td><code>/business-intelligence/clientes</code></td><td><span class="method method-get">GET</span> sales-orders + customers</td><td>Análise por cliente</td></tr>
+              <tr><td><strong>Vendedores</strong></td><td><code>/business-intelligence/vendedores</code></td><td><span class="method method-get">GET</span> sales-orders + salespersons</td><td>Análise por vendedor</td></tr>
+              <tr><td><strong>Estoque</strong></td><td><code>/business-intelligence/estoque</code></td><td><span class="method method-get">GET</span> <code>/v1/inventory</code></td><td>Posição de estoque</td></tr>
+              <tr><td><strong>Preços</strong></td><td><code>/business-intelligence/precos</code></td><td><span class="method method-get">GET</span> <code>/sap/prices</code> + practiced</td><td>Tabelas e preços praticados</td></tr>
+              <tr><td><strong>Markup</strong></td><td><code>/business-intelligence/markup</code></td><td><span class="method method-get">GET</span> <code>/sap/markup/items</code></td><td>Precificação e custos</td></tr>
+              <tr><td><strong>Carteira</strong></td><td><code>/business-intelligence/carteira</code></td><td><span class="method method-get">GET</span> <code>/api/sap/sales-orders</code></td><td>Pedidos em aberto</td></tr>
+              <tr><td><strong>Marketing</strong></td><td><code>/business-intelligence/marketing</code></td><td><span class="method method-get">GET</span> <code>/api/bi/rd/overview</code></td><td>RD Station</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section" id="kpis">
+        <h3><span class="num">5.2</span> Cálculo dos KPIs — Pedidos de Venda</h3>
+        <p>Todos os cálculos são feitos <strong>client-side</strong> em React (<code>useMemo</code>) a partir do array de pedidos retornado pela API.</p>
+
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">Pedidos</div><div class="kpi-value">filtered.length</div><div class="kpi-sub">Todos (inclui cancelados)</div></div>
+          <div class="kpi"><div class="kpi-label">Faturamento</div><div class="kpi-value">Σ doc_total</div><div class="kpi-sub">Apenas ativos (cancelled ≠ Y)</div></div>
+          <div class="kpi"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">Fat / COUNT</div><div class="kpi-sub">Apenas ativos</div></div>
+          <div class="kpi"><div class="kpi-label">Mediana</div><div class="kpi-value">median(values)</div><div class="kpi-sub">Ativos com valor &gt; 0</div></div>
+          <div class="kpi"><div class="kpi-label">Clientes</div><div class="kpi-value">DISTINCT card_code</div><div class="kpi-sub">Apenas ativos</div></div>
+          <div class="kpi"><div class="kpi-label">Qtd Total</div><div class="kpi-value">Σ total_quantity</div><div class="kpi-sub">Todos (inclui cancelados)</div></div>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">5.3</span> Estatísticas Descritivas (Box Plot)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Métrica</th><th>Fórmula</th><th>Descrição</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Mediana</strong></td><td><code>sorted[mid]</code> ou média dos 2 centrais</td><td>Valor central da distribuição</td></tr>
+              <tr><td><strong>Média</strong></td><td><code>Σ values / count</code></td><td>Média aritmética simples</td></tr>
+              <tr><td><strong>Desvio Padrão</strong></td><td><code>√(Σ(v − mean)² / (n−1))</code></td><td>Dispersão amostral</td></tr>
+              <tr><td><strong>P25 / P75</strong></td><td>Interpolação linear no array ordenado</td><td>Percentis</td></tr>
+              <tr><td><strong>IQR</strong></td><td>P75 − P25</td><td>Amplitude interquartil</td></tr>
+              <tr><td><strong>Assimetria</strong></td><td><code>(mean − median) / mean</code></td><td>Direção da cauda</td></tr>
+              <tr><td><strong>CV</strong></td><td><code>stdDev / mean</code></td><td>Coeficiente de variação</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section" id="graficos">
+        <h3><span class="num">5.4</span> Agregações para Gráficos</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Gráfico</th><th>Função</th><th>Lógica</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill pill-blue">Tendência Diária</span></td><td><code>aggregateByDay()</code></td><td>Agrupa por doc_date, soma doc_total, conta pedidos. Exclui cancelados.</td></tr>
+              <tr><td><span class="pill pill-violet">Status (Donut)</span></td><td><code>statusAggregate()</code></td><td>Conta Abertos (O, !Y), Fechados (C, !Y), Cancelados (Y)</td></tr>
+              <tr><td><span class="pill pill-amber">Top 5 Clientes</span></td><td><code>aggregateByClient()</code></td><td>Agrupa por card_code, soma doc_total, top 5</td></tr>
+              <tr><td><span class="pill pill-teal">Histograma</span></td><td><code>histogramBins()</code></td><td>Faixas: 0-500, 500-1k, 1k-2.5k, 2.5k-5k, 5k-10k, 10k-25k, 25k-50k, 50k+</td></tr>
+              <tr><td><span class="pill pill-green">Dia da Semana</span></td><td><code>aggregateByWeekday()</code></td><td>getDay() do doc_date, soma + mediana por dia</td></tr>
+              <tr><td><span class="pill pill-red">Por Vendedor</span></td><td><code>aggregateBySalesPerson()</code></td><td>Agrupa por sales_person_code. Top 10.</td></tr>
+              <tr><td><span class="pill pill-blue">Acumulado</span></td><td><code>cumulativeByDay()</code></td><td>Soma progressiva do faturamento diário</td></tr>
+              <tr><td><span class="pill pill-violet">Scatter</span></td><td><code>scatterData()</code></td><td>X = num linhas, Y = doc_total. Max 300 pontos</td></tr>
+              <tr><td><span class="pill pill-amber">Lead Time</span></td><td><code>leadTimeData()</code></td><td>differenceInCalendarDays(due, date). Filtra 0-90 dias</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section" id="detalhe-pedido">
+        <h3><span class="num">5.5</span> Detalhe do Pedido (OrderDetailPanel)</h3>
+        <p>Quando o usuário expande um pedido, as linhas são agrupadas por produto base via <code>groupOrderLines()</code>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Campo</th><th>Fórmula</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Saída (un)</strong></td><td><code>Σ(Quantity × embalaQty)</code> — converte embalagens para unidades</td></tr>
+              <tr><td><strong>% Qtd</strong></td><td><code>(totalUnd do grupo / totalUnd do pedido) × 100</code></td></tr>
+              <tr><td><strong>R$/UND</strong></td><td><code>totalVal / totalUnd</code> (preço médio por unidade)</td></tr>
+              <tr><td><strong>Desc%</strong></td><td><code>MAX(DiscountPercent)</code> entre variantes</td></tr>
+              <tr><td><strong>Total</strong></td><td><code>Σ LineTotal</code> de todas as variantes</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">5.6</span> Visão Executiva — KPIs com Variação</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>KPI</th><th>Fórmula</th><th>Variação (%)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Faturamento</strong></td><td><code>Σ doc_total</code> dos ativos</td><td><code>(fat − prevFat) / prevFat × 100</code></td></tr>
+              <tr><td><strong>Pedidos</strong></td><td><code>COUNT</code> de ativos</td><td><code>(ped − prevPed) / prevPed × 100</code></td></tr>
+              <tr><td><strong>Ticket Médio</strong></td><td><code>fat / pedidos</code></td><td><code>(ticket − prevTicket) / prevTicket × 100</code></td></tr>
+              <tr><td><strong>Clientes Ativos</strong></td><td><code>COUNT(DISTINCT card_code)</code></td><td><code>(atual − anterior) / anterior × 100</code></td></tr>
+              <tr><td><strong>Qtd Vendida</strong></td><td><code>Σ total_quantity</code></td><td>Sem variação</td></tr>
+              <tr><td><strong>Base Total</strong></td><td>Total de clientes cadastrados</td><td>Sem variação</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sub-section">
+        <h3><span class="num">5.7</span> Comercial/Dados — Notas Fiscais</h3>
+        <div class="info-box warn">
+          <span class="info-icon">⚠️</span>
+          <div>Esta página busca dados <strong>diretamente do SAP</strong> via <code>POST /api/sap/sync/invoices</code> — <strong>não há persistência local</strong>. Pode ser lenta em períodos longos.</div>
+        </div>
+        <div class="kpi-grid">
+          <div class="kpi"><div class="kpi-label">Documentos</div><div class="kpi-value">filtered.length</div></div>
+          <div class="kpi"><div class="kpi-label">Itens Vendidos</div><div class="kpi-value">Σ lines.length</div></div>
+          <div class="kpi"><div class="kpi-label">Valor Total</div><div class="kpi-value">Σ docTotal</div></div>
+          <div class="kpi"><div class="kpi-label">Ticket Médio</div><div class="kpi-value">Total / Docs</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ 7. PONTOS CRITICOS ═══ -->
+    <section class="section" id="pontos-criticos">
+      <div class="section-header">
+        <div class="sec-badge" style="background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.2)">!</div>
+        <h2>Pontos Críticos e Observações</h2>
+      </div>
+
+      <div class="info-box danger">
+        <span class="info-icon">🚨</span>
+        <div><strong>Notas Fiscais (Comercial/Dados)</strong> NÃO são persistidas localmente — são buscadas diretamente do SAP a cada acesso. Isto pode causar lentidão em períodos longos.</div>
+      </div>
+
+      <div class="info-box info">
+        <span class="info-icon">💡</span>
+        <div><strong>Pedidos de Venda</strong> usam cache híbrido: headers no PostgreSQL (sync horário), linhas sob demanda (lazy load do SAP com cache no PG).</div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Item</th><th>Detalhe</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Filtro de Cancelados</strong></td><td><code>cancelled = 'Y'</code> exclui de TODAS as métricas de valor (faturamento, ticket, etc.). Contagem total inclui cancelados.</td></tr>
+            <tr><td><strong>Conversão de Embalagem</strong></td><td><code>parseItemInfo()</code> extrai CAIXA/FARDO/PALETE do ItemDescription para converter qty em unidades</td></tr>
+            <tr><td><strong>Fallback de Linhas</strong></td><td>Se não há linhas no PG, a query usa <code>raw_json-&gt;'DocumentLines'</code> (JSONB) como fallback</td></tr>
+            <tr><td><strong>Estado do Cliente</strong></td><td>Extraído via regex do Address/Address2: <code>substring('-([A-Z]{2})\s')</code></td></tr>
+            <tr><td><strong>Período Comparativo</strong></td><td>Visão Executiva compara com período anterior de mesma duração (<code>subMonths</code>)</td></tr>
+            <tr><td><strong>Limite de Sync</strong></td><td>Max 50.000 pedidos por sync. Cron roda a cada hora.</td></tr>
+            <tr><td><strong>Vendedor no Frontend</strong></td><td><code>spMap</code> (Map&lt;code, name&gt;) resolve sales_person_code para nome do vendedor</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <span>Gerado em 12/05/2026 — GSN WMS (Garrafaria Serra Negra)</span>
+    <span>Análise E2E — Pedidos SAP B1 → Painel BI</span>
+  </footer>
+</div>
+
+<!-- Sidebar active link tracking -->
+<script>
+(function(){
+  const links=document.querySelectorAll('.nav-link[href^="#"]');
+  const sections=[];
+  links.forEach(l=>{const t=document.querySelector(l.getAttribute('href'));if(t)sections.push({link:l,target:t})});
+  function update(){
+    let current=sections[0];
+    for(const s of sections){if(s.target.getBoundingClientRect().top<=120)current=s}
+    links.forEach(l=>l.classList.remove('active'));
+    if(current)current.link.classList.add('active');
+  }
+  window.addEventListener('scroll',update,{passive:true});
+  update();
+
+  // Close sidebar on mobile nav click
+  links.forEach(l=>l.addEventListener('click',()=>{
+    if(window.innerWidth<=900)document.querySelector('.sidebar').classList.remove('open');
+  }));
+})();
+</script>
+</body>
+</html>

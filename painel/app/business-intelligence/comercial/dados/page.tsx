@@ -4,9 +4,10 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   FileText, Filter, Download, Search, X, CalendarDays,
   ChevronDown, ChevronRight, Package, Hash, Plus, Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { fmtBRL, exportCSV } from "@/lib/format";
-import { fetchInvoices, type SapInvoice, type SapInvoiceLine } from "@/lib/cockpit-api";
+import { fetchInvoicesLocal, syncInvoices, type SapInvoice, type SapInvoiceLine } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
@@ -131,17 +132,22 @@ export default function ComercialDadosPage() {
   const dateTo = format(range.to, "yyyy-MM-dd");
 
   const { data: invoiceData, loading, error, refetch } = useFetch(
-    () => fetchInvoices({ limit: 10000, dateFrom, dateTo }),
-    [dateFrom, dateTo]
+    () => fetchInvoicesLocal({
+      dateFrom,
+      dateTo,
+      salesPerson: salesPersonCode ?? undefined,
+      limit: 10000,
+    }),
+    [dateFrom, dateTo, salesPersonCode]
   );
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const allDocs = useMemo(() => {
     if (!invoiceData?.items) return [];
-    const items = salesPersonCode != null
-      ? invoiceData.items.filter((inv) => inv.SalesPersonCode === salesPersonCode)
-      : invoiceData.items;
-    return groupInvoices(items);
-  }, [invoiceData, salesPersonCode]);
+    return groupInvoices(invoiceData.items);
+  }, [invoiceData]);
 
   const [search, setSearch] = useState("");
   const [canceladoFilter, setCanceladoFilter] = useState<"ALL" | "active" | "cancelled">("ALL");
@@ -233,6 +239,19 @@ export default function ComercialDadosPage() {
     }, 300);
   }, [filtered.length]);
 
+  const handleSync = useCallback(async () => {
+    setSyncing(true); setSyncMsg(null);
+    try {
+      const res = await syncInvoices();
+      setSyncMsg(res.message);
+      refetch();
+    } catch (err) {
+      setSyncMsg(err instanceof Error ? err.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
+    }
+  }, [refetch]);
+
   const handleExport = useCallback(() => {
     const rows: Record<string, string | number>[] = [];
     for (const doc of filtered) {
@@ -305,13 +324,26 @@ export default function ComercialDadosPage() {
             <span>{filtered.length} documentos · {totalLinhas} itens</span>
           </p>
         </div>
-        <button type="button" onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-gray-900 hover:border-cockpit-accent/40 motion-safe:transition-colors"
-          aria-label="Exportar dados filtrados em CSV">
-          <Download className="w-4 h-4" />
-          <span className="hidden sm:inline">Exportar CSV</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleSync} disabled={syncing}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-accent text-white text-sm font-medium hover:bg-cockpit-accent/90 motion-safe:transition-colors disabled:opacity-50 shadow-sm">
+            {syncing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RefreshCw className="w-4 h-4" aria-hidden />}
+            {syncing ? "Sync..." : "Sync SAP"}
+          </button>
+          <button type="button" onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-cockpit-surface border border-cockpit-border text-sm text-cockpit-muted hover:text-gray-900 hover:border-cockpit-accent/40 motion-safe:transition-colors"
+            aria-label="Exportar dados filtrados em CSV">
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline">Exportar CSV</span>
+          </button>
+        </div>
       </div>
+
+      {syncMsg && (
+        <div className="px-4 py-2.5 rounded-lg bg-cockpit-accent/10 text-cockpit-accent text-sm border border-cockpit-accent/20 flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 shrink-0" /> {syncMsg}
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface p-4 space-y-3">

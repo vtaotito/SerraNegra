@@ -2,12 +2,14 @@ import cron from "node-cron";
 import pg from "pg";
 import { createSapClient } from "../config/sap.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { SapEntitiesService, type SapSalesOrderRow } from "../services/sapEntitiesService.js";
+import { SapEntitiesService, type SapSalesOrderRow, type SapInvoiceRow, type SapInvoiceLine } from "../services/sapEntitiesService.js";
 
 // ─── Config ───────────────────────────────────────────────────
 const SYNC_CRON = process.env.SAP_SYNC_CRON ?? "0 * * * *"; // cada hora, minuto 0
 const DB_URL = process.env.B2B_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 const BOOT_SYNC_DELAY_MS = Number(process.env.SAP_BOOT_SYNC_DELAY_MS ?? "15000");
+const LINES_ENRICH_DAYS = Number(process.env.SAP_LINES_ENRICH_DAYS ?? "90");
+const LINES_ENRICH_CONCURRENCY = Number(process.env.SAP_LINES_ENRICH_CONCURRENCY ?? "10");
 
 // ─── Pool ─────────────────────────────────────────────────────
 let pool: pg.Pool | null = null;
@@ -193,6 +195,49 @@ async function ensureSchema() {
     WHERE entity = 'sales_orders'
     ORDER BY started_at DESC
     LIMIT 1;
+
+    -- Notas fiscais (cabeçalho) — espelho local do SAP
+    CREATE TABLE IF NOT EXISTS sap_invoices (
+      doc_entry         INTEGER PRIMARY KEY,
+      doc_num           INTEGER NOT NULL,
+      doc_date          DATE,
+      doc_due_date      DATE,
+      tax_date          DATE,
+      card_code         TEXT,
+      card_name         TEXT,
+      doc_total         NUMERIC(18,2) DEFAULT 0,
+      document_status   TEXT,
+      cancelled         TEXT DEFAULT 'N',
+      payment_method    TEXT,
+      payment_group_code INTEGER,
+      sales_person_code INTEGER,
+      num_lines         INTEGER DEFAULT 0,
+      total_quantity    NUMERIC(18,4) DEFAULT 0,
+      synced_at         TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    -- Linhas das notas fiscais
+    CREATE TABLE IF NOT EXISTS sap_invoice_lines (
+      id                SERIAL PRIMARY KEY,
+      doc_entry         INTEGER NOT NULL REFERENCES sap_invoices(doc_entry) ON DELETE CASCADE,
+      item_code         TEXT,
+      item_description  TEXT,
+      quantity          NUMERIC(18,4) DEFAULT 0,
+      unit_price        NUMERIC(18,4) DEFAULT 0,
+      price             NUMERIC(18,4) DEFAULT 0,
+      line_total        NUMERIC(18,2) DEFAULT 0,
+      discount_percent  NUMERIC(8,2) DEFAULT 0,
+      cfop_code         TEXT,
+      usage_code        INTEGER,
+      UNIQUE (doc_entry, item_code, quantity)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_inv_doc_date     ON sap_invoices (doc_date DESC);
+    CREATE INDEX IF NOT EXISTS idx_inv_card_code    ON sap_invoices (card_code);
+    CREATE INDEX IF NOT EXISTS idx_inv_sales_person ON sap_invoices (sales_person_code);
+    CREATE INDEX IF NOT EXISTS idx_inv_cancelled    ON sap_invoices (cancelled);
+    CREATE INDEX IF NOT EXISTS idx_invl_doc_entry   ON sap_invoice_lines (doc_entry);
+    CREATE INDEX IF NOT EXISTS idx_invl_item_code   ON sap_invoice_lines (item_code);
 
     -- Overrides de markup (custos que não existem no SAP ou divergem)
     CREATE TABLE IF NOT EXISTS markup_overrides (
@@ -404,6 +449,165 @@ async function upsertOrderHeaders(orders: SapSalesOrderRow[]) {
   return count;
 }
 
+// ─── Upsert invoices + lines ──────────────────────────────────
+async function upsertInvoices(invoices: SapInvoiceRow[]) {
+  const db = getPool();
+  let upserted = 0;
+  let linesWritten = 0;
+
+  for (const inv of invoices) {
+    const docEntry = inv.DocEntry ?? 0;
+    if (!docEntry) continue;
+
+    const lines = inv.DocumentLines ?? [];
+    const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
+    const cancelled = normCancelled(inv.Cancelled);
+
+    await db.query(`
+      INSERT INTO sap_invoices (
+        doc_entry, doc_num, doc_date, doc_due_date, tax_date, card_code, card_name,
+        doc_total, document_status, cancelled, payment_method, payment_group_code,
+        sales_person_code, num_lines, total_quantity, synced_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+      ON CONFLICT (doc_entry) DO UPDATE SET
+        doc_num = EXCLUDED.doc_num,
+        doc_date = EXCLUDED.doc_date,
+        doc_due_date = EXCLUDED.doc_due_date,
+        tax_date = EXCLUDED.tax_date,
+        card_code = EXCLUDED.card_code,
+        card_name = EXCLUDED.card_name,
+        doc_total = EXCLUDED.doc_total,
+        document_status = EXCLUDED.document_status,
+        cancelled = EXCLUDED.cancelled,
+        payment_method = EXCLUDED.payment_method,
+        payment_group_code = EXCLUDED.payment_group_code,
+        sales_person_code = EXCLUDED.sales_person_code,
+        num_lines = EXCLUDED.num_lines,
+        total_quantity = EXCLUDED.total_quantity,
+        synced_at = NOW()
+    `, [
+      docEntry,
+      inv.DocNum ?? null,
+      inv.DocDate ?? null,
+      inv.DocDueDate ?? null,
+      inv.TaxDate ?? null,
+      inv.CardCode ?? null,
+      inv.CardName ?? null,
+      inv.DocTotal ?? 0,
+      String(inv.DocumentStatus ?? ""),
+      cancelled,
+      inv.PaymentMethod ?? null,
+      inv.PaymentGroupCode ?? null,
+      inv.SalesPersonCode ?? null,
+      lines.length,
+      totalQty,
+    ]);
+    upserted++;
+
+    if (lines.length > 0) {
+      await db.query(`DELETE FROM sap_invoice_lines WHERE doc_entry = $1`, [docEntry]);
+      for (const l of lines) {
+        await db.query(
+          `INSERT INTO sap_invoice_lines
+            (doc_entry, item_code, item_description, quantity, unit_price, price, line_total, discount_percent, cfop_code, usage_code)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [
+            docEntry,
+            l.ItemCode ?? null,
+            l.ItemDescription ?? null,
+            l.Quantity ?? 0,
+            l.UnitPrice ?? l.Price ?? 0,
+            l.Price ?? 0,
+            l.LineTotal ?? 0,
+            l.DiscountPercent ?? 0,
+            l.CFOPCode ?? null,
+            l.Usage ?? null,
+          ]
+        );
+        linesWritten++;
+      }
+    }
+  }
+
+  return { upserted, linesWritten };
+}
+
+// ─── Enriquecer pedidos recentes com DocumentLines (batch) ────
+async function enrichRecentOrderLines(svc: SapEntitiesService) {
+  const db = getPool();
+  const client = svc.getSapClient();
+
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - LINES_ENRICH_DAYS);
+  const cutoff = cutoffDate.toISOString().slice(0, 10);
+
+  const res = await db.query(
+    `SELECT doc_entry FROM sap_sales_orders
+     WHERE doc_date >= $1
+       AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines l WHERE l.doc_entry = sap_sales_orders.doc_entry)
+     ORDER BY doc_date DESC
+     LIMIT 2000`,
+    [cutoff]
+  );
+
+  const missing = res.rows.map((r) => r.doc_entry as number);
+  if (missing.length === 0) {
+    console.log("[syncOrders] Enrich: todos os pedidos recentes já possuem linhas.");
+    return 0;
+  }
+
+  console.log(`[syncOrders] Enrich: ${missing.length} pedidos sem linhas (últimos ${LINES_ENRICH_DAYS} dias). Buscando no SAP...`);
+
+  let enriched = 0;
+  let errors = 0;
+
+  for (let i = 0; i < missing.length; i += LINES_ENRICH_CONCURRENCY) {
+    const batch = missing.slice(i, i + LINES_ENRICH_CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map(async (docEntry) => {
+        try {
+          const full = await client.get<any>(`/Orders(${docEntry})`, {
+            correlationId: `enrich-${docEntry}`,
+          });
+          const sapLines = full.data?.DocumentLines ?? [];
+          if (sapLines.length === 0) return null;
+
+          await db.query(`DELETE FROM sap_sales_order_lines WHERE doc_entry = $1`, [docEntry]);
+          for (const l of sapLines) {
+            await db.query(
+              `INSERT INTO sap_sales_order_lines
+                (doc_entry, line_num, item_code, item_description, quantity, unit_price, line_total, discount_percent, warehouse_code, price, cfop_code, weight, tax_code, usage_code)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+              [docEntry, l.LineNum, l.ItemCode, l.ItemDescription, l.Quantity ?? 0, l.UnitPrice ?? l.Price ?? 0, l.LineTotal ?? 0, l.DiscountPercent ?? 0, l.WarehouseCode, l.Price ?? 0, l.CFOPCode ?? null, l.Weight1 ?? 0, l.TaxCode ?? null, l.Usage ?? null]
+            );
+          }
+
+          await db.query(
+            `UPDATE sap_sales_orders SET num_lines = $1, total_quantity = $2 WHERE doc_entry = $3`,
+            [sapLines.length, sapLines.reduce((s: number, l: any) => s + (l.Quantity ?? 0), 0), docEntry]
+          );
+
+          return sapLines.length;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value != null) enriched++;
+      else errors++;
+    }
+
+    if (i > 0 && i % 100 === 0) {
+      console.log(`[syncOrders] Enrich progresso: ${i}/${missing.length} (${enriched} OK, ${errors} erros)`);
+    }
+  }
+
+  console.log(`[syncOrders] Enrich completo: ${enriched}/${missing.length} pedidos enriquecidos com linhas.`);
+  return enriched;
+}
+
 // ─── Run sync (com mutex) ─────────────────────────────────────
 let syncRunning = false;
 
@@ -489,18 +693,26 @@ export async function runSalesOrdersSync(): Promise<{
       }
     }
 
+    // Phase 2: enriquecer pedidos recentes com DocumentLines
+    let linesEnriched = 0;
+    try {
+      linesEnriched = await enrichRecentOrderLines(svc);
+    } catch (err) {
+      console.warn(`[syncOrders] Enrich de linhas falhou (não-fatal): ${err instanceof Error ? err.message : err}`);
+    }
+
     const durationMs = Date.now() - startMs;
     const elapsed = (durationMs / 1000).toFixed(1);
 
-    const msg = `Sync OK: ${totalFetched} pedidos buscados, ${totalSaved} salvos em ${elapsed}s`;
+    const msg = `Sync OK: ${totalFetched} pedidos buscados, ${totalSaved} salvos, ${linesEnriched} enriquecidos com linhas em ${elapsed}s`;
     console.log(`[syncOrders] ${msg}`);
 
     await db.query(
-      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=0, duration_ms=$3, message=$4 WHERE id=$5`,
-      [totalFetched, totalSaved, durationMs, msg, logId]
+      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=$3, duration_ms=$4, message=$5 WHERE id=$6`,
+      [totalFetched, totalSaved, linesEnriched, durationMs, msg, logId]
     );
 
-    return { ok: true, fetched: totalFetched, upserted: totalSaved, linesWritten: 0, message: msg, durationMs };
+    return { ok: true, fetched: totalFetched, upserted: totalSaved, linesWritten: linesEnriched, message: msg, durationMs };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const durationMs = Date.now() - startMs;
@@ -574,20 +786,6 @@ export async function querySalesOrders(opts: {
           'Price', l.price, 'CFOPCode', l.cfop_code, 'Weight', l.weight
         ) ORDER BY l.line_num)
         FROM sap_sales_order_lines l WHERE l.doc_entry = o.doc_entry),
-        (SELECT json_agg(json_build_object(
-          'LineNum', (dl->>'LineNum')::int,
-          'ItemCode', dl->>'ItemCode',
-          'ItemDescription', dl->>'ItemDescription',
-          'Quantity', (dl->>'Quantity')::numeric,
-          'UnitPrice', (dl->>'UnitPrice')::numeric,
-          'LineTotal', (dl->>'LineTotal')::numeric,
-          'DiscountPercent', (dl->>'DiscountPercent')::numeric,
-          'WarehouseCode', dl->>'WarehouseCode',
-          'Price', (dl->>'Price')::numeric,
-          'CFOPCode', dl->>'CFOPCode',
-          'Weight', (dl->>'Weight1')::numeric
-        ) ORDER BY (dl->>'LineNum')::int)
-        FROM jsonb_array_elements(o.raw_json->'DocumentLines') dl),
         '[]'::json
       ) AS lines
     FROM sap_sales_orders o ${where}
@@ -650,17 +848,6 @@ export async function queryProductAnalytics(opts: {
       FROM sap_sales_orders o
       INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
       WHERE ${where}
-        UNION ALL
-      SELECT o.doc_entry, o.doc_date, o.card_code, o.sales_person_code,
-             dl->>'ItemCode', dl->>'ItemDescription',
-             COALESCE((dl->>'Quantity')::numeric,0),
-             COALESCE((dl->>'LineTotal')::numeric,0),
-             COALESCE((dl->>'UnitPrice')::numeric,0),
-             COALESCE((dl->>'DiscountPercent')::numeric,0)
-      FROM sap_sales_orders o
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.raw_json->'DocumentLines','[]'::jsonb)) dl
-      WHERE ${where}
-        AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines x WHERE x.doc_entry = o.doc_entry LIMIT 1)
     )
     SELECT
       item_code,
@@ -725,18 +912,6 @@ export async function queryProductOrders(opts: {
       INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
       WHERE o.cancelled = 'N' AND o.doc_date >= $1 AND o.doc_date <= $2
         AND l.item_code = ANY($3)
-        UNION ALL
-      SELECT o.doc_num, o.doc_date, o.card_code, o.card_name,
-             dl->>'ItemCode', dl->>'ItemDescription',
-             COALESCE((dl->>'Quantity')::numeric,0),
-             COALESCE((dl->>'UnitPrice')::numeric,0),
-             COALESCE((dl->>'LineTotal')::numeric,0),
-             COALESCE((dl->>'DiscountPercent')::numeric,0)
-      FROM sap_sales_orders o
-      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.raw_json->'DocumentLines','[]'::jsonb)) dl
-      WHERE o.cancelled = 'N' AND o.doc_date >= $1 AND o.doc_date <= $2
-        AND dl->>'ItemCode' = ANY($3)
-        AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines x WHERE x.doc_entry = o.doc_entry LIMIT 1)
     )
     SELECT * FROM matched_lines ORDER BY doc_date DESC, doc_num DESC
   `;
@@ -754,6 +929,153 @@ export async function querySyncHistory(limit = 20) {
     [limit]
   );
   return res.rows;
+}
+
+// ─── Invoice sync (Problema 1) ────────────────────────────────
+let invoiceSyncRunning = false;
+
+export async function runInvoicesSync(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  linesWritten: number;
+  message: string;
+  durationMs: number;
+}> {
+  if (invoiceSyncRunning) {
+    return { ok: true, fetched: 0, upserted: 0, linesWritten: 0, message: "Invoice sync já em execução", durationMs: 0 };
+  }
+  invoiceSyncRunning = true;
+  const startMs = Date.now();
+  const db = getPool();
+
+  console.log("[syncInvoices] Iniciando sync de Notas Fiscais...");
+
+  const logRes = await db.query(
+    `INSERT INTO sap_sync_log (entity, started_at, status) VALUES ('invoices', NOW(), 'running') RETURNING id`
+  );
+  const logId = logRes.rows[0]?.id;
+
+  const svc = getSapEntitiesService();
+  if (!svc) {
+    invoiceSyncRunning = false;
+    const msg = "SAP client não configurado";
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), message=$1, duration_ms=$2 WHERE id=$3`,
+      [msg, Date.now() - startMs, logId]
+    );
+    return { ok: false, fetched: 0, upserted: 0, linesWritten: 0, message: msg, durationMs: Date.now() - startMs };
+  }
+
+  try {
+    const entSvc = svc;
+    const invoices = await entSvc.listInvoices({ limit: 10000 }, `sync-inv-${Date.now()}`);
+    const totalFetched = invoices.length;
+
+    console.log(`[syncInvoices] ${totalFetched} notas fiscais obtidas do SAP. Persistindo...`);
+    const { upserted, linesWritten } = await upsertInvoices(invoices);
+
+    const durationMs = Date.now() - startMs;
+    const msg = `Invoice sync OK: ${totalFetched} buscadas, ${upserted} salvas, ${linesWritten} linhas em ${(durationMs / 1000).toFixed(1)}s`;
+    console.log(`[syncInvoices] ${msg}`);
+
+    await db.query(
+      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, lines_written=$3, duration_ms=$4, message=$5 WHERE id=$6`,
+      [totalFetched, upserted, linesWritten, durationMs, msg, logId]
+    );
+
+    return { ok: true, fetched: totalFetched, upserted, linesWritten, message: msg, durationMs };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const durationMs = Date.now() - startMs;
+    console.error(`[syncInvoices] Erro: ${msg}`);
+
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), duration_ms=$1, message='Erro na sync invoices', error_detail=$2 WHERE id=$3`,
+      [durationMs, msg.slice(0, 2000), logId]
+    ).catch(() => {});
+
+    return { ok: false, fetched: 0, upserted: 0, linesWritten: 0, message: msg, durationMs };
+  } finally {
+    invoiceSyncRunning = false;
+  }
+}
+
+// ─── Query invoices locais ────────────────────────────────────
+export async function queryInvoices(opts: {
+  dateFrom?: string;
+  dateTo?: string;
+  cardCode?: string;
+  salesPerson?: number;
+  cancelled?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = getPool();
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  if (opts.dateFrom) { conditions.push(`i.doc_date >= $${idx++}`); params.push(opts.dateFrom); }
+  if (opts.dateTo)   { conditions.push(`i.doc_date <= $${idx++}`); params.push(opts.dateTo); }
+  if (opts.cardCode) { conditions.push(`i.card_code = $${idx++}`); params.push(opts.cardCode); }
+  if (opts.salesPerson != null) { conditions.push(`i.sales_person_code = $${idx++}`); params.push(opts.salesPerson); }
+  if (opts.cancelled === "active") conditions.push(`i.cancelled = 'N'`);
+  if (opts.cancelled === "cancelled") conditions.push(`i.cancelled = 'Y'`);
+  if (opts.search) {
+    conditions.push(`(
+      i.card_name ILIKE $${idx} OR i.card_code ILIKE $${idx} OR CAST(i.doc_num AS TEXT) ILIKE $${idx}
+      OR EXISTS (SELECT 1 FROM sap_invoice_lines l WHERE l.doc_entry = i.doc_entry AND (l.item_code ILIKE $${idx} OR l.item_description ILIKE $${idx}))
+    )`);
+    params.push(`%${opts.search}%`);
+    idx++;
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const limit = opts.limit ?? 10000;
+  const offset = opts.offset ?? 0;
+
+  const countSql = `SELECT COUNT(*) as total FROM sap_invoices i ${where}`;
+  const dataSql = `
+    SELECT
+      i.doc_entry AS "DocEntry",
+      i.doc_num AS "DocNum",
+      i.doc_date AS "DocDate",
+      i.doc_due_date AS "DocDueDate",
+      i.tax_date AS "TaxDate",
+      i.card_code AS "CardCode",
+      i.card_name AS "CardName",
+      i.document_status AS "DocumentStatus",
+      i.cancelled AS "Cancelled",
+      i.doc_total AS "DocTotal",
+      i.payment_method AS "PaymentMethod",
+      i.payment_group_code AS "PaymentGroupCode",
+      i.sales_person_code AS "SalesPersonCode",
+      COALESCE(
+        (SELECT json_agg(json_build_object(
+          'ItemCode', l.item_code, 'ItemDescription', l.item_description,
+          'Quantity', l.quantity, 'UnitPrice', l.unit_price, 'Price', l.price,
+          'LineTotal', l.line_total, 'DiscountPercent', l.discount_percent,
+          'CFOPCode', l.cfop_code, 'Usage', l.usage_code
+        ))
+        FROM sap_invoice_lines l WHERE l.doc_entry = i.doc_entry),
+        '[]'::json
+      ) AS "DocumentLines"
+    FROM sap_invoices i ${where}
+    ORDER BY i.doc_date DESC, i.doc_num DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  const [countRes, dataRes] = await Promise.all([
+    db.query(countSql, params),
+    db.query(dataSql, params),
+  ]);
+
+  return {
+    total: Number(countRes.rows[0]?.total ?? 0),
+    items: dataRes.rows,
+  };
 }
 
 export async function queryDbStats() {
@@ -798,16 +1120,18 @@ export async function startSyncScheduler() {
 
   console.log(`[syncOrders] Scheduler ativado — cron: "${SYNC_CRON}" (a cada hora)`);
 
-  // Job recorrente
+  // Job recorrente — pedidos + notas fiscais
   cron.schedule(SYNC_CRON, async () => {
-    console.log(`[syncOrders] Cron disparado: ${new Date().toISOString()}`);
+    console.log(`[sync] Cron disparado: ${new Date().toISOString()}`);
     await runSalesOrdersSync();
+    await runInvoicesSync();
   });
 
   // Sync inicial após boot (com delay para garantir que o SAP está acessível)
   setTimeout(async () => {
-    console.log("[syncOrders] Executando sync inicial pós-boot...");
+    console.log("[sync] Executando sync inicial pós-boot...");
     await runSalesOrdersSync();
+    await runInvoicesSync();
   }, BOOT_SYNC_DELAY_MS);
 }
 

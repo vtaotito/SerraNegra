@@ -183,6 +183,9 @@ interface SyncResult<T> {
   timestamp: string;
 }
 
+/**
+ * @deprecated Use fetchInvoicesLocal() que lê do PostgreSQL local (muito mais rápido).
+ */
 export function fetchInvoices(opts?: {
   limit?: number;
   dateFrom?: string;
@@ -194,6 +197,46 @@ export function fetchInvoices(opts?: {
   if (opts?.dateTo) qs.push(`dateTo=${opts.dateTo}`);
   const path = `/sap/sync/invoices${qs.length ? "?" + qs.join("&") : ""}`;
   return post(path);
+}
+
+interface InvoicesLocalResult {
+  ok: boolean;
+  total: number;
+  count: number;
+  items: SapInvoice[];
+  timestamp: string;
+}
+
+export function fetchInvoicesLocal(opts?: {
+  dateFrom?: string;
+  dateTo?: string;
+  cardCode?: string;
+  salesPerson?: number;
+  cancelled?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<InvoicesLocalResult> {
+  const p: Record<string, string> = {};
+  if (opts?.dateFrom) p.dateFrom = opts.dateFrom;
+  if (opts?.dateTo) p.dateTo = opts.dateTo;
+  if (opts?.cardCode) p.cardCode = opts.cardCode;
+  if (opts?.salesPerson != null) p.salesPerson = String(opts.salesPerson);
+  if (opts?.cancelled) p.cancelled = opts.cancelled;
+  if (opts?.search) p.search = opts.search;
+  if (opts?.limit) p.limit = String(opts.limit);
+  if (opts?.offset) p.offset = String(opts.offset);
+  return get("/sap/invoices", p);
+}
+
+export function syncInvoices(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  linesWritten: number;
+  message: string;
+}> {
+  return post("/sap/invoices/sync");
 }
 
 export function fetchSalesPersons(): Promise<SyncResult<SapSalesPerson>> {
