@@ -34,6 +34,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/api/sap/:path*", destination: `${gatewayUrl}/sap/:path*` },
       { source: "/api/v1/:path*", destination: `${gatewayUrl}/v1/:path*` },
+      { source: "/api/b2b/:path*", destination: `${gatewayUrl}/b2b/:path*` },
     ];
   },
 };
