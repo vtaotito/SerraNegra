@@ -22,6 +22,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha"];
+const EXCLUDED_PREFIXES = ["/portal"];
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<PanelUser | null>(null);
@@ -50,7 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]);
 
   useEffect(() => {
-    if (!loading && !user && !PUBLIC_PATHS.includes(pathname)) {
+    if (
+      !loading &&
+      !user &&
+      !PUBLIC_PATHS.includes(pathname) &&
+      !EXCLUDED_PREFIXES.some((p) => pathname.startsWith(p))
+    ) {
       router.replace("/login");
     }
   }, [loading, user, pathname, router]);

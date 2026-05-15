@@ -9,10 +9,12 @@ const PUBLIC_PATHS = [
   "/login",
   "/esqueci-senha",
   "/redefinir-senha",
+  "/portal",
   "/api/auth/login",
   "/api/auth/registro",
   "/api/auth/esqueci-senha",
   "/api/auth/redefinir-senha",
+  "/api/b2b/",
   "/api/webhooks/",
 ];
 
