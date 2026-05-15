@@ -46,13 +46,14 @@ export default function PortalLoginPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // primeiro acesso
+  // primeiro acesso / recuperação
   const [lookupData, setLookupData] = useState<LookupResponse | null>(null);
   const [otp, setOtp] = useState("");
   const [tempToken, setTempToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPw, setShowNewPw] = useState(false);
+  const [otpOrigin, setOtpOrigin] = useState<"verify-email" | "forgot">("verify-email");
 
   // registro
   const [regRazao, setRegRazao] = useState("");
@@ -121,7 +122,8 @@ export default function PortalLoginPage() {
     setLoading(true);
     setError("");
     try {
-      await authVerifyEmail(cleanCNPJ(cnpj), lookupData.email);
+      await authVerifyEmail(cleanCNPJ(cnpj));
+      setOtpOrigin("verify-email");
       setStep("otp");
     } catch (err) {
       handleError(err);
@@ -183,9 +185,9 @@ export default function PortalLoginPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await authForgotPassword(cleanCNPJ(cnpj));
-      setSuccessMsg(res.message || "Instruções de recuperação enviadas para o e-mail cadastrado.");
-      setStep("success");
+      await authForgotPassword(cleanCNPJ(cnpj));
+      setOtpOrigin("forgot");
+      setStep("otp");
     } catch (err) {
       handleError(err);
     } finally {
@@ -341,7 +343,7 @@ export default function PortalLoginPage() {
                 <p className="text-cockpit-muted">
                   Enviaremos um código de verificação para:
                 </p>
-                <p className="font-medium text-gray-900 mt-1">{lookupData.email}</p>
+                <p className="font-medium text-gray-900 mt-1">{lookupData.maskedEmail ?? "e-mail cadastrado"}</p>
               </div>
               {error && <ErrorMsg msg={error} />}
               <button
@@ -359,7 +361,7 @@ export default function PortalLoginPage() {
           {/* ── Digitar OTP ── */}
           {step === "otp" && (
             <form onSubmit={handleOTP} className="space-y-5">
-              <BackButton onClick={() => { setError(""); setStep("verify-email"); }} />
+              <BackButton onClick={() => { setError(""); setStep(otpOrigin === "forgot" ? "forgot" : "verify-email"); }} />
               <div className="text-center">
                 <h2 className="text-lg font-semibold text-gray-900">Código de Verificação</h2>
                 <p className="text-sm text-cockpit-muted mt-1">

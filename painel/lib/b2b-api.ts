@@ -20,10 +20,11 @@ export interface LoginResponse {
 }
 
 export interface LookupResponse {
-  cardCode: string;
-  cardName: string;
-  cnpj: string;
-  email: string;
+  status: "has_password" | "needs_verification" | "not_found";
+  cardCode?: string;
+  cardName?: string;
+  maskedEmail?: string | null;
+  hasEmail?: boolean;
   hasPassword: boolean;
 }
 
@@ -217,16 +218,28 @@ async function publicPost<T>(path: string, body: unknown): Promise<T> {
 
 // ─── Auth (públicos) ────────────────────────────────────
 
-export function authLookup(cnpj: string) {
-  return publicPost<LookupResponse>("/auth/lookup", { cnpj });
+export async function authLookup(cnpj: string): Promise<LookupResponse> {
+  const raw = await publicPost<Record<string, unknown>>("/auth/lookup", { cnpj });
+  const status = (raw.status as string) ?? "not_found";
+  if (status === "not_found") {
+    throw new Error("CNPJ não encontrado. Verifique o número ou solicite cadastro.");
+  }
+  return {
+    status: status as LookupResponse["status"],
+    cardCode: raw.cardCode as string | undefined,
+    cardName: raw.cardName as string | undefined,
+    maskedEmail: raw.maskedEmail as string | null | undefined,
+    hasEmail: raw.hasEmail as boolean | undefined,
+    hasPassword: status === "has_password",
+  };
 }
 
 export function authLogin(cnpj: string, password: string) {
   return publicPost<LoginResponse>("/auth/login", { cnpj, password });
 }
 
-export function authVerifyEmail(cnpj: string, email: string) {
-  return publicPost<VerifyEmailResponse>("/auth/verify-email", { cnpj, email });
+export function authVerifyEmail(cnpj: string, email?: string) {
+  return publicPost<VerifyEmailResponse>("/auth/verify-email", { cnpj, ...(email ? { email } : {}) });
 }
 
 export function authVerifyOTP(cnpj: string, otp: string) {

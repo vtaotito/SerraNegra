@@ -281,33 +281,46 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     try {
       const partner = await findPartnerByCnpj(digits, correlationId);
 
-      if (!partner) {
-        reply.code(200).send({ status: "not_found" });
+      if (partner) {
+        if (partner.Valid === "tNO" || partner.Frozen === "tYES") {
+          reply.code(403).send({ error: "Cliente inativo ou bloqueado" });
+          return;
+        }
+
+        const email = partner.EmailAddress ?? "";
+        await authService.upsertCredential({
+          cardCode: partner.CardCode,
+          cnpj: digits,
+          cardName: partner.CardName ?? partner.CardCode,
+          email,
+        });
+
+        const hasPass = await authService.hasPassword(digits);
+
+        reply.code(200).send({
+          status: hasPass ? "has_password" : "needs_verification",
+          cardCode: partner.CardCode,
+          cardName: partner.CardName ?? partner.CardCode,
+          maskedEmail: email ? maskEmail(email) : null,
+          hasEmail: !!email,
+        });
         return;
       }
 
-      if (partner.Valid === "tNO" || partner.Frozen === "tYES") {
-        reply.code(403).send({ error: "Cliente inativo ou bloqueado" });
+      const localCred = await authService.findByCnpj(digits);
+      if (localCred) {
+        const hasPass = await authService.hasPassword(digits);
+        reply.code(200).send({
+          status: hasPass ? "has_password" : "needs_verification",
+          cardCode: localCred.card_code,
+          cardName: localCred.card_name,
+          maskedEmail: localCred.email ? maskEmail(localCred.email) : null,
+          hasEmail: !!localCred.email,
+        });
         return;
       }
 
-      const email = partner.EmailAddress ?? "";
-      await authService.upsertCredential({
-        cardCode: partner.CardCode,
-        cnpj: digits,
-        cardName: partner.CardName ?? partner.CardCode,
-        email,
-      });
-
-      const hasPass = await authService.hasPassword(digits);
-
-      reply.code(200).send({
-        status: hasPass ? "has_password" : "needs_verification",
-        cardCode: partner.CardCode,
-        cardName: partner.CardName ?? partner.CardCode,
-        maskedEmail: email ? maskEmail(email) : null,
-        hasEmail: !!email,
-      });
+      reply.code(200).send({ status: "not_found" });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Erro ao buscar CNPJ";
@@ -323,8 +336,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     const { cnpj, email } = req.body as any;
     const correlationId = (req as any).correlationId as string;
 
-    if (!cnpj || !email) {
-      reply.code(400).send({ error: "CNPJ e email sao obrigatorios" });
+    if (!cnpj) {
+      reply.code(400).send({ error: "CNPJ e obrigatorio" });
       return;
     }
 
@@ -337,14 +350,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         return;
       }
 
-      const storedEmail = (cred.email ?? "").trim().toLowerCase();
-      const inputEmail = email.trim().toLowerCase();
-
-      if (storedEmail !== inputEmail) {
-        reply
-          .code(400)
-          .send({ error: "Email nao corresponde ao cadastro" });
+      if (!cred.email) {
+        reply.code(400).send({ error: "Nenhum email cadastrado para este CNPJ" });
         return;
+      }
+
+      if (email) {
+        const storedEmail = (cred.email ?? "").trim().toLowerCase();
+        const inputEmail = email.trim().toLowerCase();
+        if (storedEmail !== inputEmail) {
+          reply.code(400).send({ error: "Email nao corresponde ao cadastro" });
+          return;
+        }
       }
 
       const otp = await authService.generateOtp(digits);
