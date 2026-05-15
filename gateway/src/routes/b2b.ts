@@ -510,7 +510,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   });
 
   // =============================================
-  // AUTH - FORGOT PASSWORD (reenvia verificacao)
+  // AUTH - FORGOT PASSWORD (envia OTP para redefinir)
   // =============================================
   app.post("/b2b/auth/forgot-password", async (req, reply) => {
     const { cnpj } = req.body as any;
@@ -525,15 +525,39 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     try {
       const cred = await authService.findByCnpj(digits);
       if (!cred) {
-        reply.code(404).send({ error: "Cliente nao encontrado" });
+        reply.code(200).send({
+          ok: true,
+          message: "Se o CNPJ estiver cadastrado, um codigo sera enviado por email.",
+        });
+        return;
+      }
+
+      if (!cred.email) {
+        reply.code(200).send({
+          ok: true,
+          message: "Nenhum email cadastrado para este CNPJ. Entre em contato com o suporte.",
+        });
         return;
       }
 
       await authService.resetPassword(digits);
+      const otp = await authService.generateOtp(digits);
+      const emailSent = await sendOtpEmail(
+        cred.email,
+        otp,
+        cred.card_name,
+      );
+
+      if (!emailSent) {
+        app.log.warn({ cnpj: digits, email: cred.email, otp }, "forgot-password: email nao enviado, OTP logado");
+      }
+
       reply.code(200).send({
         ok: true,
-        maskedEmail: cred.email ? maskEmail(cred.email) : null,
-        hasEmail: !!cred.email,
+        message: "Codigo de verificacao enviado para o email cadastrado.",
+        maskedEmail: maskEmail(cred.email),
+        hasEmail: true,
+        emailSent,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
