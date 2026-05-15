@@ -427,10 +427,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       return;
     }
 
-    if (password.length < 8) {
+    if (password.length < 6) {
       reply
         .code(400)
-        .send({ error: "Senha deve ter no minimo 8 caracteres" });
+        .send({ error: "Senha deve ter no minimo 6 caracteres" });
       return;
     }
 
@@ -557,7 +557,6 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         return;
       }
 
-      await authService.resetPassword(digits);
       const otp = await authService.generateOtp(digits);
       const emailSent = await sendOtpEmail(
         cred.email,
