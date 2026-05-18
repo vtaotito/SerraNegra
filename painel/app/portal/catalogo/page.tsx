@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
   BookOpen,
   Search,
@@ -8,12 +9,21 @@ import {
   ChevronDown,
   Loader2,
   X,
+  RefreshCw,
+  ShoppingCart,
+  Package,
+  TrendingUp,
 } from "lucide-react";
 import {
   fetchCatalogB2B,
   fetchCatalogCategories,
+  fetchFrequentProducts,
+  fmtBRL,
+  fmtDate,
   type B2BCatalogItem,
+  type B2BFrequentItem,
 } from "@/lib/b2b-api";
+import { useCart } from "@/contexts/CartContext";
 import { ProductCard } from "@/components/b2b/ProductCard";
 import { EmptyState } from "@/components/b2b/EmptyState";
 import { ErrorState } from "@/components/cockpit/DataState";
@@ -21,6 +31,7 @@ import { ErrorState } from "@/components/cockpit/DataState";
 const PAGE_SIZE = 24;
 
 export default function CatalogoPage() {
+  const { addItem } = useCart();
   const [items, setItems] = useState<B2BCatalogItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -28,6 +39,7 @@ export default function CatalogoPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [frequentItems, setFrequentItems] = useState<B2BFrequentItem[]>([]);
 
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
@@ -42,10 +54,13 @@ export default function CatalogoPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  // Carregar categorias
+  // Carregar categorias e produtos frequentes
   useEffect(() => {
     fetchCatalogCategories()
       .then((res) => setCategories(res.categories))
+      .catch(() => {});
+    fetchFrequentProducts()
+      .then((res) => setFrequentItems(res.items))
       .catch(() => {});
   }, []);
 
@@ -104,6 +119,24 @@ export default function CatalogoPage() {
           </p>
         </div>
       </div>
+
+      {/* Comprar Novamente */}
+      {frequentItems.length > 0 && !searchDebounced && !category && (
+        <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-cockpit-border bg-cockpit-bg/30">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-cockpit-accent" />
+              <h2 className="text-sm font-semibold text-gray-900">Comprar Novamente</h2>
+            </div>
+            <span className="text-[10px] text-cockpit-muted">Baseado no seu histórico de pedidos</span>
+          </div>
+          <div className="divide-y divide-cockpit-border">
+            {frequentItems.slice(0, 6).map((item) => (
+              <FrequentProductRow key={item.sku} item={item} onAdd={addItem} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Busca + Filtros */}
       <div className="space-y-3">
@@ -212,6 +245,85 @@ export default function CatalogoPage() {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+function FrequentProductRow({
+  item,
+  onAdd,
+}: {
+  item: B2BFrequentItem;
+  onAdd: (item: { sku: string; name: string; imageUrl: string | null; price: number; unitOfMeasure: string }, qty?: number) => void;
+}) {
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
+
+  const handleAdd = () => {
+    onAdd({ sku: item.sku, name: item.name, imageUrl: item.imageUrl, price: item.price, unitOfMeasure: item.unitOfMeasure }, qty);
+    setAdded(true);
+    setTimeout(() => setAdded(false), 1500);
+    setQty(1);
+  };
+
+  return (
+    <div className="flex items-center gap-4 px-5 py-3 hover:bg-cockpit-bg/30 transition-colors">
+      <div className="w-12 h-12 rounded-lg bg-cockpit-bg flex items-center justify-center shrink-0 overflow-hidden">
+        {item.imageThumbUrl ? (
+          <img src={item.imageThumbUrl} alt={item.name} className="w-full h-full object-contain p-0.5" loading="lazy" />
+        ) : (
+          <Package className="w-5 h-5 text-cockpit-muted/40" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <Link
+          href={`/portal/catalogo/${encodeURIComponent(item.sku)}`}
+          className="text-sm font-medium text-gray-900 hover:text-cockpit-accent truncate block"
+        >
+          {item.name}
+        </Link>
+        <div className="flex items-center gap-3 mt-0.5">
+          <span className="text-[10px] text-cockpit-muted">{item.sku}</span>
+          <span className="text-[10px] text-cockpit-muted">
+            <TrendingUp className="w-3 h-3 inline -mt-0.5 mr-0.5" />
+            {item.orderCount} {item.orderCount === 1 ? "pedido" : "pedidos"}
+          </span>
+          {item.inStock ? (
+            <span className="text-[10px] text-emerald-600 flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Em estoque
+            </span>
+          ) : (
+            <span className="text-[10px] text-red-500 flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+              Indisponível
+            </span>
+          )}
+        </div>
+      </div>
+      {item.inStock && (
+        <div className="flex items-center gap-2 shrink-0">
+          <input
+            type="number"
+            min={1}
+            value={qty}
+            onChange={(e) => setQty(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-14 text-center text-sm font-medium text-gray-900 border border-cockpit-border rounded-lg py-1.5 focus:outline-none focus:ring-2 focus:ring-cockpit-accent tabular-nums"
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              added
+                ? "bg-emerald-500 text-white"
+                : "bg-cockpit-accent text-white hover:bg-cockpit-accentHover"
+            }`}
+          >
+            <ShoppingCart className="w-3.5 h-3.5" />
+            {added ? "Ok!" : "Adicionar"}
+          </button>
+        </div>
       )}
     </div>
   );

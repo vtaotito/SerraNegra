@@ -298,6 +298,25 @@ export function createOrder(payload: CreateOrderPayload) {
 
 // ─── Catálogo ───────────────────────────────────────────
 
+export interface B2BFrequentItem {
+  sku: string;
+  name: string;
+  orderCount: number;
+  totalQty: number;
+  lastOrdered: string;
+  imageUrl: string | null;
+  imageThumbUrl: string | null;
+  inStock: boolean;
+  stockQuantity: number;
+  category: string | null;
+  unitOfMeasure: string;
+  price: number;
+}
+
+export function fetchFrequentProducts() {
+  return authFetch<{ items: B2BFrequentItem[] }>("/catalog/frequent");
+}
+
 export function fetchCatalogB2B(opts?: {
   search?: string;
   category?: string;

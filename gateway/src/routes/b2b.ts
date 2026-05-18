@@ -1719,6 +1719,57 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
+  // PRODUTOS FREQUENTES DO CLIENTE
+  // =============================================
+  app.get(
+    "/b2b/catalog/frequent",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+
+      try {
+        const result = await ordersPool.query(
+          `SELECT l.item_code, l.item_description,
+                  COUNT(DISTINCT o.doc_entry) AS order_count,
+                  SUM(l.quantity)::numeric AS total_qty,
+                  MAX(o.doc_date) AS last_ordered
+           FROM sap_sales_order_lines l
+           JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
+           WHERE o.card_code = $1
+           GROUP BY l.item_code, l.item_description
+           ORDER BY order_count DESC, total_qty DESC
+           LIMIT 20`,
+          [customer.cardCode],
+        );
+
+        const items = [];
+        for (const row of result.rows) {
+          const product = await catalogService.getProduct(row.item_code);
+          items.push({
+            sku: row.item_code,
+            name: row.item_description,
+            orderCount: Number(row.order_count),
+            totalQty: Number(row.total_qty),
+            lastOrdered: row.last_ordered,
+            imageUrl: product?.image_url ?? null,
+            imageThumbUrl: product?.image_thumb_url ?? null,
+            inStock: product?.is_in_stock ?? false,
+            stockQuantity: Number(product?.total_stock ?? 0),
+            category: product?.category_name ?? null,
+            unitOfMeasure: product?.unit_of_measure ?? "UN",
+            price: 0,
+          });
+        }
+
+        reply.send({ items });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
   // ADMIN CATALOG ROUTES
   // =============================================
 

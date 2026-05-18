@@ -584,7 +584,7 @@ export class B2BCatalogService {
   async listProducts(
     filters: CatalogFilters = {},
   ): Promise<{ items: CatalogProduct[]; total: number }> {
-    const conditions: string[] = ["is_active = TRUE", "is_sales_item = TRUE"];
+    const conditions: string[] = ["is_active = TRUE"];
     const params: unknown[] = [];
     let idx = 1;
 
