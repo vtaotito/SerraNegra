@@ -722,3 +722,47 @@ export class B2BCatalogService {
     }
   }
 }
+
+/** Formato esperado pelo portal B2B (painel) */
+export interface B2BCatalogItemDto {
+  sku: string;
+  name: string;
+  description: string;
+  category: string | null;
+  ean: string | null;
+  imageUrl: string | null;
+  price: number;
+  inStock: boolean;
+  stockQuantity: number;
+  unitOfMeasure: string;
+  packagingType: string | null;
+  unitsPerPack: number | null;
+}
+
+export interface B2BProductDetailDto extends B2BCatalogItemDto {
+  fullDescription: string | null;
+}
+
+export function toB2BCatalogItem(p: CatalogProduct): B2BCatalogItemDto {
+  return {
+    sku: p.sap_item_code,
+    name: p.sap_item_name,
+    description: p.description_short ?? "",
+    category: p.category_name,
+    ean: p.ean || null,
+    imageUrl: p.image_url,
+    price: 0,
+    inStock: p.is_in_stock,
+    stockQuantity: Number(p.total_stock ?? 0),
+    unitOfMeasure: p.unit_of_measure ?? "UN",
+    packagingType: p.packaging_type,
+    unitsPerPack: p.units_per_package,
+  };
+}
+
+export function toB2BProductDetail(p: CatalogProduct): B2BProductDetailDto {
+  return {
+    ...toB2BCatalogItem(p),
+    fullDescription: p.description_short ?? null,
+  };
+}

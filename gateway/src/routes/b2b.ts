@@ -15,6 +15,8 @@ import {
   getGroupDisplayName,
   normalizeCategoryName,
   resolvePackaging,
+  toB2BCatalogItem,
+  toB2BProductDetail,
 } from "../services/b2bCatalogService.js";
 import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
@@ -1660,15 +1662,21 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     { preHandler: b2bAuth },
     async (req, reply) => {
       const query = req.query as Record<string, string>;
-      const items = await catalogService.listProducts({
+      const limit = Number(query.limit) || 24;
+      const result = await catalogService.listProducts({
         search: query.search,
         category: query.category,
         inStock: query.inStock === "true" ? true : query.inStock === "false" ? false : undefined,
         page: Number(query.page) || 1,
-        limit: Number(query.limit) || 24,
+        limit,
       });
-      const pages = Math.ceil(items.total / (Number(query.limit) || 24));
-      reply.send({ ...items, page: Number(query.page) || 1, pages });
+      const pages = Math.ceil(result.total / limit);
+      reply.send({
+        items: result.items.map(toB2BCatalogItem),
+        total: result.total,
+        page: Number(query.page) || 1,
+        pages,
+      });
     },
   );
 
@@ -1691,7 +1699,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         reply.code(404).send({ error: "Produto nao encontrado" });
         return;
       }
-      reply.send(product);
+      reply.send(toB2BProductDetail(product));
     },
   );
 
@@ -1729,14 +1737,15 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
       try {
         const result = await ordersPool.query(
-          `SELECT l.item_code, l.item_description,
+          `SELECT l.item_code,
+                  MAX(l.item_description) AS item_description,
                   COUNT(DISTINCT o.doc_entry) AS order_count,
                   SUM(l.quantity)::numeric AS total_qty,
                   MAX(o.doc_date) AS last_ordered
            FROM sap_sales_order_lines l
            JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
            WHERE o.card_code = $1
-           GROUP BY l.item_code, l.item_description
+           GROUP BY l.item_code
            ORDER BY order_count DESC, total_qty DESC
            LIMIT 20`,
           [customer.cardCode],
@@ -1747,7 +1756,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           const product = await catalogService.getProduct(row.item_code);
           items.push({
             sku: row.item_code,
-            name: row.item_description,
+            name: product?.sap_item_name ?? row.item_description,
             orderCount: Number(row.order_count),
             totalQty: Number(row.total_qty),
             lastOrdered: row.last_ordered,
