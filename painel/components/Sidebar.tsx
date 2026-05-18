@@ -37,7 +37,7 @@ const navItems = [
 
 const moduleLinks = [
   { href: WMS_BASE_URL, label: "WMS / OMS", icon: Package, module: "wms" as const },
-  { href: `${WMS_BASE_URL}/b2b`, label: "Portal B2B", icon: ShoppingCart, module: "b2b" as const },
+  { href: "/portal", label: "Portal B2B", icon: ShoppingCart, module: "b2b" as const, internal: true },
 ];
 
 export function Sidebar() {
@@ -136,26 +136,41 @@ export function Sidebar() {
               </p>
             )}
             <div className="space-y-0.5">
-              {filteredModules.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener"
-                  className={cn(
-                    "group flex items-center gap-3 rounded-lg text-[13px] font-medium text-gray-600 hover:bg-gsn-700 hover:text-white motion-safe:transition-all duration-200",
-                    collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5"
-                  )}
-                >
-                  <item.icon className="w-[18px] h-[18px] flex-shrink-0 text-gray-400 group-hover:text-white motion-safe:transition-colors duration-200" />
-                  {!collapsed && (
-                    <>
-                      <span className="flex-1">{item.label}</span>
-                      <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-white/60 motion-safe:transition-colors duration-200" />
-                    </>
-                  )}
-                </a>
-              ))}
+              {filteredModules.map((item) =>
+                "internal" in item && item.internal ? (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className={cn(
+                      "group flex items-center gap-3 rounded-lg text-[13px] font-medium text-gray-600 hover:bg-gsn-700 hover:text-white motion-safe:transition-all duration-200",
+                      collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5"
+                    )}
+                  >
+                    <item.icon className="w-[18px] h-[18px] flex-shrink-0 text-gray-400 group-hover:text-white motion-safe:transition-colors duration-200" />
+                    {!collapsed && <span className="flex-1">{item.label}</span>}
+                  </Link>
+                ) : (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener"
+                    className={cn(
+                      "group flex items-center gap-3 rounded-lg text-[13px] font-medium text-gray-600 hover:bg-gsn-700 hover:text-white motion-safe:transition-all duration-200",
+                      collapsed ? "px-3 py-2.5 justify-center" : "px-3 py-2.5"
+                    )}
+                  >
+                    <item.icon className="w-[18px] h-[18px] flex-shrink-0 text-gray-400 group-hover:text-white motion-safe:transition-colors duration-200" />
+                    {!collapsed && (
+                      <>
+                        <span className="flex-1">{item.label}</span>
+                        <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-white/60 motion-safe:transition-colors duration-200" />
+                      </>
+                    )}
+                  </a>
+                )
+              )}
             </div>
           </>
         )}
