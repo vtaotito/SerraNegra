@@ -1144,48 +1144,67 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
-  // PEDIDOS DO CLIENTE
+  // PEDIDOS DO CLIENTE (consulta Postgres local)
   // =============================================
+  const ordersPool = new (await import("pg")).default.Pool({ connectionString: B2B_DB_URL });
+
   app.get(
     "/b2b/orders",
     { preHandler: b2bAuth },
     async (req, reply) => {
       const customer = (req as any).b2bCustomer as B2BTokenPayload;
-      const correlationId = (req as any).correlationId as string;
       const query = req.query as any;
-      const status = query.status as string | undefined;
 
       try {
-        const service = getOrdersService();
-        const allOrders = await service.listOrders(
-          { docStatus: query.docStatus ?? "O", limit: 200 },
-          correlationId
-        );
+        const conditions = ["card_code = $1"];
+        const params: unknown[] = [customer.cardCode];
+        let idx = 2;
 
-        let customerOrders = allOrders.filter(
-          (o) =>
-            o.customerId?.toLowerCase() ===
-            customer.cardCode.toLowerCase()
-        );
-
-        if (status) {
-          customerOrders = customerOrders.filter(
-            (o) => o.status === status
-          );
+        if (query.docStatus) {
+          conditions.push(`doc_status = $${idx}`);
+          params.push(query.docStatus);
+          idx++;
         }
 
-        reply
-          .code(200)
-          .send({ items: customerOrders, total: customerOrders.length });
+        const where = conditions.join(" AND ");
+        const countRes = await ordersPool.query(
+          `SELECT COUNT(*) AS cnt FROM sap_sales_orders WHERE ${where}`,
+          params,
+        );
+        const total = Number(countRes.rows[0]?.cnt ?? 0);
+
+        const dataRes = await ordersPool.query(
+          `SELECT doc_entry, doc_num, doc_date, doc_due_date, card_code, card_name,
+                  doc_total, doc_currency, doc_status, cancelled, comments,
+                  num_lines, total_quantity
+           FROM sap_sales_orders WHERE ${where}
+           ORDER BY doc_date DESC, doc_entry DESC
+           LIMIT 200`,
+          params,
+        );
+
+        const items = dataRes.rows.map((r: any) => ({
+          doc_entry: r.doc_entry,
+          doc_num: r.doc_num,
+          doc_date: r.doc_date,
+          doc_due_date: r.doc_due_date,
+          card_code: r.card_code,
+          card_name: r.card_name,
+          doc_total: Number(r.doc_total),
+          doc_currency: r.doc_currency,
+          doc_status: r.doc_status,
+          cancelled: r.cancelled,
+          comments: r.comments,
+          num_lines: r.num_lines,
+          total_quantity: Number(r.total_quantity),
+          lines: [],
+        }));
+
+        reply.code(200).send({ items, total });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
-        req.log.error(
-          { error, correlationId },
-          "Erro ao listar pedidos B2B"
-        );
-        reply
-          .code(500)
-          .send({ error: "Erro ao buscar pedidos", message });
+        req.log.error({ error }, "Erro ao listar pedidos B2B");
+        reply.code(500).send({ error: "Erro ao buscar pedidos", message });
       }
     }
   );
@@ -1195,30 +1214,69 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     { preHandler: b2bAuth },
     async (req, reply) => {
       const customer = (req as any).b2bCustomer as B2BTokenPayload;
-      const correlationId = (req as any).correlationId as string;
       const { docEntry } = req.params as any;
 
       try {
-        const service = getOrdersService();
-        const order = await service.getOrder(
-          Number(docEntry),
-          correlationId
+        const orderRes = await ordersPool.query(
+          `SELECT doc_entry, doc_num, doc_date, doc_due_date, card_code, card_name,
+                  doc_total, doc_currency, doc_status, cancelled, comments,
+                  num_lines, total_quantity, raw_json
+           FROM sap_sales_orders WHERE doc_entry = $1`,
+          [Number(docEntry)],
         );
 
-        if (
-          order.customerId?.toLowerCase() !==
-          customer.cardCode.toLowerCase()
-        ) {
+        if (orderRes.rows.length === 0) {
+          reply.code(404).send({ error: "Pedido nao encontrado" });
+          return;
+        }
+
+        const row = orderRes.rows[0];
+        if (row.card_code?.toLowerCase() !== customer.cardCode.toLowerCase()) {
           reply.code(403).send({ error: "Acesso negado a este pedido" });
           return;
         }
 
-        reply.code(200).send(order);
+        const linesRes = await ordersPool.query(
+          `SELECT line_num AS "LineNum", item_code AS "ItemCode", item_description AS "ItemDescription",
+                  quantity AS "Quantity", price AS "Price", unit_price AS "UnitPrice",
+                  line_total AS "LineTotal", warehouse_code AS "WarehouseCode",
+                  discount_percent AS "DiscountPercent"
+           FROM sap_sales_order_lines WHERE doc_entry = $1
+           ORDER BY line_num`,
+          [Number(docEntry)],
+        );
+
+        const rawJson = row.raw_json ?? {};
+        reply.code(200).send({
+          doc_entry: row.doc_entry,
+          doc_num: row.doc_num,
+          doc_date: row.doc_date,
+          doc_due_date: row.doc_due_date,
+          card_code: row.card_code,
+          card_name: row.card_name,
+          doc_total: Number(row.doc_total),
+          doc_currency: row.doc_currency,
+          doc_status: row.doc_status,
+          cancelled: row.cancelled,
+          comments: row.comments,
+          num_lines: row.num_lines,
+          total_quantity: Number(row.total_quantity),
+          lines: linesRes.rows.map((l: any) => ({
+            ...l,
+            Quantity: Number(l.Quantity),
+            Price: Number(l.Price),
+            UnitPrice: Number(l.UnitPrice),
+            LineTotal: Number(l.LineTotal),
+            DiscountPercent: Number(l.DiscountPercent),
+          })),
+          payment_method: rawJson.PaymentMethod ?? rawJson.PayToCode ?? null,
+          ship_to_code: rawJson.ShipToCode ?? null,
+          address: rawJson.Address ?? null,
+          address2: rawJson.Address2 ?? null,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
-        reply
-          .code(500)
-          .send({ error: "Erro ao buscar pedido", message });
+        reply.code(500).send({ error: "Erro ao buscar pedido", message });
       }
     }
   );
@@ -1293,37 +1351,57 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
-  // DASHBOARD RAPIDO
+  // DASHBOARD RAPIDO (Postgres local)
   // =============================================
   app.get(
     "/b2b/dashboard",
     { preHandler: b2bAuth },
     async (req, reply) => {
       const customer = (req as any).b2bCustomer as B2BTokenPayload;
-      const correlationId = (req as any).correlationId as string;
 
       try {
-        const service = getOrdersService();
-        const openOrders = await service.listOrders(
-          { docStatus: "O", limit: 200 },
-          correlationId
+        const totalRes = await ordersPool.query(
+          "SELECT COUNT(*) AS cnt FROM sap_sales_orders WHERE card_code = $1",
+          [customer.cardCode],
         );
-        const myOrders = openOrders.filter(
-          (o) =>
-            o.customerId?.toLowerCase() ===
-            customer.cardCode.toLowerCase()
-        );
+        const totalOrders = Number(totalRes.rows[0]?.cnt ?? 0);
 
-        const byStatus: Record<string, number> = {};
-        for (const o of myOrders) {
-          byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+        const statusRes = await ordersPool.query(
+          "SELECT doc_status, COUNT(*) AS cnt FROM sap_sales_orders WHERE card_code = $1 GROUP BY doc_status",
+          [customer.cardCode],
+        );
+        const ordersByStatus: Record<string, number> = {};
+        for (const r of statusRes.rows) {
+          ordersByStatus[r.doc_status] = Number(r.cnt);
         }
 
-        reply.code(200).send({
-          totalOrders: myOrders.length,
-          ordersByStatus: byStatus,
-          recentOrders: myOrders.slice(0, 5),
-        });
+        const recentRes = await ordersPool.query(
+          `SELECT doc_entry, doc_num, doc_date, doc_due_date, card_code, card_name,
+                  doc_total, doc_currency, doc_status, cancelled, comments,
+                  num_lines, total_quantity
+           FROM sap_sales_orders WHERE card_code = $1
+           ORDER BY doc_date DESC, doc_entry DESC LIMIT 5`,
+          [customer.cardCode],
+        );
+
+        const recentOrders = recentRes.rows.map((r: any) => ({
+          doc_entry: r.doc_entry,
+          doc_num: r.doc_num,
+          doc_date: r.doc_date,
+          doc_due_date: r.doc_due_date,
+          card_code: r.card_code,
+          card_name: r.card_name,
+          doc_total: Number(r.doc_total),
+          doc_currency: r.doc_currency,
+          doc_status: r.doc_status,
+          cancelled: r.cancelled,
+          comments: r.comments,
+          num_lines: r.num_lines,
+          total_quantity: Number(r.total_quantity),
+          lines: [],
+        }));
+
+        reply.code(200).send({ totalOrders, ordersByStatus, recentOrders });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
