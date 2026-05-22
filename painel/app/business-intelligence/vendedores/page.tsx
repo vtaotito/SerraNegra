@@ -15,6 +15,7 @@ import {
   fetchSalesOrders, fetchSalesPersons, fetchCustomers,
   type SalesOrderRow, type SapSalesPerson,
 } from "@/lib/cockpit-api";
+import { isFreightOrder } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
@@ -55,6 +56,7 @@ function buildVendRows(orders: SalesOrderRow[], persons: SapSalesPerson[]): Vend
   const agg = new Map<number, { fat: number; pedidos: number; clientes: Set<string>; qtd: number }>();
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder(o)) continue; // frete não compõe faturamento de produto
     const c = o.sales_person_code ?? -1;
     const cur = agg.get(c) ?? { fat: 0, pedidos: 0, clientes: new Set(), qtd: 0 };
     cur.fat += Number(o.doc_total) || 0;
@@ -92,6 +94,7 @@ function buildEvolution(orders: SalesOrderRow[], persons: SapSalesPerson[]) {
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder(o)) continue;
     const month = format(parseISO(o.doc_date), "yyyy-MM");
     const nome = pMap.get(o.sales_person_code ?? -1) ?? "Outros";
     if (!byMonth.has(month)) byMonth.set(month, new Map());
@@ -100,7 +103,7 @@ function buildEvolution(orders: SalesOrderRow[], persons: SapSalesPerson[]) {
   }
 
   const vendedoresTop = [...new Set(
-    orders.filter((o) => o.cancelled !== "Y").map((o) => pMap.get(o.sales_person_code ?? -1) ?? "Outros")
+    orders.filter((o) => o.cancelled !== "Y" && !isFreightOrder(o)).map((o) => pMap.get(o.sales_person_code ?? -1) ?? "Outros")
   )].slice(0, 5);
 
   return Array.from(byMonth.entries())

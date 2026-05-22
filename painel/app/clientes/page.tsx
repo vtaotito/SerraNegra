@@ -14,6 +14,7 @@ import {
   fetchSalesOrders, fetchCustomers, fetchSalesPersons,
   type SalesOrderRow, type CustomerRow, type SapSalesPerson,
 } from "@/lib/cockpit-api";
+import { isFreightOrder } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useDateRange } from "@/contexts/DateRangeContext";
@@ -98,6 +99,7 @@ function buildClientAnalytics(
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder(o)) continue; // frete tratado em /business-intelligence/fretes
     const cur = agg.get(o.card_code) ?? {
       fat: 0, pedidos: 0, qtd: 0, first: o.doc_date, last: o.doc_date,
       vendor: null, uf: null, city: null, name: null,
@@ -215,6 +217,7 @@ function ClientModal({
   const monthlyData = useMemo(() => {
     const map = new Map<string, { fat: number; pedidos: number }>();
     for (const o of activeOrders) {
+      if (isFreightOrder(o)) continue;
       const key = o.doc_date.substring(0, 7);
       const cur = map.get(key) ?? { fat: 0, pedidos: 0 };
       cur.fat += Number(o.doc_total) || 0;

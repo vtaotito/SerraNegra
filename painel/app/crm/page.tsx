@@ -30,6 +30,7 @@ import {
   type CustomerRow,
   type SalesOrderRow,
 } from "@/lib/cockpit-api";
+import { isFreightOrder } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useRdContactMarketing } from "@/hooks/useCockpitQueries";
 import { useDateRange } from "@/contexts/DateRangeContext";
@@ -71,6 +72,7 @@ function buildProfiles(
   const orderMap = new Map<string, { fat: number; pedidos: number; lastDate: string }>();
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder(o)) continue; // frete não compõe faturamento de produto
     const cur = orderMap.get(o.card_code) ?? { fat: 0, pedidos: 0, lastDate: "" };
     cur.fat += Number(o.doc_total) || 0;
     cur.pedidos += 1;

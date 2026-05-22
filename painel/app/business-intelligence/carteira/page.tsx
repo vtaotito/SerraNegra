@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { DollarSign, TrendingUp, Target, Users, Search, CalendarDays, ShoppingCart } from "lucide-react";
 import { fmtBRL } from "@/lib/format";
 import { fetchSalesOrders, fetchSalesPersons, type SalesOrderRow, type SapSalesPerson } from "@/lib/cockpit-api";
+import { isFreightOrder } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
@@ -25,6 +26,7 @@ function buildCarteira(orders: SalesOrderRow[], persons: SapSalesPerson[]): Cart
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder(o)) continue; // frete não compõe carteira de produto
     const c = o.sales_person_code ?? -1;
     const cur = agg.get(c) ?? { fat: 0, pedidos: 0, clients: new Set<string>() };
     cur.fat += Number(o.doc_total) || 0;

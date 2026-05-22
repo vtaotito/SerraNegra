@@ -57,6 +57,7 @@ import {
   type SalesOrderRow,
   type SalesOrderLine,
 } from "@/lib/cockpit-api";
+import { excludeFreight, isFreightOrder, sumFreightValue } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
@@ -269,11 +270,17 @@ function FaturamentoUnifiedInner() {
 
   const loading = l1 || l2;
 
-  const allOrders = useMemo(() => ordersData?.items ?? [], [ordersData]);
+  const allOrdersRaw = useMemo(() => ordersData?.items ?? [], [ordersData]);
+  // Faturamento exclui pedidos de frete (num_lines = 0) — ver /business-intelligence/fretes
+  const allOrders = useMemo(() => excludeFreight(allOrdersRaw), [allOrdersRaw]);
   const orders = useMemo(
     () => allOrders.filter((o) => o.cancelled !== "Y"),
     [allOrders],
   );
+  const freightStats = useMemo(() => {
+    const active = allOrdersRaw.filter((o) => o.cancelled !== "Y" && isFreightOrder(o));
+    return { total: active.length, valor: sumFreightValue(allOrdersRaw) };
+  }, [allOrdersRaw]);
   const persons = useMemo(() => spData?.items ?? [], [spData]);
   const customers = useMemo(() => custData?.data ?? [], [custData]);
   const pMap = useMemo(
@@ -655,6 +662,18 @@ function FaturamentoUnifiedInner() {
           <span className="text-cockpit-border">·</span>
           <span>SAP B1</span>
         </p>
+        {freightStats.total > 0 && (
+          <p className="text-[11px] text-amber-700 mt-1.5 flex items-center gap-1.5">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+            {freightStats.total} pedido{freightStats.total > 1 ? "s" : ""} de frete ({fmtBRL(freightStats.valor)}) excluído{freightStats.total > 1 ? "s" : ""} —{" "}
+            <a
+              href="/business-intelligence/fretes"
+              className="underline hover:text-amber-900 font-medium"
+            >
+              ver custo de frete por cliente
+            </a>
+          </p>
+        )}
       </div>
 
       {/* Hero KPIs */}

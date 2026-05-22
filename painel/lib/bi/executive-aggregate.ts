@@ -1,4 +1,5 @@
 import type { SalesOrderRow } from "@/lib/cockpit-api";
+import { excludeFreight } from "@/lib/orders";
 import {
   format,
   parseISO,
@@ -38,7 +39,8 @@ export interface ExecutiveSummary {
 }
 
 function filterActive(orders: SalesOrderRow[]): SalesOrderRow[] {
-  return orders.filter((o) => o.cancelled !== "Y");
+  // Faturamento executivo exclui cancelados e pedidos de frete (num_lines = 0)
+  return excludeFreight(orders.filter((o) => o.cancelled !== "Y"));
 }
 
 export function buildExecutiveSummary(

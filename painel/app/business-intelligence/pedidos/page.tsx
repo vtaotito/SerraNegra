@@ -9,7 +9,7 @@ import {
   ChevronDown, ChevronRight, Package, Loader2,
   RefreshCw, DollarSign, Users, TrendingUp,
   ArrowUpDown, ArrowUp, ArrowDown, ListOrdered,
-  Briefcase, Minus, MapPin,
+  Briefcase, Minus, MapPin, Truck,
 } from "lucide-react";
 import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
 import {
@@ -17,6 +17,7 @@ import {
   fetchSalesPersons, fetchCustomers,
   type SalesOrderRow, type SalesOrderLine,
 } from "@/lib/cockpit-api";
+import { isFreightOrder } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
@@ -631,8 +632,20 @@ function PedidosContent() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
-  const orders = useMemo(() => data?.items ?? [], [data]);
+  const allOrdersRaw = useMemo(() => data?.items ?? [], [data]);
+
+  // Separa pedidos de frete (num_lines = 0) — tratados na sessão /fretes
+  const freightOrders = useMemo(() => allOrdersRaw.filter(isFreightOrder), [allOrdersRaw]);
+  const orders = useMemo(() => allOrdersRaw.filter((o) => !isFreightOrder(o)), [allOrdersRaw]);
   const activeOrders = useMemo(() => orders.filter((o) => o.cancelled !== "Y"), [orders]);
+
+  const freightStats = useMemo(() => {
+    const active = freightOrders.filter((o) => o.cancelled !== "Y");
+    return {
+      total: active.length,
+      valor: active.reduce((s, o) => s + (Number(o.doc_total) || 0), 0),
+    };
+  }, [freightOrders]);
 
   const spMap = useMemo(() => {
     const m = new Map<number, string>();
@@ -879,6 +892,27 @@ function PedidosContent() {
       {syncMsg && (
         <div className="px-4 py-2.5 rounded-lg bg-cockpit-accent/10 text-cockpit-accent text-sm border border-cockpit-accent/20 flex items-center gap-2">
           <RefreshCw className="w-4 h-4 shrink-0" /> {syncMsg}
+        </div>
+      )}
+
+      {/* Banner: pedidos de frete separados */}
+      {freightStats.total > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-md bg-amber-100">
+              <Truck className="w-4 h-4 text-amber-700" />
+            </div>
+            <div className="text-xs sm:text-sm text-amber-900 min-w-0">
+              <strong className="font-semibold">{freightStats.total} pedido{freightStats.total > 1 ? "s" : ""} de frete</strong> ({fmtBRL(freightStats.valor)}) separados desta lista.
+              <span className="block text-amber-700 text-[11px] mt-0.5">Pedidos sem itens não compõem o faturamento de produto.</span>
+            </div>
+          </div>
+          <Link
+            href="/business-intelligence/fretes"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 motion-safe:transition-colors whitespace-nowrap"
+          >
+            Ver Fretes <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
       )}
 

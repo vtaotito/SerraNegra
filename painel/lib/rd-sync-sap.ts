@@ -20,6 +20,7 @@ import {
 } from "@/lib/rd-station-server";
 import { query } from "@/lib/db";
 import { STATE_TO_REGION } from "@/lib/format";
+import { isFreightOrder } from "@/lib/orders";
 
 interface GatewaySalesOrder {
   card_code: string;
@@ -30,6 +31,10 @@ interface GatewaySalesOrder {
   sales_person_code: number | null;
   address?: string | null;
   address2?: string | null;
+  // Necessários para identificar pedidos de frete (num_lines = 0)
+  num_lines?: number;
+  total_quantity?: number;
+  lines?: Array<{ Quantity?: number }>;
 }
 
 interface GatewaySalesOrdersResult {
@@ -208,6 +213,11 @@ async function fetchMergedClients(
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
+    if (isFreightOrder({
+      lines: o.lines as never,
+      num_lines: o.num_lines ?? 0,
+      total_quantity: o.total_quantity ?? 0,
+    })) continue;
     const cur = clientAgg.get(o.card_code) ?? {
       name: o.card_name,
       fat: 0,

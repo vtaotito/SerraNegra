@@ -6,6 +6,7 @@ import {
 } from "@/lib/rd-station-server";
 import { gatewayGet } from "@/lib/gateway-fetch";
 import type { SalesOrderRow } from "@/lib/cockpit-api";
+import { excludeFreight } from "@/lib/orders";
 
 interface SalesOrdersResult {
   ok: boolean;
@@ -63,7 +64,8 @@ export async function GET(req: NextRequest) {
         }));
 
         const items = ordersRes?.items ?? [];
-        const ativos = items.filter((o) => o.cancelled !== "Y");
+        // Faturamento exclui cancelados e pedidos de frete (num_lines = 0)
+        const ativos = excludeFreight(items.filter((o) => o.cancelled !== "Y"));
         sapBridge = {
           pedidosNoPeriodo: ativos.length,
           faturamentoNoPeriodo: ativos.reduce((s, o) => s + (Number(o.doc_total) || 0), 0),
