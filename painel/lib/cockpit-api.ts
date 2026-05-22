@@ -531,7 +531,34 @@ export interface MarkupItemsResult {
 }
 
 export function fetchMarkupItems(): Promise<MarkupItemsResult> {
-  return get("/sap/markup/items");
+  return get<MarkupItemsResult>("/sap/markup/items").then((data) => ({
+    ...data,
+    items: data.items.map(normalizeMarkupItem),
+  }));
+}
+
+function toNum(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeMarkupItem(item: MarkupItem): MarkupItem {
+  return {
+    ...item,
+    v: toNum(item.v),
+    fr: toNum(item.fr),
+    sc: toNum(item.sc),
+    co: toNum(item.co),
+    pc: toNum(item.pc, 0.09),
+    ic: toNum(item.ic, 0.12),
+    ip: toNum(item.ip, 0.10),
+    qtdPallet: toNum(item.qtdPallet),
+    qtdSaco: toNum(item.qtdSaco),
+    custoFixoSaco: toNum(item.custoFixoSaco, 0.06),
+    custoFixoPallet: toNum(item.custoFixoPallet, 0.03),
+  };
 }
 
 export interface SaveMarkupOverrideInput {

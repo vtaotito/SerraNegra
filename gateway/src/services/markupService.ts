@@ -64,6 +64,17 @@ export interface SaveOverrideInput {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function num(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value == null || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -116,18 +127,18 @@ export class MarkupService {
         itemGroup: item.ItemsGroupCode ?? null,
         manufacturer: sapManufacturer,
 
-        v: ov?.preco_sem_imp ?? (lastPurchase || avgPrice),
-        fr: ov?.frete ?? 0,
-        sc: ov?.embalagem ?? 0,
-        co: ov?.comissao ?? 0,
-        pc: ov?.pis_cofins ?? 0.09,
-        ic: ov?.icms_compra ?? 0.12,
-        ip: ov?.ipi ?? 0.10,
+        v: num(ov?.preco_sem_imp ?? (lastPurchase || avgPrice)),
+        fr: num(ov?.frete),
+        sc: num(ov?.embalagem),
+        co: num(ov?.comissao),
+        pc: num(ov?.pis_cofins, 0.09),
+        ic: num(ov?.icms_compra, 0.12),
+        ip: num(ov?.ipi, 0.10),
 
-        qtdPallet: ov?.qtd_pallet ?? (item.SalesQtyPerPackUnit ?? 0),
-        qtdSaco: ov?.qtd_saco ?? (item.SalesItemsPerUnit ?? 0),
-        custoFixoSaco: ov?.custo_fixo_saco ?? 0.06,
-        custoFixoPallet: ov?.custo_fixo_pallet ?? 0.03,
+        qtdPallet: num(ov?.qtd_pallet ?? item.SalesQtyPerPackUnit),
+        qtdSaco: num(ov?.qtd_saco ?? item.SalesItemsPerUnit),
+        custoFixoSaco: num(ov?.custo_fixo_saco, 0.06),
+        custoFixoPallet: num(ov?.custo_fixo_pallet, 0.03),
 
         prices: itemPrices,
         hasOverride: ov != null,
