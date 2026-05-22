@@ -37,8 +37,6 @@ import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 import type { ExecutiveSummary } from "@/lib/bi/executive-aggregate";
 import { BiEmptyState } from "@/components/cockpit/BiEmptyState";
 
-const DOW_COLORS = ["#78696c", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#AA1A1B", "#78696c"];
-
 type Range = { from: Date; to: Date };
 
 export function ExecutiveDashboardCharts({
@@ -50,14 +48,18 @@ export function ExecutiveDashboardCharts({
   const {
     businessDayTrend,
     businessDayMedian,
+    weeklyTrend,
+    weeklyMedian,
     topVendedores,
     statusData,
     topProdutos,
-    dowData,
   } = summary;
   const totalFat = summary.kpis.fat;
   const businessDayCount = businessDayTrend.length;
   const businessDaysWithSales = businessDayTrend.filter((d) => d.Faturamento > 0).length;
+  const weeksWithSales = weeklyTrend.filter((w) => w.Faturamento > 0).length;
+  const totalProductFat = topProdutos.reduce((s, p) => s + p.fat, 0);
+  const totalProductQty = topProdutos.reduce((s, p) => s + p.qty, 0);
 
   return (
     <>
@@ -270,50 +272,81 @@ export function ExecutiveDashboardCharts({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+        {/* TOP 10 PRODUTOS — visão unificada */}
         <section className="rounded-xl border border-cockpit-border bg-white p-3 sm:p-5" aria-labelledby="exec-prod-heading">
-          <div className="flex items-center justify-between mb-3 sm:mb-4">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Package className="w-4 h-4 text-cockpit-accent" aria-hidden />
-              <h2 id="exec-prod-heading" className="text-xs sm:text-sm font-semibold text-gray-900">
+              <h2 id="exec-prod-heading" className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
                 Top 10 Produtos
               </h2>
+              <span className="text-[10px] text-cockpit-muted font-medium hidden sm:inline">
+                · visão unificada
+              </span>
             </div>
-            <Link
-              href="/catalogo"
-              className="text-[11px] text-cockpit-accent hover:underline font-medium"
-            >
-              Ver →
-            </Link>
+            <div className="flex items-center gap-2 sm:gap-3 text-[10px] text-cockpit-muted">
+              <span className="tabular-nums hidden sm:inline">{fmtNum(Math.round(totalProductQty))} un</span>
+              <span className="font-semibold text-gray-700 tabular-nums">{fmtBRL(totalProductFat, 0)}</span>
+              <Link
+                href="/catalogo"
+                className="text-cockpit-accent hover:underline font-medium ml-1"
+              >
+                Ver →
+              </Link>
+            </div>
           </div>
           {topProdutos.length === 0 ? (
             <BiEmptyState title="Sem dados de produtos" />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1.5 sm:space-y-2">
               {topProdutos.map((p, i) => {
                 const maxFat = topProdutos[0]?.fat || 1;
                 const pct = (p.fat / maxFat) * 100;
+                const color = CHART_SERIES_PALETTE[i % CHART_SERIES_PALETTE.length];
                 return (
-                  <div key={p.code} className="group">
-                    <div className="flex items-center justify-between mb-0.5 gap-2">
-                      <span
-                        className="text-[11px] sm:text-xs text-gray-700 font-medium truncate max-w-[50%] sm:max-w-[55%]"
-                        title={p.desc}
-                      >
-                        {p.desc}
-                      </span>
-                      <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-xs shrink-0">
-                        <span className="text-gray-400 tabular-nums hidden sm:inline">{fmtNum(p.qty)} un</span>
-                        <span className="text-gray-900 font-semibold tabular-nums">{fmtBRL(p.fat)}</span>
+                  <div key={p.key} className="group">
+                    <div className="flex items-baseline justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <span className="text-[10px] font-mono text-gray-400 tabular-nums w-4 text-right shrink-0">
+                          {i + 1}
+                        </span>
+                        <span
+                          className="inline-flex items-center justify-center text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 text-white"
+                          style={{ background: color }}
+                          title={`Sigla ${p.prefix}`}
+                        >
+                          {p.prefix}
+                        </span>
+                        <span
+                          className="text-[11px] sm:text-xs text-gray-800 font-medium truncate"
+                          title={p.desc}
+                        >
+                          {p.desc}
+                        </span>
+                        {p.skus > 1 && (
+                          <span
+                            className="inline-flex items-center text-[9px] font-bold bg-gray-100 text-gray-600 px-1 py-0.5 rounded shrink-0"
+                            title={`${p.skus} SKUs unificados — embalagens: ${p.embalas.join(", ")}`}
+                          >
+                            ×{p.skus}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 sm:gap-3 text-[11px] sm:text-xs shrink-0 tabular-nums">
+                        <span className="text-gray-400 hidden sm:inline">{fmtNum(Math.round(p.qty))} un</span>
+                        <span className="text-gray-900 font-semibold">{fmtBRL(p.fat)}</span>
                       </div>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-1.5">
-                      <div
-                        className="h-1.5 rounded-full motion-safe:transition-all motion-safe:duration-500"
-                        style={{
-                          width: `${pct}%`,
-                          background: CHART_SERIES_PALETTE[i % CHART_SERIES_PALETTE.length],
-                        }}
-                      />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                        <div
+                          className="h-1.5 rounded-full motion-safe:transition-all motion-safe:duration-500"
+                          style={{ width: `${pct}%`, background: color }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-gray-400 tabular-nums w-9 text-right shrink-0">
+                        {(p.fat / Math.max(totalProductFat, 1) * 100).toFixed(0)}%
+                      </span>
                     </div>
                   </div>
                 );
@@ -322,21 +355,37 @@ export function ExecutiveDashboardCharts({
           )}
         </section>
 
-        <section className="rounded-xl border border-cockpit-border bg-white p-3 sm:p-5" aria-labelledby="exec-dow-heading">
-          <div className="flex items-center gap-2 mb-3 sm:mb-4">
-            <Calendar className="w-4 h-4 text-cockpit-accent" aria-hidden />
-            <h2 id="exec-dow-heading" className="text-xs sm:text-sm font-semibold text-gray-900">
-              Vendas por Dia da Semana
-            </h2>
+        {/* VENDAS POR SEMANA — últimas 8 semanas */}
+        <section className="rounded-xl border border-cockpit-border bg-white p-3 sm:p-5" aria-labelledby="exec-week-heading">
+          <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <Calendar className="w-4 h-4 text-cockpit-accent" aria-hidden />
+              <h2 id="exec-week-heading" className="text-xs sm:text-sm font-semibold text-gray-900 truncate">
+                Vendas — Últimas 8 Semanas
+              </h2>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-cockpit-muted">
+              <span className="hidden sm:inline">{weeksWithSales}/{weeklyTrend.length} semanas com vendas</span>
+              {weeklyMedian > 0 && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-semibold">
+                  <span className="inline-block w-2 h-px bg-violet-600 align-middle" />
+                  Mediana {fmtBRL(weeklyMedian, 0)}
+                </span>
+              )}
+            </div>
           </div>
-          {dowData.length === 0 ? (
-            <BiEmptyState title="Sem dados para o período" />
+          {weeklyTrend.length === 0 || weeksWithSales === 0 ? (
+            <BiEmptyState title="Sem dados nas últimas 8 semanas" />
           ) : (
             <div className="h-48 sm:h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dowData} barCategoryGap="20%" margin={{ left: -10, right: 5, top: 5, bottom: 0 }}>
+                <BarChart
+                  data={weeklyTrend}
+                  barCategoryGap="22%"
+                  margin={{ left: -10, right: 5, top: 5, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
-                  <XAxis dataKey="name" tick={chartAxisTick("md")} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" tick={chartAxisTick("sm")} axisLine={false} tickLine={false} />
                   <YAxis
                     tick={chartAxisTick("sm")}
                     axisLine={false}
@@ -344,16 +393,68 @@ export function ExecutiveDashboardCharts({
                     width={40}
                     tickFormatter={(v: number) => formatYAxisCompact(v)}
                   />
-                  <Tooltip content={<BiChartTooltip variant="cockpit" />} />
+                  <Tooltip
+                    content={(props: { active?: boolean; payload?: readonly { payload?: { rangeLabel: string; Faturamento: number; Pedidos: number } }[] }) => {
+                      const p = props.payload?.[0]?.payload;
+                      if (!props.active || !p) return null;
+                      return (
+                        <BiChartTooltip
+                          active
+                          variant="cockpit"
+                          label={`Semana ${p.rangeLabel}`}
+                          payload={[
+                            { name: "Faturamento", value: p.Faturamento },
+                            { name: "Pedidos", value: p.Pedidos },
+                          ]}
+                          formatValue={(name, v) => (name === "Pedidos" ? fmtNum(v) : fmtBRL(v))}
+                        />
+                      );
+                    }}
+                  />
+                  {weeklyMedian > 0 && (
+                    <ReferenceLine
+                      y={weeklyMedian}
+                      stroke="#7c3aed"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      ifOverflow="extendDomain"
+                      label={{
+                        value: `Med ${formatYAxisCompact(weeklyMedian)}`,
+                        fill: "#7c3aed",
+                        fontSize: 10,
+                        position: "insideTopRight",
+                      }}
+                    />
+                  )}
                   <Bar dataKey="Faturamento" radius={[6, 6, 0, 0]}>
-                    {dowData.map((_, i) => (
-                      <Cell key={dowData[i].name} fill={DOW_COLORS[i]} />
-                    ))}
+                    {weeklyTrend.map((w, i) => {
+                      const isCurrentWeek = i === weeklyTrend.length - 1;
+                      const fill = w.Faturamento === 0
+                        ? "#e5e7eb"
+                        : isCurrentWeek
+                          ? "#f59e0b"
+                          : w.Faturamento >= weeklyMedian ? CHART_SERIES_PRIMARY : "#d4b5b8";
+                      return <Cell key={w.weekStart} fill={fill} />;
+                    })}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
+          <div className="flex items-center justify-center gap-3 mt-2 text-[10px] text-cockpit-muted flex-wrap">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: CHART_SERIES_PRIMARY }} />
+              ≥ mediana
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#d4b5b8]" />
+              &lt; mediana
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" />
+              Semana atual (parcial)
+            </span>
+          </div>
         </section>
       </div>
 

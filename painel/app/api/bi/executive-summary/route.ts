@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseISO } from "date-fns";
+import { parseISO, format, subWeeks, startOfWeek } from "date-fns";
 import { buildExecutiveSummary } from "@/lib/bi/executive-aggregate";
 import { gatewayGet, gatewayPost } from "@/lib/gateway-fetch";
 import type { SalesOrderRow, SapSalesPerson } from "@/lib/cockpit-api";
@@ -50,10 +50,23 @@ export async function GET(req: NextRequest) {
   };
   if (salesPerson != null) pPrev.salesPerson = String(salesPerson);
 
+  // Janela fixa das últimas 8 semanas (independente do range do usuário)
+  // — usada apenas para o gráfico semanal e mediana de 8 semanas.
+  const today = new Date();
+  const recentStart = format(startOfWeek(subWeeks(today, 8), { weekStartsOn: 1 }), "yyyy-MM-dd");
+  const recentEnd = format(today, "yyyy-MM-dd");
+  const pRecent: Record<string, string> = {
+    dateFrom: recentStart,
+    dateTo: recentEnd,
+    limit: "50000",
+  };
+  if (salesPerson != null) pRecent.salesPerson = String(salesPerson);
+
   try {
-    const [ordersRes, prevRes, spRes, custRes] = await Promise.all([
+    const [ordersRes, prevRes, recentRes, spRes, custRes] = await Promise.all([
       gatewayGet<SalesOrdersResult>("/sap/sales-orders", pOrders),
       gatewayGet<SalesOrdersResult>("/sap/sales-orders", pPrev),
+      gatewayGet<SalesOrdersResult>("/sap/sales-orders", pRecent),
       gatewayPost<SyncResult<SapSalesPerson>>("/sap/sync/salespersons"),
       gatewayGet<PaginatedCustomers>("/v1/customers", { limit: "1" }),
     ]);
@@ -75,7 +88,8 @@ export async function GET(req: NextRequest) {
       rangeTo,
       spMap,
       custRes?.total ?? 0,
-      spRes?.count ?? spRes?.items?.length ?? 0
+      spRes?.count ?? spRes?.items?.length ?? 0,
+      recentRes?.items ?? [],
     );
 
     return NextResponse.json(summary);

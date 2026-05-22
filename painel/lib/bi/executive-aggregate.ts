@@ -1,6 +1,11 @@
 import type { SalesOrderRow } from "@/lib/cockpit-api";
 import { excludeFreight } from "@/lib/orders";
-import { getLineUnits } from "@/lib/item-parser";
+import {
+  getLineUnits,
+  getBaseProductName,
+  getProductPrefix,
+  getUnifiedProductKey,
+} from "@/lib/item-parser";
 import {
   format,
   parseISO,
@@ -11,6 +16,8 @@ import {
   endOfWeek,
   endOfMonth,
   startOfMonth,
+  startOfWeek,
+  subWeeks,
   isWeekend,
   isSameMonth,
   isAfter,
@@ -18,8 +25,6 @@ import {
   startOfDay,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-
-const DOW_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 export interface ExecutiveKpis {
   fat: number;
@@ -67,6 +72,34 @@ export interface MonthProjection {
   pctElapsed: number;
 }
 
+export interface WeeklyDatum {
+  /** yyyy-MM-dd da segunda-feira da semana */
+  weekStart: string;
+  /** "dd/MM" */
+  label: string;
+  /** "21–27/05" */
+  rangeLabel: string;
+  Faturamento: number;
+  Pedidos: number;
+}
+
+export interface UnifiedTopProduct {
+  /** Chave única de unificação ("GN::NOME BASE") */
+  key: string;
+  /** Sigla do grupo (GN, PO, GI…) */
+  prefix: string;
+  /** Nome descritivo SEM o sufixo de embalagem */
+  desc: string;
+  /** Quantidade total em unidades reais (qty × embalaQty) */
+  qty: number;
+  /** Faturamento somado de todas as variantes (UND + CAIXA + FARDO) */
+  fat: number;
+  /** Quantidade de SKUs (variantes de embalagem) agregados */
+  skus: number;
+  /** Embalagens encontradas, ex.: ["UND", "CAIXA C/12"] */
+  embalas: string[];
+}
+
 export interface ExecutiveSummary {
   kpis: ExecutiveKpis;
   topVendedores: Array<{ code: number; nome: string; fat: number; pedidos: number }>;
@@ -77,10 +110,14 @@ export interface ExecutiveSummary {
   businessDayTrend: BusinessDayDatum[];
   /** Mediana do faturamento dos dias úteis com vendas. */
   businessDayMedian: number;
+  /** Últimas 8 semanas a partir de hoje (independe do range selecionado). */
+  weeklyTrend: WeeklyDatum[];
+  /** Mediana das 8 semanas (apenas as com vendas). */
+  weeklyMedian: number;
   /** Projeção do mês corrente (null quando o range não inclui o mês corrente). */
   monthProjection: MonthProjection | null;
-  topProdutos: Array<{ code: string; desc: string; fat: number; qty: number }>;
-  dowData: Array<{ name: string; Faturamento: number; Pedidos: number }>;
+  /** Top 10 produtos — visão UNIFICADA (agrupa por nome base + sigla). */
+  topProdutos: UnifiedTopProduct[];
   statusData: Array<{ name: string; value: number; fill: string }>;
   meta: { orderCount: number; clienteAtivos: number; spCount: number };
 }
@@ -97,10 +134,16 @@ export function buildExecutiveSummary(
   rangeTo: Date,
   spMap: Map<number, string>,
   custTotal: number,
-  salesPersonCount: number
+  salesPersonCount: number,
+  /**
+   * Pedidos das últimas ~9 semanas (independe do range selecionado).
+   * Usado para construir o gráfico semanal sem depender da seleção do usuário.
+   */
+  recentOrdersRaw: SalesOrderRow[] = [],
 ): ExecutiveSummary {
   const orders = filterActive(ordersRaw);
   const prevOrders = filterActive(prevOrdersRaw);
+  const recentOrders = filterActive(recentOrdersRaw);
 
   const fat = orders.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
   const prevFat = prevOrders.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
@@ -220,39 +263,95 @@ export function buildExecutiveSummary(
     });
   }
 
-  const prodMap = new Map<string, { desc: string; fat: number; qty: number }>();
+  // ── Top produtos — visão UNIFICADA (mesma regra do /catalogo) ──
+  // Agrupa por sigla + nome base, somando faturamento e unidades reais (qty × embalaQty).
+  const unifiedProdMap = new Map<
+    string,
+    {
+      prefix: string;
+      desc: string;
+      fat: number;
+      qty: number;
+      skus: Set<string>;
+      embalas: Set<string>;
+    }
+  >();
   for (const o of orders) {
     if (!o.lines) continue;
     for (const line of o.lines) {
-      const code = line.ItemCode || "N/D";
+      const key = getUnifiedProductKey(line.ItemCode, line.ItemDescription);
+      const prefix = getProductPrefix(line.ItemCode);
+      const baseName = getBaseProductName(line.ItemDescription) || (line.ItemCode ?? "—");
       const cur =
-        prodMap.get(code) ?? {
-          desc: line.ItemDescription || code,
+        unifiedProdMap.get(key) ?? {
+          prefix,
+          desc: baseName,
           fat: 0,
           qty: 0,
+          skus: new Set<string>(),
+          embalas: new Set<string>(),
         };
       cur.fat += Number(line.LineTotal) || 0;
-      cur.qty += Number(line.Quantity) || 0;
-      prodMap.set(code, cur);
+      cur.qty += getLineUnits(line);
+      if (line.ItemCode) cur.skus.add(line.ItemCode);
+      // Identifica embalagem pela diferença entre descrição completa e baseName
+      const full = (line.ItemDescription ?? "").trim();
+      const baseLen = baseName.length;
+      if (full.length > baseLen) {
+        const tail = full.slice(baseLen).replace(/^\s*[-–]\s*/, "").trim().toUpperCase();
+        if (tail) cur.embalas.add(tail.replace(/\s+UND$/i, "").replace(/^C\s*\//i, "C/"));
+      } else {
+        cur.embalas.add("UND");
+      }
+      unifiedProdMap.set(key, cur);
     }
   }
-  const topProdutos = Array.from(prodMap.entries())
-    .map(([code, v]) => ({ code, ...v }))
+  const topProdutos: UnifiedTopProduct[] = Array.from(unifiedProdMap.entries())
+    .map(([key, v]) => ({
+      key,
+      prefix: v.prefix,
+      desc: v.desc,
+      fat: v.fat,
+      qty: v.qty,
+      skus: v.skus.size,
+      embalas: Array.from(v.embalas).sort(),
+    }))
     .sort((a, b) => b.fat - a.fat)
     .slice(0, 10);
 
-  const dowAgg = Array.from({ length: 7 }, () => ({ fat: 0, pedidos: 0 }));
-  for (const o of orders) {
-    const d = parseISO(o.doc_date?.split("T")[0] || "");
-    const dow = d.getDay();
-    dowAgg[dow].fat += Number(o.doc_total) || 0;
-    dowAgg[dow].pedidos += 1;
+  // ── Últimas 8 semanas (independente do range selecionado) ──
+  const refToday = startOfDay(new Date());
+  const weeklyTrend: WeeklyDatum[] = [];
+  for (let i = 7; i >= 0; i--) {
+    const wStart = startOfWeek(subWeeks(refToday, i), { weekStartsOn: 1 });
+    const wEnd = endOfWeek(wStart, { weekStartsOn: 1 });
+    let wf = 0;
+    let wp = 0;
+    for (const o of recentOrders) {
+      if (!o.doc_date) continue;
+      const d = parseISO(o.doc_date.split("T")[0] + "T12:00:00");
+      if (d >= wStart && d <= wEnd) {
+        wf += Number(o.doc_total) || 0;
+        wp += 1;
+      }
+    }
+    weeklyTrend.push({
+      weekStart: format(wStart, "yyyy-MM-dd"),
+      label: format(wStart, "dd/MM"),
+      rangeLabel: `${format(wStart, "dd/MM")} – ${format(wEnd, "dd/MM")}`,
+      Faturamento: wf,
+      Pedidos: wp,
+    });
   }
-  const dowData = dowAgg.map((v, i) => ({
-    name: DOW_LABELS[i],
-    Faturamento: v.fat,
-    Pedidos: v.pedidos,
-  }));
+
+  // Mediana das 8 semanas (somente as com vendas)
+  const weeklyValues = weeklyTrend.map((w) => w.Faturamento).filter((v) => v > 0).sort((a, b) => a - b);
+  let weeklyMedian = 0;
+  if (weeklyValues.length > 0) {
+    const mid = Math.floor(weeklyValues.length / 2);
+    weeklyMedian =
+      weeklyValues.length % 2 !== 0 ? weeklyValues[mid] : (weeklyValues[mid - 1] + weeklyValues[mid]) / 2;
+  }
 
   const open = orders.filter((o) => o.doc_status === "O").length;
   const closed = orders.filter((o) => o.doc_status === "C").length;
@@ -361,9 +460,10 @@ export function buildExecutiveSummary(
     trendData,
     businessDayTrend,
     businessDayMedian,
+    weeklyTrend,
+    weeklyMedian,
     monthProjection,
     topProdutos,
-    dowData,
     statusData,
     meta: {
       orderCount: orders.length,

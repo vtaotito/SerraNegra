@@ -58,3 +58,35 @@ export function getLineUnits(line: {
   const qty = Number(line.Quantity) || 0;
   return qty * getEmbalaQty(line.ItemDescription);
 }
+
+/** Sigla (2 chars) do código SAP — ex: "GN0000022" → "GN". */
+export function getProductPrefix(itemCode?: string | null): string {
+  if (!itemCode) return "OUTRO";
+  return itemCode.substring(0, 2).toUpperCase() || "OUTRO";
+}
+
+/**
+ * Nome "base" do produto, sem o sufixo de embalagem ("- CAIXA C/12 UND", "- UND" etc.).
+ * Em maiúsculas e sem espaços duplicados — pronto para servir de chave de agrupamento.
+ */
+export function getBaseProductName(itemDescription?: string | null): string {
+  return (itemDescription ?? "")
+    .replace(/\s*[-–]\s*(CAIXA|FARDO|PALETE)\s+C\s*\/\s*[\d.,]+\s*UND\s*$/i, "")
+    .replace(/\s*[-–]\s*(CAIXA|FARDO|PALETE)\s+\d+\s*UND\s*$/i, "")
+    .replace(/\s*[-–]\s*UND\s*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * Chave de unificação de produto (mesma regra usada em /catalogo):
+ *   "<sigla>::<nome_base>".
+ * Ex.: "GN GARRAFA NACIONAL 600ML AMB - CAIXA C/12 UND"
+ *   →  "GN::GARRAFA NACIONAL 600ML AMB"
+ */
+export function getUnifiedProductKey(itemCode?: string | null, itemDescription?: string | null): string {
+  const prefix = getProductPrefix(itemCode);
+  const baseName = getBaseProductName(itemDescription);
+  return `${prefix}::${baseName || (itemCode ?? "—")}`;
+}
