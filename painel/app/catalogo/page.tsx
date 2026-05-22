@@ -12,7 +12,18 @@ import {
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   ReferenceLine, ComposedChart, Line,
 } from "recharts";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, startOfMonth, isSameMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+
+/** "yyyy-MM-dd" — usado em parâmetros de query (API) */
+function formatDateOnly(d: Date): string {
+  return format(d, "yyyy-MM-dd");
+}
+
+/** "yyyy-MM" — chave do mês para agrupamento */
+function formatYearMonth(d: Date): string {
+  return format(d, "yyyy-MM");
+}
 import {
   fmtBRL,
   fmtNum,
@@ -317,15 +328,27 @@ type SortDir = "asc" | "desc";
 /* ═══════════════════ Lazy-loaded Product Detail Modal ═══════════════════ */
 
 function UnifiedProductModal({
-  product, dateFrom, dateTo, totalFat, onClose,
+  product, totalFat, onClose,
 }: {
-  product: UnifiedProductRow; dateFrom: string; dateTo: string; totalFat: number; onClose: () => void;
+  product: UnifiedProductRow;
+  /** Soma do faturamento do range global — usado apenas para o badge "% do total" (referência). */
+  totalFat: number;
+  onClose: () => void;
 }) {
   const itemCodes = useMemo(() => product.variants.map((v) => v.itemCode), [product.variants]);
 
+  // ─── Detalhe do produto SEMPRE em janela fixa de 12 meses ───
+  // Independe do range global. Permite ver evolução completa do produto.
+  const today = useMemo(() => new Date(), []);
+  const detailFrom = useMemo(
+    () => formatDateOnly(startOfMonth(subMonths(today, 11))),
+    [today],
+  );
+  const detailTo = useMemo(() => formatDateOnly(today), [today]);
+
   const { data: ordersData, loading: ordersLoading } = useFetch(
-    () => fetchProductOrders({ itemCodes, dateFrom, dateTo }),
-    [itemCodes.join(","), dateFrom, dateTo],
+    () => fetchProductOrders({ itemCodes, dateFrom: detailFrom, dateTo: detailTo }),
+    [itemCodes.join(","), detailFrom, detailTo],
   );
 
   const productOrders = useMemo(() => {
@@ -342,8 +365,33 @@ function UnifiedProductModal({
       disc: Number(o.discount_percent) || 0,
       itemCode: o.item_code,
       embala: variantMap.get(o.item_code)?.embala ?? "—",
+      embalaQty: variantMap.get(o.item_code)?.embalaQty ?? 1,
     }));
   }, [ordersData, product.variants]);
+
+  // ─── KPIs do produto na janela de 12 meses ───
+  const productKpis = useMemo(() => {
+    let fat = 0;
+    let qtdEmb = 0;
+    let qtdUnd = 0;
+    const clientes = new Set<string>();
+    const docs = new Set<number>();
+    for (const r of productOrders) {
+      fat += r.lineTotal;
+      qtdEmb += r.qty;
+      qtdUnd += r.qty * r.embalaQty;
+      if (r.cardCode) clientes.add(r.cardCode);
+      docs.add(r.docNum);
+    }
+    return {
+      fat,
+      qtdEmb,
+      qtdUnd,
+      clientes: clientes.size,
+      pedidos: docs.size,
+      precoUndMedio: qtdUnd > 0 ? fat / qtdUnd : 0,
+    };
+  }, [productOrders]);
 
   const topClients = useMemo(() => {
     const map = new Map<string, { name: string; fat: number; qty: number; orders: number }>();
@@ -358,21 +406,40 @@ function UnifiedProductModal({
       .slice(0, 8);
   }, [productOrders]);
 
+  // Evolução mensal: 12 meses fixos (do mais antigo ao corrente), com slots zerados quando sem vendas.
   const monthlyData = useMemo(() => {
-    const map = new Map<string, { fat: number; qty: number }>();
+    const slots = new Map<string, { fat: number; qty: number; isCurrent: boolean }>();
+    for (let i = 11; i >= 0; i--) {
+      const m = startOfMonth(subMonths(today, i));
+      slots.set(formatYearMonth(m), { fat: 0, qty: 0, isCurrent: isSameMonth(m, today) });
+    }
     for (const r of productOrders) {
       const key = r.docDate.substring(0, 7);
-      const cur = map.get(key) ?? { fat: 0, qty: 0 };
-      cur.fat += r.lineTotal; cur.qty += r.qty;
-      map.set(key, cur);
+      const slot = slots.get(key);
+      if (!slot) continue;
+      slot.fat += r.lineTotal;
+      slot.qty += r.qty * r.embalaQty;
     }
-    return Array.from(map.entries())
-      .map(([month, v]) => ({ month: month.substring(2).replace("-", "/"), fat: v.fat, qty: v.qty }))
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .slice(-12);
-  }, [productOrders]);
+    return Array.from(slots.entries()).map(([yyyymm, v]) => {
+      const d = startOfMonth(new Date(`${yyyymm}-01T12:00:00`));
+      return {
+        month: format(d, "MMM/yy", { locale: ptBR }),
+        yyyymm,
+        fat: v.fat,
+        qty: v.qty,
+        isCurrent: v.isCurrent,
+      };
+    });
+  }, [productOrders, today]);
 
-  const pctTotal = totalFat > 0 ? (product.faturamento / totalFat * 100) : 0;
+  const monthlyMedian = useMemo(() => {
+    const values = monthlyData.filter((m) => !m.isCurrent && m.fat > 0).map((m) => m.fat).sort((a, b) => a - b);
+    if (values.length === 0) return 0;
+    const mid = Math.floor(values.length / 2);
+    return values.length % 2 !== 0 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
+  }, [monthlyData]);
+
+  const pctTotal = totalFat > 0 ? (productKpis.fat / totalFat * 100) : 0;
   const codColor = COD_COLORS[product.cod] ?? "#A81C2C";
   const hasMultipleVariants = product.variants.length > 1;
 
@@ -403,23 +470,33 @@ function UnifiedProductModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
-          {/* KPIs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Faturamento 12m", value: fmtBRL(product.faturamento), sub: `${pctTotal.toFixed(1)}% do total`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
-              { label: "Qtd Total (UND)", value: `${fmtNum(product.qtdUnd)} un`, sub: `Média 3m: ${fmtNum(Math.round(product.avgQtd3m))}/mês`, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
-              { label: "R$/UND Consolidado", value: product.precoUndMedio > 0 ? fmtBRL(product.precoUndMedio, 2) : "—", sub: product.maxSale12m > 0 ? `Max: ${fmtBRL(product.maxSale12m)} · Min: ${fmtBRL(product.minSale12m)}` : undefined, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-50" },
-              { label: "Clientes", value: String(product.clientes), sub: `${product.vendas} vendas`, icon: Users, color: "text-violet-600", bg: "bg-violet-50" },
-            ].map((k) => (
-              <div key={k.label} className="rounded-xl border border-cockpit-border p-3">
-                <div className="flex items-center gap-1.5">
-                  <div className={`p-1 rounded-md ${k.bg}`}><k.icon className={`w-3.5 h-3.5 ${k.color}`} /></div>
-                  <span className="text-[10px] font-semibold text-cockpit-muted uppercase">{k.label}</span>
+          {/* KPIs — sempre últimos 12 meses */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">
+                Indicadores · Últimos 12 meses
+              </h4>
+              <span className="text-[10px] text-cockpit-muted">
+                {format(subMonths(today, 11), "MMM/yy", { locale: ptBR })} – {format(today, "MMM/yy", { locale: ptBR })}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Faturamento", value: fmtBRL(productKpis.fat), sub: totalFat > 0 ? `${pctTotal.toFixed(1)}% do catálogo no período` : `${productKpis.pedidos} pedidos`, icon: DollarSign, color: "text-emerald-600", bg: "bg-emerald-50" },
+                { label: "Qtd Total Embalagens", value: `${fmtNum(productKpis.qtdEmb)} emb`, sub: `${fmtNum(productKpis.qtdUnd)} un (× embalagem)`, icon: Package, color: "text-blue-600", bg: "bg-blue-50" },
+                { label: "R$/UND médio", value: productKpis.precoUndMedio > 0 ? fmtBRL(productKpis.precoUndMedio, 2) : "—", sub: product.maxSale12m > 0 ? `Max: ${fmtBRL(product.maxSale12m)} · Min: ${fmtBRL(product.minSale12m)}` : undefined, icon: TrendingUp, color: "text-amber-600", bg: "bg-amber-50" },
+                { label: "Clientes", value: String(productKpis.clientes), sub: `${productKpis.pedidos} pedidos`, icon: Users, color: "text-violet-600", bg: "bg-violet-50" },
+              ].map((k) => (
+                <div key={k.label} className="rounded-xl border border-cockpit-border p-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className={`p-1 rounded-md ${k.bg}`}><k.icon className={`w-3.5 h-3.5 ${k.color}`} /></div>
+                    <span className="text-[10px] font-semibold text-cockpit-muted uppercase truncate">{k.label}</span>
+                  </div>
+                  <span className={`text-lg font-bold ${k.color} block mt-1 tabular-nums`}>{k.value}</span>
+                  {k.sub && <span className="text-[10px] text-cockpit-muted">{k.sub}</span>}
                 </div>
-                <span className={`text-lg font-bold ${k.color} block mt-1`}>{k.value}</span>
-                {k.sub && <span className="text-[10px] text-cockpit-muted">{k.sub}</span>}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           {/* Visão por Embalagem */}
@@ -441,9 +518,21 @@ function UnifiedProductModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cockpit-border/50">
-                  {product.variants.map((v, vi) => {
-                    const pctVar = product.faturamento > 0 ? (v.faturamento / product.faturamento * 100) : 0;
-                    return (
+                  {(() => {
+                    // Recalcula totais por variante a partir dos pedidos das últimas 12 meses
+                    const byVariant = new Map<string, { qtdEmb: number; qtdUnd: number; fat: number }>();
+                    for (const r of productOrders) {
+                      const cur = byVariant.get(r.itemCode) ?? { qtdEmb: 0, qtdUnd: 0, fat: 0 };
+                      cur.qtdEmb += r.qty;
+                      cur.qtdUnd += r.qty * r.embalaQty;
+                      cur.fat += r.lineTotal;
+                      byVariant.set(r.itemCode, cur);
+                    }
+                    return product.variants.map((v, vi) => {
+                      const calc = byVariant.get(v.itemCode) ?? { qtdEmb: 0, qtdUnd: 0, fat: 0 };
+                      const pctVar = productKpis.fat > 0 ? (calc.fat / productKpis.fat * 100) : 0;
+                      const precoUndMedio = calc.qtdUnd > 0 ? calc.fat / calc.qtdUnd : 0;
+                      return (
                       <tr key={`${v.itemCode}-${v.embala}-${vi}`} className="hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors">
                         <td className="py-1.5 px-3">
                           <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${v.embala === "UND" ? "bg-gray-100 text-gray-600" : "bg-amber-50 text-amber-700"}`}>
@@ -452,25 +541,26 @@ function UnifiedProductModal({
                           {v.embalaQty > 1 && <span className="ml-1 text-[9px] text-gray-400">×{v.embalaQty}</span>}
                         </td>
                         <td className="py-1.5 px-3 font-mono text-blue-600 text-[10px]">{v.itemCode}</td>
-                        <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">{fmtNum(v.qtdEmb)}</td>
-                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-gray-900">{fmtNum(v.qtdUnd)}</td>
-                        <td className="py-1.5 px-3 text-right tabular-nums text-teal-700">{v.precoUndMedio > 0 ? fmtBRL(v.precoUndMedio, 2) : "—"}</td>
-                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-cockpit-accent">{fmtBRL(v.faturamento)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">{fmtNum(calc.qtdEmb)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-gray-900">{fmtNum(calc.qtdUnd)}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums text-teal-700">{precoUndMedio > 0 ? fmtBRL(precoUndMedio, 2) : "—"}</td>
+                        <td className="py-1.5 px-3 text-right tabular-nums font-medium text-cockpit-accent">{fmtBRL(calc.fat)}</td>
                         <td className="py-1.5 px-3 text-right tabular-nums text-gray-500">{pctVar.toFixed(1)}%</td>
                       </tr>
                     );
-                  })}
+                    });
+                  })()}
                 </tbody>
                 {product.variants.length > 1 && (
                   <tfoot>
                     <tr className="bg-cockpit-bg/70 border-t border-cockpit-border font-semibold">
                       <td className="py-2 px-3 text-gray-700" colSpan={2}>Total Consolidado</td>
                       <td className="py-2 px-3 text-right tabular-nums text-gray-600">
-                        {fmtNum(product.variants.reduce((s, v) => s + v.qtdEmb, 0))}
+                        {fmtNum(productKpis.qtdEmb)}
                       </td>
-                      <td className="py-2 px-3 text-right tabular-nums text-gray-900">{fmtNum(product.qtdUnd)}</td>
-                      <td className="py-2 px-3 text-right tabular-nums text-teal-700">{product.precoUndMedio > 0 ? fmtBRL(product.precoUndMedio, 2) : "—"}</td>
-                      <td className="py-2 px-3 text-right tabular-nums text-cockpit-accent">{fmtBRL(product.faturamento)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-gray-900">{fmtNum(productKpis.qtdUnd)}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-teal-700">{productKpis.precoUndMedio > 0 ? fmtBRL(productKpis.precoUndMedio, 2) : "—"}</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-cockpit-accent">{fmtBRL(productKpis.fat)}</td>
                       <td className="py-2 px-3 text-right tabular-nums text-gray-700">100%</td>
                     </tr>
                   </tfoot>
@@ -487,22 +577,68 @@ function UnifiedProductModal({
             </div>
           )}
 
-          {/* Faturamento mensal */}
-          {!ordersLoading && monthlyData.length > 1 && (
+          {/* Evolução mensal — 12 meses fixos */}
+          {!ordersLoading && (
             <div>
-              <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Evolução Mensal</h4>
-              <div className="h-36">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider">Evolução Mensal · 12 meses</h4>
+                {monthlyMedian > 0 && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-700 font-semibold">
+                    <span className="inline-block w-2 h-px bg-violet-600 align-middle" />
+                    Mediana {fmtBRL(monthlyMedian, 0)}
+                  </span>
+                )}
+              </div>
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={monthlyData} margin={{ left: 0, right: 5, top: 5, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke={CHART_AXIS_LINE} />
                     <XAxis dataKey="month" tick={{ ...chartAxisTick("sm"), fontSize: 10 }} axisLine={{ stroke: CHART_AXIS_LINE }} />
                     <YAxis yAxisId="left" tick={{ ...chartAxisTick("sm"), fontSize: 10 }} tickFormatter={(v) => formatYAxisCompact(Number(v))} width={50} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fill: "#2563eb", fontSize: 10 }} width={40} />
-                    <Tooltip content={<BiChartTooltip variant="cockpit" formatValue={(name, v) => (name === "Quantidade" ? `${fmtNum(v)} unidades` : fmtBRL(v))} />} />
-                    <Bar yAxisId="left" dataKey="fat" name="Faturamento" fill={codColor} radius={[3, 3, 0, 0]} barSize={20} fillOpacity={0.8} />
-                    <Line yAxisId="right" dataKey="qty" name="Quantidade" type="monotone" stroke="#2563eb" strokeWidth={2} dot={{ r: 2.5 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fill: "#2563eb", fontSize: 10 }} width={40} tickFormatter={(v) => fmtNum(Math.round(Number(v)))} />
+                    <Tooltip content={<BiChartTooltip variant="cockpit" formatValue={(name, v) => (name === "Quantidade (un)" ? `${fmtNum(Math.round(v))} un` : fmtBRL(v))} />} />
+                    {monthlyMedian > 0 && (
+                      <ReferenceLine
+                        yAxisId="left"
+                        y={monthlyMedian}
+                        stroke="#7c3aed"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        ifOverflow="extendDomain"
+                      />
+                    )}
+                    <Bar yAxisId="left" dataKey="fat" name="Faturamento" radius={[3, 3, 0, 0]} barSize={22}>
+                      {monthlyData.map((m) => {
+                        let fill: string = codColor;
+                        if (m.fat === 0) fill = "#e5e7eb";
+                        else if (m.isCurrent) fill = "#f59e0b";
+                        else fill = m.fat >= monthlyMedian ? codColor : codColor + "80";
+                        return <Cell key={m.yyyymm} fill={fill} />;
+                      })}
+                    </Bar>
+                    <Line yAxisId="right" dataKey="qty" name="Quantidade (un)" type="monotone" stroke="#2563eb" strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
+              </div>
+              <div className="flex items-center justify-center gap-3 mt-1 text-[10px] text-cockpit-muted flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: codColor }} />
+                  Mês fechado
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-amber-500" />
+                  Mês corrente (parcial)
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-gray-200" />
+                  Sem vendas
+                </span>
+                {monthlyMedian > 0 && (
+                  <span className="inline-flex items-center gap-1">
+                    <span className="inline-block w-3 h-px border-t border-dashed border-violet-600" />
+                    Mediana
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -513,7 +649,7 @@ function UnifiedProductModal({
               <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Top Clientes</h4>
               <div className="space-y-1.5">
                 {topClients.map((c, i) => {
-                  const pctClient = product.faturamento > 0 ? (c.fat / product.faturamento * 100) : 0;
+                  const pctClient = productKpis.fat > 0 ? (c.fat / productKpis.fat * 100) : 0;
                   return (
                     <div key={c.code} className="flex items-center gap-3 text-xs bg-cockpit-bg/50 rounded-lg px-3 py-2 border border-cockpit-border/50">
                       <span className="w-5 h-5 rounded-full bg-cockpit-accent/10 text-cockpit-accent font-bold text-[10px] flex items-center justify-center shrink-0">{i + 1}</span>
@@ -1510,12 +1646,10 @@ function ProdutosContent() {
         )}
       </div>
 
-      {/* Product Detail Modal */}
+      {/* Product Detail Modal — janela fixa de 12 meses (gerenciada dentro do modal) */}
       {modalProduct && (
         <UnifiedProductModal
           product={modalProduct}
-          dateFrom={date12mAgo}
-          dateTo={todayStr}
           totalFat={totalFat}
           onClose={() => setModalProduct(null)}
         />
