@@ -19,6 +19,7 @@ import {
   calcLucro,
   calcPrecoFromMargem,
   igForFaixa,
+  getMarkupPrefix,
   ICMS_FAIXAS,
   type MarkupCostParams,
   type MarkupPriceParams,
@@ -361,6 +362,9 @@ export default function MarkupDetailPage() {
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2 truncate" title={item.itemName}>{item.itemName}</h2>
             <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-500">
+              {getMarkupPrefix(item.itemCode) && (
+                <span>Linha: <strong className="text-gray-700">{getMarkupPrefix(item.itemCode)}</strong></span>
+              )}
               {item.manufacturer && <span>Fornecedor: <strong className="text-gray-700">{item.manufacturer}</strong></span>}
               {item.itemGroup != null && <span>Grupo: <strong className="text-gray-700">{item.itemGroup}</strong></span>}
               {item.qtdPallet > 0 && <span>Qtd/Pallet: <strong className="text-gray-700">{item.qtdPallet}</strong></span>}

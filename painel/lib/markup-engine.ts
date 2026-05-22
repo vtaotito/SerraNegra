@@ -43,6 +43,22 @@ export const ICMS_FAIXAS = [
   { label: "Micro Empresa", rate: 0, color: "#8B7435" },
 ] as const;
 
+/** Siglas de linha de produto elegíveis no catálogo MarkUp */
+export const MARKUP_ITEM_PREFIXES = [
+  "AR", "EQ", "GF", "GI", "GN", "IS", "LA", "ME", "PO", "RO", "TA", "TM", "TP",
+] as const;
+
+export type MarkupItemPrefix = (typeof MARKUP_ITEM_PREFIXES)[number];
+
+export function getMarkupPrefix(itemCode: string): MarkupItemPrefix | null {
+  const code = itemCode.trim().toUpperCase();
+  return MARKUP_ITEM_PREFIXES.find((prefix) => code.startsWith(prefix)) ?? null;
+}
+
+export function isMarkupCatalogItem(itemCode: string): boolean {
+  return getMarkupPrefix(itemCode) != null;
+}
+
 /**
  * Custo de Mercadoria Vendida (por milheiro).
  *

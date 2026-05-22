@@ -10,7 +10,7 @@ import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
 import { fetchMarkupItems, type MarkupItem } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
-import { calcCMV, calcLucro, IG, type MarkupCostParams } from "@/lib/markup-engine";
+import { calcCMV, calcLucro, IG, getMarkupPrefix, isMarkupCatalogItem, MARKUP_ITEM_PREFIXES, type MarkupCostParams } from "@/lib/markup-engine";
 import Link from "next/link";
 
 type SortKey = "itemCode" | "itemName" | "manufacturer" | "v" | "cmv" | "margem12s" | "margem12p";
@@ -57,17 +57,20 @@ export default function MarkupPage() {
   const { data, loading, error, refetch } = useFetch(() => fetchMarkupItems(), []);
 
   const [search, setSearch] = useState("");
-  const [filterGroup, setFilterGroup] = useState("TODOS");
+  const [filterPrefix, setFilterPrefix] = useState("TODOS");
   const [filterMfr, setFilterMfr] = useState("TODOS");
   const [sortKey, setSortKey] = useState<SortKey>("itemCode");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
 
-  const items = data?.items ?? [];
+  const items = useMemo(
+    () => (data?.items ?? []).filter((i) => isMarkupCatalogItem(i.itemCode)),
+    [data],
+  );
 
-  const groups = useMemo(() => {
-    const s = new Set(items.map((i) => String(i.itemGroup ?? "—")));
-    return ["TODOS", ...Array.from(s).sort()];
+  const prefixes = useMemo(() => {
+    const present = new Set(items.map((i) => getMarkupPrefix(i.itemCode)).filter(Boolean));
+    return ["TODOS", ...MARKUP_ITEM_PREFIXES.filter((p) => present.has(p))];
   }, [items]);
 
   const manufacturers = useMemo(() => {
@@ -93,7 +96,9 @@ export default function MarkupPage() {
 
   const filtered = useMemo(() => {
     let result = enriched;
-    if (filterGroup !== "TODOS") result = result.filter((i) => String(i.itemGroup ?? "—") === filterGroup);
+    if (filterPrefix !== "TODOS") {
+      result = result.filter((i) => getMarkupPrefix(i.itemCode) === filterPrefix);
+    }
     if (filterMfr !== "TODOS") result = result.filter((i) => i.manufacturer === filterMfr);
     if (search) {
       const s = search.toLowerCase();
@@ -105,7 +110,7 @@ export default function MarkupPage() {
       );
     }
     return result;
-  }, [enriched, search, filterGroup, filterMfr]);
+  }, [enriched, search, filterPrefix, filterMfr]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -154,6 +159,7 @@ export default function MarkupPage() {
         "Cod SAP": i.itemCode,
         Produto: i.itemName,
         Fornecedor: i.manufacturer,
+        Sigla: getMarkupPrefix(i.itemCode) ?? "",
         Grupo: i.itemGroup,
         "Valor s/ Imp (milh)": i.v.toFixed(2),
         "Frete (milh)": i.fr.toFixed(2),
@@ -174,12 +180,12 @@ export default function MarkupPage() {
 
   const clearFilters = useCallback(() => {
     setSearch("");
-    setFilterGroup("TODOS");
+    setFilterPrefix("TODOS");
     setFilterMfr("TODOS");
     setPage(0);
   }, []);
 
-  const hasActiveFilters = search || filterGroup !== "TODOS" || filterMfr !== "TODOS";
+  const hasActiveFilters = search || filterPrefix !== "TODOS" || filterMfr !== "TODOS";
 
   if (loading) return <LoadingSkeleton rows={8} />;
   if (error) return <ErrorState message={error} onRetry={refetch} />;
@@ -246,11 +252,11 @@ export default function MarkupPage() {
             )}
           </div>
           <select
-            value={filterGroup}
-            onChange={(e) => { setFilterGroup(e.target.value); setPage(0); }}
+            value={filterPrefix}
+            onChange={(e) => { setFilterPrefix(e.target.value); setPage(0); }}
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent"
           >
-            {groups.map((g) => <option key={g} value={g}>{g === "TODOS" ? "Grupo: Todos" : `Grupo ${g}`}</option>)}
+            {prefixes.map((p) => <option key={p} value={p}>{p === "TODOS" ? "Linha: Todas" : `Linha ${p}`}</option>)}
           </select>
           <select
             value={filterMfr}

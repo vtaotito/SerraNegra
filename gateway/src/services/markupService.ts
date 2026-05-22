@@ -64,6 +64,19 @@ export interface SaveOverrideInput {
 }
 
 // ---------------------------------------------------------------------------
+// Catálogo MarkUp — siglas de linha de produto
+// ---------------------------------------------------------------------------
+
+const MARKUP_ITEM_PREFIXES = [
+  "AR", "EQ", "GF", "GI", "GN", "IS", "LA", "ME", "PO", "RO", "TA", "TM", "TP",
+] as const;
+
+function isMarkupCatalogItem(itemCode: string): boolean {
+  const code = itemCode.trim().toUpperCase();
+  return MARKUP_ITEM_PREFIXES.some((prefix) => code.startsWith(prefix));
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -104,7 +117,9 @@ export class MarkupService {
     const overrideMap = new Map<string, MarkupOverrideRow>();
     for (const o of overrides) overrideMap.set(o.item_code, o);
 
-    return items.map((item) => {
+    return items
+      .filter((item) => isMarkupCatalogItem(item.ItemCode))
+      .map((item) => {
       const ov = overrideMap.get(item.ItemCode);
       const sapPriceLists = item.ItemPrices as Array<{ PriceList?: number; Price?: number }> | undefined;
 
