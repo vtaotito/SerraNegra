@@ -931,7 +931,10 @@ export async function queryProductAnalytics(opts: {
       MIN(CASE WHEN line_total > 0 THEN line_total END)::float     AS min_sale,
       COUNT(*)::int                                                AS sale_count,
       COUNT(DISTINCT card_code)::int                               AS unique_clients,
-      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN quantity ELSE 0 END)::float AS qty_3m
+      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN quantity ELSE 0 END)::float  AS qty_3m,
+      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN line_total ELSE 0 END)::float AS revenue_3m,
+      MIN(doc_date)                                                AS first_sale_date,
+      MAX(doc_date)                                                AS last_sale_date
     FROM all_lines
     WHERE item_code IS NOT NULL AND item_code <> ''
     GROUP BY item_code, item_description
@@ -954,15 +957,58 @@ export async function queryProductAnalytics(opts: {
     ) sub
   `;
 
-  const [prodRes, filtersRes] = await Promise.all([
+  // Totais globais via HEADER (doc_total) — independem das linhas detalhadas estarem sincronizadas.
+  // Necessário porque o sync de linhas só cobre os últimos N dias (SAP_LINES_ENRICH_DAYS).
+  const summaryConditions = ["o.cancelled = 'N'", `o.doc_date >= $1`, `o.doc_date <= $2`];
+  const summaryParams: unknown[] = [opts.dateFrom, opts.dateTo];
+  let sumIdx = 3;
+  if (opts.salesPerson != null) {
+    summaryConditions.push(`o.sales_person_code = $${sumIdx++}`);
+    summaryParams.push(opts.salesPerson);
+  }
+  if (opts.estado) {
+    summaryConditions.push(`(
+      substring(COALESCE(o.raw_json->>'Address','') from '-([A-Z]{2})[[:space:]]') = $${sumIdx}
+      OR substring(COALESCE(o.raw_json->>'Address2','') from '-([A-Z]{2})[[:space:]]') = $${sumIdx}
+    )`);
+    summaryParams.push(opts.estado);
+    sumIdx++;
+  }
+  const summaryWhere = summaryConditions.join(" AND ");
+  const summarySql = `
+    SELECT
+      COUNT(DISTINCT o.doc_entry)::int                                                       AS total_orders,
+      COUNT(DISTINCT CASE WHEN EXISTS (SELECT 1 FROM sap_sales_order_lines l WHERE l.doc_entry = o.doc_entry) THEN o.doc_entry END)::int AS orders_with_lines,
+      COALESCE(SUM(o.doc_total), 0)::float                                                   AS total_revenue_header,
+      COALESCE(SUM(CASE WHEN o.doc_date >= '${opts.date3mCutoff}' THEN o.doc_total ELSE 0 END), 0)::float AS total_revenue_header_3m,
+      COUNT(DISTINCT o.card_code)::int                                                       AS total_clients,
+      MIN(o.doc_date)                                                                        AS first_order_date,
+      MAX(o.doc_date)                                                                        AS last_order_date
+    FROM sap_sales_orders o
+    WHERE ${summaryWhere}
+  `;
+
+  const [prodRes, filtersRes, summaryRes] = await Promise.all([
     db.query(sql, params),
     db.query(filtersSql, [opts.dateFrom, opts.dateTo]),
+    db.query(summarySql, summaryParams),
   ]);
+
+  const summaryRow = summaryRes.rows[0] ?? {};
 
   return {
     products: prodRes.rows,
     estados: filtersRes.rows[0]?.estados ?? [],
     vendedorCodes: filtersRes.rows[0]?.vendedor_codes ?? [],
+    summary: {
+      totalOrders: Number(summaryRow.total_orders ?? 0),
+      ordersWithLines: Number(summaryRow.orders_with_lines ?? 0),
+      totalRevenueHeader: Number(summaryRow.total_revenue_header ?? 0),
+      totalRevenueHeader3m: Number(summaryRow.total_revenue_header_3m ?? 0),
+      totalClients: Number(summaryRow.total_clients ?? 0),
+      firstOrderDate: summaryRow.first_order_date ?? null,
+      lastOrderDate: summaryRow.last_order_date ?? null,
+    },
   };
 }
 

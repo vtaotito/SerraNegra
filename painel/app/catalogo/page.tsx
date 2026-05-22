@@ -5,7 +5,7 @@ import {
   Tag, Search, X, Download, Package, DollarSign,
   TrendingUp, Hash, BarChart3, Layers,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronRight,
-  Users, Boxes, MapPin, Briefcase, Loader2,
+  Users, Boxes, MapPin, Briefcase, Loader2, AlertCircle,
 } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
@@ -140,6 +140,16 @@ function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedIt
 
 /* ═══════════════════ Data types ═══════════════════ */
 
+interface CatalogSummary {
+  totalOrders: number;
+  ordersWithLines: number;
+  totalRevenueHeader: number;
+  totalRevenueHeader3m: number;
+  totalClients: number;
+  firstOrderDate: string | null;
+  lastOrderDate: string | null;
+}
+
 interface ProductRow {
   itemCode: string;
   cod: string;
@@ -160,6 +170,8 @@ interface ProductRow {
   maxSaleValue: number;
   minSaleValue: number;
   qty3mUnd: number;
+  /** Faturamento dos últimos 3 meses (R$) */
+  fat3m: number;
 }
 
 interface CodGroup {
@@ -190,6 +202,10 @@ interface UnifiedProductRow {
   avgQtd3m: number;
   maxSale12m: number;
   minSale12m: number;
+  /** Faturamento dos últimos 3 meses (R$) — soma das variantes */
+  fat3m: number;
+  /** Média mensal de faturamento dos últimos 3 meses (R$/mês) */
+  avgFat3m: number;
   variants: ProductRow[];
 }
 
@@ -216,6 +232,7 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
       const qtdEmb = r.total_qty;
       const qtdUnd = qtdEmb * info.embalaQty;
       const fat = r.total_revenue;
+      const fat3m = Number(r.revenue_3m ?? 0);
       return {
         itemCode: r.item_code,
         cod: info.cod,
@@ -227,6 +244,7 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
         embala: info.embala,
         embalaQty: info.embalaQty,
         qtdEmb,
+        fat3m,
         qtdUnd,
         faturamento: fat,
         precoEmbMedio: qtdEmb > 0 ? fat / qtdEmb : 0,
@@ -278,6 +296,7 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number
 
     const totalQtdUnd = variants.reduce((s, v) => s + v.qtdUnd, 0);
     const totalFat = variants.reduce((s, v) => s + v.faturamento, 0);
+    const totalFat3m = variants.reduce((s, v) => s + v.fat3m, 0);
     const totalVendas = variants.reduce((s, v) => s + v.vendas, 0);
 
     const totalClients = Math.max(...variants.map((v) => clientsByItem.get(v.itemCode) ?? 0), 0);
@@ -306,6 +325,8 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number
       avgQtd3m: totalQty3m / 3,
       maxSale12m: maxVals.length > 0 ? Math.max(...maxVals) : 0,
       minSale12m: minVals.length > 0 ? Math.min(...minVals) : 0,
+      fat3m: totalFat3m,
+      avgFat3m: totalFat3m / 3,
       variants: sortedVariants,
     };
   }).sort((a, b) => b.faturamento - a.faturamento);
@@ -322,7 +343,10 @@ function embalaDistribution(products: ProductRow[]): { name: string; value: numb
   return Array.from(m.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.value - a.value);
 }
 
-type SortField = "cod" | "subNome" | "faturamento" | "qtdUnd" | "avgQtd3m" | "maxSale12m" | "minSale12m" | "precoUndMedio" | "vendas" | "clientes";
+type SortField =
+  | "cod" | "subNome" | "faturamento" | "qtdUnd"
+  | "fat3m" | "avgFat3m" | "avgQtd3m"
+  | "maxSale12m" | "minSale12m" | "precoUndMedio" | "vendas" | "clientes";
 type SortDir = "asc" | "desc";
 
 /* ═══════════════════ Lazy-loaded Product Detail Modal ═══════════════════ */
@@ -782,10 +806,36 @@ function ProdutosContent() {
   );
   const unifiedProducts = useMemo(() => unifyProducts(products, clientsByItem), [products, clientsByItem]);
 
+  // Summary global vindo do gateway — cobre 12m completos via header dos pedidos
+  // (independente da cobertura das linhas detalhadas).
+  const summary: CatalogSummary = useMemo(() => {
+    const s = analyticsData?.summary;
+    return {
+      totalOrders: s?.totalOrders ?? 0,
+      ordersWithLines: s?.ordersWithLines ?? 0,
+      totalRevenueHeader: s?.totalRevenueHeader ?? 0,
+      totalRevenueHeader3m: s?.totalRevenueHeader3m ?? 0,
+      totalClients: s?.totalClients ?? 0,
+      firstOrderDate: s?.firstOrderDate ?? null,
+      lastOrderDate: s?.lastOrderDate ?? null,
+    };
+  }, [analyticsData]);
+
+  // totalFat (via linhas) — usado para % por produto na tabela. Reflete os meses com linhas sincronizadas.
   const totalFat = useMemo(() => unifiedProducts.reduce((s, p) => s + p.faturamento, 0), [unifiedProducts]);
   const totalUnd = useMemo(() => unifiedProducts.reduce((s, p) => s + p.qtdUnd, 0), [unifiedProducts]);
+  const totalFat3m = useMemo(() => unifiedProducts.reduce((s, p) => s + p.fat3m, 0), [unifiedProducts]);
   const totalSkus = products.length;
-  const ticketMedioProd = unifiedProducts.length > 0 ? totalFat / unifiedProducts.length : 0;
+
+  // KPIs globais usam HEADER (12m reais), independente da cobertura de linhas detalhadas.
+  const totalFat12mHeader = summary.totalRevenueHeader;
+  const avgMonthlyFat12m = totalFat12mHeader / 12;
+  const avgMonthlyFat3m = summary.totalRevenueHeader3m / 3;
+
+  const coveragePct = summary.totalOrders > 0
+    ? (summary.ordersWithLines / summary.totalOrders) * 100
+    : 0;
+
   const medianUndPrice = median(unifiedProducts.filter((p) => p.precoUndMedio > 0).map((p) => p.precoUndMedio));
 
   const embalaDist = useMemo(() => embalaDistribution(products), [products]);
@@ -835,6 +885,8 @@ function ProdutosContent() {
         case "subNome": cmp = a.subNome.localeCompare(b.subNome); break;
         case "faturamento": cmp = a.faturamento - b.faturamento; break;
         case "qtdUnd": cmp = a.qtdUnd - b.qtdUnd; break;
+        case "fat3m": cmp = a.fat3m - b.fat3m; break;
+        case "avgFat3m": cmp = a.avgFat3m - b.avgFat3m; break;
         case "avgQtd3m": cmp = a.avgQtd3m - b.avgQtd3m; break;
         case "maxSale12m": cmp = a.maxSale12m - b.maxSale12m; break;
         case "minSale12m": cmp = a.minSale12m - b.minSale12m; break;
@@ -869,9 +921,11 @@ function ProdutosContent() {
       "COD": p.cod, "Grupo": p.codName, "SKU (UND)": p.itemCode, "Produto": p.subNome,
       "Capacidade": p.capacidade, "Cor": p.cor, "Fechamento": p.fechamento,
       "Embalagens": p.variants.map((v) => v.embala).join(", "),
-      "Fat. Total 12m": p.faturamento.toFixed(2),
-      "Qtd Total 12m": p.qtdUnd,
-      "Média Qtd 3m": p.avgQtd3m.toFixed(0),
+      "Fat. 12m": p.faturamento.toFixed(2),
+      "Fat. 3m": p.fat3m.toFixed(2),
+      "Méd R$/mês (3m)": p.avgFat3m.toFixed(2),
+      "Qtd UND 12m": p.qtdUnd,
+      "Méd UN/mês (3m)": p.avgQtd3m.toFixed(0),
       "Maior Venda 12m": p.maxSale12m.toFixed(2),
       "Menor Venda 12m": p.minSale12m.toFixed(2),
       "R$/UND Consolidado": p.precoUndMedio.toFixed(2),
@@ -912,7 +966,7 @@ function ProdutosContent() {
             <h1 className="text-2xl font-bold text-gray-900">Catálogo de Produtos</h1>
             <p className="text-sm text-cockpit-muted mt-0.5">
               <strong className="text-gray-700">{unifiedProducts.length}</strong> produtos · <strong className="text-gray-700">{totalSkus}</strong> SKUs · <strong className="text-gray-700">{codGroups.length}</strong> grupos
-              <span className="hidden sm:inline"> · janela móvel de 12 meses (média 3m)</span>
+              <span className="hidden sm:inline"> · 12 meses · {fmtNum(summary.totalOrders)} pedidos no período</span>
               {(estadoFilter || vendedorFilter) && (
                 <span className="text-cockpit-accent font-semibold">
                   {estadoFilter && ` · ${UF_NAME[estadoFilter] ?? estadoFilter}`}
@@ -940,26 +994,68 @@ function ProdutosContent() {
         </button>
       </div>
 
-      {/* ═══ KPIs ═══ */}
+      {/* ═══ KPIs — 12 meses completos via header dos pedidos ═══ */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
         {[
           { label: "Produtos", value: fmtNum(unifiedProducts.length), sub: `${totalSkus} SKUs · ${codGroups.length} grupos`, icon: Tag, color: "text-cockpit-accent" },
-          { label: "Faturamento 12m", value: fmtBRL(totalFat), icon: DollarSign, color: "text-emerald-600" },
-          { label: "Qtd UND 12m", value: fmtNum(totalUnd), icon: Package, color: "text-blue-600" },
-          { label: "Ticket/Produto", value: fmtBRL(ticketMedioProd), icon: TrendingUp, color: "text-violet-600" },
-          { label: "R$/UND Mediana", value: fmtBRL(medianUndPrice, 2), icon: Hash, color: "text-teal-600" },
-          { label: "Tipo Embala", value: String(embalaTypes.length), sub: embalaTypes.join(", "), icon: Layers, color: "text-amber-600" },
+          {
+            label: "Faturamento 12m",
+            value: fmtBRL(totalFat12mHeader),
+            sub: `${fmtBRL(avgMonthlyFat12m, 0)} médio/mês`,
+            icon: DollarSign, color: "text-emerald-600",
+          },
+          {
+            label: "Faturamento 3m",
+            value: fmtBRL(summary.totalRevenueHeader3m),
+            sub: `${fmtBRL(avgMonthlyFat3m, 0)} médio/mês`,
+            icon: TrendingUp, color: "text-blue-600",
+          },
+          {
+            label: "Pedidos 12m",
+            value: fmtNum(summary.totalOrders),
+            sub: `${fmtNum(summary.totalClients)} clientes distintos`,
+            icon: Package, color: "text-violet-600",
+          },
+          {
+            label: "Qtd UND (linhas)",
+            value: fmtNum(totalUnd),
+            sub: `cobertura ${coveragePct.toFixed(0)}% dos pedidos`,
+            icon: Hash, color: "text-teal-600",
+          },
+          {
+            label: "R$/UND Mediana",
+            value: fmtBRL(medianUndPrice, 2),
+            sub: `${embalaTypes.length} embalagens`,
+            icon: Layers, color: "text-amber-600",
+          },
         ].map((kpi) => (
           <div key={kpi.label} className="rounded-xl border border-cockpit-border bg-white p-3.5 shadow-sm hover:border-cockpit-accent/30 motion-safe:transition-all duration-200 group">
             <div className="flex items-center gap-2 mb-1.5">
               <kpi.icon className={`w-4 h-4 ${kpi.color} motion-safe:transition-transform duration-200 group-hover:scale-110`} />
-              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider">{kpi.label}</span>
+              <span className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider truncate">{kpi.label}</span>
             </div>
             <p className="text-lg font-bold text-gray-900 tabular-nums leading-tight">{kpi.value}</p>
-            {kpi.sub && <p className="text-[10px] text-cockpit-muted mt-0.5">{kpi.sub}</p>}
+            {kpi.sub && <p className="text-[10px] text-cockpit-muted mt-0.5 truncate">{kpi.sub}</p>}
           </div>
         ))}
       </div>
+
+      {/* Banner de cobertura — sincero sobre dados parciais */}
+      {summary.totalOrders > 0 && coveragePct < 95 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3 text-xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-amber-800 flex-1">
+            <p className="font-semibold mb-0.5">Detalhamento por produto parcial</p>
+            <p className="text-amber-700">
+              Apenas <strong>{fmtNum(summary.ordersWithLines)}</strong> de <strong>{fmtNum(summary.totalOrders)}</strong> pedidos têm linhas detalhadas sincronizadas
+              ({coveragePct.toFixed(0)}% de cobertura).
+              Os KPIs globais <strong>Faturamento 12m</strong> e <strong>Pedidos 12m</strong> usam o cabeçalho dos pedidos
+              e refletem o total real. Já a tabela de produtos abaixo (e &quot;Qtd UND&quot;) só inclui os itens com linhas sincronizadas
+              — valores menores até o sync histórico completar.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ═══ Charts ═══ */}
       {codGroups.length > 0 && (
@@ -1535,16 +1631,21 @@ function ProdutosContent() {
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("subNome")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="subNome" /></span></th>
                 <th className="text-center py-2.5 px-2 font-semibold w-[68px] bg-gray-50">Emb.</th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[110px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}>
+                <th className="text-right py-2.5 px-2 font-semibold w-[110px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}
+                  title="Faturamento total nos últimos 12 meses (somente pedidos com linhas sincronizadas)">
                   <span className="inline-flex items-center gap-1 justify-end">Fat. 12m <SortIcon field="faturamento" /></span></th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[72px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdUnd")}>
+                <th className="text-right py-2.5 px-2 font-semibold w-[100px] cursor-pointer select-none hover:text-gray-700 bg-blue-50/30" onClick={() => toggleSort("fat3m")}
+                  title="Faturamento total nos últimos 3 meses">
+                  <span className="inline-flex items-center gap-1 justify-end text-blue-700">Fat. 3m <SortIcon field="fat3m" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[100px] cursor-pointer select-none hover:text-gray-700 bg-blue-50/30" onClick={() => toggleSort("avgFat3m")}
+                  title="Média mensal de faturamento nos últimos 3 meses (Fat. 3m ÷ 3)">
+                  <span className="inline-flex items-center gap-1 justify-end text-blue-700">Méd R$/mês <SortIcon field="avgFat3m" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[72px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("qtdUnd")}
+                  title="Quantidade total em unidades (12 meses)">
                   <span className="inline-flex items-center gap-1 justify-end">Qtd 12m <SortIcon field="qtdUnd" /></span></th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[72px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("avgQtd3m")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Média 3m <SortIcon field="avgQtd3m" /></span></th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("maxSale12m")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Maior Vnd <SortIcon field="maxSale12m" /></span></th>
-                <th className="text-right py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("minSale12m")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Menor Vnd <SortIcon field="minSale12m" /></span></th>
+                <th className="text-right py-2.5 px-2 font-semibold w-[80px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("avgQtd3m")}
+                  title="Média mensal de unidades vendidas nos últimos 3 meses">
+                  <span className="inline-flex items-center gap-1 justify-end">Méd UN/mês <SortIcon field="avgQtd3m" /></span></th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[68px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("precoUndMedio")}>
                   <span className="inline-flex items-center gap-1 justify-end">R$/UND <SortIcon field="precoUndMedio" /></span></th>
                 <th className="text-center py-2.5 px-2 font-semibold w-[40px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("vendas")}>
@@ -1596,19 +1697,20 @@ function ProdutosContent() {
                       </div>
                       <span className={`block text-[9px] text-right ${pctFat >= 10 ? "text-cockpit-accent font-bold" : pctFat >= 3 ? "text-gray-600" : "text-gray-400"}`}>{pctFat.toFixed(1)}%</span>
                     </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top bg-blue-50/20">
+                      <span className="text-blue-700 font-semibold">{p.fat3m > 0 ? fmtBRL(p.fat3m) : "—"}</span>
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums align-top bg-blue-50/20">
+                      <span className="text-blue-700 font-semibold">{p.avgFat3m > 0 ? fmtBRL(p.avgFat3m) : "—"}</span>
+                      <span className="block text-[9px] text-gray-400">/mês</span>
+                    </td>
                     <td className="py-2 px-2 text-right tabular-nums align-top">
                       <span className="font-semibold text-gray-900">{fmtNum(p.qtdUnd)}</span>
                       {hasMulti && <span className="block text-[9px] text-gray-400">{p.variants.length} var.</span>}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums align-top">
-                      <span className="text-blue-700 font-semibold">{fmtNum(Math.round(p.avgQtd3m))}</span>
+                      <span className="text-gray-700 font-semibold">{fmtNum(Math.round(p.avgQtd3m))}</span>
                       <span className="block text-[9px] text-gray-400">/mês</span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums align-top">
-                      <span className="text-emerald-700 font-medium">{p.maxSale12m > 0 ? fmtBRL(p.maxSale12m) : "—"}</span>
-                    </td>
-                    <td className="py-2 px-2 text-right tabular-nums align-top">
-                      <span className="text-orange-600 font-medium">{p.minSale12m > 0 ? fmtBRL(p.minSale12m) : "—"}</span>
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums align-top">
                       <span className="text-[11px] text-teal-700 font-semibold">{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio, 2) : "—"}</span>
@@ -1635,12 +1737,16 @@ function ProdutosContent() {
         </div>
 
         {filtered.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs">
+          <div className="flex items-center justify-between px-4 py-2 border-t border-cockpit-border bg-cockpit-accent/[0.03] text-xs flex-wrap gap-2">
             <span className="text-cockpit-muted">Total ({filtered.length} produtos)</span>
-            <div className="flex items-center gap-5 tabular-nums">
-              <span className="text-gray-600">UND 12m: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, p) => s + p.qtdUnd, 0))}</strong></span>
-              <span className="text-gray-600">Média 3m: <strong className="text-blue-700">{fmtNum(Math.round(filtered.reduce((s, p) => s + p.avgQtd3m, 0)))}/mês</strong></span>
-              <span className="text-cockpit-accent font-bold">{fmtBRL(filtered.reduce((s, p) => s + p.faturamento, 0))}</span>
+            <div className="flex items-center gap-4 tabular-nums flex-wrap">
+              <span className="text-gray-600">Fat 12m: <strong className="text-cockpit-accent">{fmtBRL(filtered.reduce((s, p) => s + p.faturamento, 0))}</strong></span>
+              <span className="text-gray-300">|</span>
+              <span className="text-blue-700">Fat 3m: <strong>{fmtBRL(filtered.reduce((s, p) => s + p.fat3m, 0))}</strong></span>
+              <span className="text-blue-700">Méd R$/mês: <strong>{fmtBRL(filtered.reduce((s, p) => s + p.avgFat3m, 0))}</strong></span>
+              <span className="text-gray-300">|</span>
+              <span className="text-gray-600">UND 12m: <strong>{fmtNum(filtered.reduce((s, p) => s + p.qtdUnd, 0))}</strong></span>
+              <span className="text-gray-600">Méd UN/mês: <strong>{fmtNum(Math.round(filtered.reduce((s, p) => s + p.avgQtd3m, 0)))}</strong></span>
             </div>
           </div>
         )}

@@ -335,6 +335,21 @@ export function fetchSalesOrders(opts?: {
 
 // ─── Product Analytics (server-side aggregation) ──────────────
 
+export interface ProductAnalyticsSummary {
+  /** Total de pedidos no período (sem JOIN com linhas — todos contam) */
+  totalOrders: number;
+  /** Pedidos que têm linhas detalhadas sincronizadas (subset) */
+  ordersWithLines: number;
+  /** Faturamento via cabeçalho (doc_total) — sempre cobre 12m completos */
+  totalRevenueHeader: number;
+  /** Faturamento via cabeçalho nos últimos 3 meses */
+  totalRevenueHeader3m: number;
+  /** Clientes distintos no período (header) */
+  totalClients: number;
+  firstOrderDate: string | null;
+  lastOrderDate: string | null;
+}
+
 export interface ProductAnalyticsRow {
   item_code: string;
   item_description: string;
@@ -345,6 +360,10 @@ export interface ProductAnalyticsRow {
   sale_count: number;
   unique_clients: number;
   qty_3m: number;
+  /** Faturamento dos últimos 3 meses (subset) */
+  revenue_3m?: number;
+  first_sale_date?: string | null;
+  last_sale_date?: string | null;
 }
 
 export interface ProductAnalyticsResult {
@@ -352,6 +371,8 @@ export interface ProductAnalyticsResult {
   products: ProductAnalyticsRow[];
   estados: string[];
   vendedorCodes: number[];
+  /** Totais globais via cabeçalho (cobrem 12m completos) */
+  summary?: ProductAnalyticsSummary;
   timestamp: string;
 }
 
