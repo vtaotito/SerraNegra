@@ -144,6 +144,12 @@ export interface SapInvoiceLine {
   Price: number;
   CFOPCode: string;
   Usage: number;
+  /** DocEntry do documento base (geralmente o pedido de venda) */
+  BaseEntry?: number | null;
+  /** 17 = Sales Order, 15 = Delivery, etc. */
+  BaseType?: number | null;
+  /** Número da linha no documento base */
+  BaseLine?: number | null;
 }
 
 export interface SapInvoice {
@@ -161,6 +167,18 @@ export interface SapInvoice {
   PaymentGroupCode: number;
   SalesPersonCode: number;
   DocumentLines: SapInvoiceLine[];
+  /** Número da NF-e (U_TX_NDfe) */
+  NfeNumber?: string | null;
+  /** Número do folio impresso na NF (FolioNumber) */
+  FolioNumber?: string | null;
+  /** Chave de acesso de 44 dígitos da NF-e */
+  NfeKey?: string | null;
+  /** Série da nota */
+  SeriesNumber?: number | null;
+  /** DocEntry do pedido base no SAP */
+  BaseDocEntry?: number | null;
+  /** Número visível do pedido base (DocNum em sap_sales_orders) */
+  BaseDocNum?: number | null;
 }
 
 export interface SapSalesPerson {

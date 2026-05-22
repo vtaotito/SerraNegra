@@ -239,6 +239,23 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_invl_doc_entry   ON sap_invoice_lines (doc_entry);
     CREATE INDEX IF NOT EXISTS idx_invl_item_code   ON sap_invoice_lines (item_code);
 
+    -- Migrations idempotentes — adicionar campos fiscais e relação com pedido base.
+    -- Cabeçalho:
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS nfe_number     TEXT;
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS folio_number   TEXT;
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS nfe_key        TEXT;
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS series_number  INTEGER;
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS base_doc_entry INTEGER;
+    ALTER TABLE sap_invoices ADD COLUMN IF NOT EXISTS base_doc_num   INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_inv_nfe_number    ON sap_invoices (nfe_number);
+    CREATE INDEX IF NOT EXISTS idx_inv_base_doc      ON sap_invoices (base_doc_entry);
+
+    -- Linhas: relação com pedido fonte (BaseType=17 = Sales Order).
+    ALTER TABLE sap_invoice_lines ADD COLUMN IF NOT EXISTS base_entry INTEGER;
+    ALTER TABLE sap_invoice_lines ADD COLUMN IF NOT EXISTS base_type  INTEGER;
+    ALTER TABLE sap_invoice_lines ADD COLUMN IF NOT EXISTS base_line  INTEGER;
+    CREATE INDEX IF NOT EXISTS idx_invl_base_entry ON sap_invoice_lines (base_entry);
+
     -- Overrides de markup (custos que não existem no SAP ou divergem)
     CREATE TABLE IF NOT EXISTS markup_overrides (
       item_code         VARCHAR(50) PRIMARY KEY,
@@ -463,12 +480,38 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
     const totalQty = lines.reduce((s, l) => s + (l.Quantity ?? 0), 0);
     const cancelled = normCancelled(inv.Cancelled);
 
+    // Campos fiscais BR — extrai do payload do SAP (podem vir como null/undefined)
+    const invAny = inv as Record<string, unknown>;
+    const nfeNumber =
+      (invAny["U_TX_NDfe"] as string | null | undefined) ??
+      (invAny["U_nfe_NDfe"] as string | null | undefined) ??
+      null;
+    const folioNumber = invAny["FolioNumber"] != null ? String(invAny["FolioNumber"]) : null;
+    const nfeKey =
+      (invAny["U_nfe_ChaveAcesso"] as string | null | undefined) ??
+      (invAny["U_ChaveAcesso"] as string | null | undefined) ??
+      null;
+    const seriesNumber = invAny["Series"] != null ? Number(invAny["Series"]) : null;
+
+    // Relação com pedido base — pega a primeira linha com BaseType = 17 (Sales Order)
+    let baseDocEntry: number | null = null;
+    for (const l of lines) {
+      const lineAny = l as Record<string, unknown>;
+      const bt = Number(lineAny["BaseType"] ?? -1);
+      const be = Number(lineAny["BaseEntry"] ?? 0);
+      if (bt === 17 && be > 0) {
+        baseDocEntry = be;
+        break;
+      }
+    }
+
     await db.query(`
       INSERT INTO sap_invoices (
         doc_entry, doc_num, doc_date, doc_due_date, tax_date, card_code, card_name,
         doc_total, document_status, cancelled, payment_method, payment_group_code,
-        sales_person_code, num_lines, total_quantity, synced_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
+        sales_person_code, num_lines, total_quantity,
+        nfe_number, folio_number, nfe_key, series_number, base_doc_entry, synced_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,NOW())
       ON CONFLICT (doc_entry) DO UPDATE SET
         doc_num = EXCLUDED.doc_num,
         doc_date = EXCLUDED.doc_date,
@@ -484,6 +527,11 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
         sales_person_code = EXCLUDED.sales_person_code,
         num_lines = EXCLUDED.num_lines,
         total_quantity = EXCLUDED.total_quantity,
+        nfe_number = EXCLUDED.nfe_number,
+        folio_number = EXCLUDED.folio_number,
+        nfe_key = EXCLUDED.nfe_key,
+        series_number = EXCLUDED.series_number,
+        base_doc_entry = COALESCE(EXCLUDED.base_doc_entry, sap_invoices.base_doc_entry),
         synced_at = NOW()
     `, [
       docEntry,
@@ -501,16 +549,27 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
       inv.SalesPersonCode ?? null,
       lines.length,
       totalQty,
+      nfeNumber,
+      folioNumber,
+      nfeKey,
+      seriesNumber,
+      baseDocEntry,
     ]);
     upserted++;
 
     if (lines.length > 0) {
       await db.query(`DELETE FROM sap_invoice_lines WHERE doc_entry = $1`, [docEntry]);
       for (const l of lines) {
+        const lineAny = l as Record<string, unknown>;
+        const baseEntry = lineAny["BaseEntry"] != null ? Number(lineAny["BaseEntry"]) : null;
+        const baseType = lineAny["BaseType"] != null ? Number(lineAny["BaseType"]) : null;
+        const baseLine = lineAny["BaseLine"] != null ? Number(lineAny["BaseLine"]) : null;
+
         await db.query(
           `INSERT INTO sap_invoice_lines
-            (doc_entry, item_code, item_description, quantity, unit_price, price, line_total, discount_percent, cfop_code, usage_code)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            (doc_entry, item_code, item_description, quantity, unit_price, price, line_total, discount_percent, cfop_code, usage_code,
+             base_entry, base_type, base_line)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
           [
             docEntry,
             l.ItemCode ?? null,
@@ -522,12 +581,26 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
             l.DiscountPercent ?? 0,
             l.CFOPCode ?? null,
             l.Usage ?? null,
+            baseEntry && baseEntry > 0 ? baseEntry : null,
+            baseType ?? null,
+            baseLine ?? null,
           ]
         );
         linesWritten++;
       }
     }
   }
+
+  // Resolve base_doc_num via JOIN com sap_sales_orders (espelho local).
+  // Roda em batch após upsert para popular o número visível do pedido base.
+  await db.query(`
+    UPDATE sap_invoices i
+       SET base_doc_num = so.doc_num
+      FROM sap_sales_orders so
+     WHERE i.base_doc_entry IS NOT NULL
+       AND i.base_doc_entry = so.doc_entry
+       AND (i.base_doc_num IS NULL OR i.base_doc_num <> so.doc_num);
+  `);
 
   return { upserted, linesWritten };
 }
@@ -1052,12 +1125,19 @@ export async function queryInvoices(opts: {
       i.payment_method AS "PaymentMethod",
       i.payment_group_code AS "PaymentGroupCode",
       i.sales_person_code AS "SalesPersonCode",
+      i.nfe_number AS "NfeNumber",
+      i.folio_number AS "FolioNumber",
+      i.nfe_key AS "NfeKey",
+      i.series_number AS "SeriesNumber",
+      i.base_doc_entry AS "BaseDocEntry",
+      COALESCE(i.base_doc_num, (SELECT so.doc_num FROM sap_sales_orders so WHERE so.doc_entry = i.base_doc_entry)) AS "BaseDocNum",
       COALESCE(
         (SELECT json_agg(json_build_object(
           'ItemCode', l.item_code, 'ItemDescription', l.item_description,
           'Quantity', l.quantity, 'UnitPrice', l.unit_price, 'Price', l.price,
           'LineTotal', l.line_total, 'DiscountPercent', l.discount_percent,
-          'CFOPCode', l.cfop_code, 'Usage', l.usage_code
+          'CFOPCode', l.cfop_code, 'Usage', l.usage_code,
+          'BaseEntry', l.base_entry, 'BaseType', l.base_type, 'BaseLine', l.base_line
         ))
         FROM sap_invoice_lines l WHERE l.doc_entry = i.doc_entry),
         '[]'::json

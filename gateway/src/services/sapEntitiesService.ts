@@ -493,8 +493,11 @@ export class SapEntitiesService {
         const result = results[j];
         if (result.status === "fulfilled" && result.value) {
           const full = result.value;
+          // Substitui o objeto inteiro para trazer também campos fiscais
+          // (U_TX_NDfe, FolioNumber, U_nfe_ChaveAcesso, Series, etc.).
+          // O enrichment já retorna o documento completo do SAP.
+          invoices[i + j] = full as SapInvoiceRow;
           if (Array.isArray(full.DocumentLines) && full.DocumentLines.length > 0) {
-            invoices[i + j].DocumentLines = full.DocumentLines;
             enriched++;
           }
         } else {
