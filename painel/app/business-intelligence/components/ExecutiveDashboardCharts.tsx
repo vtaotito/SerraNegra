@@ -11,8 +11,7 @@ import {
   Cell,
   PieChart,
   Pie,
-  AreaChart,
-  Area,
+  ReferenceLine,
 } from "recharts";
 import {
   Calendar,
@@ -22,7 +21,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import { differenceInDays } from "date-fns";
 import { toast } from "sonner";
 import { Download, Copy } from "lucide-react";
 import { fmtBRL, fmtNum } from "@/lib/format";
@@ -45,55 +43,65 @@ type Range = { from: Date; to: Date };
 
 export function ExecutiveDashboardCharts({
   summary,
-  range,
 }: {
   summary: ExecutiveSummary;
   range: Range;
 }) {
   const {
-    trendData,
+    businessDayTrend,
+    businessDayMedian,
     topVendedores,
     statusData,
     topProdutos,
     dowData,
   } = summary;
   const totalFat = summary.kpis.fat;
-  const daySpan = differenceInDays(range.to, range.from) + 1;
+  const businessDayCount = businessDayTrend.length;
+  const businessDaysWithSales = businessDayTrend.filter((d) => d.Faturamento > 0).length;
 
   return (
     <>
       <section className="rounded-xl border border-cockpit-border bg-white p-3 sm:p-5" aria-labelledby="exec-trend-heading">
-        <div className="flex items-center justify-between mb-3 sm:mb-4">
+        <div className="flex items-center justify-between mb-3 sm:mb-4 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4 text-cockpit-accent" aria-hidden />
             <h2 id="exec-trend-heading" className="text-xs sm:text-sm font-semibold text-gray-900">
               Evolução de Faturamento
             </h2>
           </div>
-          <span className="text-[10px] text-cockpit-muted uppercase tracking-wider">
-            {daySpan <= 45 ? "Diário" : daySpan <= 180 ? "Semanal" : "Mensal"}
-          </span>
+          <div className="flex items-center gap-2 sm:gap-3 text-[10px] text-cockpit-muted">
+            <span className="uppercase tracking-wider">Dias úteis · Seg–Sex</span>
+            {businessDaysWithSales > 0 && (
+              <span className="hidden sm:inline">
+                {businessDaysWithSales}/{businessDayCount} dias com vendas
+              </span>
+            )}
+            {businessDayMedian > 0 && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-semibold">
+                <span className="inline-block w-2 h-px bg-violet-600 align-middle" />
+                Mediana {fmtBRL(businessDayMedian, 0)}
+              </span>
+            )}
+          </div>
         </div>
-        {trendData.length === 0 ? (
+        {businessDayTrend.length === 0 ? (
           <BiEmptyState />
         ) : (
           <div className="h-52 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData} margin={{ left: -10, right: 5, top: 5, bottom: 0 }}>
-                <title>Evolução de faturamento no período</title>
-                <defs>
-                  <linearGradient id="gradFat" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={CHART_SERIES_PRIMARY} stopOpacity={0.15} />
-                    <stop offset="95%" stopColor={CHART_SERIES_PRIMARY} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
+              <BarChart
+                data={businessDayTrend}
+                barCategoryGap="18%"
+                margin={{ left: -10, right: 5, top: 5, bottom: 0 }}
+              >
+                <title>Evolução de faturamento por dia útil</title>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
                 <XAxis
                   dataKey="label"
                   tick={chartAxisTick("sm")}
                   axisLine={false}
                   tickLine={false}
-                  interval={trendData.length > 15 ? Math.floor(trendData.length / 8) : 0}
+                  interval={businessDayTrend.length > 15 ? Math.floor(businessDayTrend.length / 10) : 0}
                 />
                 <YAxis
                   tick={chartAxisTick("sm")}
@@ -103,14 +111,30 @@ export function ExecutiveDashboardCharts({
                   tickFormatter={(v: number) => formatYAxisCompact(v)}
                 />
                 <Tooltip content={<BiChartTooltip variant="cockpit" />} />
-                <Area
-                  type="monotone"
-                  dataKey="Faturamento"
-                  stroke={CHART_SERIES_PRIMARY}
-                  strokeWidth={2}
-                  fill="url(#gradFat)"
-                />
-              </AreaChart>
+                {businessDayMedian > 0 && (
+                  <ReferenceLine
+                    y={businessDayMedian}
+                    stroke="#7c3aed"
+                    strokeDasharray="4 4"
+                    strokeWidth={1.5}
+                    ifOverflow="extendDomain"
+                    label={{
+                      value: `Mediana ${formatYAxisCompact(businessDayMedian)}`,
+                      fill: "#7c3aed",
+                      fontSize: 10,
+                      position: "insideTopRight",
+                    }}
+                  />
+                )}
+                <Bar dataKey="Faturamento" radius={[3, 3, 0, 0]}>
+                  {businessDayTrend.map((d) => (
+                    <Cell
+                      key={d.date}
+                      fill={d.Faturamento >= businessDayMedian && d.Faturamento > 0 ? CHART_SERIES_PRIMARY : "#d4b5b8"}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           </div>
         )}

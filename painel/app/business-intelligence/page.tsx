@@ -5,13 +5,14 @@ import { useMemo } from "react";
 import {
   DollarSign,
   ShoppingCart,
-  Users,
   Wallet,
   Target,
   Layers,
   ArrowUpRight,
   ArrowDownRight,
   CalendarDays,
+  TrendingUp,
+  Sparkles,
 } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import { fmtBRL, fmtNum } from "@/lib/format";
@@ -37,11 +38,11 @@ const ExecutiveDashboardCharts = dynamic(
 );
 
 const KPI_ORDER: Record<UserRole, string[]> = {
-  admin: ["Faturamento", "Clientes", "Base Total", "Pedidos", "Ticket Médio", "Qtd. Vendida"],
-  supervisor: ["Faturamento", "Clientes", "Base Total", "Pedidos", "Ticket Médio", "Qtd. Vendida"],
-  comercial: ["Faturamento", "Pedidos", "Clientes", "Ticket Médio", "Qtd. Vendida", "Base Total"],
-  operador: ["Pedidos", "Qtd. Vendida", "Faturamento", "Ticket Médio", "Clientes", "Base Total"],
-  viewer: ["Faturamento", "Pedidos", "Ticket Médio", "Clientes", "Qtd. Vendida", "Base Total"],
+  admin: ["Faturamento", "Clientes", "Pedidos", "Ticket Médio", "Qtd. Vendida"],
+  supervisor: ["Faturamento", "Clientes", "Pedidos", "Ticket Médio", "Qtd. Vendida"],
+  comercial: ["Faturamento", "Pedidos", "Clientes", "Ticket Médio", "Qtd. Vendida"],
+  operador: ["Pedidos", "Qtd. Vendida", "Faturamento", "Ticket Médio", "Clientes"],
+  viewer: ["Faturamento", "Pedidos", "Ticket Médio", "Clientes", "Qtd. Vendida"],
 };
 
 type KpiDef = {
@@ -88,18 +89,18 @@ export default function ExecutiveHomePage() {
       { title: "Pedidos", value: fmtNum(k.pedidos), variation: k.pedVar, icon: ShoppingCart, color: "text-sky-500" },
       { title: "Ticket Médio", value: fmtBRL(k.ticket), variation: k.ticketVar, icon: Target, color: "text-amber-500" },
       { title: "Clientes", value: fmtNum(k.clientesAtivos), variation: k.clientesVar, icon: Wallet, color: "text-teal-500" },
-      { title: "Qtd. Vendida", value: fmtNum(k.qty), icon: Layers, color: "text-violet-500" },
       {
-        title: "Base Total",
-        value: fmtNum(k.totalBase),
-        sub: `${k.clientesAtivos} ativos`,
-        icon: Users,
-        color: "text-blue-500",
+        title: "Qtd. Vendida",
+        value: fmtNum(Math.round(k.qty)),
+        sub: "unidades (× embalagem)",
+        icon: Layers,
+        color: "text-violet-500",
       },
     ];
   }, [data]);
 
   const kpisOrdered = useMemo(() => sortKpis(kpiDefs, role), [kpiDefs, role]);
+  const projection = data?.monthProjection ?? null;
 
   if (isLoading) {
     return (
@@ -129,7 +130,7 @@ export default function ExecutiveHomePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3" aria-label="Indicadores do período">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-3" aria-label="Indicadores do período">
         {kpisOrdered.map((kpi) => {
           const Icon = kpi.icon;
           const hasVar = kpi.variation !== undefined && kpi.variation !== 0;
@@ -164,6 +165,77 @@ export default function ExecutiveHomePage() {
           );
         })}
       </div>
+
+      {projection && (
+        <section
+          className="rounded-xl border border-cockpit-border bg-gradient-to-r from-cockpit-accent/[0.04] via-white to-white p-4 sm:p-5"
+          aria-labelledby="exec-projection-heading"
+        >
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
+            <div className="flex items-start gap-3 min-w-0 lg:min-w-[260px]">
+              <div className="p-2 rounded-lg bg-cockpit-accent/10 shrink-0">
+                <Sparkles className="w-4 h-4 text-cockpit-accent" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <h2
+                  id="exec-projection-heading"
+                  className="text-xs sm:text-sm font-semibold text-gray-900 uppercase tracking-wider"
+                >
+                  Projeção do mês corrente
+                </h2>
+                <p className="text-[11px] text-cockpit-muted mt-0.5">
+                  Baseada na média de faturamento por dia útil <strong className="text-gray-700">{projection.monthLabel}</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 flex-1">
+              <div>
+                <div className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-1">
+                  Realizado
+                </div>
+                <div className="text-base sm:text-xl font-bold text-gray-900 tabular-nums">{fmtBRL(projection.realized)}</div>
+                <div className="text-[10px] text-cockpit-muted mt-0.5">
+                  {projection.realizedOrders} pedidos · {projection.daysElapsed}/{projection.totalBusinessDays} dias úteis
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-1">
+                  Média/Dia Útil
+                </div>
+                <div className="text-base sm:text-xl font-bold text-gray-900 tabular-nums">{fmtBRL(projection.avgPerBusinessDay)}</div>
+                <div className="text-[10px] text-cockpit-muted mt-0.5">
+                  base {projection.daysElapsed} dia{projection.daysElapsed !== 1 ? "s" : ""}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" aria-hidden />Projeção Final
+                </div>
+                <div className="text-base sm:text-2xl font-bold text-cockpit-accent tabular-nums">{fmtBRL(projection.projection)}</div>
+                <div className="text-[10px] text-cockpit-muted mt-0.5">
+                  + {fmtBRL(projection.projection - projection.realized)} estimado em {projection.remainingBusinessDays} dia{projection.remainingBusinessDays !== 1 ? "s" : ""}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-semibold text-cockpit-muted uppercase tracking-wider mb-1">
+                  Progresso do Mês
+                </div>
+                <div className="text-base sm:text-xl font-bold text-gray-900 tabular-nums">{projection.pctElapsed.toFixed(0)}%</div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5 mt-1.5" role="progressbar" aria-valuenow={projection.pctElapsed} aria-valuemin={0} aria-valuemax={100}>
+                  <div
+                    className="h-1.5 rounded-full bg-cockpit-accent motion-safe:transition-all"
+                    style={{ width: `${Math.min(100, projection.pctElapsed)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <ExecutiveDashboardCharts summary={data} range={range} />
 

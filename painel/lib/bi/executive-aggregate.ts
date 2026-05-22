@@ -1,5 +1,6 @@
 import type { SalesOrderRow } from "@/lib/cockpit-api";
 import { excludeFreight } from "@/lib/orders";
+import { getLineUnits } from "@/lib/item-parser";
 import {
   format,
   parseISO,
@@ -9,6 +10,12 @@ import {
   eachMonthOfInterval,
   endOfWeek,
   endOfMonth,
+  startOfMonth,
+  isWeekend,
+  isSameMonth,
+  isAfter,
+  isBefore,
+  startOfDay,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -27,11 +34,51 @@ export interface ExecutiveKpis {
   totalBase: number;
 }
 
+export interface BusinessDayDatum {
+  /** yyyy-MM-dd */
+  date: string;
+  /** "dd/MM" */
+  label: string;
+  /** 1=Seg, 2=Ter, ..., 5=Sex */
+  weekday: number;
+  Faturamento: number;
+  Pedidos: number;
+}
+
+export interface MonthProjection {
+  /** "mai/26" */
+  monthLabel: string;
+  /** Faturamento já realizado no mês corrente (somente dias úteis até hoje). */
+  realized: number;
+  realizedOrders: number;
+  /** Dias úteis com ao menos um pedido — base da média. */
+  daysWithSales: number;
+  /** Dias úteis decorridos no mês até hoje (inclusive). */
+  daysElapsed: number;
+  /** Total de dias úteis no mês inteiro. */
+  totalBusinessDays: number;
+  /** Dias úteis restantes (totalBusinessDays - daysElapsed). */
+  remainingBusinessDays: number;
+  /** Média realizado / daysElapsed (paira sobre dias úteis). */
+  avgPerBusinessDay: number;
+  /** Projeção: realizado + média × diasRestantes. */
+  projection: number;
+  /** % do mês transcorrido (em dias úteis). */
+  pctElapsed: number;
+}
+
 export interface ExecutiveSummary {
   kpis: ExecutiveKpis;
   topVendedores: Array<{ code: number; nome: string; fat: number; pedidos: number }>;
   topClientes: Array<{ cardCode: string; nome: string; fat: number; pedidos: number }>;
+  /** Serie agregada (dia/semana/mês) — utilizada em listagens auxiliares. */
   trendData: Array<{ label: string; Faturamento: number; Pedidos: number }>;
+  /** Série diária restrita a dias úteis (Seg-Sex) para o gráfico de barras. */
+  businessDayTrend: BusinessDayDatum[];
+  /** Mediana do faturamento dos dias úteis com vendas. */
+  businessDayMedian: number;
+  /** Projeção do mês corrente (null quando o range não inclui o mês corrente). */
+  monthProjection: MonthProjection | null;
   topProdutos: Array<{ code: string; desc: string; fat: number; qty: number }>;
   dowData: Array<{ name: string; Faturamento: number; Pedidos: number }>;
   statusData: Array<{ name: string; value: number; fill: string }>;
@@ -67,7 +114,13 @@ export function buildExecutiveSummary(
   const clientesAtivos = new Set(orders.map((o) => o.card_code)).size;
   const prevClientes = new Set(prevOrders.map((o) => o.card_code)).size;
   const clientesVar = prevClientes > 0 ? ((clientesAtivos - prevClientes) / prevClientes) * 100 : 0;
-  const qty = orders.reduce((s, o) => s + (Number(o.total_quantity) || 0), 0);
+  // Quantidade vendida considera unidades reais (qty × embalaQty da descrição)
+  let qty = 0;
+  for (const o of orders) {
+    for (const line of o.lines ?? []) {
+      qty += getLineUnits(line);
+    }
+  }
 
   const kpis: ExecutiveKpis = {
     fat,
@@ -208,11 +261,107 @@ export function buildExecutiveSummary(
     { name: "Fechados", value: closed, fill: "#78696c" },
   ].filter((s) => s.value > 0);
 
+  // Série diária restrita a dias úteis (Seg-Sex) ─ usada no gráfico de barras
+  const allDays = eachDayOfInterval({ start: rangeFrom, end: rangeTo });
+  const businessDayMap = new Map<string, { fat: number; pedidos: number }>();
+  for (const d of allDays) {
+    if (isWeekend(d)) continue;
+    businessDayMap.set(format(d, "yyyy-MM-dd"), { fat: 0, pedidos: 0 });
+  }
+  for (const o of orders) {
+    const key = o.doc_date?.split("T")[0] || "";
+    const slot = businessDayMap.get(key);
+    if (!slot) continue;
+    slot.fat += Number(o.doc_total) || 0;
+    slot.pedidos += 1;
+  }
+  const businessDayTrend: BusinessDayDatum[] = Array.from(businessDayMap.entries())
+    .map(([date, v]) => {
+      const d = parseISO(date + "T12:00:00");
+      return {
+        date,
+        label: format(d, "dd/MM"),
+        weekday: d.getDay(),
+        Faturamento: v.fat,
+        Pedidos: v.pedidos,
+      };
+    });
+
+  // Mediana — apenas dos dias úteis com vendas
+  const businessDayValues = businessDayTrend
+    .map((d) => d.Faturamento)
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  let businessDayMedian = 0;
+  if (businessDayValues.length > 0) {
+    const mid = Math.floor(businessDayValues.length / 2);
+    businessDayMedian = businessDayValues.length % 2 !== 0
+      ? businessDayValues[mid]
+      : (businessDayValues[mid - 1] + businessDayValues[mid]) / 2;
+  }
+
+  // Projeção do mês corrente — só faz sentido se o range inclui o mês atual.
+  const today = startOfDay(new Date());
+  const monthRef = startOfMonth(today);
+  const rangeIncludesCurrentMonth =
+    !isAfter(monthRef, rangeTo) && !isBefore(endOfMonth(today), rangeFrom);
+
+  let monthProjection: MonthProjection | null = null;
+  if (rangeIncludesCurrentMonth) {
+    // Considera apenas pedidos do mês corrente, ativos, não-frete (já filtrado).
+    const monthOrders = orders.filter((o) => {
+      if (!o.doc_date) return false;
+      const d = parseISO(o.doc_date.split("T")[0] + "T12:00:00");
+      return isSameMonth(d, monthRef);
+    });
+
+    const realized = monthOrders.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
+    const realizedOrders = monthOrders.length;
+
+    // Conta dias úteis decorridos (do dia 1 até hoje, exclusivo de fds).
+    const monthStart = startOfMonth(today);
+    const monthEnd = endOfMonth(today);
+    const allMonthDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const allBusinessDays = allMonthDays.filter((d) => !isWeekend(d));
+    const totalBusinessDays = allBusinessDays.length;
+    const daysElapsed = allBusinessDays.filter((d) => !isAfter(d, today)).length;
+    const remainingBusinessDays = Math.max(0, totalBusinessDays - daysElapsed);
+
+    // Dias úteis com ao menos um pedido (base mais conservadora para média).
+    const daysWithSales = new Set(
+      monthOrders
+        .map((o) => {
+          const d = parseISO((o.doc_date ?? "").split("T")[0] + "T12:00:00");
+          return isWeekend(d) ? null : format(d, "yyyy-MM-dd");
+        })
+        .filter(Boolean),
+    ).size;
+
+    const avgPerBusinessDay = daysElapsed > 0 ? realized / daysElapsed : 0;
+    const projection = realized + avgPerBusinessDay * remainingBusinessDays;
+
+    monthProjection = {
+      monthLabel: format(monthRef, "MMM/yy", { locale: ptBR }),
+      realized,
+      realizedOrders,
+      daysWithSales,
+      daysElapsed,
+      totalBusinessDays,
+      remainingBusinessDays,
+      avgPerBusinessDay,
+      projection,
+      pctElapsed: totalBusinessDays > 0 ? (daysElapsed / totalBusinessDays) * 100 : 0,
+    };
+  }
+
   return {
     kpis,
     topVendedores,
     topClientes,
     trendData,
+    businessDayTrend,
+    businessDayMedian,
+    monthProjection,
     topProdutos,
     dowData,
     statusData,
