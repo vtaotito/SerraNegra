@@ -8,8 +8,10 @@ import { SapEntitiesService, type SapSalesOrderRow, type SapInvoiceRow, type Sap
 const SYNC_CRON = process.env.SAP_SYNC_CRON ?? "0 * * * *"; // cada hora, minuto 0
 const DB_URL = process.env.B2B_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 const BOOT_SYNC_DELAY_MS = Number(process.env.SAP_BOOT_SYNC_DELAY_MS ?? "15000");
-const LINES_ENRICH_DAYS = Number(process.env.SAP_LINES_ENRICH_DAYS ?? "90");
+// 400 dias cobre os 12 meses exibidos no catálogo/detalhe de produto, com folga
+const LINES_ENRICH_DAYS = Number(process.env.SAP_LINES_ENRICH_DAYS ?? "400");
 const LINES_ENRICH_CONCURRENCY = Number(process.env.SAP_LINES_ENRICH_CONCURRENCY ?? "10");
+const LINES_ENRICH_BATCH = Number(process.env.SAP_LINES_ENRICH_BATCH ?? "2000");
 
 // ─── Pool ─────────────────────────────────────────────────────
 let pool: pg.Pool | null = null;
@@ -104,6 +106,10 @@ async function ensureSchema() {
     CREATE INDEX IF NOT EXISTS idx_sol_doc_entry    ON sap_sales_order_lines (doc_entry);
     CREATE INDEX IF NOT EXISTS idx_sol_item_code    ON sap_sales_order_lines (item_code);
     CREATE INDEX IF NOT EXISTS idx_sync_log_entity  ON sap_sync_log (entity, started_at DESC);
+
+    -- Marca quando as linhas do pedido foram buscadas no SAP (mesmo que vazias,
+    -- ex.: pedidos de frete) — evita re-buscar o mesmo pedido a cada sync
+    ALTER TABLE sap_sales_orders ADD COLUMN IF NOT EXISTS lines_synced_at TIMESTAMPTZ;
 
     -- Colunas enriquecidas (linhas) — adicionadas via migração
     ALTER TABLE sap_sales_order_lines ADD COLUMN IF NOT EXISTS price NUMERIC(18,4) DEFAULT 0;
@@ -617,10 +623,11 @@ async function enrichRecentOrderLines(svc: SapEntitiesService) {
   const res = await db.query(
     `SELECT doc_entry FROM sap_sales_orders
      WHERE doc_date >= $1
+       AND lines_synced_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM sap_sales_order_lines l WHERE l.doc_entry = sap_sales_orders.doc_entry)
      ORDER BY doc_date DESC
-     LIMIT 2000`,
-    [cutoff]
+     LIMIT $2`,
+    [cutoff, LINES_ENRICH_BATCH]
   );
 
   const missing = res.rows.map((r) => r.doc_entry as number);
@@ -643,7 +650,16 @@ async function enrichRecentOrderLines(svc: SapEntitiesService) {
             correlationId: `enrich-${docEntry}`,
           });
           const sapLines = full.data?.DocumentLines ?? [];
-          if (sapLines.length === 0) return null;
+
+          if (sapLines.length === 0) {
+            // Pedido sem itens (ex.: frete) — marca como sincronizado para não
+            // consumir o orçamento de enriquecimento a cada sync
+            await db.query(
+              `UPDATE sap_sales_orders SET lines_synced_at = NOW() WHERE doc_entry = $1`,
+              [docEntry]
+            );
+            return 0;
+          }
 
           await db.query(`DELETE FROM sap_sales_order_lines WHERE doc_entry = $1`, [docEntry]);
           for (const l of sapLines) {
@@ -656,7 +672,7 @@ async function enrichRecentOrderLines(svc: SapEntitiesService) {
           }
 
           await db.query(
-            `UPDATE sap_sales_orders SET num_lines = $1, total_quantity = $2 WHERE doc_entry = $3`,
+            `UPDATE sap_sales_orders SET num_lines = $1, total_quantity = $2, lines_synced_at = NOW() WHERE doc_entry = $3`,
             [sapLines.length, sapLines.reduce((s: number, l: any) => s + (l.Quantity ?? 0), 0), docEntry]
           );
 

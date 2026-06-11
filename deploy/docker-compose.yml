@@ -65,6 +65,10 @@ services:
       SAP_B1_MAX_ATTEMPTS: "${SAP_B1_MAX_ATTEMPTS:-5}"
       SAP_B1_MAX_CONCURRENT: "${SAP_B1_MAX_CONCURRENT:-8}"
       SAP_B1_MAX_RPS: "${SAP_B1_MAX_RPS:-10}"
+      # Janela/lote de enriquecimento das linhas de pedido (cobertura de 12 meses no catálogo)
+      SAP_LINES_ENRICH_DAYS: "${SAP_LINES_ENRICH_DAYS:-400}"
+      SAP_LINES_ENRICH_CONCURRENCY: "${SAP_LINES_ENRICH_CONCURRENCY:-10}"
+      SAP_LINES_ENRICH_BATCH: "${SAP_LINES_ENRICH_BATCH:-2000}"
       B2B_DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
       B2B_JWT_SECRET: "${B2B_JWT_SECRET:-b2b-secret-change-me}"
       SMTP_HOST: "${SMTP_HOST:-}"
@@ -152,6 +156,9 @@ services:
       NEXT_PUBLIC_WMS_BASE_URL: "${WMS_BASE_URL:-http://31.97.174.120:8080}"
       GATEWAY_INTERNAL_URL: "http://gateway:3000"
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+      # Credenciais admin B2B (mesmas do gateway) — usadas server-side em /api/b2b-admin/*
+      B2B_ADMIN_USER: "${B2B_ADMIN_USER:-admin}"
+      B2B_ADMIN_PASSWORD: "${B2B_ADMIN_PASSWORD:-gsn@comercial2026}"
       SMTP_HOST: "${SMTP_HOST:-}"
       SMTP_PORT: "${SMTP_PORT:-465}"
       SMTP_USER: "${SMTP_USER:-}"
