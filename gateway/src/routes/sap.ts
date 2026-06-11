@@ -1613,6 +1613,49 @@ export async function registerSapRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get("/sap/markup/items/:itemCode", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const { MarkupService } = await import("../services/markupService.js");
+      const { getDbPool } = await import("../scheduler/dailySync.js");
+
+      let ent: SapEntitiesService | null = null;
+      try { ent = getEntitiesService(); } catch { /* SAP offline */ }
+
+      const { itemCode } = req.params as { itemCode: string };
+      const svc = new MarkupService(getDbPool(), ent);
+      const item = await svc.getMarkupItem(decodeURIComponent(itemCode), correlationId);
+
+      if (!item) {
+        return reply.code(404).send({ ok: false, message: "Item não encontrado", timestamp: new Date().toISOString() });
+      }
+
+      reply.code(200).send({ ok: true, item, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro ao buscar markup item");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  app.delete("/sap/markup/overrides/:itemCode", async (req, reply) => {
+    const correlationId = (req as any).correlationId as string;
+    try {
+      const { MarkupService } = await import("../services/markupService.js");
+      const { getDbPool } = await import("../scheduler/dailySync.js");
+
+      const { itemCode } = req.params as { itemCode: string };
+      const svc = new MarkupService(getDbPool(), null);
+      const deleted = await svc.deleteOverride(decodeURIComponent(itemCode));
+
+      reply.code(200).send({ ok: true, deleted, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro ao remover markup override");
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
   app.post("/sap/markup/overrides", async (req, reply) => {
     const correlationId = (req as any).correlationId as string;
     try {

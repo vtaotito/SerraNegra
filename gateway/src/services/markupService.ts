@@ -45,6 +45,12 @@ export interface MarkupItemResult {
   prices: Record<string, number>;
 
   hasOverride: boolean;
+  /** Valor s/ impostos vindo do SAP (última compra ou preço médio) — base para "reverter". */
+  sapV: number;
+  /** Campos que vêm de override manual (chaves do frontend: v, fr, sc, co, pc, ic, ip, cfSaco, cfPallet, qtdPallet, qtdSaco). */
+  overriddenKeys: string[];
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export interface SaveOverrideInput {
@@ -88,6 +94,21 @@ function num(value: unknown, fallback = 0): number {
 }
 
 // ---------------------------------------------------------------------------
+// Cache do catálogo SAP (itens + preços). Overrides são sempre lidos do banco.
+// ---------------------------------------------------------------------------
+
+const CATALOG_CACHE_TTL_MS = num(process.env.MARKUP_CATALOG_CACHE_MS, 5 * 60 * 1000);
+
+interface CatalogCache {
+  items: SapItemRow[];
+  prices: ItemPriceRow[];
+  ts: number;
+}
+
+let catalogCache: CatalogCache | null = null;
+let catalogInflight: Promise<CatalogCache> | null = null;
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -98,67 +119,100 @@ export class MarkupService {
   ) {}
 
   /**
-   * Fetches all items from SAP, enriches with price lists and overrides,
-   * and returns markup-ready rows.
+   * Fetches all items from SAP (with cache), enriches with price lists and
+   * overrides (always fresh from DB), and returns markup-ready rows.
    */
   async listMarkupItems(correlationId?: string): Promise<MarkupItemResult[]> {
-    const [items, prices, overrides] = await Promise.all([
-      this.fetchSapItems(correlationId),
-      this.fetchSapPrices(correlationId),
+    const [catalog, overrides] = await Promise.all([
+      this.fetchCatalog(correlationId),
       this.fetchAllOverrides(),
     ]);
 
+    // Normaliza TODAS as chaves de preço para "PL_<n>" (número da lista).
     const priceMap = new Map<string, Record<string, number>>();
-    for (const p of prices) {
+    for (const p of catalog.prices) {
+      if (!p.Price || p.Price <= 0) continue;
       if (!priceMap.has(p.ItemCode)) priceMap.set(p.ItemCode, {});
-      priceMap.get(p.ItemCode)![p.ListName] = p.Price;
+      const key = p.PriceList != null ? `PL_${p.PriceList}` : p.ListName;
+      priceMap.get(p.ItemCode)![key] = p.Price;
     }
 
     const overrideMap = new Map<string, MarkupOverrideRow>();
     for (const o of overrides) overrideMap.set(o.item_code, o);
 
-    return items
+    return catalog.items
       .filter((item) => isMarkupCatalogItem(item.ItemCode))
-      .map((item) => {
-      const ov = overrideMap.get(item.ItemCode);
-      const sapPriceLists = item.ItemPrices as Array<{ PriceList?: number; Price?: number }> | undefined;
+      .map((item) => this.buildItem(item, priceMap.get(item.ItemCode) ?? {}, overrideMap.get(item.ItemCode)));
+  }
 
-      let itemPrices = priceMap.get(item.ItemCode) ?? {};
-      if (sapPriceLists && Array.isArray(sapPriceLists)) {
-        for (const entry of sapPriceLists) {
-          if (entry.Price && entry.Price > 0 && entry.PriceList !== undefined) {
-            itemPrices[`PL_${entry.PriceList}`] = entry.Price;
-          }
+  /**
+   * Single item lookup — reuses the catalog cache.
+   */
+  async getMarkupItem(itemCode: string, correlationId?: string): Promise<MarkupItemResult | null> {
+    const items = await this.listMarkupItems(correlationId);
+    return items.find((i) => i.itemCode === itemCode) ?? null;
+  }
+
+  private buildItem(
+    item: SapItemRow,
+    itemPrices: Record<string, number>,
+    ov: MarkupOverrideRow | undefined,
+  ): MarkupItemResult {
+    const sapPriceLists = item.ItemPrices as Array<{ PriceList?: number; Price?: number }> | undefined;
+    if (sapPriceLists && Array.isArray(sapPriceLists)) {
+      for (const entry of sapPriceLists) {
+        if (entry.Price && entry.Price > 0 && entry.PriceList !== undefined) {
+          itemPrices[`PL_${entry.PriceList}`] = entry.Price;
         }
       }
+    }
 
-      const avgPrice = typeof (item as any).AvgPrice === "number" ? (item as any).AvgPrice : 0;
-      const lastPurchase = typeof (item as any).LastPurchasePrice === "number" ? (item as any).LastPurchasePrice : 0;
-      const sapManufacturer = String((item as any).Manufacturer ?? (item as any).FirmName ?? "");
+    const avgPrice = typeof (item as any).AvgPrice === "number" ? (item as any).AvgPrice : 0;
+    const lastPurchase = typeof (item as any).LastPurchasePrice === "number" ? (item as any).LastPurchasePrice : 0;
+    const sapManufacturer = String((item as any).Manufacturer ?? (item as any).FirmName ?? "");
+    const sapV = num(lastPurchase || avgPrice);
 
-      return {
-        itemCode: item.ItemCode,
-        itemName: item.ItemName ?? "",
-        itemGroup: item.ItemsGroupCode ?? null,
-        manufacturer: sapManufacturer,
+    const overriddenKeys: string[] = [];
+    if (ov) {
+      if (ov.preco_sem_imp != null) overriddenKeys.push("v");
+      if (ov.frete != null) overriddenKeys.push("fr");
+      if (ov.embalagem != null) overriddenKeys.push("sc");
+      if (ov.comissao != null) overriddenKeys.push("co");
+      if (ov.pis_cofins != null) overriddenKeys.push("pc");
+      if (ov.icms_compra != null) overriddenKeys.push("ic");
+      if (ov.ipi != null) overriddenKeys.push("ip");
+      if (ov.custo_fixo_saco != null) overriddenKeys.push("cfSaco");
+      if (ov.custo_fixo_pallet != null) overriddenKeys.push("cfPallet");
+      if (ov.qtd_pallet != null) overriddenKeys.push("qtdPallet");
+      if (ov.qtd_saco != null) overriddenKeys.push("qtdSaco");
+    }
 
-        v: num(ov?.preco_sem_imp ?? (lastPurchase || avgPrice)),
-        fr: num(ov?.frete),
-        sc: num(ov?.embalagem),
-        co: num(ov?.comissao),
-        pc: num(ov?.pis_cofins, 0.09),
-        ic: num(ov?.icms_compra, 0.12),
-        ip: num(ov?.ipi, 0.10),
+    return {
+      itemCode: item.ItemCode,
+      itemName: item.ItemName ?? "",
+      itemGroup: item.ItemsGroupCode ?? null,
+      manufacturer: sapManufacturer,
 
-        qtdPallet: num(ov?.qtd_pallet ?? item.SalesQtyPerPackUnit),
-        qtdSaco: num(ov?.qtd_saco ?? item.SalesItemsPerUnit),
-        custoFixoSaco: num(ov?.custo_fixo_saco, 0.06),
-        custoFixoPallet: num(ov?.custo_fixo_pallet, 0.03),
+      v: num(ov?.preco_sem_imp ?? sapV),
+      fr: num(ov?.frete),
+      sc: num(ov?.embalagem),
+      co: num(ov?.comissao),
+      pc: num(ov?.pis_cofins, 0.09),
+      ic: num(ov?.icms_compra, 0.12),
+      ip: num(ov?.ipi, 0.10),
 
-        prices: itemPrices,
-        hasOverride: ov != null,
-      };
-    });
+      qtdPallet: num(ov?.qtd_pallet ?? item.SalesQtyPerPackUnit),
+      qtdSaco: num(ov?.qtd_saco ?? item.SalesItemsPerUnit),
+      custoFixoSaco: num(ov?.custo_fixo_saco, 0.06),
+      custoFixoPallet: num(ov?.custo_fixo_pallet, 0.03),
+
+      prices: itemPrices,
+      hasOverride: ov != null,
+      sapV,
+      overriddenKeys,
+      updatedAt: ov?.updated_at ?? null,
+      updatedBy: ov?.updated_by ?? null,
+    };
   }
 
   /**
@@ -203,7 +257,49 @@ export class MarkupService {
     );
   }
 
+  /**
+   * Remove o override de um item — o item volta a usar os valores do SAP.
+   */
+  async deleteOverride(itemCode: string): Promise<boolean> {
+    const res = await this.db.query(
+      `DELETE FROM markup_overrides WHERE item_code = $1`,
+      [itemCode],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
   // ── Private helpers ─────────────────────────────────────────────
+
+  /**
+   * Catálogo SAP (itens + preços) com cache em memória.
+   * Evita uma consulta completa ao Service Layer a cada navegação.
+   */
+  private async fetchCatalog(correlationId?: string): Promise<CatalogCache> {
+    const now = Date.now();
+    if (catalogCache && now - catalogCache.ts < CATALOG_CACHE_TTL_MS) {
+      return catalogCache;
+    }
+    if (catalogInflight) return catalogInflight;
+
+    catalogInflight = (async () => {
+      const [items, prices] = await Promise.all([
+        this.fetchSapItems(correlationId),
+        this.fetchSapPrices(correlationId),
+      ]);
+      // Não cacheia respostas vazias (SAP offline) para tentar de novo logo.
+      if (items.length > 0) {
+        catalogCache = { items, prices, ts: Date.now() };
+        return catalogCache;
+      }
+      return { items, prices, ts: 0 };
+    })();
+
+    try {
+      return await catalogInflight;
+    } finally {
+      catalogInflight = null;
+    }
+  }
 
   private async fetchSapItems(correlationId?: string): Promise<SapItemRow[]> {
     if (!this.sapEntities) return [];

@@ -3,15 +3,17 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Save, Check, Calculator, Receipt, ChevronRight, AlertTriangle,
+  ArrowLeft, Save, Calculator, Receipt, ChevronRight, Undo2, Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { fmtBRL } from "@/lib/format";
 import {
-  fetchMarkupItems,
+  fetchMarkupItem,
   saveMarkupOverride,
-  type MarkupItem,
+  deleteMarkupOverride,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
+import { useAuth } from "@/components/AuthProvider";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import {
   calcCMV,
@@ -24,28 +26,20 @@ import {
   type MarkupCostParams,
   type MarkupPriceParams,
 } from "@/lib/markup-engine";
-
-function MargemBadge({ value, size = "md" }: { value: number | null; size?: "sm" | "md" }) {
-  if (value === null || isNaN(value)) return <span className="text-gray-300">&mdash;</span>;
-  const pct = (value * 100).toFixed(1);
-  const cls =
-    value >= 0.15 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" :
-    value >= 0.05 ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200" :
-    value >= 0 ? "bg-red-50 text-red-600 ring-1 ring-red-200" :
-    "bg-red-100 text-red-800 ring-1 ring-red-300";
-  const sz = size === "sm" ? "px-2 py-0.5 text-[11px]" : "px-3 py-1 text-xs";
-  return <span className={`inline-flex items-center justify-center rounded-full font-bold ${cls} ${sz}`}>{pct}%</span>;
-}
+import { MargemBadge, fmtAudit } from "../shared";
 
 function EditField({
-  label, value, onChange, prefix, suffix, step,
+  label, value, onChange, prefix, suffix, step, dirty,
 }: {
   label: string; value: number; onChange: (v: number) => void;
-  prefix?: string; suffix?: string; step?: string;
+  prefix?: string; suffix?: string; step?: string; dirty?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between py-2 group">
-      <span className="text-xs text-gray-600 group-hover:text-gray-900 motion-safe:transition-colors">{label}</span>
+      <span className="text-xs text-gray-600 group-hover:text-gray-900 motion-safe:transition-colors flex items-center gap-1.5">
+        {label}
+        {dirty && <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" title="Alterado — não salvo" />}
+      </span>
       <div className="flex items-center gap-1.5">
         {prefix && <span className="text-xs font-semibold text-gray-500">{prefix}</span>}
         <input
@@ -53,7 +47,9 @@ function EditField({
           step={step ?? "0.01"}
           value={value || ""}
           onChange={(e) => onChange(+(e.target.value) || 0)}
-          className="w-[100px] px-2.5 py-1.5 border border-gray-200 rounded-md text-xs font-semibold text-right font-mono focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent bg-white transition-shadow"
+          className={`w-[100px] px-2.5 py-1.5 border rounded-md text-xs font-semibold text-right font-mono focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent bg-white transition-shadow ${
+            dirty ? "border-amber-400" : "border-gray-200"
+          }`}
         />
         {suffix && <span className="text-[10px] text-gray-400 min-w-[16px]">{suffix}</span>}
       </div>
@@ -71,12 +67,14 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 }
 
 function PriceColumn({
-  title, modo, icmsVenda, ig, cf, costParams: cp,
+  title, modo, icmsVenda, ig, cf, costParams: cp, defaultPreco,
 }: {
   title: string; modo: "preco" | "margem"; icmsVenda: number;
   ig: number; cf: number; costParams: MarkupCostParams;
+  /** Preço unitário inicial (tabela SAP) — pré-preenche o simulador */
+  defaultPreco: number;
 }) {
-  const [preco, setPreco] = useState(0);
+  const [preco, setPreco] = useState(defaultPreco);
   const [margem, setMargem] = useState(0.10);
 
   const params: MarkupPriceParams = { ...cp, icmsVenda, ig, cf };
@@ -85,6 +83,7 @@ function PriceColumn({
   const precoMilheiro = modo === "preco" ? preco * 1000 : calcPrecoFromMargem(margem, params);
   const margemCalc = modo === "preco" ? calcLucro(preco * 1000, params) : margem;
   const precoUnit = precoMilheiro / 1000;
+  const isFromTable = defaultPreco > 0 && preco === defaultPreco;
 
   return (
     <div className="p-3 bg-white rounded-lg border border-gray-100">
@@ -95,7 +94,10 @@ function PriceColumn({
 
       {modo === "preco" ? (
         <>
-          <label className="text-[10px] text-gray-400 mb-1 block">Preço unitário:</label>
+          <label className="text-[10px] text-gray-400 mb-1 block">
+            Preço unitário:
+            {isFromTable && <span className="ml-1 text-emerald-600 font-semibold">tabela SAP</span>}
+          </label>
           <div className="flex items-center gap-1.5 mb-3">
             <span className="text-xs font-bold text-gray-500">R$</span>
             <input
@@ -139,10 +141,11 @@ function PriceColumn({
 }
 
 function IcmsCard({
-  label, icmsVenda, color, costParams: cp, ig, cfSaco, cfPallet,
+  label, icmsVenda, color, costParams: cp, ig, cfSaco, cfPallet, precoSaco, precoPallet,
 }: {
   label: string; icmsVenda: number; color: string;
   costParams: MarkupCostParams; ig: number; cfSaco: number; cfPallet: number;
+  precoSaco: number; precoPallet: number;
 }) {
   const [modo, setModo] = useState<"preco" | "margem">("preco");
 
@@ -167,25 +170,9 @@ function IcmsCard({
         </div>
       </div>
       <div className="p-4 grid grid-cols-2 gap-3 bg-gray-50/50">
-        <PriceColumn title="Saco / Unidade" modo={modo} icmsVenda={icmsVenda} ig={ig} cf={cfSaco} costParams={cp} />
-        <PriceColumn title="Pallet / Milheiro" modo={modo} icmsVenda={icmsVenda} ig={ig} cf={cfPallet} costParams={cp} />
+        <PriceColumn title="Saco / Unidade" modo={modo} icmsVenda={icmsVenda} ig={ig} cf={cfSaco} costParams={cp} defaultPreco={precoSaco} />
+        <PriceColumn title="Pallet / Milheiro" modo={modo} icmsVenda={icmsVenda} ig={ig} cf={cfPallet} costParams={cp} defaultPreco={precoPallet} />
       </div>
-    </div>
-  );
-}
-
-function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 3000);
-    return () => clearTimeout(t);
-  }, [onClose]);
-
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-in slide-in-from-bottom-4 ${
-      type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
-    }`}>
-      {type === "success" ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-      {message}
     </div>
   );
 }
@@ -194,12 +181,12 @@ export default function MarkupDetailPage() {
   const { itemCode } = useParams<{ itemCode: string }>();
   const router = useRouter();
   const decodedCode = decodeURIComponent(itemCode);
+  const { user } = useAuth();
+  const userName = user?.username ?? "painel";
 
-  const { data, loading, error, refetch } = useFetch(() => fetchMarkupItems(), []);
-
-  const item = useMemo(
-    () => data?.items.find((i) => i.itemCode === decodedCode) ?? null,
-    [data, decodedCode],
+  const { data: item, loading, error, refetch } = useFetch(
+    () => fetchMarkupItem(decodedCode),
+    [decodedCode],
   );
 
   const [v, setV] = useState<number | null>(null);
@@ -215,7 +202,13 @@ export default function MarkupDetailPage() {
   const [cfPalletChanged, setCfPalletChanged] = useState(false);
   const [tab, setTab] = useState<"preco" | "custos">("preco");
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [reverting, setReverting] = useState(false);
+
+  const resetLocalEdits = useCallback(() => {
+    setV(null); setFr(null); setSc(null); setCo(null);
+    setPc(null); setIc(null); setIp(null);
+    setCfSacoChanged(false); setCfPalletChanged(false);
+  }, []);
 
   useEffect(() => {
     if (item) {
@@ -245,6 +238,17 @@ export default function MarkupDetailPage() {
     cfSacoChanged || cfPalletChanged
   );
 
+  // Aviso ao sair com alterações não salvas
+  useEffect(() => {
+    if (!hasChanges) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasChanges]);
+
   const handleSave = useCallback(async () => {
     if (!item) return;
     setSaving(true);
@@ -260,17 +264,33 @@ export default function MarkupDetailPage() {
         ipi: ip,
         custoFixoSaco: cfSacoChanged ? cfSaco : null,
         custoFixoPallet: cfPalletChanged ? cfPallet : null,
+        updatedBy: userName,
       });
-      setToast({ message: "Alterações salvas com sucesso", type: "success" });
+      toast.success("Alterações salvas com sucesso");
+      resetLocalEdits();
+      refetch();
     } catch (err) {
-      setToast({
-        message: err instanceof Error ? err.message : "Erro ao salvar",
-        type: "error",
-      });
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
     } finally {
       setSaving(false);
     }
-  }, [item, v, fr, sc, co, pc, ic, ip, cfSaco, cfPallet, cfSacoChanged, cfPalletChanged]);
+  }, [item, v, fr, sc, co, pc, ic, ip, cfSaco, cfPallet, cfSacoChanged, cfPalletChanged, userName, resetLocalEdits, refetch]);
+
+  const handleRevert = useCallback(async () => {
+    if (!item) return;
+    if (!window.confirm(`Restaurar ${item.itemCode} para os valores do SAP? O override manual será removido.`)) return;
+    setReverting(true);
+    try {
+      await deleteMarkupOverride(item.itemCode);
+      toast.success("Valores SAP restaurados");
+      resetLocalEdits();
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao reverter");
+    } finally {
+      setReverting(false);
+    }
+  }, [item, resetLocalEdits, refetch]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -283,33 +303,43 @@ export default function MarkupDetailPage() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [hasChanges, saving, handleSave]);
 
-  if (loading) return <LoadingSkeleton rows={6} />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
-  if (!item) {
+  if (loading && !item) return <LoadingSkeleton rows={6} />;
+  if (error && !item) {
     return (
       <div className="text-center py-20">
         <div className="text-4xl mb-3 text-gray-300">?</div>
         <p className="text-gray-500 mb-1">Produto <strong className="font-mono">{decodedCode}</strong> não encontrado.</p>
         <p className="text-xs text-gray-400 mb-4">Verifique o código ou retorne à lista.</p>
-        <button
-          type="button"
-          onClick={() => router.push("/business-intelligence/markup")}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cockpit-border text-sm text-cockpit-accent hover:bg-gray-50 motion-safe:transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Voltar à lista
-        </button>
+        <div className="flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => router.push("/business-intelligence/markup")}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cockpit-border text-sm text-cockpit-accent hover:bg-gray-50 motion-safe:transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" /> Voltar à lista
+          </button>
+          <button
+            type="button"
+            onClick={refetch}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-cockpit-border text-sm text-gray-600 hover:bg-gray-50 motion-safe:transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
       </div>
     );
   }
+  if (!item) return <ErrorState message="Falha ao carregar o produto" onRetry={refetch} />;
 
   const cp: MarkupCostParams = current!;
+  const audit = fmtAudit(item.updatedAt, item.updatedBy);
+  const precoSaco = item.prices["PL_1"] ?? 0;
+  const precoPallet = item.prices["PL_2"] ?? 0;
 
   return (
     <div className="space-y-5">
-      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-
       {/* Breadcrumb + actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <button
             type="button"
@@ -322,6 +352,18 @@ export default function MarkupDetailPage() {
           <span className="text-gray-800 font-medium font-mono">{item.itemCode}</span>
         </div>
         <div className="flex items-center gap-2">
+          {item.hasOverride && (
+            <button
+              type="button"
+              onClick={handleRevert}
+              disabled={reverting}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cockpit-border text-xs text-gray-600 hover:bg-gray-50 hover:text-red-600 disabled:opacity-50 motion-safe:transition-colors"
+              title="Remove o override manual e volta aos valores do SAP"
+            >
+              {reverting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Undo2 className="w-3.5 h-3.5" />}
+              Restaurar SAP
+            </button>
+          )}
           <button
             type="button"
             onClick={() => router.push("/business-intelligence/markup")}
@@ -350,13 +392,16 @@ export default function MarkupDetailPage() {
 
       {/* Product header */}
       <div className="rounded-xl border border-cockpit-border bg-white p-5">
-        <div className="flex items-start gap-6">
+        <div className="flex items-start gap-6 flex-wrap">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
               <span className="font-mono text-sm text-cockpit-accent font-bold">{item.itemCode}</span>
               {item.hasOverride && (
-                <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md ring-1 ring-amber-200 font-medium">
-                  Override ativo
+                <span
+                  className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md ring-1 ring-amber-200 font-medium"
+                  title={audit ? `Última alteração: ${audit}` : undefined}
+                >
+                  Override ativo{audit ? ` · ${audit}` : ""}
                 </span>
               )}
             </div>
@@ -369,7 +414,17 @@ export default function MarkupDetailPage() {
               {item.itemGroup != null && <span>Grupo: <strong className="text-gray-700">{item.itemGroup}</strong></span>}
               {item.qtdPallet > 0 && <span>Qtd/Pallet: <strong className="text-gray-700">{item.qtdPallet}</strong></span>}
               {item.qtdSaco > 0 && <span>Qtd/Saco: <strong className="text-gray-700">{item.qtdSaco}</strong></span>}
+              {precoSaco > 0 && <span>Tabela Saco: <strong className="text-gray-700">{fmtBRL(precoSaco)}</strong></span>}
+              {precoPallet > 0 && <span>Tabela Pallet: <strong className="text-gray-700">{fmtBRL(precoPallet)}</strong></span>}
             </div>
+            {item.hasOverride && item.sapV > 0 && item.overriddenKeys.includes("v") && (
+              <div className="mt-2 text-[11px] text-gray-500">
+                Valor s/ imp.: <strong className="text-gray-700 font-mono">{fmtBRL(cp.v)}</strong>
+                <span className="text-gray-400"> (manual)</span>
+                <span className="mx-1.5 text-gray-300">·</span>
+                referência SAP: <span className="font-mono text-gray-500">{fmtBRL(item.sapV)}</span>
+              </div>
+            )}
           </div>
           <div className="text-right shrink-0">
             <div className="text-[10px] text-gray-400 uppercase font-medium">CMV Unitário</div>
@@ -416,6 +471,8 @@ export default function MarkupDetailPage() {
                 ig={igForFaixa(fx.rate)}
                 cfSaco={cfSaco}
                 cfPallet={cfPallet}
+                precoSaco={precoSaco}
+                precoPallet={precoPallet}
               />
             ))}
           </div>
@@ -431,15 +488,22 @@ export default function MarkupDetailPage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Custos */}
               <div className="rounded-xl border border-gray-200 p-5">
-                <h3 className="text-sm font-bold text-gray-800 mb-4 pb-3 border-b border-gray-100 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-cockpit-accent" />
-                  Custos
+                <h3 className="text-sm font-bold text-gray-800 mb-4 pb-3 border-b border-gray-100 flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cockpit-accent" />
+                    Custos
+                  </span>
+                  {item.sapV > 0 && (
+                    <span className="text-[10px] font-normal text-gray-400" title="Valor de referência do SAP (última compra / preço médio)">
+                      SAP: <span className="font-mono text-gray-500">{fmtBRL(item.sapV)}</span>
+                    </span>
+                  )}
                 </h3>
                 <div className="divide-y divide-gray-50">
-                  <EditField label="Valor sem Impostos (milh)" value={cp.v} onChange={setV} prefix="R$" />
-                  <EditField label="Frete (milh)" value={cp.fr} onChange={setFr} prefix="R$" />
-                  <EditField label="Embalagem / Fardo (milh)" value={cp.sc} onChange={setSc} prefix="R$" />
-                  <EditField label="Comissão (milh)" value={cp.co} onChange={setCo} prefix="R$" />
+                  <EditField label="Valor sem Impostos (milh)" value={cp.v} onChange={setV} prefix="R$" dirty={v !== null} />
+                  <EditField label="Frete (milh)" value={cp.fr} onChange={setFr} prefix="R$" dirty={fr !== null} />
+                  <EditField label="Embalagem / Fardo (milh)" value={cp.sc} onChange={setSc} prefix="R$" dirty={sc !== null} />
+                  <EditField label="Comissão (milh)" value={cp.co} onChange={setCo} prefix="R$" dirty={co !== null} />
                 </div>
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Custos Fixos</div>
@@ -449,6 +513,7 @@ export default function MarkupDetailPage() {
                     onChange={(val) => { setCfSaco(val / 100); setCfSacoChanged(true); }}
                     suffix="%"
                     step="0.5"
+                    dirty={cfSacoChanged}
                   />
                   <EditField
                     label="Custo Fixo Pallet"
@@ -456,6 +521,7 @@ export default function MarkupDetailPage() {
                     onChange={(val) => { setCfPallet(val / 100); setCfPalletChanged(true); }}
                     suffix="%"
                     step="0.5"
+                    dirty={cfPalletChanged}
                   />
                 </div>
               </div>
@@ -467,9 +533,9 @@ export default function MarkupDetailPage() {
                   Tributos
                 </h3>
                 <div className="divide-y divide-gray-50">
-                  <EditField label="PIS/COFINS" value={cp.pc * 100} onChange={(val) => setPc(val / 100)} suffix="%" step="0.01" />
-                  <EditField label="ICMS Compra" value={cp.ic * 100} onChange={(val) => setIc(val / 100)} suffix="%" step="0.5" />
-                  <EditField label="IPI" value={cp.ip * 100} onChange={(val) => setIp(val / 100)} suffix="%" step="0.01" />
+                  <EditField label="PIS/COFINS" value={cp.pc * 100} onChange={(val) => setPc(val / 100)} suffix="%" step="0.01" dirty={pc !== null} />
+                  <EditField label="ICMS Compra" value={cp.ic * 100} onChange={(val) => setIc(val / 100)} suffix="%" step="0.5" dirty={ic !== null} />
+                  <EditField label="IPI" value={cp.ip * 100} onChange={(val) => setIp(val / 100)} suffix="%" step="0.01" dirty={ip !== null} />
                 </div>
                 <div className="mt-4 pt-3 border-t border-gray-100">
                   <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">Constantes</div>

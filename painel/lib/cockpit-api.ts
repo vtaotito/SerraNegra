@@ -28,6 +28,19 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(`${GATEWAY}${path}`, { method: "DELETE" });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = j.detail || j.message || "";
+    } catch { /* ignore */ }
+    throw new Error(`DELETE ${path} → ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
+  return res.json();
+}
+
 export interface CatalogItem {
   id: number;
   sku: string;
@@ -560,6 +573,12 @@ export interface MarkupItem {
 
   prices: Record<string, number>;
   hasOverride: boolean;
+  /** Valor s/ impostos vindo do SAP — base para "reverter para SAP" */
+  sapV: number;
+  /** Campos com override manual (v, fr, sc, co, pc, ic, ip, cfSaco, cfPallet, ...) */
+  overriddenKeys: string[];
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export interface MarkupItemsResult {
@@ -574,6 +593,16 @@ export function fetchMarkupItems(): Promise<MarkupItemsResult> {
     ...data,
     items: data.items.map(normalizeMarkupItem),
   }));
+}
+
+export function fetchMarkupItem(itemCode: string): Promise<MarkupItem> {
+  return get<{ ok: boolean; item: MarkupItem }>(
+    `/sap/markup/items/${encodeURIComponent(itemCode)}`,
+  ).then((data) => normalizeMarkupItem(data.item));
+}
+
+export function deleteMarkupOverride(itemCode: string): Promise<{ ok: boolean; deleted: boolean }> {
+  return del(`/sap/markup/overrides/${encodeURIComponent(itemCode)}`);
 }
 
 function toNum(value: unknown, fallback = 0): number {
@@ -597,6 +626,10 @@ function normalizeMarkupItem(item: MarkupItem): MarkupItem {
     qtdSaco: toNum(item.qtdSaco),
     custoFixoSaco: toNum(item.custoFixoSaco, 0.06),
     custoFixoPallet: toNum(item.custoFixoPallet, 0.03),
+    sapV: toNum(item.sapV),
+    overriddenKeys: Array.isArray(item.overriddenKeys) ? item.overriddenKeys : [],
+    updatedAt: item.updatedAt ?? null,
+    updatedBy: item.updatedBy ?? null,
   };
 }
 
@@ -613,6 +646,7 @@ export interface SaveMarkupOverrideInput {
   qtdPallet?: number | null;
   qtdSaco?: number | null;
   precoSemImp?: number | null;
+  updatedBy?: string | null;
 }
 
 export function saveMarkupOverride(data: SaveMarkupOverrideInput): Promise<{ ok: boolean }> {

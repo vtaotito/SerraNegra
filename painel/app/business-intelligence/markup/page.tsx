@@ -1,86 +1,125 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, memo } from "react";
 import {
   Calculator, Search, Download, ArrowUpDown, ArrowUp, ArrowDown,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
   AlertCircle, Package, TrendingUp, X, RefreshCw, Pencil,
-  ChevronDown, Save, Check, AlertTriangle, ExternalLink, Eraser,
-  CircleDollarSign, Receipt, Loader2,
+  ChevronDown, Save, ExternalLink, Eraser,
+  CircleDollarSign, Receipt, Loader2, Undo2, CheckSquare,
 } from "lucide-react";
+import { toast } from "sonner";
 import { fmtBRL, fmtNum, exportCSV, getProductGroupColor, getProductGroupName } from "@/lib/format";
 import {
   fetchMarkupItems,
   saveMarkupOverride,
+  deleteMarkupOverride,
   type MarkupItem,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
+import { useAuth } from "@/components/AuthProvider";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import {
   calcCMV,
+  calcPE,
   calcLucro,
-  IG,
-  ICMS_FAIXAS,
   igForFaixa,
   getMarkupPrefix,
   isMarkupCatalogItem,
   MARKUP_ITEM_PREFIXES,
+  ICMS_FAIXAS,
   type MarkupCostParams,
 } from "@/lib/markup-engine";
+import { MargemBadge, NumberField, fmtAudit } from "./shared";
 import Link from "next/link";
 
 // ---------------------------------------------------------------------------
 // Types & constants
 // ---------------------------------------------------------------------------
 
-type SortKey = "itemCode" | "itemName" | "manufacturer" | "v" | "cmv" | "margemSaco" | "margemPallet";
+type SortKey = "itemCode" | "itemName" | "manufacturer" | "v" | "cmv" | "pe" | "margemSaco" | "margemPallet";
 type SortDir = "asc" | "desc";
-type QuickFilter = "override" | "semCmv" | "margemBaixa" | "pendentes";
-
-const CF_SACO = 0.06;
-const CF_PALLET = 0.03;
+type QuickFilter = "override" | "semCusto" | "margemBaixa" | "pendentes";
 
 const PAGE_SIZES = [25, 50, 100, 250] as const;
 
-const ICMS_OPTIONS = [
-  { rate: 0.12, label: "12%", color: "#AF272F" },
-  { rate: 0.07, label: "7%", color: "#7B1A1F" },
-  { rate: 0.18, label: "18%", color: "#5B3A6B" },
-  { rate: 0, label: "ME", color: "#8B7435" },
-] as const;
-
 const COST_FIELDS = [
-  { key: "v", label: "Valor s/ Imp.", prefix: "R$", step: "0.01", hint: "Preço de compra sem impostos (por milheiro)" },
-  { key: "fr", label: "Frete", prefix: "R$", step: "0.01", hint: "Frete por milheiro" },
-  { key: "sc", label: "Embalagem", prefix: "R$", step: "0.01", hint: "Custo de embalagem / fardo / caixa" },
-  { key: "co", label: "Comissão", prefix: "R$", step: "0.01", hint: "Comissão sobre venda" },
+  { key: "v", label: "Valor s/ Imp.", prefix: "R$", hint: "Preço de compra sem impostos (por milheiro)" },
+  { key: "fr", label: "Frete", prefix: "R$", hint: "Frete por milheiro" },
+  { key: "sc", label: "Embalagem", prefix: "R$", hint: "Custo de embalagem / fardo / caixa" },
+  { key: "co", label: "Comissão", prefix: "R$", hint: "Comissão sobre venda" },
 ] as const;
 
 const TRIBUTO_FIELDS = [
-  { key: "pc", label: "PIS/COFINS", suffix: "%", step: "0.01", hint: "Alíquota PIS+COFINS na compra" },
-  { key: "ic", label: "ICMS Compra", suffix: "%", step: "0.1", hint: "Alíquota ICMS na compra" },
-  { key: "ip", label: "IPI", suffix: "%", step: "0.01", hint: "Alíquota IPI" },
+  { key: "pc", label: "PIS/COFINS", suffix: "%", hint: "Alíquota PIS+COFINS na compra" },
+  { key: "ic", label: "ICMS Compra", suffix: "%", hint: "Alíquota ICMS na compra" },
+  { key: "ip", label: "IPI", suffix: "%", hint: "Alíquota IPI" },
 ] as const;
 
 type CostFieldKey = (typeof COST_FIELDS)[number]["key"];
 type TributoFieldKey = (typeof TRIBUTO_FIELDS)[number]["key"];
 type EditableKey = CostFieldKey | TributoFieldKey;
 
+/** Campos disponíveis na edição em lote */
+const BULK_FIELDS: { key: EditableKey; label: string; isPercent: boolean }[] = [
+  { key: "fr", label: "Frete (R$/milh)", isPercent: false },
+  { key: "sc", label: "Embalagem (R$/milh)", isPercent: false },
+  { key: "co", label: "Comissão (R$/milh)", isPercent: false },
+  { key: "pc", label: "PIS/COFINS (%)", isPercent: true },
+  { key: "ic", label: "ICMS Compra (%)", isPercent: true },
+  { key: "ip", label: "IPI (%)", isPercent: true },
+];
+
+type RowEdits = Partial<Record<EditableKey, number>>;
+
+// ---------------------------------------------------------------------------
+// Derivações (CMV, margens, P.E.) — usa o CF individual de cada item
+// ---------------------------------------------------------------------------
+
+interface Derived {
+  cmv: number;
+  /** Ponto de equilíbrio do saco (milheiro) */
+  peSaco: number;
+  precoSaco: number;
+  precoPallet: number;
+  mSaco: number | null;
+  mPallet: number | null;
+  noCost: boolean;
+}
+
+function costParams(item: MarkupItem): MarkupCostParams {
+  return { v: item.v, fr: item.fr, sc: item.sc, co: item.co, pc: item.pc, ic: item.ic, ip: item.ip };
+}
+
+function applyEdits(item: MarkupItem, edits: RowEdits | undefined): MarkupItem {
+  if (!edits || Object.keys(edits).length === 0) return item;
+  return { ...item, ...edits } as MarkupItem;
+}
+
+function computeDerived(item: MarkupItem, icmsRate: number): Derived {
+  const cp = costParams(item);
+  const cmv = calcCMV(cp);
+  const ig = igForFaixa(icmsRate);
+  const precoSaco = item.prices["PL_1"] ?? 0;
+  const precoPallet = item.prices["PL_2"] ?? 0;
+  const cfSaco = item.custoFixoSaco || 0.06;
+  const cfPallet = item.custoFixoPallet || 0.03;
+  return {
+    cmv,
+    peSaco: item.v > 0 ? calcPE({ ...cp, icmsVenda: icmsRate, ig, cf: cfSaco }) : 0,
+    precoSaco,
+    precoPallet,
+    mSaco: calcLucro(precoSaco * 1000, { ...cp, icmsVenda: icmsRate, ig, cf: cfSaco }),
+    mPallet: calcLucro(precoPallet * 1000, { ...cp, icmsVenda: icmsRate, ig, cf: cfPallet }),
+    noCost: item.v === 0 && item.fr === 0 && item.sc === 0 && item.co === 0,
+  };
+}
+
+type EnrichedItem = MarkupItem & Derived;
+
 // ---------------------------------------------------------------------------
 // Small components
 // ---------------------------------------------------------------------------
-
-function MargemBadge({ value, size = "md" }: { value: number | null; size?: "sm" | "md" }) {
-  if (value === null || isNaN(value)) return <span className="text-gray-300">&mdash;</span>;
-  const pct = (value * 100).toFixed(1);
-  const cls =
-    value >= 0.15 ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" :
-    value >= 0.05 ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200" :
-    value >= 0 ? "bg-red-50 text-red-600 ring-1 ring-red-200" :
-    "bg-red-100 text-red-800 ring-1 ring-red-300";
-  const sz = size === "sm" ? "px-1.5 py-0.5 text-[10px] min-w-[44px]" : "px-2 py-0.5 text-[11px] min-w-[52px]";
-  return <span className={`inline-flex items-center justify-center rounded-full font-bold ${cls} ${sz}`}>{pct}%</span>;
-}
 
 function PageButton({
   onClick, disabled, children, title,
@@ -93,25 +132,11 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      aria-label={title}
       className="p-1.5 rounded-md hover:bg-gray-100 disabled:opacity-25 disabled:cursor-not-allowed motion-safe:transition-colors"
     >
       {children}
     </button>
-  );
-}
-
-function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onClose, 2500);
-    return () => clearTimeout(t);
-  }, [onClose]);
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-in slide-in-from-bottom-4 ${
-      type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
-    }`}>
-      {type === "success" ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-      {message}
-    </div>
   );
 }
 
@@ -124,6 +149,7 @@ function ChipFilter({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold motion-safe:transition-all ring-1 ${
         active
           ? "bg-cockpit-accent text-white ring-cockpit-accent shadow-sm"
@@ -139,41 +165,26 @@ function ChipFilter({
   );
 }
 
-function InlineNumberInput({
-  value, onChange, prefix, suffix, step, dirty,
-}: {
-  value: number; onChange: (v: number) => void;
-  prefix?: string; suffix?: string; step?: string; dirty?: boolean;
-}) {
+/** Tag de origem do valor de custo: SAP ou editado manualmente */
+function OriginTag({ manual, audit }: { manual: boolean; audit: string | null }) {
+  if (manual) {
+    return (
+      <span
+        className="inline-flex items-center gap-0.5 text-[8px] font-bold uppercase bg-amber-50 text-amber-600 px-1 py-px rounded ring-1 ring-amber-200"
+        title={`Valor editado manualmente${audit ? ` — ${audit}` : ""}`}
+      >
+        <Pencil className="w-2 h-2" />Man
+      </span>
+    );
+  }
   return (
-    <div className={`flex items-center rounded-md ring-1 motion-safe:transition-all bg-white ${
-      dirty ? "ring-amber-400 ring-2" : "ring-gray-200 focus-within:ring-cockpit-accent"
-    }`}>
-      {prefix && <span className="pl-2 text-[10px] font-semibold text-gray-400">{prefix}</span>}
-      <input
-        type="number"
-        step={step ?? "0.01"}
-        value={value === 0 ? "" : value}
-        placeholder="0"
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        className="w-full px-2 py-1.5 text-xs font-semibold text-right font-mono bg-transparent focus:outline-none"
-      />
-      {suffix && <span className="pr-2 text-[10px] text-gray-400">{suffix}</span>}
-    </div>
+    <span
+      className="inline-flex items-center text-[8px] font-bold uppercase bg-gray-100 text-gray-400 px-1 py-px rounded"
+      title="Valor vindo do SAP (última compra / preço médio)"
+    >
+      SAP
+    </span>
   );
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function costParams(item: MarkupItem): MarkupCostParams {
-  return { v: item.v, fr: item.fr, sc: item.sc, co: item.co, pc: item.pc, ic: item.ic, ip: item.ip };
-}
-
-function applyEdits(item: MarkupItem, edits: Partial<Record<EditableKey, number>> | undefined): MarkupItem {
-  if (!edits) return item;
-  return { ...item, ...edits } as MarkupItem;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +193,8 @@ function applyEdits(item: MarkupItem, edits: Partial<Record<EditableKey, number>
 
 export default function MarkupPage() {
   const { data, loading, error, refetch } = useFetch(() => fetchMarkupItems(), []);
+  const { user } = useAuth();
+  const userName = user?.username ?? "painel";
 
   // Filtros / paginação / ordenação
   const [search, setSearch] = useState("");
@@ -196,10 +209,15 @@ export default function MarkupPage() {
 
   // Edição inline
   const [expandedCode, setExpandedCode] = useState<string | null>(null);
-  const [edits, setEdits] = useState<Map<string, Partial<Record<EditableKey, number>>>>(new Map());
-  const [overrides, setOverrides] = useState<Map<string, Partial<Record<EditableKey, number>>>>(new Map());
+  const [edits, setEdits] = useState<Map<string, RowEdits>>(new Map());
+  const [overrides, setOverrides] = useState<Map<string, RowEdits>>(new Map());
   const [savingCode, setSavingCode] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [revertingCode, setRevertingCode] = useState<string | null>(null);
+
+  // Seleção para edição em lote
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkField, setBulkField] = useState<EditableKey>("fr");
+  const [bulkValue, setBulkValue] = useState(0);
 
   // Catálogo filtrado pelas siglas
   const items = useMemo<MarkupItem[]>(
@@ -207,19 +225,36 @@ export default function MarkupPage() {
     [data],
   );
 
-  // Item efetivo (com overrides salvos + edições pendentes)
-  const effectiveItem = useCallback(
-    (item: MarkupItem) => {
-      const combined: Partial<Record<EditableKey, number>> = {
-        ...(overrides.get(item.itemCode) ?? {}),
-        ...(edits.get(item.itemCode) ?? {}),
-      };
-      return applyEdits(item, combined);
-    },
-    [edits, overrides],
+  // Quando os dados chegam frescos do servidor, overrides locais já estão neles
+  useEffect(() => {
+    setOverrides(new Map());
+    setSelected(new Set());
+  }, [data]);
+
+  // Avisa antes de fechar/recarregar com edições pendentes
+  useEffect(() => {
+    if (edits.size === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [edits.size]);
+
+  // ─── Base enriquecida (overrides salvos, SEM edições pendentes) ───
+  // Edições pendentes são aplicadas apenas na linha (RowGroup) — assim a
+  // digitação não recalcula o catálogo inteiro a cada tecla.
+
+  const baseItems = useMemo(
+    () => items.map((i) => applyEdits(i, overrides.get(i.itemCode))),
+    [items, overrides],
   );
 
-  const isDirty = useCallback((code: string) => Object.keys(edits.get(code) ?? {}).length > 0, [edits]);
+  const enriched = useMemo<EnrichedItem[]>(
+    () => baseItems.map((i) => ({ ...i, ...computeDerived(i, icmsRate) })),
+    [baseItems, icmsRate],
+  );
 
   // Listas auxiliares para filtros
   const prefixes = useMemo(() => {
@@ -232,43 +267,11 @@ export default function MarkupPage() {
     return ["TODOS", ...Array.from(s).sort()];
   }, [items]);
 
-  // Enriquecimento (CMV + margens calculados via item efetivo)
-  const enriched = useMemo(
-    () =>
-      items.map((raw) => {
-        const item = effectiveItem(raw);
-        const cp = costParams(item);
-        const cmv = calcCMV(cp);
-        const ig = igForFaixa(icmsRate);
-        const mSaco = calcLucro(
-          item.prices["PL_1"] ? item.prices["PL_1"] * 1000 : 0,
-          { ...cp, icmsVenda: icmsRate, ig, cf: CF_SACO },
-        );
-        const mPallet = calcLucro(
-          item.prices["PL_2"] ? item.prices["PL_2"] * 1000 : 0,
-          { ...cp, icmsVenda: icmsRate, ig, cf: CF_PALLET },
-        );
-        const noCost = item.v === 0 && item.fr === 0 && item.sc === 0 && item.co === 0;
-        return {
-          ...item,
-          rawV: raw.v,
-          rawHasOverride: raw.hasOverride,
-          cmv,
-          mSaco,
-          mPallet,
-          isDirty: isDirty(item.itemCode),
-          noCost,
-        };
-      }),
-    [items, effectiveItem, icmsRate, isDirty],
-  );
-
   // KPIs (sobre TODOS os itens, antes do filtro)
   const kpis = useMemo(() => {
-    if (enriched.length === 0) return { total: 0, withOverride: 0, noCost: 0, lowMargin: 0, dirty: 0 };
     return {
       total: enriched.length,
-      withOverride: enriched.filter((i) => i.rawHasOverride || overrides.has(i.itemCode)).length,
+      withOverride: enriched.filter((i) => i.hasOverride || overrides.has(i.itemCode)).length,
       noCost: enriched.filter((i) => i.noCost).length,
       lowMargin: enriched.filter((i) => i.mSaco !== null && i.mSaco < 0.05 && i.v > 0).length,
       dirty: edits.size,
@@ -280,10 +283,10 @@ export default function MarkupPage() {
     let result = enriched;
     if (filterPrefix !== "TODOS") result = result.filter((i) => getMarkupPrefix(i.itemCode) === filterPrefix);
     if (filterMfr !== "TODOS") result = result.filter((i) => i.manufacturer === filterMfr);
-    if (quickFilters.has("override")) result = result.filter((i) => i.rawHasOverride || overrides.has(i.itemCode));
-    if (quickFilters.has("semCmv")) result = result.filter((i) => i.v === 0);
+    if (quickFilters.has("override")) result = result.filter((i) => i.hasOverride || overrides.has(i.itemCode));
+    if (quickFilters.has("semCusto")) result = result.filter((i) => i.noCost);
     if (quickFilters.has("margemBaixa")) result = result.filter((i) => i.mSaco !== null && i.mSaco < 0.05 && i.v > 0);
-    if (quickFilters.has("pendentes")) result = result.filter((i) => i.isDirty);
+    if (quickFilters.has("pendentes")) result = result.filter((i) => edits.has(i.itemCode));
     if (search) {
       const s = search.toLowerCase();
       result = result.filter(
@@ -294,7 +297,7 @@ export default function MarkupPage() {
       );
     }
     return result;
-  }, [enriched, search, filterPrefix, filterMfr, quickFilters, overrides]);
+  }, [enriched, search, filterPrefix, filterMfr, quickFilters, overrides, edits]);
 
   // KPIs do filtro
   const filterKpis = useMemo(() => {
@@ -320,6 +323,7 @@ export default function MarkupPage() {
         case "manufacturer": va = a.manufacturer ?? ""; vb = b.manufacturer ?? ""; break;
         case "v": va = a.v; vb = b.v; break;
         case "cmv": va = a.cmv; vb = b.cmv; break;
+        case "pe": va = a.peSaco; vb = b.peSaco; break;
         case "margemSaco": va = a.mSaco ?? -999; vb = b.mSaco ?? -999; break;
         case "margemPallet": va = a.mPallet ?? -999; vb = b.mPallet ?? -999; break;
       }
@@ -330,12 +334,9 @@ export default function MarkupPage() {
   }, [filtered, sortKey, sortDir]);
 
   // Paginação
-  const effectivePageSize = pageSize >= sorted.length ? sorted.length : pageSize;
-  const totalPages = effectivePageSize > 0 ? Math.ceil(sorted.length / effectivePageSize) : 1;
-  const safePage = Math.min(page, Math.max(0, totalPages - 1));
-  const pageItems = pageSize >= sorted.length
-    ? sorted
-    : sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  const safePage = Math.min(page, totalPages - 1);
+  const pageItems = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   // ---------- Edição inline ----------
 
@@ -371,6 +372,7 @@ export default function MarkupPage() {
         pisCofins: ed.pc ?? null,
         icmsCompra: ed.ic ?? null,
         ipi: ed.ip ?? null,
+        updatedBy: userName,
       });
       setOverrides((prev) => {
         const m = new Map(prev);
@@ -382,23 +384,20 @@ export default function MarkupPage() {
         m.delete(code);
         return m;
       });
-      setToast({ message: `${code} atualizado`, type: "success" });
+      toast.success(`${code} atualizado`);
     } catch (err) {
-      setToast({
-        message: err instanceof Error ? err.message : "Falha ao salvar",
-        type: "error",
-      });
+      toast.error(err instanceof Error ? err.message : "Falha ao salvar");
     } finally {
       setSavingCode(null);
     }
-  }, [edits]);
+  }, [edits, userName]);
 
-  // Salva todos os pendentes (atômico — usa snapshot estável de edits)
+  // Salva todos os pendentes
   const saveAllPending = useCallback(async () => {
     const entries = Array.from(edits.entries());
     if (entries.length === 0) return;
     setSavingCode("__all__");
-    const succeeded: Array<[string, Partial<Record<EditableKey, number>>]> = [];
+    const succeeded: Array<[string, RowEdits]> = [];
     const failed: string[] = [];
     for (const [code, ed] of entries) {
       try {
@@ -411,6 +410,7 @@ export default function MarkupPage() {
           pisCofins: ed.pc ?? null,
           icmsCompra: ed.ic ?? null,
           ipi: ed.ip ?? null,
+          updatedBy: userName,
         });
         succeeded.push([code, ed]);
       } catch {
@@ -429,13 +429,62 @@ export default function MarkupPage() {
     });
     setSavingCode(null);
     const ok = succeeded.length;
-    setToast({
-      message: failed.length === 0
-        ? `${ok} produto${ok > 1 ? "s" : ""} salvo${ok > 1 ? "s" : ""}`
-        : `${ok} salvos, ${failed.length} com erro`,
-      type: failed.length === 0 ? "success" : "error",
+    if (failed.length === 0) toast.success(`${ok} produto${ok > 1 ? "s" : ""} salvo${ok > 1 ? "s" : ""}`);
+    else toast.error(`${ok} salvos, ${failed.length} com erro (${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""})`);
+  }, [edits, userName]);
+
+  // Reverter override → valores SAP
+  const revertRow = useCallback(async (code: string) => {
+    if (!window.confirm(`Restaurar ${code} para os valores do SAP? O override manual será removido.`)) return;
+    setRevertingCode(code);
+    try {
+      await deleteMarkupOverride(code);
+      setEdits((prev) => { const m = new Map(prev); m.delete(code); return m; });
+      setOverrides((prev) => { const m = new Map(prev); m.delete(code); return m; });
+      toast.success(`${code} restaurado para valores SAP`);
+      refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Falha ao reverter");
+    } finally {
+      setRevertingCode(null);
+    }
+  }, [refetch]);
+
+  // ---------- Seleção / edição em lote ----------
+
+  const toggleSelect = useCallback((code: string) => {
+    setSelected((prev) => {
+      const s = new Set(prev);
+      if (s.has(code)) s.delete(code); else s.add(code);
+      return s;
     });
-  }, [edits]);
+  }, []);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.itemCode));
+
+  const toggleSelectAll = useCallback(() => {
+    setSelected((prev) => {
+      if (filtered.length > 0 && filtered.every((i) => prev.has(i.itemCode))) {
+        return new Set();
+      }
+      return new Set(filtered.map((i) => i.itemCode));
+    });
+  }, [filtered]);
+
+  const applyBulk = useCallback(() => {
+    if (selected.size === 0) return;
+    const field = BULK_FIELDS.find((f) => f.key === bulkField);
+    if (!field) return;
+    const value = field.isPercent ? bulkValue / 100 : bulkValue;
+    setEdits((prev) => {
+      const m = new Map(prev);
+      for (const code of selected) {
+        m.set(code, { ...(m.get(code) ?? {}), [bulkField]: value });
+      }
+      return m;
+    });
+    toast.success(`${field.label} aplicado a ${selected.size} produto${selected.size > 1 ? "s" : ""} — confira e salve os pendentes`);
+  }, [selected, bulkField, bulkValue]);
 
   // ---------- Atalhos ----------
 
@@ -446,7 +495,10 @@ export default function MarkupPage() {
         if (expandedCode && edits.has(expandedCode)) saveRow(expandedCode);
       }
       if (e.key === "Escape" && expandedCode) {
-        if (edits.has(expandedCode)) cancelEdits(expandedCode);
+        if (edits.has(expandedCode)) {
+          if (!window.confirm("Descartar edições não salvas desta linha?")) return;
+          cancelEdits(expandedCode);
+        }
         setExpandedCode(null);
       }
     }
@@ -458,7 +510,7 @@ export default function MarkupPage() {
 
   const handleSort = useCallback((key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir(key === "itemCode" ? "asc" : "desc"); }
+    else { setSortKey(key); setSortDir(key === "itemCode" || key === "itemName" ? "asc" : "desc"); }
     setPage(0);
   }, [sortKey]);
 
@@ -487,9 +539,14 @@ export default function MarkupPage() {
         "IPI %": (i.ip * 100).toFixed(2),
         "CMV (milh)": i.cmv.toFixed(2),
         "CMV Unit": (i.cmv / 1000).toFixed(2),
+        "P.E. Saco Unit": i.peSaco > 0 ? (i.peSaco / 1000).toFixed(2) : "",
+        "Preço Saco": i.precoSaco > 0 ? i.precoSaco.toFixed(2) : "",
+        "Preço Pallet": i.precoPallet > 0 ? i.precoPallet.toFixed(2) : "",
         "Margem Saco": i.mSaco !== null ? (i.mSaco * 100).toFixed(1) + "%" : "",
         "Margem Pallet": i.mPallet !== null ? (i.mPallet * 100).toFixed(1) + "%" : "",
-        Override: i.rawHasOverride || overrides.has(i.itemCode) ? "Sim" : "",
+        Override: i.hasOverride || overrides.has(i.itemCode) ? "Sim" : "",
+        "Atualizado em": i.updatedAt ?? "",
+        "Atualizado por": i.updatedBy ?? "",
       })),
       `markup_${icmsRate === 0 ? "ME" : `ICMS${(icmsRate * 100).toFixed(0)}`}`,
     );
@@ -507,20 +564,19 @@ export default function MarkupPage() {
 
   // ---------- Render ----------
 
-  if (loading) return <LoadingSkeleton rows={10} />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (loading && !data) return <LoadingSkeleton rows={10} />;
+  if (error && !data) return <ErrorState message={error} onRetry={refetch} />;
 
   const SortIcon = ({ col }: { col: SortKey }) =>
     sortKey === col
       ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
       : <ArrowUpDown className="w-3 h-3 opacity-25" />;
 
-  const icmsActive = ICMS_OPTIONS.find((o) => o.rate === icmsRate) ?? ICMS_OPTIONS[0];
+  const icmsActive = ICMS_FAIXAS.find((o) => o.rate === icmsRate) ?? ICMS_FAIXAS[0];
+  const icmsShort = icmsActive.rate === 0 ? "ME" : `${(icmsActive.rate * 100).toFixed(0)}%`;
 
   return (
     <div className="space-y-4">
-      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
-
       {/* Page header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
@@ -532,9 +588,10 @@ export default function MarkupPage() {
             <button
               type="button"
               onClick={saveAllPending}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 motion-safe:transition-colors shadow-sm"
+              disabled={savingCode === "__all__"}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 motion-safe:transition-colors shadow-sm"
             >
-              <Save className="w-3.5 h-3.5" />
+              {savingCode === "__all__" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               Salvar {edits.size} pendente{edits.size > 1 ? "s" : ""}
             </button>
           )}
@@ -576,7 +633,7 @@ export default function MarkupPage() {
               }`}>
                 {(filterKpis.avgMargem * 100).toFixed(1)}%
               </div>
-              <div className="text-[10px] text-gray-400 mt-0.5">ICMS {icmsActive.label} · saco</div>
+              <div className="text-[10px] text-gray-400 mt-0.5">ICMS {icmsShort} · saco</div>
             </>
           ) : (
             <>
@@ -598,26 +655,28 @@ export default function MarkupPage() {
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Faixa ICMS para margem:</span>
           <div className="inline-flex rounded-lg bg-gray-100 p-0.5">
-            {ICMS_OPTIONS.map((opt) => {
+            {ICMS_FAIXAS.map((opt) => {
               const isActive = opt.rate === icmsRate;
+              const label = opt.rate === 0 ? "ME" : `${(opt.rate * 100).toFixed(0)}%`;
               return (
                 <button
                   key={opt.label}
                   type="button"
                   onClick={() => setIcmsRate(opt.rate)}
+                  aria-pressed={isActive}
                   className={`px-3 py-1.5 rounded-md text-[11px] font-bold motion-safe:transition-all ${
                     isActive ? "text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
                   }`}
                   style={isActive ? { background: opt.color } : undefined}
-                  title={`ICMS de venda ${opt.label} (ig=${opt.rate === 0 ? "9,4% ME" : "7,04% LP"})`}
+                  title={`ICMS de venda ${label} (ig=${opt.rate === 0 ? "9,4% ME" : "7,04% LP"})`}
                 >
-                  {opt.label}
+                  {label}
                 </button>
               );
             })}
           </div>
           <span className="text-[10px] text-gray-400">
-            margem de venda exibida na tabela
+            afeta margens e P.E. exibidos na tabela
           </span>
         </div>
 
@@ -629,10 +688,11 @@ export default function MarkupPage() {
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(0); }}
               placeholder="Buscar código, produto ou fornecedor..."
+              aria-label="Buscar produto"
               className="w-full pl-10 pr-8 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent transition-shadow"
             />
             {search && (
-              <button type="button" onClick={() => { setSearch(""); setPage(0); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={() => { setSearch(""); setPage(0); }} aria-label="Limpar busca" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />
               </button>
             )}
@@ -640,6 +700,7 @@ export default function MarkupPage() {
           <select
             value={filterPrefix}
             onChange={(e) => { setFilterPrefix(e.target.value); setPage(0); }}
+            aria-label="Filtrar por linha de produto"
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent"
           >
             {prefixes.map((p) => (
@@ -651,6 +712,7 @@ export default function MarkupPage() {
           <select
             value={filterMfr}
             onChange={(e) => { setFilterMfr(e.target.value); setPage(0); }}
+            aria-label="Filtrar por fornecedor"
             className="px-3 py-2 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent max-w-[200px]"
           >
             {manufacturers.map((m) => <option key={m} value={m}>{m === "TODOS" ? "Fornecedor: Todos" : m}</option>)}
@@ -674,9 +736,9 @@ export default function MarkupPage() {
             <Pencil className="w-3 h-3" />Com override
           </ChipFilter>
           <ChipFilter
-            active={quickFilters.has("semCmv")}
+            active={quickFilters.has("semCusto")}
             count={kpis.noCost}
-            onClick={() => toggleQuick("semCmv")}
+            onClick={() => toggleQuick("semCusto")}
           >
             <AlertCircle className="w-3 h-3" />Sem custos
           </ChipFilter>
@@ -709,60 +771,118 @@ export default function MarkupPage() {
         </div>
       </div>
 
+      {/* Barra de edição em lote */}
+      {selected.size > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 flex items-center gap-3 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-900">
+            <CheckSquare className="w-4 h-4" />
+            {selected.size} selecionado{selected.size > 1 ? "s" : ""}
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select
+              value={bulkField}
+              onChange={(e) => setBulkField(e.target.value as EditableKey)}
+              aria-label="Campo para edição em lote"
+              className="px-2.5 py-1.5 rounded-md border border-amber-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30"
+            >
+              {BULK_FIELDS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+            </select>
+            <div className="w-[110px]">
+              <NumberField
+                value={bulkValue}
+                onChange={setBulkValue}
+                prefix={BULK_FIELDS.find((f) => f.key === bulkField)?.isPercent ? undefined : "R$"}
+                suffix={BULK_FIELDS.find((f) => f.key === bulkField)?.isPercent ? "%" : undefined}
+                ariaLabel="Valor para aplicar em lote"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={applyBulk}
+              className="px-3 py-1.5 rounded-md text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 motion-safe:transition-colors"
+            >
+              Aplicar aos selecionados
+            </button>
+          </div>
+          <div className="flex-1" />
+          <span className="text-[10px] text-amber-700">Aplicar gera edições pendentes — revise e use &quot;Salvar pendentes&quot;.</span>
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-[11px] text-amber-800 hover:underline inline-flex items-center gap-1"
+          >
+            <X className="w-3 h-3" />Limpar seleção
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="rounded-xl border border-cockpit-border bg-white overflow-hidden">
         <div className="overflow-x-auto max-h-[calc(100vh-340px)] overflow-y-auto">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200 shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
               <tr>
-                <th className="w-6 px-2 py-3" />
+                <th className="w-8 px-2 py-3">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="Selecionar todos os produtos filtrados"
+                    className="w-3.5 h-3.5 rounded border-gray-300 text-cockpit-accent focus:ring-cockpit-accent/30 cursor-pointer"
+                  />
+                </th>
+                <th className="w-6 px-1 py-3" />
                 {([
-                  ["itemCode", "Código", "min-w-[110px]"],
-                  ["itemName", "Produto", "min-w-[220px]"],
-                  ["manufacturer", "Fornecedor", "min-w-[120px]"],
+                  ["itemCode", "Código", "min-w-[100px]"],
+                  ["itemName", "Produto", "min-w-[200px]"],
+                  ["manufacturer", "Fornecedor", "min-w-[100px]"],
                   ["v", "Vlr s/ Imp", "min-w-[100px] text-right"],
-                  ["cmv", "CMV Unit.", "min-w-[100px] text-right"],
-                  ["margemSaco", "Mg Saco", "min-w-[80px] text-right"],
-                  ["margemPallet", "Mg Pallet", "min-w-[80px] text-right"],
+                  ["cmv", "CMV Unit.", "min-w-[90px] text-right"],
+                  ["pe", "P.E. Saco", "min-w-[90px] text-right"],
+                  ["margemSaco", "Tab. Saco", "min-w-[90px] text-right"],
+                  ["margemPallet", "Tab. Pallet", "min-w-[90px] text-right"],
                 ] as [SortKey, string, string][]).map(([key, label, cls]) => (
                   <th
                     key={key}
-                    className={`px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-800 motion-safe:transition-colors ${cls}`}
-                    onClick={() => handleSort(key)}
+                    aria-sort={sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
+                    className={`px-3 py-3 text-[11px] font-semibold text-gray-500 uppercase tracking-wider select-none ${cls}`}
                   >
-                    <span className="inline-flex items-center gap-1">{label}<SortIcon col={key} /></span>
+                    <button
+                      type="button"
+                      onClick={() => handleSort(key)}
+                      className="inline-flex items-center gap-1 hover:text-gray-800 motion-safe:transition-colors uppercase"
+                    >
+                      {label}<SortIcon col={key} />
+                    </button>
                   </th>
                 ))}
-                <th className="w-20" />
+                <th className="w-16" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {pageItems.map((item) => {
-                const isExpanded = expandedCode === item.itemCode;
-                const isSaving = savingCode === item.itemCode;
-                const hasOverride = item.rawHasOverride || overrides.has(item.itemCode);
-                const prefix = getMarkupPrefix(item.itemCode);
-                const color = prefix ? getProductGroupColor(prefix) : "#A81C2C";
-
-                return (
-                  <RowGroup
-                    key={item.itemCode}
-                    item={item}
-                    isExpanded={isExpanded}
-                    isSaving={isSaving}
-                    hasOverride={hasOverride}
-                    color={color}
-                    icmsRate={icmsRate}
-                    onToggle={() => setExpandedCode(isExpanded ? null : item.itemCode)}
-                    onEdit={(key, value) => handleEdit(item.itemCode, key, value)}
-                    onSave={() => saveRow(item.itemCode)}
-                    onCancel={() => cancelEdits(item.itemCode)}
-                  />
-                );
-              })}
+              {pageItems.map((item) => (
+                <RowGroup
+                  key={item.itemCode}
+                  item={item}
+                  rowEdits={edits.get(item.itemCode)}
+                  isExpanded={expandedCode === item.itemCode}
+                  isSaving={savingCode === item.itemCode}
+                  isReverting={revertingCode === item.itemCode}
+                  isSelected={selected.has(item.itemCode)}
+                  hasOverride={item.hasOverride || overrides.has(item.itemCode)}
+                  icmsRate={icmsRate}
+                  icmsShort={icmsShort}
+                  onToggle={() => setExpandedCode(expandedCode === item.itemCode ? null : item.itemCode)}
+                  onSelect={() => toggleSelect(item.itemCode)}
+                  onEdit={(key, value) => handleEdit(item.itemCode, key, value)}
+                  onSave={() => saveRow(item.itemCode)}
+                  onCancel={() => cancelEdits(item.itemCode)}
+                  onRevert={() => revertRow(item.itemCode)}
+                />
+              ))}
               {pageItems.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-16 text-center">
+                  <td colSpan={11} className="py-16 text-center">
                     <div className="text-gray-400 mb-2">Nenhum produto encontrado</div>
                     {hasActiveFilters && (
                       <button type="button" onClick={clearFilters} className="text-sm text-cockpit-accent hover:underline">
@@ -826,23 +946,36 @@ export default function MarkupPage() {
 // ---------------------------------------------------------------------------
 
 interface RowGroupProps {
-  item: MarkupItem & { cmv: number; mSaco: number | null; mPallet: number | null; isDirty: boolean; noCost: boolean };
+  item: EnrichedItem;
+  rowEdits: RowEdits | undefined;
   isExpanded: boolean;
   isSaving: boolean;
+  isReverting: boolean;
+  isSelected: boolean;
   hasOverride: boolean;
-  color: string;
   icmsRate: number;
+  icmsShort: string;
   onToggle: () => void;
+  onSelect: () => void;
   onEdit: (key: EditableKey, value: number) => void;
   onSave: () => void;
   onCancel: () => void;
+  onRevert: () => void;
 }
 
-function RowGroup({
-  item, isExpanded, isSaving, hasOverride, color, icmsRate,
-  onToggle, onEdit, onSave, onCancel,
+const RowGroup = memo(function RowGroup({
+  item, rowEdits, isExpanded, isSaving, isReverting, isSelected, hasOverride, icmsRate, icmsShort,
+  onToggle, onSelect, onEdit, onSave, onCancel, onRevert,
 }: RowGroupProps) {
   const expandRef = useRef<HTMLTableRowElement | null>(null);
+  const isDirty = rowEdits != null && Object.keys(rowEdits).length > 0;
+
+  // Valores ao vivo — só recalcula ESTA linha quando há edições pendentes
+  const live = useMemo(() => {
+    if (!isDirty) return item;
+    const merged = applyEdits(item, rowEdits);
+    return { ...merged, ...computeDerived(merged, icmsRate) };
+  }, [item, rowEdits, icmsRate, isDirty]);
 
   useEffect(() => {
     if (isExpanded && expandRef.current) {
@@ -850,22 +983,39 @@ function RowGroup({
     }
   }, [isExpanded]);
 
+  const prefix = getMarkupPrefix(item.itemCode);
+  const color = prefix ? getProductGroupColor(prefix) : "#A81C2C";
+  const vIsManual = item.overriddenKeys.includes("v") || rowEdits?.v !== undefined;
+  const audit = fmtAudit(item.updatedAt, item.updatedBy);
+
   return (
     <>
       <tr
         className={`group motion-safe:transition-colors cursor-pointer ${
           isExpanded ? "bg-cockpit-accent/5" : "hover:bg-gray-50"
-        } ${item.noCost ? "bg-red-50/40" : ""} ${item.isDirty ? "bg-amber-50/60" : ""}`}
+        } ${live.noCost ? "bg-red-50/40" : ""} ${isDirty ? "bg-amber-50/60" : ""}`}
         onClick={onToggle}
       >
-        {/* Indicador colorido + chevron */}
-        <td className="relative px-2 py-2.5">
+        {/* Checkbox de seleção */}
+        <td className="relative px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
           <div className="absolute left-0 top-0 bottom-0 w-1" style={{ background: color }} />
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onSelect}
+            aria-label={`Selecionar ${item.itemCode}`}
+            className="w-3.5 h-3.5 rounded border-gray-300 text-cockpit-accent focus:ring-cockpit-accent/30 cursor-pointer"
+          />
+        </td>
+
+        {/* Chevron */}
+        <td className="px-1 py-2.5">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             className="p-0.5 rounded hover:bg-gray-200 motion-safe:transition-all"
             title={isExpanded ? "Recolher" : "Expandir"}
+            aria-expanded={isExpanded}
           >
             <ChevronDown className={`w-4 h-4 text-gray-400 motion-safe:transition-transform ${isExpanded ? "rotate-0" : "-rotate-90"}`} />
           </button>
@@ -874,15 +1024,7 @@ function RowGroup({
         <td className="px-3 py-2.5">
           <div className="flex items-center gap-1.5">
             <span className="text-cockpit-accent font-mono text-xs font-semibold">{item.itemCode}</span>
-            {hasOverride && (
-              <span
-                className="inline-flex items-center gap-0.5 text-[9px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded ring-1 ring-amber-200"
-                title="Possui valores editados manualmente"
-              >
-                <Pencil className="w-2.5 h-2.5" />
-              </span>
-            )}
-            {item.isDirty && (
+            {isDirty && (
               <span
                 className="inline-flex items-center text-[9px] bg-amber-500 text-white px-1.5 py-0.5 rounded font-bold"
                 title="Edição não salva"
@@ -894,53 +1036,110 @@ function RowGroup({
         </td>
 
         <td className="px-3 py-2.5">
-          <div className="max-w-[300px] truncate text-gray-800 text-xs" title={item.itemName}>{item.itemName}</div>
+          <div className="max-w-[280px] truncate text-gray-800 text-xs" title={item.itemName}>{item.itemName}</div>
         </td>
 
-        <td className="px-3 py-2.5 text-gray-500 text-xs truncate max-w-[140px]" title={item.manufacturer}>
+        <td className="px-3 py-2.5 text-gray-500 text-xs truncate max-w-[130px]" title={item.manufacturer}>
           {item.manufacturer || "—"}
         </td>
 
-        <td className={`px-3 py-2.5 text-right font-mono text-xs ${item.v === 0 ? "text-red-400" : "text-gray-700"}`}>
-          {item.v === 0 ? "—" : fmtBRL(item.v / 1000)}
+        {/* Vlr s/ Imp + origem */}
+        <td className={`px-3 py-2.5 text-right font-mono text-xs ${live.v === 0 ? "text-red-400" : "text-gray-700"}`}>
+          <div className="flex items-center justify-end gap-1.5">
+            <OriginTag manual={vIsManual} audit={audit} />
+            <span>{live.v === 0 ? "—" : fmtBRL(live.v / 1000)}</span>
+          </div>
         </td>
 
-        <td className={`px-3 py-2.5 text-right font-mono text-xs font-semibold ${item.cmv === 0 ? "text-gray-300" : "text-gray-900"}`}>
-          {item.cmv === 0 ? "—" : fmtBRL(item.cmv / 1000)}
+        <td className={`px-3 py-2.5 text-right font-mono text-xs font-semibold ${live.cmv === 0 ? "text-gray-300" : "text-gray-900"}`}>
+          {live.cmv === 0 ? "—" : fmtBRL(live.cmv / 1000)}
         </td>
 
-        <td className="px-3 py-2.5 text-right"><MargemBadge value={item.mSaco} size="sm" /></td>
-        <td className="px-3 py-2.5 text-right"><MargemBadge value={item.mPallet} size="sm" /></td>
+        {/* P.E. saco (unitário) */}
+        <td
+          className="px-3 py-2.5 text-right font-mono text-xs text-gray-500"
+          title={`Preço mínimo de venda do saco (ICMS ${icmsShort})`}
+        >
+          {live.peSaco > 0 ? fmtBRL(live.peSaco / 1000) : "—"}
+        </td>
+
+        {/* Preço tabela saco + margem */}
+        <td className="px-3 py-2.5 text-right">
+          <div className="flex flex-col items-end gap-0.5">
+            <span className={`font-mono text-[10px] ${live.precoSaco > 0 ? "text-gray-500" : "text-gray-300"}`}>
+              {live.precoSaco > 0 ? fmtBRL(live.precoSaco) : "sem preço"}
+            </span>
+            <MargemBadge value={live.mSaco} size="sm" />
+          </div>
+        </td>
+
+        {/* Preço tabela pallet + margem */}
+        <td className="px-3 py-2.5 text-right">
+          <div className="flex flex-col items-end gap-0.5">
+            <span className={`font-mono text-[10px] ${live.precoPallet > 0 ? "text-gray-500" : "text-gray-300"}`}>
+              {live.precoPallet > 0 ? fmtBRL(live.precoPallet) : "sem preço"}
+            </span>
+            <MargemBadge value={live.mPallet} size="sm" />
+          </div>
+        </td>
 
         <td className="px-2 py-2.5 text-right">
-          <Link
-            href={`/business-intelligence/markup/${encodeURIComponent(item.itemCode)}`}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 motion-safe:transition-all"
-            title="Abrir tela completa de precificação"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-          </Link>
+          <div className="flex items-center justify-end gap-0.5">
+            {hasOverride && (
+              <span
+                className="inline-flex items-center text-[9px] bg-amber-50 text-amber-600 px-1 py-0.5 rounded ring-1 ring-amber-200"
+                title={`Possui valores editados manualmente${audit ? ` — ${audit}` : ""}`}
+              >
+                <Pencil className="w-2.5 h-2.5" />
+              </span>
+            )}
+            <Link
+              href={`/business-intelligence/markup/${encodeURIComponent(item.itemCode)}`}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex p-1.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-700 motion-safe:transition-all"
+              title="Abrir tela completa de precificação"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
+          </div>
         </td>
       </tr>
 
       {isExpanded && (
         <tr ref={expandRef} className="bg-gradient-to-b from-cockpit-accent/[0.03] to-white">
-          <td colSpan={9} className="px-6 py-4">
+          <td colSpan={11} className="px-6 py-4">
             <div className="rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
               {/* Cabeçalho do editor */}
-              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-                <div className="flex items-center gap-3 text-xs">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex-wrap gap-2">
+                <div className="flex items-center gap-3 text-xs flex-wrap">
                   <span className="font-semibold text-gray-700">Editar custos</span>
                   <span className="text-gray-300">·</span>
-                  <span className="text-gray-500">CMV unitário atualizado:</span>
-                  <span className="font-bold text-gray-900 font-mono">{fmtBRL(item.cmv / 1000)}</span>
+                  <span className="text-gray-500">CMV unitário:</span>
+                  <span className="font-bold text-gray-900 font-mono">{fmtBRL(live.cmv / 1000)}</span>
                   <span className="text-gray-300">·</span>
-                  <span className="text-gray-500">Milheiro:</span>
-                  <span className="font-mono text-gray-700">{fmtBRL(item.cmv)}</span>
+                  <span className="text-gray-500">P.E. saco:</span>
+                  <span className="font-mono text-gray-700">{live.peSaco > 0 ? fmtBRL(live.peSaco / 1000) : "—"}</span>
+                  {audit && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span className="text-[10px] text-gray-400" title="Última alteração manual">{audit}</span>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {item.isDirty && (
+                  {hasOverride && (
+                    <button
+                      type="button"
+                      onClick={onRevert}
+                      disabled={isReverting}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium text-gray-600 border border-gray-200 hover:bg-gray-100 hover:text-red-600 disabled:opacity-50 motion-safe:transition-colors"
+                      title="Remove o override manual e volta aos valores do SAP"
+                    >
+                      {isReverting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                      Restaurar SAP
+                    </button>
+                  )}
+                  {isDirty && (
                     <button
                       type="button"
                       onClick={onCancel}
@@ -952,16 +1151,16 @@ function RowGroup({
                   <button
                     type="button"
                     onClick={onSave}
-                    disabled={!item.isDirty || isSaving}
+                    disabled={!isDirty || isSaving}
                     className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold text-white motion-safe:transition-all ${
-                      !item.isDirty ? "bg-gray-300 cursor-not-allowed" :
+                      !isDirty ? "bg-gray-300 cursor-not-allowed" :
                       isSaving ? "bg-cockpit-accent/70 cursor-wait" :
                       "bg-cockpit-accent hover:bg-cockpit-accent/90 shadow-sm"
                     }`}
                   >
                     {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                     {isSaving ? "Salvando..." : "Salvar"}
-                    {item.isDirty && !isSaving && <span className="text-[9px] opacity-70">Ctrl+S</span>}
+                    {isDirty && !isSaving && <span className="text-[9px] opacity-70">Ctrl+S</span>}
                   </button>
                 </div>
               </div>
@@ -969,19 +1168,26 @@ function RowGroup({
               {/* Grid de campos */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-0">
                 <div className="p-4 border-r border-gray-100">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-3">
-                    <CircleDollarSign className="w-3 h-3" />Custos (por milheiro)
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                      <CircleDollarSign className="w-3 h-3" />Custos (por milheiro)
+                    </div>
+                    {item.sapV > 0 && (
+                      <span className="text-[10px] text-gray-400" title="Valor de referência do SAP (última compra / preço médio)">
+                        SAP: <span className="font-mono text-gray-500">{fmtBRL(item.sapV)}</span>
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {COST_FIELDS.map((f) => (
                       <label key={f.key} className="flex flex-col gap-1" title={f.hint}>
                         <span className="text-[10px] text-gray-500 font-medium">{f.label}</span>
-                        <InlineNumberInput
-                          value={item[f.key]}
+                        <NumberField
+                          value={live[f.key]}
                           onChange={(v) => onEdit(f.key, v)}
                           prefix={f.prefix}
-                          step={f.step}
-                          dirty={item.isDirty}
+                          dirty={rowEdits?.[f.key] !== undefined}
+                          ariaLabel={f.label}
                         />
                       </label>
                     ))}
@@ -996,12 +1202,12 @@ function RowGroup({
                     {TRIBUTO_FIELDS.map((f) => (
                       <label key={f.key} className="flex flex-col gap-1" title={f.hint}>
                         <span className="text-[10px] text-gray-500 font-medium">{f.label}</span>
-                        <InlineNumberInput
-                          value={Math.round(item[f.key] * 10000) / 100}
+                        <NumberField
+                          value={Math.round(live[f.key] * 10000) / 100}
                           onChange={(v) => onEdit(f.key, v / 100)}
                           suffix={f.suffix}
-                          step={f.step}
-                          dirty={item.isDirty}
+                          dirty={rowEdits?.[f.key] !== undefined}
+                          ariaLabel={f.label}
                         />
                       </label>
                     ))}
@@ -1010,12 +1216,12 @@ function RowGroup({
                   {/* Margens preview */}
                   <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-2 gap-2">
                     <div className="flex items-center justify-between bg-gray-50 rounded-md px-2.5 py-1.5">
-                      <span className="text-[10px] text-gray-500">Margem Saco ({icmsRate === 0 ? "ME" : `${(icmsRate * 100).toFixed(0)}%`})</span>
-                      <MargemBadge value={item.mSaco} size="sm" />
+                      <span className="text-[10px] text-gray-500">Margem Saco ({icmsShort})</span>
+                      <MargemBadge value={live.mSaco} size="sm" />
                     </div>
                     <div className="flex items-center justify-between bg-gray-50 rounded-md px-2.5 py-1.5">
-                      <span className="text-[10px] text-gray-500">Margem Pallet ({icmsRate === 0 ? "ME" : `${(icmsRate * 100).toFixed(0)}%`})</span>
-                      <MargemBadge value={item.mPallet} size="sm" />
+                      <span className="text-[10px] text-gray-500">Margem Pallet ({icmsShort})</span>
+                      <MargemBadge value={live.mPallet} size="sm" />
                     </div>
                   </div>
                 </div>
@@ -1039,4 +1245,4 @@ function RowGroup({
       )}
     </>
   );
-}
+});
