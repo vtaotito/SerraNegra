@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, Suspense } from "react";
 import {
   Tag, Search, X, Download, Package, DollarSign,
-  TrendingUp, Hash, BarChart3, Layers,
+  TrendingUp, TrendingDown, Minus, Hash, BarChart3, Layers,
   ArrowUpDown, ArrowUp, ArrowDown, ChevronRight,
   Users, Boxes, MapPin, Briefcase, Loader2, AlertCircle,
 } from "lucide-react";
@@ -207,6 +207,12 @@ interface UnifiedProductRow {
   fat3m: number;
   /** Média mensal de faturamento dos últimos 3 meses (R$/mês) */
   avgFat3m: number;
+  /**
+   * Variação % do volume: média mensal de UND dos últimos 3 meses vs média
+   * mensal dos 9 meses anteriores. `null` = sem baseline (produto sem vendas
+   * nos 9 meses anteriores).
+   */
+  trendPct: number | null;
   variants: ProductRow[];
 }
 
@@ -310,6 +316,11 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number
       a.embala === "UND" ? -1 : b.embala === "UND" ? 1 : b.faturamento - a.faturamento
     );
 
+    // Tendência de volume: média mensal dos últimos 3m vs média mensal dos 9m anteriores
+    const avg3m = totalQty3m / 3;
+    const avgPrev9m = Math.max(totalQtdUnd - totalQty3m, 0) / 9;
+    const trendPct = avgPrev9m > 0 ? ((avg3m - avgPrev9m) / avgPrev9m) * 100 : null;
+
     return {
       itemCode: primary.itemCode,
       cod: primary.cod,
@@ -328,6 +339,7 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number
       minSale12m: minVals.length > 0 ? Math.min(...minVals) : 0,
       fat3m: totalFat3m,
       avgFat3m: totalFat3m / 3,
+      trendPct,
       variants: sortedVariants,
     };
   }).sort((a, b) => b.faturamento - a.faturamento);
@@ -347,7 +359,13 @@ function embalaDistribution(products: ProductRow[]): { name: string; value: numb
 type SortField =
   | "cod" | "subNome" | "faturamento" | "qtdUnd"
   | "fat3m" | "avgFat3m" | "avgQtd3m"
-  | "maxSale12m" | "minSale12m" | "precoUndMedio" | "vendas" | "clientes";
+  | "maxSale12m" | "minSale12m" | "precoUndMedio" | "tendencia";
+
+/** Valor numérico da tendência para ordenação (Novo = +∞, sem vendas recentes e sem baseline = -∞) */
+function trendSortValue(p: UnifiedProductRow): number {
+  if (p.trendPct !== null) return p.trendPct;
+  return p.avgQtd3m > 0 ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
+}
 type SortDir = "asc" | "desc";
 
 /* ═══════════════════ Lazy-loaded Product Detail Modal ═══════════════════ */
@@ -902,8 +920,7 @@ function ProdutosContent() {
         case "maxSale12m": cmp = a.maxSale12m - b.maxSale12m; break;
         case "minSale12m": cmp = a.minSale12m - b.minSale12m; break;
         case "precoUndMedio": cmp = a.precoUndMedio - b.precoUndMedio; break;
-        case "vendas": cmp = a.vendas - b.vendas; break;
-        case "clientes": cmp = a.clientes - b.clientes; break;
+        case "tendencia": cmp = trendSortValue(a) - trendSortValue(b); break;
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
@@ -940,6 +957,7 @@ function ProdutosContent() {
       "Maior Venda 12m": p.maxSale12m.toFixed(2),
       "Menor Venda 12m": p.minSale12m.toFixed(2),
       "R$/UND Consolidado": p.precoUndMedio.toFixed(2),
+      "Tendência Vol. (3m vs 9m ant.)": p.qtdUnd <= 0 ? "—" : p.trendPct === null ? "Novo" : `${p.trendPct > 0 ? "+" : ""}${p.trendPct.toFixed(1)}%`,
       "Nº Vendas": p.vendas, "Clientes": p.clientes,
     }));
     exportCSV(rows, `catalogo-produtos-12m-${todayStr}`);
@@ -1662,10 +1680,9 @@ function ProdutosContent() {
                   <span className="inline-flex items-center gap-1 justify-end">Méd UN/mês <SortIcon field="avgQtd3m" /></span></th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[68px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("precoUndMedio")}>
                   <span className="inline-flex items-center gap-1 justify-end">R$/UND <SortIcon field="precoUndMedio" /></span></th>
-                <th className="text-center py-2.5 px-2 font-semibold w-[40px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("vendas")}>
-                  <span className="inline-flex items-center gap-1">Vnd <SortIcon field="vendas" /></span></th>
-                <th className="text-center py-2.5 px-2 font-semibold w-[36px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("clientes")}>
-                  <span className="inline-flex items-center gap-1">Cli <SortIcon field="clientes" /></span></th>
+                <th className="text-center py-2.5 px-2 font-semibold w-[90px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("tendencia")}
+                  title="Tendência de volume: média mensal de unidades dos últimos 3 meses comparada à média mensal dos 9 meses anteriores">
+                  <span className="inline-flex items-center gap-1">Tendência <SortIcon field="tendencia" /></span></th>
               </tr>
             </thead>
             <tbody>
@@ -1750,13 +1767,43 @@ function ProdutosContent() {
                     <td className="py-2 px-2 text-right tabular-nums align-top">
                       <span className="text-[11px] text-teal-700 font-semibold">{p.precoUndMedio > 0 ? fmtBRL(p.precoUndMedio, 2) : "—"}</span>
                     </td>
-                    <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.vendas}</td>
-                    <td className="py-2 px-2 text-center tabular-nums text-gray-600 align-top">{p.clientes}</td>
+                    <td className="py-2 px-2 text-center tabular-nums align-top">
+                      {(() => {
+                        if (p.qtdUnd <= 0) return <span className="text-[9px] text-gray-300">—</span>;
+                        if (p.trendPct === null) {
+                          // Sem vendas nos 9 meses anteriores: produto novo (ou retomada)
+                          return (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700"
+                              title="Sem vendas nos 9 meses anteriores — volume novo nos últimos 3 meses">
+                              <TrendingUp className="w-3 h-3" /> Novo
+                            </span>
+                          );
+                        }
+                        const pct = p.trendPct;
+                        const label = `${pct > 0 ? "+" : ""}${pct.toFixed(0)}%`;
+                        const tooltip = `Méd UN/mês 3m: ${fmtNum(Math.round(p.avgQtd3m))} vs 9m anteriores: ${fmtNum(Math.round(Math.max(p.qtdUnd - p.avgQtd3m * 3, 0) / 9))}`;
+                        if (pct >= 5) return (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700" title={tooltip}>
+                            <TrendingUp className="w-3 h-3" /> {label}
+                          </span>
+                        );
+                        if (pct <= -5) return (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700" title={tooltip}>
+                            <TrendingDown className="w-3 h-3" /> {label}
+                          </span>
+                        );
+                        return (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-600" title={tooltip}>
+                            <Minus className="w-3 h-3" /> {label}
+                          </span>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={12} className="text-center py-12 text-cockpit-muted">
+                <tr><td colSpan={11} className="text-center py-12 text-cockpit-muted">
                   <Tag className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum produto encontrado</p>
                   {hasActiveFilters && (
