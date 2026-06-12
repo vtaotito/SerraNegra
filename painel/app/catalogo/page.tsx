@@ -41,6 +41,7 @@ import {
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
+import { classifyCompras, getComprasGroup, type CurvaABCD } from "@/lib/compras-engine";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
@@ -805,6 +806,16 @@ function ProdutosContent() {
     [analyticsData],
   );
   const unifiedProducts = useMemo(() => unifyProducts(products, clientsByItem), [products, clientsByItem]);
+
+  /** Curva ABCD+123 (Gestão de Compras) — calculada sobre os 12m da visão unificada */
+  const comprasClasses = useMemo(() => {
+    const inputs = unifiedProducts.flatMap((p) => {
+      const group = getComprasGroup(p.itemCode);
+      if (!group) return [];
+      return [{ key: `${p.cod}::${p.subNome}`, group, revenue12m: p.faturamento, volume12m: p.qtdUnd }];
+    });
+    return classifyCompras(inputs);
+  }, [unifiedProducts]);
 
   // Summary global vindo do gateway — cobre 12m completos via header dos pedidos
   // (independente da cobertura das linhas detalhadas).
@@ -1631,6 +1642,9 @@ function ProdutosContent() {
                 <th className="text-left py-2.5 px-2 font-semibold cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("subNome")}>
                   <span className="inline-flex items-center gap-1">Produto <SortIcon field="subNome" /></span></th>
                 <th className="text-center py-2.5 px-2 font-semibold w-[68px] bg-gray-50">Emb.</th>
+                <th className="text-center py-2.5 px-2 font-semibold w-[52px] bg-gray-50"
+                  title="Classe Grupo da Gestão de Compras: curva ABCD (faturamento 12m) + 123 (volume 12m), calculada dentro do grupo">
+                  Classe</th>
                 <th className="text-right py-2.5 px-2 font-semibold w-[110px] cursor-pointer select-none hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("faturamento")}
                   title="Faturamento total nos últimos 12 meses (somente pedidos com linhas sincronizadas)">
                   <span className="inline-flex items-center gap-1 justify-end">Fat. 12m <SortIcon field="faturamento" /></span></th>
@@ -1688,6 +1702,27 @@ function ProdutosContent() {
                         ))}
                       </div>
                     </td>
+                    <td className="py-2 px-2 text-center align-top">
+                      {(() => {
+                        const cls = comprasClasses.get(`${p.cod}::${p.subNome}`);
+                        if (!cls) return <span className="text-[9px] text-gray-300">—</span>;
+                        const abcd = cls.classeGrupo.charAt(0) as CurvaABCD;
+                        const colors: Record<CurvaABCD, string> = {
+                          A: "bg-emerald-100 text-emerald-700",
+                          B: "bg-blue-100 text-blue-700",
+                          C: "bg-amber-100 text-amber-700",
+                          D: "bg-rose-100 text-rose-700",
+                        };
+                        return (
+                          <span
+                            className={`inline-block min-w-[28px] px-1 py-0.5 rounded text-[10px] font-bold ${colors[abcd]}`}
+                            title={`Classe Grupo: ${cls.classeGrupo} · Classe Geral: ${cls.classeGeral} (curva ABCD por faturamento + 123 por volume, 12 meses)`}
+                          >
+                            {cls.classeGrupo}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="py-2 px-2 text-right tabular-nums align-top">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-12 h-1.5 rounded-full bg-gray-100 overflow-hidden hidden sm:block">
@@ -1721,7 +1756,7 @@ function ProdutosContent() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={11} className="text-center py-12 text-cockpit-muted">
+                <tr><td colSpan={12} className="text-center py-12 text-cockpit-muted">
                   <Tag className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                   <p className="font-medium text-gray-500">Nenhum produto encontrado</p>
                   {hasActiveFilters && (

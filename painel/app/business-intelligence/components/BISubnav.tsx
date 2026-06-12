@@ -15,6 +15,7 @@ import {
   Calculator,
   Megaphone,
   Truck,
+  ShoppingBag,
 } from "lucide-react";
 import { BI_ROUTE_PREFIX } from "@/lib/bi-routes";
 
@@ -35,6 +36,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { label: "Pedidos", path: "/pedidos" },
       { label: "Documentos", path: "/comercial/dados" },
       { label: "Estoque", path: "/estoque" },
+      { label: "Compras", path: "/compras" },
       { label: "Carteira", path: "/carteira" },
       { label: "Vendedores", path: "/vendedores" },
     ],
@@ -58,6 +60,7 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/pedidos": ShoppingCart,
   "/comercial/dados": FileText,
   "/estoque": Package,
+  "/compras": ShoppingBag,
   "/carteira": Wallet,
   "/vendedores": UserCircle,
   "/faturamento": Target,
