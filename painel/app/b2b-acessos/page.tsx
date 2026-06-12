@@ -1,0 +1,606 @@
+"use client";
+
+import { ProtectedLayout } from "@/components/ProtectedLayout";
+import { useAuth } from "@/components/AuthProvider";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { cn } from "@/lib/utils";
+import {
+  KeyRound,
+  Search,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+  ShieldOff,
+  MailCheck,
+  Copy,
+  Check,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  AlertTriangle,
+  X,
+  Dices,
+} from "lucide-react";
+import { toast } from "sonner";
+
+interface B2BCredential {
+  id: number;
+  card_code: string;
+  cnpj: string;
+  card_name: string | null;
+  email: string | null;
+  has_password: boolean;
+  email_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+type PwFilter = "todos" | "com_senha" | "sem_senha";
+
+function fmtCNPJ(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 14);
+  if (d.length !== 14) return raw;
+  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
+function fmtDateTime(iso: string): string {
+  return new Date(iso).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Gera senha temporária legível, sem caracteres ambíguos (0/O, 1/l/I). */
+function generateTempPassword(): string {
+  const upper = "ABCDEFGHJKMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const pick = (set: string, n: number) =>
+    Array.from(
+      crypto.getRandomValues(new Uint32Array(n)),
+      (v) => set[v % set.length],
+    ).join("");
+  return `${pick(upper, 1)}${pick(lower, 3)}-${pick(digits, 4)}-${pick(lower, 4)}`;
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export default function B2BAcessosPage() {
+  const { user } = useAuth();
+  const [creds, setCreds] = useState<B2BCredential[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pwFilter, setPwFilter] = useState<PwFilter>("todos");
+
+  // Modal de reset (limpar senha)
+  const [resetTarget, setResetTarget] = useState<B2BCredential | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // Modal de senha temporária
+  const [tempTarget, setTempTarget] = useState<B2BCredential | null>(null);
+  const [tempPassword, setTempPassword] = useState("");
+  const [showTempPw, setShowTempPw] = useState(true);
+  const [tempLoading, setTempLoading] = useState(false);
+  const [tempDone, setTempDone] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchCreds = useCallback(async (asRefresh = false) => {
+    if (asRefresh) setRefreshing(true);
+    try {
+      const res = await fetch("/api/b2b-admin/credentials");
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao carregar acessos");
+      }
+      setCreds(json.data.items);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar acessos");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCreds();
+  }, [fetchCreds]);
+
+  const stats = useMemo(() => {
+    const comSenha = creds.filter((c) => c.has_password).length;
+    return {
+      total: creds.length,
+      comSenha,
+      semSenha: creds.length - comSenha,
+      verificados: creds.filter((c) => c.email_verified).length,
+    };
+  }, [creds]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, "");
+    return creds.filter((c) => {
+      if (pwFilter === "com_senha" && !c.has_password) return false;
+      if (pwFilter === "sem_senha" && c.has_password) return false;
+      if (!q) return true;
+      return (
+        (c.card_name ?? "").toLowerCase().includes(q) ||
+        c.card_code.toLowerCase().includes(q) ||
+        (c.email ?? "").toLowerCase().includes(q) ||
+        (qDigits.length > 0 && c.cnpj.includes(qDigits))
+      );
+    });
+  }, [creds, searchQuery, pwFilter]);
+
+  if (!user || !["admin", "supervisor"].includes(user.role)) {
+    return (
+      <ProtectedLayout>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Sem permissão para acessar esta página.</p>
+        </div>
+      </ProtectedLayout>
+    );
+  }
+
+  const isAdmin = user.role === "admin";
+
+  // ── Ações ──
+
+  const handleReset = async () => {
+    if (!resetTarget) return;
+    setResetLoading(true);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/credentials/${resetTarget.cnpj}/reset`,
+        { method: "POST" },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Erro ao resetar senha");
+      toast.success(
+        `Senha de ${resetTarget.card_name ?? resetTarget.card_code} removida. O cliente deve refazer o primeiro acesso.`,
+      );
+      setResetTarget(null);
+      fetchCreds(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao resetar senha");
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
+  const openTempModal = (c: B2BCredential) => {
+    setTempTarget(c);
+    setTempPassword(generateTempPassword());
+    setShowTempPw(true);
+    setTempDone(false);
+    setCopied(false);
+  };
+
+  const handleSetTempPassword = async () => {
+    if (!tempTarget) return;
+    if (tempPassword.length < 6) {
+      toast.error("A senha deve ter no mínimo 6 caracteres.");
+      return;
+    }
+    setTempLoading(true);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/credentials/${tempTarget.cnpj}/set-password`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: tempPassword }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Erro ao definir senha");
+      setTempDone(true);
+      toast.success("Senha temporária definida com sucesso.");
+      fetchCreds(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao definir senha");
+    } finally {
+      setTempLoading(false);
+    }
+  };
+
+  const handleCopyPassword = async () => {
+    const ok = await copyToClipboard(tempPassword);
+    if (ok) {
+      setCopied(true);
+      toast.success("Senha copiada!");
+      setTimeout(() => setCopied(false), 2000);
+    } else {
+      toast.error("Não foi possível copiar. Selecione e copie manualmente.");
+    }
+  };
+
+  return (
+    <ProtectedLayout>
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+              <KeyRound className="w-6 h-6 text-gsn-400" />
+              Acessos Portal B2B
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Empresas com credencial no Portal do Cliente — resete senhas ou defina uma temporária
+            </p>
+          </div>
+          <button
+            onClick={() => fetchCreds(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition disabled:opacity-50"
+          >
+            <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+            Atualizar
+          </button>
+        </div>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          <KpiCard label="Empresas" value={stats.total} />
+          <KpiCard
+            label="Com senha"
+            value={stats.comSenha}
+            icon={<ShieldCheck className="w-4 h-4 text-emerald-500" />}
+            onClick={() => setPwFilter(pwFilter === "com_senha" ? "todos" : "com_senha")}
+            active={pwFilter === "com_senha"}
+          />
+          <KpiCard
+            label="Sem senha"
+            value={stats.semSenha}
+            icon={<ShieldOff className="w-4 h-4 text-amber-500" />}
+            onClick={() => setPwFilter(pwFilter === "sem_senha" ? "todos" : "sem_senha")}
+            active={pwFilter === "sem_senha"}
+          />
+          <KpiCard
+            label="E-mail verificado"
+            value={stats.verificados}
+            icon={<MailCheck className="w-4 h-4 text-blue-500" />}
+          />
+        </div>
+
+        {/* Busca */}
+        <div className="relative mb-6">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por empresa, CNPJ, código SAP ou e-mail..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
+          />
+        </div>
+
+        {/* Tabela */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center h-40">
+              <Loader2 className="w-6 h-6 animate-spin text-gsn-400" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex items-center justify-center h-40 text-sm text-gray-500">
+              Nenhuma credencial encontrada
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <Th>Empresa</Th>
+                    <Th>CNPJ (login)</Th>
+                    <Th>E-mail</Th>
+                    <Th>Senha</Th>
+                    <Th>Atualizado em</Th>
+                    {isAdmin && <Th right>Ações</Th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((c) => (
+                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gsn-50/30 transition">
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-gray-900">
+                          {c.card_name ?? "—"}
+                        </p>
+                        <p className="text-xs text-gray-500">{c.card_code}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 font-mono whitespace-nowrap">
+                        {fmtCNPJ(c.cnpj)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-gray-700 break-all">{c.email ?? "—"}</span>
+                          {c.email_verified && (
+                            <span title="E-mail verificado">
+                              <MailCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {c.has_password ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                            <ShieldCheck className="w-3 h-3" />
+                            Ativa
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                            <ShieldOff className="w-3 h-3" />
+                            Sem senha
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                        {fmtDateTime(c.updated_at)}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => setResetTarget(c)}
+                              disabled={!c.has_password}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                              title={
+                                c.has_password
+                                  ? "Resetar senha (cliente refaz o primeiro acesso)"
+                                  : "Cliente ainda não tem senha"
+                              }
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => openTempModal(c)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gsn-700 hover:bg-gsn-50 transition"
+                              title="Definir senha temporária"
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Modal: resetar senha ── */}
+      {resetTarget && (
+        <Modal onClose={() => !resetLoading && setResetTarget(null)}>
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Resetar senha do cliente</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                A senha de{" "}
+                <strong className="text-gray-800">
+                  {resetTarget.card_name ?? resetTarget.card_code}
+                </strong>{" "}
+                ({fmtCNPJ(resetTarget.cnpj)}) será removida. O cliente precisará refazer o{" "}
+                <strong>primeiro acesso</strong> no portal, com verificação por código no e-mail
+                cadastrado.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setResetTarget(null)}
+              disabled={resetLoading}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleReset}
+              disabled={resetLoading}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700 transition disabled:opacity-50"
+            >
+              {resetLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Resetar senha
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal: senha temporária ── */}
+      {tempTarget && (
+        <Modal onClose={() => !tempLoading && setTempTarget(null)}>
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Definir senha temporária</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                <strong className="text-gray-800">
+                  {tempTarget.card_name ?? tempTarget.card_code}
+                </strong>{" "}
+                · {fmtCNPJ(tempTarget.cnpj)}
+              </p>
+            </div>
+            <button
+              onClick={() => !tempLoading && setTempTarget(null)}
+              className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {tempDone ? (
+            <>
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 mb-4">
+                <p className="text-sm text-emerald-800 font-medium mb-2">
+                  Senha definida com sucesso. Compartilhe com o cliente:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 px-3 py-2 rounded-lg bg-white border border-emerald-200 text-sm font-mono text-gray-900 select-all">
+                    {tempPassword}
+                  </code>
+                  <button
+                    onClick={handleCopyPassword}
+                    className="p-2 rounded-lg text-emerald-700 hover:bg-emerald-100 transition"
+                    title="Copiar senha"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-emerald-700 mt-2">
+                  Login: CNPJ {fmtCNPJ(tempTarget.cnpj)} · Recomende ao cliente trocar a senha
+                  depois.
+                </p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setTempTarget(null)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition"
+                >
+                  Concluir
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Senha temporária
+              </label>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="relative flex-1">
+                  <input
+                    type={showTempPw ? "text" : "password"}
+                    value={tempPassword}
+                    onChange={(e) => setTempPassword(e.target.value)}
+                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm font-mono focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+                  />
+                  <button
+                    onClick={() => setShowTempPw(!showTempPw)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={-1}
+                  >
+                    {showTempPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <button
+                  onClick={() => setTempPassword(generateTempPassword())}
+                  className="p-2.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gsn-700 hover:bg-gsn-50 transition"
+                  title="Gerar nova senha"
+                >
+                  <Dices className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mb-4">
+                Mínimo de 6 caracteres. A senha atual do cliente (se existir) será substituída
+                imediatamente.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setTempTarget(null)}
+                  disabled={tempLoading}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSetTempPassword}
+                  disabled={tempLoading || tempPassword.length < 6}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50"
+                >
+                  {tempLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Definir senha
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+    </ProtectedLayout>
+  );
+}
+
+// ── Subcomponentes ──────────────────────────────────────────
+
+function Th({ children, right }: { children: React.ReactNode; right?: boolean }) {
+  return (
+    <th
+      className={cn(
+        "text-xs font-medium text-gray-500 uppercase tracking-wider px-6 py-3",
+        right ? "text-right" : "text-left",
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+function KpiCard({
+  label,
+  value,
+  icon,
+  onClick,
+  active,
+}: {
+  label: string;
+  value: number;
+  icon?: React.ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      onClick={onClick}
+      className={cn(
+        "bg-white rounded-xl border px-4 py-3 text-left transition",
+        active ? "border-gsn-700 ring-1 ring-gsn-700/30" : "border-gray-200",
+        onClick && "hover:border-gsn-400 cursor-pointer",
+      )}
+    >
+      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+        {icon}
+        {label}
+      </div>
+      <p className="text-xl font-bold text-gray-900 mt-1">{value}</p>
+    </Tag>
+  );
+}
+
+function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md bg-white rounded-xl shadow-xl p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}

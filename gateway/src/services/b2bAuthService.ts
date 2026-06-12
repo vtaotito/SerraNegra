@@ -99,8 +99,33 @@ export class B2BAuthService {
 
   async resetPassword(cnpj: string) {
     await this.pool.query(
-      "UPDATE b2b_credentials SET password_hash = NULL, email_verified = FALSE, updated_at = NOW() WHERE cnpj = $1",
+      "UPDATE b2b_credentials SET password_hash = NULL, email_verified = FALSE, otp_code = NULL, otp_expires_at = NULL, updated_at = NOW() WHERE cnpj = $1",
       [cnpj]
     );
+  }
+
+  /** Lista credenciais sem expor hashes — apenas status de senha/verificação. */
+  async listCredentials(): Promise<
+    {
+      id: number;
+      card_code: string;
+      cnpj: string;
+      card_name: string | null;
+      email: string | null;
+      has_password: boolean;
+      email_verified: boolean;
+      created_at: string;
+      updated_at: string;
+    }[]
+  > {
+    const { rows } = await this.pool.query(`
+      SELECT id, card_code, cnpj, card_name, email,
+             (password_hash IS NOT NULL) AS has_password,
+             COALESCE(email_verified, FALSE) AS email_verified,
+             created_at, updated_at
+      FROM b2b_credentials
+      ORDER BY card_name NULLS LAST, cnpj
+    `);
+    return rows;
   }
 }

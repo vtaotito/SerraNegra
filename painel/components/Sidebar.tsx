@@ -21,6 +21,7 @@ import {
   Tag,
   UsersRound,
   Radio,
+  KeyRound,
 } from "lucide-react";
 import { useState } from "react";
 import { WMS_BASE_URL } from "@/lib/config";
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/catalogo", label: "Catálogo", icon: Tag, roles: null, module: "cockpit" as const },
   { href: "/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
+  { href: "/b2b-acessos", label: "Acessos B2B", icon: KeyRound, roles: ["admin", "supervisor"] },
   { href: "/integracoes", label: "Integrações", icon: Zap, roles: ["admin", "supervisor"] },
 ];
 

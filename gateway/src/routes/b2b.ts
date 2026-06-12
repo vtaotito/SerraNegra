@@ -669,6 +669,83 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   });
 
   // =============================================
+  // ADMIN - CREDENCIAIS (acessos ao portal)
+  // =============================================
+  app.get(
+    "/b2b/admin/credentials",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      try {
+        const items = await authService.listCredentials();
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Reset: limpa a senha — o cliente refaz o primeiro acesso via OTP
+  app.post(
+    "/b2b/admin/credentials/:cnpj/reset",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const cnpj = normalizeCnpj((req.params as any).cnpj ?? "");
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      try {
+        const cred = await authService.findByCnpj(cnpj);
+        if (!cred) {
+          reply.code(404).send({ error: "Credencial nao encontrada" });
+          return;
+        }
+        await authService.resetPassword(cnpj);
+        req.log.info(
+          { cnpj, cardCode: cred.card_code, admin: admin?.user },
+          "B2B admin: senha resetada (cliente devera refazer primeiro acesso)",
+        );
+        reply.code(200).send({
+          ok: true,
+          message: "Senha removida. O cliente deve refazer o primeiro acesso com verificacao por e-mail.",
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Define uma senha temporaria manualmente
+  app.post(
+    "/b2b/admin/credentials/:cnpj/set-password",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const cnpj = normalizeCnpj((req.params as any).cnpj ?? "");
+      const { password } = (req.body ?? {}) as { password?: string };
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      if (!password || password.length < 6) {
+        reply.code(400).send({ error: "Senha deve ter no minimo 6 caracteres" });
+        return;
+      }
+      try {
+        const cred = await authService.findByCnpj(cnpj);
+        if (!cred) {
+          reply.code(404).send({ error: "Credencial nao encontrada" });
+          return;
+        }
+        await authService.setPassword(cnpj, password);
+        req.log.info(
+          { cnpj, cardCode: cred.card_code, admin: admin?.user },
+          "B2B admin: senha temporaria definida",
+        );
+        reply.code(200).send({ ok: true, message: "Senha temporaria definida com sucesso." });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
   // ADMIN - LISTAR REGISTROS PENDENTES
   // =============================================
   app.get(

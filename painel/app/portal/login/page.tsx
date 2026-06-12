@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2,
@@ -54,6 +54,15 @@ export default function PortalLoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPw, setShowNewPw] = useState(false);
   const [otpOrigin, setOtpOrigin] = useState<"verify-email" | "forgot">("verify-email");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [infoMsg, setInfoMsg] = useState("");
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const t = setInterval(() => setResendCooldown((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendCooldown]);
 
   // registro
   const [regRazao, setRegRazao] = useState("");
@@ -124,6 +133,8 @@ export default function PortalLoginPage() {
     try {
       await authVerifyEmail(cleanCNPJ(cnpj));
       setOtpOrigin("verify-email");
+      setInfoMsg("");
+      setResendCooldown(60);
       setStep("otp");
     } catch (err) {
       handleError(err);
@@ -175,6 +186,28 @@ export default function PortalLoginPage() {
     }
   };
 
+  // ── Reenviar código OTP ──
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0 || resendLoading) return;
+    setResendLoading(true);
+    setError("");
+    setInfoMsg("");
+    try {
+      if (otpOrigin === "forgot") {
+        await authForgotPassword(cleanCNPJ(cnpj));
+      } else {
+        await authVerifyEmail(cleanCNPJ(cnpj));
+      }
+      setOtp("");
+      setResendCooldown(60);
+      setInfoMsg("Novo código enviado para o e-mail cadastrado.");
+    } catch (err) {
+      handleError(err);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   // ── Esqueci senha ──
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -187,6 +220,8 @@ export default function PortalLoginPage() {
     try {
       await authForgotPassword(cleanCNPJ(cnpj));
       setOtpOrigin("forgot");
+      setInfoMsg("");
+      setResendCooldown(60);
       setStep("otp");
     } catch (err) {
       handleError(err);
@@ -361,11 +396,17 @@ export default function PortalLoginPage() {
           {/* ── Digitar OTP ── */}
           {step === "otp" && (
             <form onSubmit={handleOTP} className="space-y-5">
-              <BackButton onClick={() => { setError(""); setStep(otpOrigin === "forgot" ? "forgot" : "verify-email"); }} />
+              <BackButton onClick={() => { setError(""); setInfoMsg(""); setStep(otpOrigin === "forgot" ? "forgot" : "verify-email"); }} />
               <div className="text-center">
                 <h2 className="text-lg font-semibold text-gray-900">Código de Verificação</h2>
                 <p className="text-sm text-cockpit-muted mt-1">
-                  Digite o código enviado para seu e-mail
+                  Digite o código enviado para{" "}
+                  {lookupData?.maskedEmail ? (
+                    <strong className="text-gray-700">{lookupData.maskedEmail}</strong>
+                  ) : (
+                    "seu e-mail"
+                  )}
+                  . Válido por 15 minutos.
                 </p>
               </div>
               <input
@@ -378,6 +419,12 @@ export default function PortalLoginPage() {
                 autoFocus
               />
               {error && <ErrorMsg msg={error} />}
+              {infoMsg && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                  <p className="text-sm text-emerald-700">{infoMsg}</p>
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={loading}
@@ -386,6 +433,19 @@ export default function PortalLoginPage() {
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                 Verificar
               </button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={resendCooldown > 0 || resendLoading}
+                  className="inline-flex items-center gap-1.5 text-sm text-cockpit-accent hover:underline disabled:text-cockpit-muted disabled:no-underline disabled:cursor-not-allowed"
+                >
+                  {resendLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {resendCooldown > 0
+                    ? `Reenviar código em ${resendCooldown}s`
+                    : "Não recebeu? Reenviar código"}
+                </button>
+              </div>
             </form>
           )}
 
@@ -453,7 +513,7 @@ export default function PortalLoginPage() {
               <div className="text-center">
                 <h2 className="text-lg font-semibold text-gray-900">Recuperar Senha</h2>
                 <p className="text-sm text-cockpit-muted mt-1">
-                  Informe seu CNPJ para receber instruções por e-mail
+                  Informe seu CNPJ para receber um código de verificação no e-mail cadastrado
                 </p>
               </div>
               <div>
