@@ -104,6 +104,19 @@ export class B2BAuthService {
     );
   }
 
+  /**
+   * Atualiza ou remove o e-mail cadastrado de uma credencial B2B.
+   * Como o e-mail muda, a verificação é zerada e qualquer OTP pendente é
+   * descartado — o cliente precisará verificar o novo e-mail no próximo acesso.
+   * Passe `null` para remover o e-mail.
+   */
+  async updateEmail(cnpj: string, email: string | null) {
+    await this.pool.query(
+      "UPDATE b2b_credentials SET email = $1, email_verified = FALSE, otp_code = NULL, otp_expires_at = NULL, updated_at = NOW() WHERE cnpj = $2",
+      [email, cnpj]
+    );
+  }
+
   /** Lista credenciais sem expor hashes — apenas status de senha/verificação. */
   async listCredentials(): Promise<
     {

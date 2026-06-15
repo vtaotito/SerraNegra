@@ -745,6 +745,50 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     },
   );
 
+  // Atualiza/remove o e-mail cadastrado da credencial
+  app.patch(
+    "/b2b/admin/credentials/:cnpj/email",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const cnpj = normalizeCnpj((req.params as any).cnpj ?? "");
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const rawEmail = (req.body ?? {}) as { email?: string | null };
+      const email = typeof rawEmail.email === "string" ? rawEmail.email.trim() : null;
+
+      if (email) {
+        const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRe.test(email) || email.length > 255) {
+          reply.code(400).send({ error: "E-mail inválido" });
+          return;
+        }
+      }
+
+      try {
+        const cred = await authService.findByCnpj(cnpj);
+        if (!cred) {
+          reply.code(404).send({ error: "Credencial nao encontrada" });
+          return;
+        }
+        await authService.updateEmail(cnpj, email && email.length > 0 ? email : null);
+        req.log.info(
+          { cnpj, cardCode: cred.card_code, admin: admin?.user, removed: !email },
+          email
+            ? "B2B admin: e-mail da credencial atualizado"
+            : "B2B admin: e-mail da credencial removido",
+        );
+        reply.code(200).send({
+          ok: true,
+          message: email
+            ? "E-mail atualizado. A verificação foi reiniciada e o cliente confirmará no próximo acesso."
+            : "E-mail removido da credencial.",
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
   // =============================================
   // ADMIN - LISTAR REGISTROS PENDENTES
   // =============================================

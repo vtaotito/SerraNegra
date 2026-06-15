@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   X,
   Dices,
+  Mail,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -105,6 +107,11 @@ export default function B2BAcessosPage() {
   const [tempLoading, setTempLoading] = useState(false);
   const [tempDone, setTempDone] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Modal de editar/remover e-mail
+  const [emailTarget, setEmailTarget] = useState<B2BCredential | null>(null);
+  const [emailValue, setEmailValue] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
 
   const fetchCreds = useCallback(async (asRefresh = false) => {
     if (asRefresh) setRefreshing(true);
@@ -236,6 +243,39 @@ export default function B2BAcessosPage() {
     }
   };
 
+  const openEmailModal = (c: B2BCredential) => {
+    setEmailTarget(c);
+    setEmailValue(c.email ?? "");
+  };
+
+  const saveEmail = async (email: string | null) => {
+    if (!emailTarget) return;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Informe um e-mail válido.");
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/credentials/${emailTarget.cnpj}/email`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Erro ao salvar e-mail");
+      toast.success(email ? "E-mail atualizado." : "E-mail removido.");
+      setEmailTarget(null);
+      fetchCreds(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar e-mail");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
   return (
     <ProtectedLayout>
       <div className="max-w-6xl mx-auto">
@@ -360,6 +400,13 @@ export default function B2BAcessosPage() {
                       {isAdmin && (
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEmailModal(c)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                              title="Editar ou remover e-mail"
+                            >
+                              <Mail className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => setResetTarget(c)}
                               disabled={!c.has_password}
@@ -536,6 +583,79 @@ export default function B2BAcessosPage() {
               </div>
             </>
           )}
+        </Modal>
+      )}
+
+      {/* ── Modal: editar / remover e-mail ── */}
+      {emailTarget && (
+        <Modal onClose={() => !emailLoading && setEmailTarget(null)}>
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                <Mail className="w-5 h-5 text-blue-500" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">E-mail cadastrado</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  <strong className="text-gray-800">
+                    {emailTarget.card_name ?? emailTarget.card_code}
+                  </strong>{" "}
+                  · {fmtCNPJ(emailTarget.cnpj)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => !emailLoading && setEmailTarget(null)}
+              className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            E-mail
+          </label>
+          <input
+            type="email"
+            value={emailValue}
+            onChange={(e) => setEmailValue(e.target.value)}
+            placeholder="email@empresa.com.br"
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none mb-2"
+          />
+          <p className="text-xs text-gray-500 mb-4 flex items-start gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+            Ao alterar o e-mail, a verificação é reiniciada — o cliente confirmará o novo endereço
+            por código no próximo acesso ou recuperação de senha.
+          </p>
+
+          <div className="flex items-center justify-between gap-2">
+            <button
+              onClick={() => saveEmail(null)}
+              disabled={emailLoading || !emailTarget.email}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              title={emailTarget.email ? "Remover e-mail cadastrado" : "Não há e-mail para remover"}
+            >
+              <Trash2 className="w-4 h-4" />
+              Remover
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setEmailTarget(null)}
+                disabled={emailLoading}
+                className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => saveEmail(emailValue.trim())}
+                disabled={emailLoading || emailValue.trim() === (emailTarget.email ?? "") || !emailValue.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50"
+              >
+                {emailLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Salvar
+              </button>
+            </div>
+          </div>
         </Modal>
       )}
     </ProtectedLayout>

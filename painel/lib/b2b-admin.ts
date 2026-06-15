@@ -97,3 +97,11 @@ export function setB2BCredentialPassword(cnpj: string, password: string) {
     { method: "POST", body: JSON.stringify({ password }) },
   );
 }
+
+/** Atualiza o e-mail; passe `null` para remover. */
+export function updateB2BCredentialEmail(cnpj: string, email: string | null) {
+  return b2bAdminFetch<{ ok: boolean; message: string }>(
+    `/b2b/admin/credentials/${encodeURIComponent(cnpj)}/email`,
+    { method: "PATCH", body: JSON.stringify({ email }) },
+  );
+}
