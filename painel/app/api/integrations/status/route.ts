@@ -6,10 +6,18 @@ import { rdStationStatus } from "@/lib/rd-station-server";
 interface SapHealthResp {
   status?: string;
   sap_connected?: boolean;
+  configured?: boolean;
+  base_url?: string | null;
   response_time_ms?: number;
   message?: string;
 }
 
+/**
+ * Sonda o status do SAP via gateway, que é a fonte da verdade (as credenciais
+ * SAP vivem apenas no container do gateway, não no painel). Por isso não
+ * dependemos de SAP_B1_BASE_URL estar presente no ambiente do painel — usamos
+ * apenas como fallback de exibição da base URL quando o gateway não a informa.
+ */
 async function probeSap(): Promise<{
   configured: boolean;
   healthy: boolean;
@@ -17,18 +25,7 @@ async function probeSap(): Promise<{
   message: string | null;
   baseUrl: string | null;
 }> {
-  const baseUrl = process.env.SAP_B1_BASE_URL?.trim() || null;
-  const configured = Boolean(baseUrl);
-  if (!configured) {
-    return {
-      configured: false,
-      healthy: false,
-      responseTimeMs: null,
-      message: "SAP_B1_BASE_URL não definido.",
-      baseUrl: null,
-    };
-  }
-
+  const localBaseUrl = process.env.SAP_B1_BASE_URL?.trim() || null;
   const gatewayUrl =
     process.env.GATEWAY_INTERNAL_URL?.trim() || "http://gateway:3000";
   try {
@@ -43,20 +40,21 @@ async function probeSap(): Promise<{
         configured: true,
         healthy: false,
         responseTimeMs: elapsed,
-        message: `HTTP ${res.status}`,
-        baseUrl,
+        message: `Gateway respondeu HTTP ${res.status}`,
+        baseUrl: localBaseUrl,
       };
     }
     const body = (await res.json()) as SapHealthResp;
     return {
-      configured: true,
+      configured:
+        typeof body.configured === "boolean" ? body.configured : true,
       healthy: Boolean(body.sap_connected),
       responseTimeMs:
         typeof body.response_time_ms === "number"
           ? body.response_time_ms
           : elapsed,
       message: body.message ?? body.status ?? null,
-      baseUrl,
+      baseUrl: body.base_url ?? localBaseUrl,
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Falha de rede";
@@ -64,8 +62,8 @@ async function probeSap(): Promise<{
       configured: true,
       healthy: false,
       responseTimeMs: null,
-      message: reason,
-      baseUrl,
+      message: `Gateway inacessível: ${reason}`,
+      baseUrl: localBaseUrl,
     };
   }
 }

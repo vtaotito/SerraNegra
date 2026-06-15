@@ -78,6 +78,14 @@ export async function registerSapRoutes(app: FastifyInstance) {
     const correlationId = (req as any).correlationId as string;
     const startTime = Date.now();
 
+    const baseUrlEnv = process.env.SAP_B1_BASE_URL?.trim() || null;
+    const sapConfigured = Boolean(
+      baseUrlEnv &&
+      process.env.SAP_B1_COMPANY_DB &&
+      process.env.SAP_B1_USERNAME &&
+      process.env.SAP_B1_PASSWORD
+    );
+
     try {
       const service = getSapService();
       const result = await service.healthCheck(correlationId);
@@ -88,6 +96,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
           status: "ok",
           sap_connected: true,
           session_valid: true,
+          configured: sapConfigured,
+          base_url: baseUrlEnv,
           response_time_ms: responseTime,
           message: result.message,
           timestamp: new Date().toISOString()
@@ -97,6 +107,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
           status: "error",
           sap_connected: false,
           session_valid: false,
+          configured: sapConfigured,
+          base_url: baseUrlEnv,
           response_time_ms: responseTime,
           message: result.message,
           error: result.message,
@@ -112,6 +124,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
         status: "error",
         sap_connected: false,
         session_valid: false,
+        configured: sapConfigured,
+        base_url: baseUrlEnv,
         response_time_ms: responseTime,
         message: "Erro ao conectar com SAP",
         error: message,
