@@ -390,6 +390,8 @@ function normalizeForMatch(name: string): string {
     // produto e, se mantidas, geram tanto falso-positivo (ex.: tampa x garrafa
     // compartilhando "rosca") quanto falso-negativo. Removidas do match.
     .replace(/\b(rosca|twistoff|twist|fliptop|flip|off|premium|standard|mini|bolso|kit|de|da|do|com)\b/g, "")
+    // Cores: nao devem ser o unico sinal de match (ex.: "Caçula Ambar" x "STD Ambar").
+    .replace(/\b(amb|ambar|amber|transparente|transp|tra)\b/g, "")
     .replace(/\b\d{2}mm\b/g, "")
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
@@ -416,7 +418,9 @@ function extractTokens(normalized: string): string[] {
 
 // Tokens irrelevantes para distinguir um produto (unidades / medidas). O volume
 // e tratado separadamente por extractVolume, entao nao deve contar como "match".
-const UNIT_TOKENS = new Set(["ml", "l", "lt", "mm", "cm", "kg", "g", "gr", "un"]);
+const UNIT_TOKENS = new Set([
+  "ml", "l", "lt", "litro", "litros", "mm", "cm", "kg", "g", "gr", "un",
+]);
 
 function distinctiveTokens(normalized: string): string[] {
   return extractTokens(normalized).filter(
