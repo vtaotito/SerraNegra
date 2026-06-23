@@ -91,6 +91,12 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    # O hostname do servidor e garrafariaserranegra.com.br, entao /etc/hosts do
+    # host resolve o dominio para 127.0.1.1 (loopback). Para o sync do catalogo
+    # buscar imagens/descricoes do WooCommerce, mapeamos o dominio para o IP
+    # publico real (Hostinger). Ajustavel via WOO_HOST_IP no .env.
+    extra_hosts:
+      - "garrafariaserranegra.com.br:${WOO_HOST_IP:-147.79.90.205}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3000/health"]
       interval: 10s

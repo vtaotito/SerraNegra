@@ -667,6 +667,19 @@ export class B2BCatalogService {
     return res.rowCount ?? 0;
   }
 
+  /**
+   * Desativa produtos "sinteticos" (codigo GSN-*) que nao existem no SAP e por
+   * isso nao podem ser pedidos pelo portal. O catalogo deve conter apenas itens
+   * SAP reais.
+   */
+  async deactivateSyntheticProducts(): Promise<number> {
+    const res = await this.pool.query(
+      `UPDATE b2b_catalog_products SET is_active = FALSE, is_sales_item = FALSE, updated_at = NOW()
+       WHERE sap_item_code LIKE 'GSN-%' AND (is_active = TRUE OR is_sales_item = TRUE)`,
+    );
+    return res.rowCount ?? 0;
+  }
+
   async countAll(): Promise<{ total: number; active: number; inStock: number }> {
     const totalRes = await this.pool.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products");
     const activeRes = await this.pool.query("SELECT COUNT(*) AS cnt FROM b2b_catalog_products WHERE is_active = TRUE AND is_sales_item = TRUE");

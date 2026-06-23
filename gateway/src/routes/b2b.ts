@@ -2290,44 +2290,16 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       upserted++;
     }
 
-    const matchedGsnIds = new Set<string>();
-    for (const [, m] of matches) matchedGsnIds.add(m.gsn.id);
-
-    let gsnOnly = 0;
-    for (const gsn of gsnProducts) {
-      if (matchedGsnIds.has(gsn.id)) continue;
-
-      const firstImage = gsn.images[0];
-      const syntheticCode = `GSN-${gsn.id}`;
-
-      const gsnCategory = normalizeCategoryName(gsn.category_name);
-      const gsnPackaging = resolvePackaging(null, null, null, null, null, gsn.name);
-
-      await catalogService.upsertProduct({
-        sap_item_code: syntheticCode,
-        sap_item_name: gsn.name,
-        gsn_product_id: gsn.id,
-        gsn_product_name: gsn.name,
-        gsn_slug: gsn.slug,
-        image_url: firstImage?.url ?? null,
-        image_thumb_url: firstImage?.thumbUrl ?? null,
-        category_name: gsnCategory,
-        description_short: gsn.description_small || null,
-        ean: gsn.ean || null,
-        unit_of_measure: "UN",
-        packaging_type: gsnPackaging.type,
-        units_per_package: gsnPackaging.units,
-        is_active: true,
-        is_sales_item: true,
-        match_score: 0,
-      });
-      gsnOnly++;
+    // Produtos do site sem item correspondente no SAP nao podem ser pedidos
+    // (precisam de ItemCode do SAP). Garantimos que nenhum produto sintetico
+    // GSN-* fique ativo no catalogo.
+    const gsnOnly = await catalogService.deactivateSyntheticProducts();
+    if (gsnOnly > 0) {
+      app.log.info(
+        { correlationId, deactivatedSynthetic: gsnOnly },
+        "Catalog sync: produtos sinteticos GSN-* desativados",
+      );
     }
-
-    app.log.info(
-      { correlationId, gsnOnly },
-      "Catalog sync: produtos GSN sem match SAP adicionados",
-    );
 
     if (stockBySku.size > 0) {
       await catalogService.updateStock(stockBySku);
