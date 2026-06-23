@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSettings, clearSettingsCache } from "@/lib/settings";
+import { renderLayout, renderButton, escapeHtml } from "@/lib/email-layout";
 
 /**
  * Mailer do painel — config lida dinamicamente de `panel_settings` (DB) com
@@ -167,22 +168,17 @@ export async function sendTestEmail(params: {
     `Este é um e-mail de teste enviado pelo Painel GSN em ${sentAt}.\n` +
     `Disparado por: ${triggeredBy}.\n\n` +
     `Se você recebeu esta mensagem, sua configuração SMTP está funcionando.`;
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 520px; margin: 0 auto; color: #111827;">
-      <div style="padding: 20px 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
-        <h2 style="margin: 0 0 8px; color: #7f1d1d;">Painel GSN — Teste SMTP</h2>
-        <p style="margin: 0 0 12px; color: #4b5563;">
-          Este é um e-mail de <strong>teste</strong> disparado em
-          <strong>${escapeHtml(sentAt)}</strong> por <strong>${escapeHtml(
-            triggeredBy,
-          )}</strong>.
-        </p>
-        <p style="margin: 0; color: #059669; font-weight: 600;">
-          Se você recebeu esta mensagem, sua configuração SMTP está funcionando.
-        </p>
-      </div>
-    </div>
-  `;
+  const html = renderLayout({
+    title: "Teste de envio de e-mail",
+    preheader: "Teste de configuração SMTP do Painel GSN.",
+    bodyHtml: `
+      <p style="margin: 0 0 14px;">Este é um e-mail de <strong>teste</strong> disparado em
+        <strong>${escapeHtml(sentAt)}</strong> por <strong>${escapeHtml(triggeredBy)}</strong>.</p>
+      <p style="margin: 0; color: #059669; font-weight: 600;">
+        Se você recebeu esta mensagem, sua configuração de envio está funcionando.
+      </p>
+    `,
+  });
 
   try {
     await transporter.sendMail({ from: cfg.from, to, subject, text, html });
@@ -216,35 +212,19 @@ export async function sendPasswordResetEmail(
     `${resetUrl}\n\n` +
     `Se você não solicitou essa redefinição, pode ignorar este e-mail — sua senha atual continua válida.`;
 
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; max-width: 560px; margin: 0 auto; color: #111827;">
-      <div style="padding: 24px; border: 1px solid #e5e7eb; border-radius: 12px;">
-        <h2 style="margin: 0 0 12px; color: #7f1d1d;">Painel Garrafaria Serra Negra</h2>
-        <p style="margin: 0 0 16px;">Olá, <strong>${escapeHtml(displayName)}</strong>.</p>
-        <p style="margin: 0 0 16px;">
-          Recebemos um pedido para redefinir sua senha. Clique no botão abaixo para
-          criar uma nova senha:
-        </p>
-        <p style="text-align: center; margin: 24px 0;">
-          <a href="${escapeHtml(resetUrl)}"
-             style="display: inline-block; padding: 12px 22px; background: #7f1d1d; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;">
-            Redefinir minha senha
-          </a>
-        </p>
-        <p style="margin: 0 0 8px; font-size: 13px; color: #4b5563;">
-          O link é válido até <strong>${escapeHtml(expiresLabel)}</strong> e só pode ser usado uma vez.
-        </p>
-        <p style="margin: 0 0 16px; font-size: 13px; color: #4b5563;">
-          Se o botão não funcionar, copie e cole no navegador:<br>
-          <span style="word-break: break-all; color: #1f2937;">${escapeHtml(resetUrl)}</span>
-        </p>
-        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;">
-        <p style="margin: 0; font-size: 12px; color: #6b7280;">
-          Se você não solicitou esta redefinição, ignore este e-mail. Sua senha atual continua válida.
-        </p>
-      </div>
-    </div>
-  `;
+  const html = renderLayout({
+    title: "Redefinição de senha",
+    preheader: "Crie uma nova senha de acesso ao Painel GSN.",
+    bodyHtml: `
+      <p style="margin: 0 0 14px;">Olá, <strong>${escapeHtml(displayName)}</strong>.</p>
+      <p style="margin: 0 0 14px;">Recebemos um pedido para redefinir sua senha. Clique no botão abaixo para criar uma nova senha:</p>
+      ${renderButton({ label: "Redefinir minha senha", url: resetUrl })}
+      <p style="margin: 0 0 8px; font-size: 13px; color: #6b7280;">O link é válido até <strong>${escapeHtml(expiresLabel)}</strong> e só pode ser usado uma vez.</p>
+      <p style="margin: 0 0 8px; font-size: 13px; color: #6b7280;">Se o botão não funcionar, copie e cole no navegador:<br>
+        <span style="word-break: break-all; color: #1f2937;">${escapeHtml(resetUrl)}</span></p>
+      <p style="margin: 0; font-size: 13px; color: #6b7280;">Se você não solicitou esta redefinição, ignore este e-mail. Sua senha atual continua válida.</p>
+    `,
+  });
 
   const { transporter, cfg } = await getTransporter();
   if (!transporter) {
@@ -264,13 +244,4 @@ export async function sendPasswordResetEmail(
     );
     return false;
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }

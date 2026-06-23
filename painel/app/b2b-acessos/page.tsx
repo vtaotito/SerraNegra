@@ -22,6 +22,10 @@ import {
   Dices,
   Mail,
   Trash2,
+  Inbox,
+  CheckCircle2,
+  Ban,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,6 +37,21 @@ interface B2BCredential {
   email: string | null;
   has_password: boolean;
   email_verified: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface B2BEmailRequest {
+  id: number;
+  cnpj: string;
+  card_code: string | null;
+  card_name: string | null;
+  requested_email: string;
+  contact_name: string | null;
+  status: "pending" | "approved" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,6 +132,29 @@ export default function B2BAcessosPage() {
   const [emailValue, setEmailValue] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
 
+  // Solicitações de acesso por e-mail (clientes SAP sem e-mail)
+  const [requests, setRequests] = useState<B2BEmailRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(true);
+  const [reviewTarget, setReviewTarget] = useState<B2BEmailRequest | null>(null);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject">("approve");
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  const fetchRequests = useCallback(async () => {
+    try {
+      const res = await fetch("/api/b2b-admin/email-requests");
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao carregar solicitações");
+      }
+      setRequests(json.data.items);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar solicitações");
+    } finally {
+      setRequestsLoading(false);
+    }
+  }, []);
+
   const fetchCreds = useCallback(async (asRefresh = false) => {
     if (asRefresh) setRefreshing(true);
     try {
@@ -132,7 +174,13 @@ export default function B2BAcessosPage() {
 
   useEffect(() => {
     fetchCreds();
-  }, [fetchCreds]);
+    fetchRequests();
+  }, [fetchCreds, fetchRequests]);
+
+  const pendingRequests = useMemo(
+    () => requests.filter((r) => r.status === "pending"),
+    [requests],
+  );
 
   const stats = useMemo(() => {
     const comSenha = creds.filter((c) => c.has_password).length;
@@ -276,6 +324,43 @@ export default function B2BAcessosPage() {
     }
   };
 
+  const openReview = (req: B2BEmailRequest, action: "approve" | "reject") => {
+    setReviewTarget(req);
+    setReviewAction(action);
+    setReviewNotes("");
+  };
+
+  const handleReview = async () => {
+    if (!reviewTarget) return;
+    setReviewLoading(true);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/email-requests/${reviewTarget.id}/${reviewAction}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: reviewNotes.trim() || null }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao processar solicitação");
+      }
+      toast.success(
+        reviewAction === "approve"
+          ? `Acesso de ${reviewTarget.card_name ?? reviewTarget.cnpj} liberado. O cliente foi avisado por e-mail.`
+          : `Solicitação de ${reviewTarget.card_name ?? reviewTarget.cnpj} rejeitada.`,
+      );
+      setReviewTarget(null);
+      fetchRequests();
+      fetchCreds(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao processar solicitação");
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
   return (
     <ProtectedLayout>
       <div className="max-w-6xl mx-auto">
@@ -291,13 +376,113 @@ export default function B2BAcessosPage() {
             </p>
           </div>
           <button
-            onClick={() => fetchCreds(true)}
+            onClick={() => { fetchCreds(true); fetchRequests(); }}
             disabled={refreshing}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition disabled:opacity-50"
           >
             <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
             Atualizar
           </button>
+        </div>
+
+        {/* Solicitações de acesso por e-mail (clientes SAP sem e-mail) */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+                <Inbox className="w-5 h-5 text-amber-500" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Solicitações de acesso
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Clientes já existentes no SAP, sem e-mail, pedindo liberação de acesso
+                </p>
+              </div>
+            </div>
+            {pendingRequests.length > 0 && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+                <Clock className="w-3 h-3" />
+                {pendingRequests.length} pendente{pendingRequests.length > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {requestsLoading ? (
+            <div className="flex items-center justify-center h-24">
+              <Loader2 className="w-5 h-5 animate-spin text-gsn-400" />
+            </div>
+          ) : requests.length === 0 ? (
+            <div className="flex items-center justify-center h-24 text-sm text-gray-500">
+              Nenhuma solicitação de acesso no momento
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <Th>Empresa</Th>
+                    <Th>CNPJ</Th>
+                    <Th>E-mail solicitado</Th>
+                    <Th>Contato</Th>
+                    <Th>Status</Th>
+                    <Th>Data</Th>
+                    {isAdmin && <Th right>Ações</Th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map((r) => (
+                    <tr key={r.id} className="border-b border-gray-50 hover:bg-amber-50/30 transition">
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-gray-900">{r.card_name ?? "—"}</p>
+                        {r.card_code && <p className="text-xs text-gray-500">{r.card_code}</p>}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 font-mono whitespace-nowrap">
+                        {fmtCNPJ(r.cnpj)}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700 break-all">{r.requested_email}</td>
+                      <td className="px-6 py-4 text-sm text-gray-700">{r.contact_name ?? "—"}</td>
+                      <td className="px-6 py-4">
+                        <RequestStatusBadge status={r.status} />
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
+                        {fmtDateTime(r.created_at)}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-6 py-4 text-right">
+                          {r.status === "pending" ? (
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => openReview(r, "approve")}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition"
+                                title="Aprovar e liberar acesso"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                Aprovar
+                              </button>
+                              <button
+                                onClick={() => openReview(r, "reject")}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition"
+                                title="Rejeitar solicitação"
+                              >
+                                <Ban className="w-3.5 h-3.5" />
+                                Rejeitar
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              {r.reviewed_by ? `por ${r.reviewed_by}` : "—"}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         {/* KPIs */}
@@ -658,7 +843,108 @@ export default function B2BAcessosPage() {
           </div>
         </Modal>
       )}
+
+      {/* ── Modal: aprovar / rejeitar solicitação de acesso ── */}
+      {reviewTarget && (
+        <Modal onClose={() => !reviewLoading && setReviewTarget(null)}>
+          <div className="flex items-start gap-3 mb-4">
+            <div
+              className={cn(
+                "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                reviewAction === "approve" ? "bg-emerald-50" : "bg-red-50",
+              )}
+            >
+              {reviewAction === "approve" ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+              ) : (
+                <Ban className="w-5 h-5 text-red-500" />
+              )}
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">
+                {reviewAction === "approve" ? "Liberar acesso" : "Rejeitar solicitação"}
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                <strong className="text-gray-800">
+                  {reviewTarget.card_name ?? reviewTarget.cnpj}
+                </strong>{" "}
+                · {fmtCNPJ(reviewTarget.cnpj)}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 mb-4 text-sm">
+            <p className="text-gray-500 text-xs">E-mail solicitado</p>
+            <p className="font-medium text-gray-900 break-all">{reviewTarget.requested_email}</p>
+          </div>
+
+          <p className="text-sm text-gray-600 mb-3">
+            {reviewAction === "approve"
+              ? "Ao aprovar, o e-mail será cadastrado na credencial do cliente e ele receberá um e-mail para concluir o primeiro acesso (verificação por código + criação de senha)."
+              : "Ao rejeitar, o cliente será avisado por e-mail. Você pode informar o motivo abaixo."}
+          </p>
+
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            {reviewAction === "approve" ? "Observação (opcional)" : "Motivo (opcional)"}
+          </label>
+          <textarea
+            value={reviewNotes}
+            onChange={(e) => setReviewNotes(e.target.value)}
+            rows={2}
+            placeholder={reviewAction === "approve" ? "Anotação interna" : "Ex.: dados divergentes"}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none mb-4 resize-none"
+          />
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setReviewTarget(null)}
+              disabled={reviewLoading}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleReview}
+              disabled={reviewLoading}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition disabled:opacity-50",
+                reviewAction === "approve"
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : "bg-red-600 hover:bg-red-700",
+              )}
+            >
+              {reviewLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {reviewAction === "approve" ? "Aprovar acesso" : "Rejeitar"}
+            </button>
+          </div>
+        </Modal>
+      )}
     </ProtectedLayout>
+  );
+}
+
+function RequestStatusBadge({ status }: { status: B2BEmailRequest["status"] }) {
+  if (status === "approved") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+        <CheckCircle2 className="w-3 h-3" />
+        Aprovada
+      </span>
+    );
+  }
+  if (status === "rejected") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+        <Ban className="w-3 h-3" />
+        Rejeitada
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+      <Clock className="w-3 h-3" />
+      Pendente
+    </span>
   );
 }
 

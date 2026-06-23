@@ -6,6 +6,8 @@ import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { B2BAuthService } from "../services/b2bAuthService.js";
 import { B2BRegistrationService } from "../services/b2bRegistrationService.js";
+import { B2BEmailRequestService } from "../services/b2bEmailRequestService.js";
+import { B2BOrderFollowupService } from "../services/b2bOrderFollowupService.js";
 import {
   B2BCatalogService,
   fetchAllGsnProducts,
@@ -18,7 +20,20 @@ import {
   toB2BCatalogItem,
   toB2BProductDetail,
 } from "../services/b2bCatalogService.js";
-import { sendOtpEmail, isEmailConfigured } from "../services/emailService.js";
+import {
+  sendOtpEmail,
+  isEmailConfigured,
+  sendBackInStockEmail,
+  sendRegistrationReceivedEmail,
+  sendRegistrationApprovedEmail,
+  sendRegistrationRejectedEmail,
+  sendEmailAccessRequestedEmail,
+  sendEmailAccessApprovedEmail,
+  sendEmailAccessRejectedEmail,
+  sendInternalAccessRequestNotification,
+  sendOrderConfirmationEmail,
+  sendNewOrderToSellerEmail,
+} from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
 const B2B_JWT_SECRET =
@@ -32,6 +47,15 @@ const B2B_DB_URL =
 
 const B2B_ADMIN_USER = process.env.B2B_ADMIN_USER ?? "admin";
 const B2B_ADMIN_PASS = process.env.B2B_ADMIN_PASSWORD ?? "gsn@comercial2026";
+
+// Caixa interna que recebe avisos de novas solicitações de acesso/cadastro.
+const EMAIL_COMMERCIAL =
+  process.env.EMAIL_COMMERCIAL ??
+  process.env.EMAIL_SUPPORT ??
+  "comercial@garrafariaserranegra.com.br";
+// URL pública do painel — usada nos links dos avisos internos.
+const PAINEL_URL =
+  process.env.PAINEL_URL ?? "https://painel.garrafariaserranegra.com.br";
 
 interface B2BTokenPayload {
   cardCode: string;
@@ -143,6 +167,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const registrationService = new B2BRegistrationService(B2B_DB_URL);
   await registrationService.init();
+
+  const emailRequestService = new B2BEmailRequestService(B2B_DB_URL);
+  await emailRequestService.init();
+
+  const orderFollowupService = new B2BOrderFollowupService(B2B_DB_URL);
+  await orderFollowupService.init();
 
   const catalogService = new B2BCatalogService(B2B_DB_URL);
   await catalogService.init();
@@ -298,6 +328,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         });
 
         const hasPass = await authService.hasPassword(digits);
+        const pendingReq = !email
+          ? await emailRequestService.findPendingByCnpj(digits)
+          : null;
 
         reply.code(200).send({
           status: hasPass ? "has_password" : "needs_verification",
@@ -305,6 +338,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           cardName: partner.CardName ?? partner.CardCode,
           maskedEmail: email ? maskEmail(email) : null,
           hasEmail: !!email,
+          emailRequestStatus: pendingReq ? "pending" : "none",
         });
         return;
       }
@@ -312,12 +346,16 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const localCred = await authService.findByCnpj(digits);
       if (localCred) {
         const hasPass = await authService.hasPassword(digits);
+        const pendingReq = !localCred.email
+          ? await emailRequestService.findPendingByCnpj(digits)
+          : null;
         reply.code(200).send({
           status: hasPass ? "has_password" : "needs_verification",
           cardCode: localCred.card_code,
           cardName: localCred.card_name,
           maskedEmail: localCred.email ? maskEmail(localCred.email) : null,
           hasEmail: !!localCred.email,
+          emailRequestStatus: pendingReq ? "pending" : "none",
         });
         return;
       }
@@ -635,6 +673,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         inscricaoEstadual: body.inscricaoEstadual,
       });
 
+      // Confirmação ao cliente + aviso interno ao comercial (best-effort).
+      await sendRegistrationReceivedEmail({
+        to: body.email,
+        razaoSocial: body.razaoSocial,
+      }).catch(() => undefined);
+      await sendInternalAccessRequestNotification({
+        to: EMAIL_COMMERCIAL,
+        cardName: body.razaoSocial,
+        cnpj: digits,
+        requestedEmail: body.email,
+        contactName: body.contactName ?? null,
+        panelUrl: `${PAINEL_URL}/b2b-acessos`,
+      }).catch(() => undefined);
+
       reply.code(201).send({
         ok: true,
         message: "Cadastro recebido! A equipe comercial analisara seus dados em breve.",
@@ -645,6 +697,105 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const message = error instanceof Error ? error.message : "Erro ao cadastrar";
       req.log.error({ correlationId, errorMessage: message }, "Erro register B2B");
       reply.code(500).send({ error: "Erro ao cadastrar cliente", message });
+    }
+  });
+
+  // =============================================
+  // AUTH - REQUEST EMAIL ACCESS (cliente SAP sem e-mail)
+  // =============================================
+  app.post("/b2b/auth/request-email-access", async (req, reply) => {
+    const { cnpj, email, contactName } = req.body as any;
+    const correlationId = (req as any).correlationId as string;
+
+    if (!cnpj || !email) {
+      reply.code(400).send({ error: "CNPJ e e-mail sao obrigatorios" });
+      return;
+    }
+
+    const digits = normalizeCnpj(cnpj);
+    if (digits.length !== 14) {
+      reply.code(400).send({ error: "CNPJ invalido" });
+      return;
+    }
+
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(email) || email.length > 255) {
+      reply.code(400).send({ error: "E-mail invalido" });
+      return;
+    }
+
+    try {
+      const cred = await authService.findByCnpj(digits);
+      if (!cred) {
+        // Garante que o cliente exista no SAP antes de aceitar a solicitacao.
+        const partner = await findPartnerByCnpj(digits, correlationId);
+        if (!partner) {
+          reply.code(404).send({
+            error: "CNPJ nao encontrado. Solicite o cadastro da sua empresa.",
+          });
+          return;
+        }
+        if (partner.EmailAddress) {
+          reply.code(400).send({
+            error: "Este CNPJ ja possui e-mail cadastrado. Use o primeiro acesso.",
+          });
+          return;
+        }
+        await authService.upsertCredential({
+          cardCode: partner.CardCode,
+          cnpj: digits,
+          cardName: partner.CardName ?? partner.CardCode,
+          email: "",
+        });
+      } else if (cred.email) {
+        reply.code(400).send({
+          error: "Este CNPJ ja possui e-mail cadastrado. Use o primeiro acesso.",
+        });
+        return;
+      }
+
+      const existingPending = await emailRequestService.findPendingByCnpj(digits);
+      if (existingPending) {
+        reply.code(409).send({
+          error: "Ja existe uma solicitacao de acesso em analise para este CNPJ.",
+          status: "pending",
+        });
+        return;
+      }
+
+      const credAfter = await authService.findByCnpj(digits);
+      const cardName = credAfter?.card_name ?? "Cliente";
+
+      const request = await emailRequestService.create({
+        cnpj: digits,
+        cardCode: credAfter?.card_code ?? null,
+        cardName,
+        requestedEmail: email.trim(),
+        contactName: contactName?.trim() || null,
+      });
+
+      // Confirmacao ao cliente + aviso interno ao comercial (best-effort).
+      await sendEmailAccessRequestedEmail({ to: email.trim(), cardName });
+      await sendInternalAccessRequestNotification({
+        to: EMAIL_COMMERCIAL,
+        cardName,
+        cnpj: digits,
+        requestedEmail: email.trim(),
+        contactName: contactName?.trim() || null,
+        panelUrl: `${PAINEL_URL}/b2b-acessos`,
+      }).catch(() => undefined);
+
+      reply.code(201).send({
+        ok: true,
+        message:
+          "Solicitacao recebida! A Garrafaria Serra Negra vai analisar e liberar seu acesso em breve.",
+        requestId: request.id,
+        status: "pending",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ correlationId, errorMessage: message }, "Erro request-email-access B2B");
+      reply.code(500).send({ error: "Erro ao registrar solicitacao", message });
     }
   });
 
@@ -782,6 +933,191 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             ? "E-mail atualizado. A verificação foi reiniciada e o cliente confirmará no próximo acesso."
             : "E-mail removido da credencial.",
         });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - SOLICITACOES DE ACESSO POR E-MAIL
+  // =============================================
+  app.get(
+    "/b2b/admin/email-requests",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const status = (req.query as any).status as string | undefined;
+      try {
+        const items = await emailRequestService.list(status);
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/email-requests/:id/approve",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const { notes } = (req.body as any) ?? {};
+
+      try {
+        const reqRow = await emailRequestService.findById(Number(id));
+        if (!reqRow) {
+          reply.code(404).send({ error: "Solicitacao nao encontrada" });
+          return;
+        }
+        if (reqRow.status !== "pending") {
+          reply.code(400).send({ error: `Solicitacao ja processada (${reqRow.status})` });
+          return;
+        }
+
+        const cnpj = normalizeCnpj(reqRow.cnpj);
+        const cred = await authService.findByCnpj(cnpj);
+        if (!cred) {
+          reply.code(404).send({ error: "Credencial nao encontrada para o CNPJ" });
+          return;
+        }
+
+        // Grava o e-mail aprovado na credencial (sem write-back no SAP).
+        await authService.updateEmail(cnpj, reqRow.requested_email);
+        const updated = await emailRequestService.setStatus(
+          Number(id), "approved", admin.user, notes,
+        );
+
+        const emailSent = await sendEmailAccessApprovedEmail({
+          to: reqRow.requested_email,
+          cardName: reqRow.card_name ?? cred.card_name ?? "Cliente",
+          cnpj,
+        });
+
+        req.log.info(
+          { id, cnpj, admin: admin?.user },
+          "B2B admin: solicitacao de acesso por e-mail aprovada",
+        );
+        reply.code(200).send({ ok: true, request: updated, emailSent });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/email-requests/:id/reject",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const { notes } = (req.body as any) ?? {};
+
+      try {
+        const reqRow = await emailRequestService.findById(Number(id));
+        if (!reqRow) {
+          reply.code(404).send({ error: "Solicitacao nao encontrada" });
+          return;
+        }
+        const updated = await emailRequestService.setStatus(
+          Number(id), "rejected", admin.user, notes,
+        );
+        if (!updated) {
+          reply.code(400).send({ error: "Solicitacao nao encontrada ou ja processada" });
+          return;
+        }
+
+        const emailSent = await sendEmailAccessRejectedEmail({
+          to: reqRow.requested_email,
+          cardName: reqRow.card_name ?? "Cliente",
+          reason: notes ?? null,
+        });
+
+        req.log.info(
+          { id, admin: admin?.user },
+          "B2B admin: solicitacao de acesso por e-mail rejeitada",
+        );
+        reply.code(200).send({ ok: true, request: updated, emailSent });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - FOLLOW-UPS DE PEDIDOS (vendedores)
+  // =============================================
+  app.get(
+    "/b2b/admin/orders/:docEntry/followups",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const docEntry = Number((req.params as any).docEntry);
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      try {
+        const items = await orderFollowupService.listByOrder(docEntry);
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/orders/:docEntry/followups",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as {
+        note?: string;
+        statusTag?: string;
+        cardCode?: string;
+        createdBy?: string;
+      };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      if (!body.note || !body.note.trim()) {
+        reply.code(400).send({ error: "A anotacao e obrigatoria" });
+        return;
+      }
+      try {
+        const created = await orderFollowupService.create({
+          docEntry,
+          cardCode: body.cardCode ?? null,
+          statusTag: body.statusTag ?? null,
+          note: body.note.trim(),
+          createdBy: body.createdBy ?? null,
+        });
+        reply.code(201).send({ ok: true, followup: created });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Contagem de anotacoes para varios pedidos (badges na lista)
+  app.get(
+    "/b2b/admin/orders/followups/counts",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const raw = (req.query as any).docEntries as string | undefined;
+      const docEntries = (raw ?? "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n));
+      try {
+        const counts = await orderFollowupService.countByOrders(docEntries);
+        reply.code(200).send({ counts });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
@@ -956,6 +1292,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
           return;
         }
+        await sendRegistrationApprovedEmail({
+          to: updated.email,
+          razaoSocial: updated.razao_social,
+        }).catch(() => undefined);
         reply.code(200).send(updated);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
@@ -983,6 +1323,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
           return;
         }
+        await sendRegistrationRejectedEmail({
+          to: updated.email,
+          razaoSocial: updated.razao_social,
+          reason: notes ?? null,
+        }).catch(() => undefined);
         reply.code(200).send(updated);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
@@ -1453,6 +1798,21 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         });
         const created = response.data;
 
+        // Confirmação ao cliente + alerta operacional ao comercial/vendedor.
+        if (customer.email) {
+          await sendOrderConfirmationEmail({
+            to: customer.email,
+            cardName: customer.cardName,
+            docNum: created.DocNum ?? created.DocEntry,
+          }).catch(() => undefined);
+        }
+        await sendNewOrderToSellerEmail({
+          to: EMAIL_COMMERCIAL,
+          cardName: customer.cardName,
+          docNum: created.DocNum ?? created.DocEntry,
+          orderUrl: `${PAINEL_URL}/pedidos?docEntry=${created.DocEntry}`,
+        }).catch(() => undefined);
+
         reply.code(201).send({
           ok: true,
           message: "Pedido criado com sucesso",
@@ -1732,11 +2092,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         for (const n of pending) {
           try {
             const product = await catalogService.getProduct(sku);
-            await sendOtpEmail(
-              n.email,
-              "Produto disponivel novamente - Garrafaria Serra Negra",
-              `<p>Ola!</p><p>O produto <strong>${product?.sap_item_name ?? sku}</strong> esta novamente disponivel em nosso catalogo B2B.</p><p>Acesse o portal para efetuar seu pedido.</p>`,
-            );
+            await sendBackInStockEmail({
+              to: n.email,
+              productName: product?.sap_item_name ?? sku,
+            });
           } catch {
             // email delivery failure - continue
           }

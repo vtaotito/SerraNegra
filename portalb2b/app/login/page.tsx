@@ -33,6 +33,7 @@ type Step =
   | "cnpj"
   | "password"
   | "email"
+  | "request-email"
   | "otp"
   | "set-password"
   | "register"
@@ -44,6 +45,7 @@ interface LookupResult {
   cardName?: string;
   maskedEmail?: string;
   hasEmail?: boolean;
+  emailRequestStatus?: "pending" | "none";
 }
 
 const ESTADOS_BR = [
@@ -67,9 +69,13 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [emailInput, setEmailInput] = useState("");
+  const [contactInput, setContactInput] = useState("");
   const [devOtp, setDevOtp] = useState<string | null>(null);
   const [otpInput, setOtpInput] = useState("");
   const [tempToken, setTempToken] = useState("");
+  // Diferencia a mensagem da tela de "pending-approval":
+  // empresa nova (register) vs. cliente SAP sem e-mail (email-access).
+  const [pendingKind, setPendingKind] = useState<"register" | "email-access">("register");
 
   const [regForm, setRegForm] = useState({
     razaoSocial: "",
@@ -112,7 +118,17 @@ export default function LoginPage() {
       if (res.status === "has_password") {
         setStep("password");
       } else if (res.status === "needs_verification") {
-        setStep("email");
+        if (res.hasEmail) {
+          // Cliente já tem e-mail no SAP — confirma e segue por OTP.
+          setStep("email");
+        } else if (res.emailRequestStatus === "pending") {
+          // Já existe solicitação de acesso em análise.
+          setPendingKind("email-access");
+          setStep("pending-approval");
+        } else {
+          // Cliente SAP sem e-mail — precisa cadastrar um e-mail de acesso.
+          setStep("request-email");
+        }
       } else {
         setStep("register");
       }
@@ -231,6 +247,35 @@ export default function LoginPage() {
     }
   }
 
+  async function handleRequestEmailAccess(e: React.FormEvent) {
+    e.preventDefault();
+    if (!emailInput.trim()) {
+      setError("Informe um e-mail para acesso");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      await post<{ ok: boolean; status: string; message: string }>(
+        "/b2b/auth/request-email-access",
+        {
+          cnpj: cleanCnpj(cnpj),
+          email: emailInput.trim(),
+          contactName: contactInput.trim() || undefined,
+        },
+      );
+      setPendingKind("email-access");
+      setStep("pending-approval");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Erro ao solicitar acesso",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     if (!regForm.razaoSocial || !regForm.email) {
@@ -251,6 +296,7 @@ export default function LoginPage() {
         ...regForm,
       });
 
+      setPendingKind("register");
       setStep("pending-approval");
     } catch (err) {
       setError(
@@ -267,7 +313,12 @@ export default function LoginPage() {
     setConfirmPassword("");
     setOtpInput("");
     setDevOtp(null);
-    if (step === "password" || step === "email" || step === "register") {
+    if (
+      step === "password" ||
+      step === "email" ||
+      step === "request-email" ||
+      step === "register"
+    ) {
       setStep("cnpj");
       setLookupResult(null);
     } else if (step === "otp") {
@@ -294,10 +345,14 @@ export default function LoginPage() {
               {step === "cnpj" && "Informe o CNPJ da sua empresa"}
               {step === "password" && `Ola, ${lookupResult?.cardName}`}
               {step === "email" && "Confirme seu endereco de email"}
+              {step === "request-email" && "Cadastre um e-mail de acesso"}
               {step === "otp" && "Codigo de verificacao"}
               {step === "set-password" && "Crie sua senha de acesso"}
               {step === "register" && "Cadastro de novo cliente"}
-              {step === "pending-approval" && "Cadastro recebido!"}
+              {step === "pending-approval" &&
+                (pendingKind === "email-access"
+                  ? "Solicitacao recebida!"
+                  : "Cadastro recebido!")}
             </CardDescription>
           </div>
         </CardHeader>
@@ -452,6 +507,66 @@ export default function LoginPage() {
                 {loading
                   ? "Enviando..."
                   : "Confirmar e enviar codigo"}
+              </Button>
+            </form>
+          )}
+
+          {/* STEP: REQUEST EMAIL ACCESS (cliente SAP sem e-mail) */}
+          {step === "request-email" && (
+            <form onSubmit={handleRequestEmailAccess} className="space-y-4">
+              <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
+                <p className="font-medium">{lookupResult?.cardName}</p>
+                <p className="text-muted-foreground">
+                  Encontramos sua empresa, mas ainda nao ha um e-mail de acesso
+                  cadastrado.
+                </p>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Informe o e-mail que deseja usar para acessar o portal. A
+                Garrafaria Serra Negra vai validar a solicitacao e liberar seu
+                acesso.
+              </p>
+
+              <div className="space-y-2">
+                <label htmlFor="access-email" className="text-sm font-medium">
+                  E-mail de acesso
+                </label>
+                <Input
+                  id="access-email"
+                  type="email"
+                  placeholder="seu@email.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  disabled={loading}
+                  autoFocus
+                  className="h-11"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="access-contact" className="text-sm font-medium">
+                  Nome do contato{" "}
+                  <span className="text-muted-foreground font-normal">(opcional)</span>
+                </label>
+                <Input
+                  id="access-contact"
+                  type="text"
+                  placeholder="Responsavel pela conta"
+                  value={contactInput}
+                  onChange={(e) => setContactInput(e.target.value)}
+                  disabled={loading}
+                  className="h-11"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full h-11"
+                disabled={loading || !emailInput.trim()}
+              >
+                {loading ? <Spinner /> : <UserPlus className="h-4 w-4" />}
+                {loading ? "Enviando..." : "Solicitar acesso"}
               </Button>
             </form>
           )}
@@ -725,17 +840,23 @@ export default function LoginPage() {
               </div>
               <div className="space-y-2">
                 <p className="text-base font-medium text-foreground">
-                  Cadastro enviado com sucesso!
+                  {pendingKind === "email-access"
+                    ? "Solicitacao de acesso enviada!"
+                    : "Cadastro enviado com sucesso!"}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Sua solicitacao foi recebida e sera analisada pela nossa equipe comercial.
-                  Voce recebera um email quando o cadastro for aprovado.
+                  {pendingKind === "email-access"
+                    ? "Recebemos sua solicitacao de acesso. A Garrafaria Serra Negra vai validar e voce recebera um e-mail quando o acesso for liberado para fazer o primeiro acesso."
+                    : "Sua solicitacao foi recebida e sera analisada pela nossa equipe comercial. Voce recebera um email quando o cadastro for aprovado."}
                 </p>
               </div>
               <Button
                 onClick={() => {
                   setStep("cnpj");
                   setCnpj("");
+                  setEmailInput("");
+                  setContactInput("");
+                  setLookupResult(null);
                   setRegForm({ razaoSocial: "", nomeFantasia: "", email: "", phone: "", address: "", city: "", state: "", zipCode: "", contactName: "" });
                 }}
                 variant="outline"

@@ -76,6 +76,13 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASS: "${SMTP_PASS:-}"
       SMTP_FROM: "${SMTP_FROM:-noreply@garrafariaserranegra.com.br}"
+      # E-mail transacional (Resend) — preferido; SMTP acima é fallback
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-Garrafaria Serra Negra <noreply@garrafariaserranegra.com.br>}"
+      EMAIL_SUPPORT: "${EMAIL_SUPPORT:-comercial@garrafariaserranegra.com.br}"
+      EMAIL_COMMERCIAL: "${EMAIL_COMMERCIAL:-comercial@garrafariaserranegra.com.br}"
+      B2B_PORTAL_URL: "${B2B_PORTAL_URL:-https://garrafariaserranegra.com.br/b2b}"
+      PAINEL_URL: "${PAINEL_URL:-https://painel.garrafariaserranegra.com.br}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -164,6 +171,10 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASS: "${SMTP_PASS:-}"
       SMTP_FROM: "${SMTP_FROM:-Garrafaria Serra Negra <noreply@garrafariaserranegra.com.br>}"
+      # E-mail transacional (Resend) — preferido; SMTP acima é fallback
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-Garrafaria Serra Negra <noreply@garrafariaserranegra.com.br>}"
+      EMAIL_SUPPORT: "${EMAIL_SUPPORT:-comercial@garrafariaserranegra.com.br}"
       # RD Station (APIs Route Handlers /api/bi/rd — ver painel/.env.example)
       RD_STATION_CRM_ACCESS_TOKEN: "${RD_STATION_CRM_ACCESS_TOKEN:-}"
       RD_STATION_MARKETING_ACCESS_TOKEN: "${RD_STATION_MARKETING_ACCESS_TOKEN:-}"

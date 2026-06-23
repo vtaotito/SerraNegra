@@ -105,3 +105,76 @@ export function updateB2BCredentialEmail(cnpj: string, email: string | null) {
     { method: "PATCH", body: JSON.stringify({ email }) },
   );
 }
+
+// ─── Solicitações de acesso por e-mail (cliente SAP sem e-mail) ──
+
+export interface B2BEmailRequestRow {
+  id: number;
+  cnpj: string;
+  card_code: string | null;
+  card_name: string | null;
+  requested_email: string;
+  contact_name: string | null;
+  status: "pending" | "approved" | "rejected";
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listB2BEmailRequests(status?: string) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return b2bAdminFetch<{ items: B2BEmailRequestRow[]; total: number }>(
+    `/b2b/admin/email-requests${qs}`,
+  );
+}
+
+export function approveB2BEmailRequest(id: number, notes?: string) {
+  return b2bAdminFetch<{ ok: boolean; request: B2BEmailRequestRow; emailSent: boolean }>(
+    `/b2b/admin/email-requests/${id}/approve`,
+    { method: "POST", body: JSON.stringify({ notes: notes ?? null }) },
+  );
+}
+
+export function rejectB2BEmailRequest(id: number, notes?: string) {
+  return b2bAdminFetch<{ ok: boolean; request: B2BEmailRequestRow; emailSent: boolean }>(
+    `/b2b/admin/email-requests/${id}/reject`,
+    { method: "POST", body: JSON.stringify({ notes: notes ?? null }) },
+  );
+}
+
+// ─── Follow-ups de pedidos (acompanhamento dos vendedores) ──
+
+export interface B2BOrderFollowup {
+  id: number;
+  doc_entry: number;
+  card_code: string | null;
+  status_tag: string | null;
+  note: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export function listB2BOrderFollowups(docEntry: number) {
+  return b2bAdminFetch<{ items: B2BOrderFollowup[]; total: number }>(
+    `/b2b/admin/orders/${docEntry}/followups`,
+  );
+}
+
+export function createB2BOrderFollowup(
+  docEntry: number,
+  data: { note: string; statusTag?: string | null; cardCode?: string | null; createdBy?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; followup: B2BOrderFollowup }>(
+    `/b2b/admin/orders/${docEntry}/followups`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export function fetchB2BOrderFollowupCounts(docEntries: number[]) {
+  const qs = docEntries.length ? `?docEntries=${docEntries.join(",")}` : "";
+  return b2bAdminFetch<{ counts: Record<string, number> }>(
+    `/b2b/admin/orders/followups/counts${qs}`,
+  );
+}

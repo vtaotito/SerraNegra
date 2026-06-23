@@ -26,13 +26,14 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useState } from "react";
-import { WMS_BASE_URL } from "@/lib/config";
+import { WMS_BASE_URL, B2B_PORTAL_URL } from "@/lib/config";
 import { usePrivacy } from "./PrivacyProvider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
   { href: "/business-intelligence", label: "Business Intelligence", icon: BarChart3, roles: null, module: "cockpit" as const },
   { href: "/crm", label: "CRM", icon: Radio, roles: null, module: "cockpit" as const },
+  { href: "/pedidos", label: "Pedidos", icon: ShoppingCart, roles: null, module: "cockpit" as const },
   { href: "/catalogo", label: "Catálogo", icon: Tag, roles: null, module: "cockpit" as const },
   { href: "/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
@@ -42,7 +43,9 @@ const navItems = [
 
 const moduleLinks = [
   { href: WMS_BASE_URL, label: "WMS / OMS", icon: Package, module: "wms" as const },
-  { href: "/portal", label: "Portal B2B", icon: ShoppingCart, module: "b2b" as const, internal: true },
+  // Portal B2B oficial (portalb2b via nginx em /b2b). O portal interno legado
+  // em /portal foi descontinuado e removido do menu.
+  { href: B2B_PORTAL_URL, label: "Portal B2B", icon: ShoppingCart, module: "b2b" as const },
 ];
 
 export function Sidebar() {
