@@ -152,6 +152,12 @@ services:
       gateway:
         condition: service_healthy
     restart: unless-stopped
+    # next/image otimiza no servidor (busca a imagem de origem). Como o hostname
+    # do servidor e garrafariaserranegra.com.br, o dominio resolve para 127.0.1.1
+    # neste container e a otimizacao das imagens do WooCommerce falharia.
+    # Mapeamos para o IP publico real (ajustavel via WOO_HOST_IP no .env).
+    extra_hosts:
+      - "garrafariaserranegra.com.br:${WOO_HOST_IP:-147.79.90.205}"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3000/b2b"]
       interval: 10s
