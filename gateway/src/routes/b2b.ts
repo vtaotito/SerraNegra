@@ -9,6 +9,11 @@ import { B2BRegistrationService } from "../services/b2bRegistrationService.js";
 import { B2BEmailRequestService } from "../services/b2bEmailRequestService.js";
 import { B2BOrderFollowupService } from "../services/b2bOrderFollowupService.js";
 import {
+  B2BOrderStatusService,
+  isOrderStatus,
+  type OrderStatus,
+} from "../services/b2bOrderStatusService.js";
+import {
   B2BCatalogService,
   fetchAllGsnProducts,
   matchSapToGsn,
@@ -173,6 +178,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const orderFollowupService = new B2BOrderFollowupService(B2B_DB_URL);
   await orderFollowupService.init();
+
+  const orderStatusService = new B2BOrderStatusService(B2B_DB_URL);
+  await orderStatusService.init();
+
+  // Rótulos legíveis dos estágios do funil e-commerce (para a timeline).
+  const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
+    novo: "Novo",
+    em_analise: "Em análise",
+    separacao: "Em separação",
+    faturado: "Faturado",
+    enviado: "Enviado",
+    entregue: "Entregue",
+    cancelado: "Cancelado",
+  };
 
   const catalogService = new B2BCatalogService(B2B_DB_URL);
   await catalogService.init();
@@ -1126,6 +1145,229 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
+  // ADMIN - STATUS DO FUNIL E-COMMERCE (Portal B2B)
+  // =============================================
+
+  // Mapa doc_entry -> status para um conjunto de pedidos (colunas/KPIs).
+  app.get(
+    "/b2b/admin/orders/status",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const raw = (req.query as any).docEntries as string | undefined;
+      const docEntries = (raw ?? "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n));
+      try {
+        const map = await orderStatusService.getMany(docEntries);
+        reply.code(200).send({ map });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Atualiza o estágio do funil de um pedido (move no pipeline).
+  app.put(
+    "/b2b/admin/orders/:docEntry/status",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as {
+        status?: string;
+        cardCode?: string;
+        updatedBy?: string;
+      };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      if (!isOrderStatus(body.status)) {
+        reply.code(400).send({ error: "status invalido" });
+        return;
+      }
+      try {
+        const updatedBy = body.updatedBy ?? admin?.user ?? null;
+        const row = await orderStatusService.set({
+          docEntry,
+          status: body.status,
+          cardCode: body.cardCode ?? null,
+          updatedBy,
+        });
+        // Registra a mudança na timeline operacional do pedido (auditoria).
+        await orderFollowupService.create({
+          docEntry,
+          cardCode: body.cardCode ?? null,
+          statusTag: ORDER_STATUS_LABELS[body.status],
+          note: `Status do pedido alterado para “${ORDER_STATUS_LABELS[body.status]}”.`,
+          createdBy: updatedBy,
+        });
+        reply.code(200).send({ ok: true, status: row });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - VENDA ASSISTIDA (catálogo + criação de pedido)
+  // =============================================
+
+  // Catálogo para a equipe de vendas montar o pedido (mesmo acervo do portal).
+  app.get(
+    "/b2b/admin/catalog",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const limit = Math.min(Number(query.limit) || 30, 100);
+      const page = Number(query.page) || 1;
+      try {
+        const result = await catalogService.listProducts({
+          search: query.search,
+          category: query.category,
+          inStock:
+            query.inStock === "true"
+              ? true
+              : query.inStock === "false"
+                ? false
+                : undefined,
+          page,
+          limit,
+        });
+        reply.code(200).send({
+          items: result.items.map(toB2BCatalogItem),
+          total: result.total,
+          page,
+          pages: Math.ceil(result.total / limit),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: "Erro ao listar catálogo", message });
+      }
+    },
+  );
+
+  // Criação de pedido em nome do cliente (venda assistida pelo vendedor).
+  app.post(
+    "/b2b/admin/orders",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const correlationId = (req as any).correlationId as string;
+      const body = (req.body ?? {}) as {
+        cardCode?: string;
+        cardName?: string;
+        items?: { sku?: string; quantity?: number; warehouse?: string }[];
+        notes?: string;
+        dueDate?: string;
+        createdBy?: string;
+      };
+
+      const cardCode = (body.cardCode ?? "").trim();
+      const items = Array.isArray(body.items) ? body.items : [];
+      if (!cardCode) {
+        reply.code(400).send({ error: "Campo 'cardCode' é obrigatório" });
+        return;
+      }
+      const validItems = items.filter(
+        (i) => i.sku && Number(i.quantity) > 0,
+      );
+      if (validItems.length === 0) {
+        reply
+          .code(400)
+          .send({ error: "Inclua ao menos um item com quantidade válida" });
+        return;
+      }
+
+      try {
+        const client = getSapClient();
+        const seller = body.createdBy ?? admin?.user ?? "Equipe de vendas";
+        const cardName = (body.cardName ?? "").trim() || cardCode;
+
+        const documentLines = validItems.map((item, idx) => ({
+          LineNum: idx,
+          ItemCode: item.sku,
+          Quantity: Number(item.quantity),
+          WarehouseCode: item.warehouse ?? undefined,
+        }));
+
+        // Mantém o marcador do canal (Portal B2B) para o pedido entrar no mesmo
+        // funil de gestão, sinalizando que foi uma venda assistida pela equipe.
+        const baseComment = `Pedido via Portal B2B (venda assistida por ${seller}) - ${cardName}`;
+        const comments = body.notes?.trim()
+          ? `${baseComment} | Obs: ${body.notes.trim()}`
+          : baseComment;
+
+        const sapOrder = {
+          CardCode: cardCode,
+          DocDueDate:
+            body.dueDate ??
+            new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+          Comments: comments,
+          DocumentLines: documentLines,
+        };
+
+        const response = await client.post<any>("/Orders", sapOrder, {
+          correlationId,
+        });
+        const created = response.data;
+
+        if (created.DocEntry != null) {
+          await orderStatusService
+            .ensureInitial({
+              docEntry: Number(created.DocEntry),
+              status: "novo",
+              cardCode,
+            })
+            .catch((err) =>
+              req.log.warn({ err }, "Falha ao iniciar status do pedido assistido"),
+            );
+          // Registra a origem na timeline do pedido (auditoria).
+          await orderFollowupService
+            .create({
+              docEntry: Number(created.DocEntry),
+              cardCode,
+              statusTag: "Novo",
+              note: `Pedido criado por venda assistida no painel por ${seller}.`,
+              createdBy: seller,
+            })
+            .catch(() => undefined);
+        }
+
+        // Alerta operacional ao comercial (best-effort).
+        await sendNewOrderToSellerEmail({
+          to: EMAIL_COMMERCIAL,
+          cardName,
+          docNum: created.DocNum ?? created.DocEntry,
+          orderUrl: `${PAINEL_URL}/pedidos?docEntry=${created.DocEntry}`,
+        }).catch(() => undefined);
+
+        req.log.info(
+          { docEntry: created.DocEntry, cardCode, seller },
+          "Pedido criado via venda assistida",
+        );
+        reply.code(201).send({
+          ok: true,
+          message: "Pedido criado com sucesso",
+          docEntry: created.DocEntry,
+          docNum: created.DocNum,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao criar pedido";
+        req.log.error(
+          { error, correlationId, cardCode },
+          "Erro ao criar pedido assistido",
+        );
+        reply.code(500).send({ error: "Erro ao criar pedido", message });
+      }
+    },
+  );
+
+  // =============================================
   // ADMIN - LISTAR REGISTROS PENDENTES
   // =============================================
   app.get(
@@ -1812,6 +2054,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           docNum: created.DocNum ?? created.DocEntry,
           orderUrl: `${PAINEL_URL}/pedidos?docEntry=${created.DocEntry}`,
         }).catch(() => undefined);
+
+        // Inicializa o pedido como "novo" no funil e-commerce para a equipe de
+        // vendas (best-effort: não bloqueia a resposta ao cliente).
+        if (created.DocEntry != null) {
+          await orderStatusService
+            .ensureInitial({
+              docEntry: Number(created.DocEntry),
+              status: "novo",
+              cardCode: customer.cardCode,
+            })
+            .catch((err) =>
+              req.log.warn({ err }, "Falha ao iniciar status do pedido B2B"),
+            );
+        }
 
         reply.code(201).send({
           ok: true,

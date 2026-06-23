@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   Search,
   ShoppingCart,
@@ -16,6 +18,8 @@ import {
   CalendarDays,
   Send,
   StickyNote,
+  Layers,
+  Plus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort } from "@/lib/format";
@@ -42,6 +46,47 @@ type StatusFilter = "todos" | StatusKey;
 type OriginFilter = "todos" | "portal" | "outros";
 
 const STATUS_TAGS = ["Em contato", "Aguardando cliente", "Resolvido"] as const;
+
+// Funil de atendimento do canal e-commerce (Portal B2B), gerido pela equipe de
+// vendas — independente do status do SAP (Aberto/Fechado/Cancelado).
+type PipelineStatus =
+  | "novo"
+  | "em_analise"
+  | "separacao"
+  | "faturado"
+  | "enviado"
+  | "entregue"
+  | "cancelado";
+
+const PIPELINE: { key: PipelineStatus; label: string; cls: string; dot: string }[] = [
+  { key: "novo", label: "Novo", cls: "bg-sky-50 text-sky-700", dot: "bg-sky-500" },
+  { key: "em_analise", label: "Em análise", cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
+  { key: "separacao", label: "Em separação", cls: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
+  { key: "faturado", label: "Faturado", cls: "bg-violet-50 text-violet-700", dot: "bg-violet-500" },
+  { key: "enviado", label: "Enviado", cls: "bg-cyan-50 text-cyan-700", dot: "bg-cyan-500" },
+  { key: "entregue", label: "Entregue", cls: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
+  { key: "cancelado", label: "Cancelado", cls: "bg-red-50 text-red-600", dot: "bg-red-500" },
+];
+
+const PIPELINE_LABEL = Object.fromEntries(
+  PIPELINE.map((p) => [p.key, p.label]),
+) as Record<PipelineStatus, string>;
+const PIPELINE_CLS = Object.fromEntries(
+  PIPELINE.map((p) => [p.key, p.cls]),
+) as Record<PipelineStatus, string>;
+
+function OrderStageBadge({ status }: { status: PipelineStatus }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
+        PIPELINE_CLS[status],
+      )}
+    >
+      {PIPELINE_LABEL[status]}
+    </span>
+  );
+}
 
 function isPortalOrder(o: SalesOrderRow): boolean {
   return (o.comments ?? "").toLowerCase().includes("pedido via portal b2b");
@@ -106,18 +151,31 @@ function PedidosContent() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
-  const [originFilter, setOriginFilter] = useState<OriginFilter>("todos");
+  // Workspace centrado no canal e-commerce: começa na origem Portal B2B.
+  const [originFilter, setOriginFilter] = useState<OriginFilter>("portal");
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineStatus | "todos">("todos");
   const [selected, setSelected] = useState<SalesOrderRow | null>(null);
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
+  const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
 
-  const filtered = useMemo(() => {
+  // Etapa efetiva no funil: status salvo ou, para pedidos do portal ainda não
+  // trabalhados, "novo" como padrão. Pedidos de outras origens não têm etapa.
+  const effStatus = useCallback(
+    (o: SalesOrderRow): PipelineStatus | null => {
+      const s = statusMap[String(o.doc_entry)];
+      if (s) return s;
+      return isPortalOrder(o) ? "novo" : null;
+    },
+    [statusMap],
+  );
+
+  // Pedidos filtrados por busca + status SAP (sem origem) — base para as abas.
+  const scoped = useMemo(() => {
     const q = search.trim().toLowerCase();
     return orders
       .filter((o) => !isFreightOrder(o))
       .filter((o) => {
         if (statusFilter !== "todos" && deriveStatus(o) !== statusFilter) return false;
-        if (originFilter === "portal" && !isPortalOrder(o)) return false;
-        if (originFilter === "outros" && isPortalOrder(o)) return false;
         if (q) {
           const hay = `${o.card_name} ${o.card_code} ${o.doc_num}`.toLowerCase();
           if (!hay.includes(q)) return false;
@@ -125,7 +183,37 @@ function PedidosContent() {
         return true;
       })
       .sort((a, b) => (a.doc_date < b.doc_date ? 1 : -1));
-  }, [orders, search, statusFilter, originFilter]);
+  }, [orders, search, statusFilter]);
+
+  // Contadores por origem (para os badges das abas).
+  const originCounts = useMemo(() => {
+    let portal = 0;
+    for (const o of scoped) if (isPortalOrder(o)) portal++;
+    return { todos: scoped.length, portal, outros: scoped.length - portal };
+  }, [scoped]);
+
+  // Aplica a separação por origem (aba ativa).
+  const byOrigin = useMemo(() => {
+    if (originFilter === "portal") return scoped.filter(isPortalOrder);
+    if (originFilter === "outros") return scoped.filter((o) => !isPortalOrder(o));
+    return scoped;
+  }, [scoped, originFilter]);
+
+  // Contagem por etapa do funil (chips do pipeline), sobre a origem ativa.
+  const pipelineCounts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const o of byOrigin) {
+      const s = effStatus(o);
+      if (s) c[s] = (c[s] ?? 0) + 1;
+    }
+    return c;
+  }, [byOrigin, effStatus]);
+
+  // Aplica o filtro de etapa selecionada.
+  const filtered = useMemo(() => {
+    if (pipelineFilter === "todos") return byOrigin;
+    return byOrigin.filter((o) => effStatus(o) === pipelineFilter);
+  }, [byOrigin, pipelineFilter, effStatus]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -136,14 +224,16 @@ function PedidosContent() {
     return { abertos: abertos.length, total, portal, lastDate };
   }, [filtered]);
 
-  // Contagem de anotações por pedido (badges)
+  // Carrega anotações + status do funil para os pedidos da origem ativa
+  // (independe do filtro de etapa, para manter contadores estáveis).
   const docEntriesKey = useMemo(
-    () => filtered.map((o) => o.doc_entry).join(","),
-    [filtered],
+    () => byOrigin.map((o) => o.doc_entry).join(","),
+    [byOrigin],
   );
   useEffect(() => {
     if (!docEntriesKey) {
       setFollowCounts({});
+      setStatusMap({});
       return;
     }
     const ids = docEntriesKey.split(",").slice(0, 500).join(",");
@@ -153,7 +243,26 @@ function PedidosContent() {
         if (j.success) setFollowCounts(j.data.counts ?? {});
       })
       .catch(() => undefined);
+    fetch(`/api/b2b-admin/orders/status?docEntries=${ids}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) setStatusMap(j.data.map ?? {});
+      })
+      .catch(() => undefined);
   }, [docEntriesKey]);
+
+  // Deep-link dos e-mails (?docEntry=…) abre o pedido automaticamente.
+  const searchParams = useSearchParams();
+  const deepLinkDocEntry = searchParams.get("docEntry");
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || !deepLinkDocEntry || orders.length === 0) return;
+    const target = orders.find((o) => String(o.doc_entry) === String(deepLinkDocEntry));
+    if (target) {
+      setSelected(target);
+      deepLinkedRef.current = true;
+    }
+  }, [deepLinkDocEntry, orders]);
 
   return (
     <div className="space-y-6">
@@ -169,7 +278,39 @@ function PedidosContent() {
             {isComercial && " (filtrado pelos seus clientes)"}
           </p>
         </div>
-        <DateRangePicker />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/pedidos/nova"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4" /> Nova venda
+          </Link>
+          <DateRangePicker />
+        </div>
+      </div>
+
+      {/* Separação por origem (abas) */}
+      <div className="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+        <OriginTab
+          active={originFilter === "portal"}
+          onClick={() => setOriginFilter("portal")}
+          icon={Store}
+          label="Portal B2B"
+          count={originCounts.portal}
+          accent
+        />
+        <OriginTab
+          active={originFilter === "outros"}
+          onClick={() => setOriginFilter("outros")}
+          label="Outras origens"
+          count={originCounts.outros}
+        />
+        <OriginTab
+          active={originFilter === "todos"}
+          onClick={() => setOriginFilter("todos")}
+          label="Todos"
+          count={originCounts.todos}
+        />
       </div>
 
       {/* KPIs */}
@@ -206,15 +347,29 @@ function PedidosContent() {
           <option value="fechado">Fechados</option>
           <option value="cancelado">Cancelados</option>
         </select>
-        <select
-          value={originFilter}
-          onChange={(e) => setOriginFilter(e.target.value as OriginFilter)}
-          className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-gsn-700/40 outline-none"
-        >
-          <option value="todos">Todas as origens</option>
-          <option value="portal">Portal B2B</option>
-          <option value="outros">Outros</option>
-        </select>
+      </div>
+
+      {/* Pipeline e-commerce (etapas) */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide shrink-0">
+          <Layers className="w-3.5 h-3.5" /> Etapa
+        </span>
+        <StageChip
+          active={pipelineFilter === "todos"}
+          onClick={() => setPipelineFilter("todos")}
+          label="Todas"
+          count={byOrigin.length}
+        />
+        {PIPELINE.map((p) => (
+          <StageChip
+            key={p.key}
+            active={pipelineFilter === p.key}
+            onClick={() => setPipelineFilter(p.key)}
+            label={p.label}
+            count={pipelineCounts[p.key] ?? 0}
+            dot={p.dot}
+          />
+        ))}
       </div>
 
       {/* Tabela */}
@@ -225,7 +380,9 @@ function PedidosContent() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex items-center justify-center h-40 text-sm text-gray-500">
-            Nenhum pedido no período/filtros selecionados
+            {originFilter === "portal"
+              ? "Nenhum pedido via Portal B2B no período/filtros selecionados"
+              : "Nenhum pedido no período/filtros selecionados"}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -238,7 +395,8 @@ function PedidosContent() {
                   <Th>Data</Th>
                   <Th right>Valor</Th>
                   <Th>Origem</Th>
-                  <Th>Status</Th>
+                  <Th>Etapa</Th>
+                  <Th>Status SAP</Th>
                   <Th right>Notas</Th>
                 </tr>
               </thead>
@@ -273,6 +431,13 @@ function PedidosContent() {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        {effStatus(o) ? (
+                          <OrderStageBadge status={effStatus(o)!} />
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
                         <StatusBadge status={deriveStatus(o)} />
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -302,13 +467,92 @@ function PedidosContent() {
               : null
           }
           customer={custMap.get(selected.card_code) ?? null}
+          stage={effStatus(selected)}
           onClose={() => setSelected(null)}
           onFollowupChange={(docEntry, count) =>
             setFollowCounts((prev) => ({ ...prev, [String(docEntry)]: count }))
           }
+          onStageChange={(docEntry, status) =>
+            setStatusMap((prev) => ({ ...prev, [String(docEntry)]: status }))
+          }
         />
       )}
     </div>
+  );
+}
+
+function OriginTab({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  count,
+  accent,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon?: typeof Store;
+  label: string;
+  count: number;
+  accent?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition",
+        active
+          ? accent
+            ? "bg-white text-amber-700 shadow-sm"
+            : "bg-white text-gsn-700 shadow-sm"
+          : "text-gray-500 hover:text-gray-700",
+      )}
+    >
+      {Icon && <Icon className="w-4 h-4" />}
+      {label}
+      <span
+        className={cn(
+          "ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-semibold",
+          active
+            ? accent
+              ? "bg-amber-100 text-amber-700"
+              : "bg-gsn-50 text-gsn-700"
+            : "bg-gray-200 text-gray-500",
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function StageChip({
+  active,
+  onClick,
+  label,
+  count,
+  dot,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  dot?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition shrink-0",
+        active
+          ? "border-gsn-700 bg-gsn-50 text-gsn-800"
+          : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
+      )}
+    >
+      {dot && <span className={cn("w-2 h-2 rounded-full", dot)} />}
+      {label}
+      <span className="text-gray-400 font-semibold">{count}</span>
+    </button>
   );
 }
 
@@ -368,14 +612,18 @@ function OrderDrawer({
   order,
   sellerName,
   customer,
+  stage,
   onClose,
   onFollowupChange,
+  onStageChange,
 }: {
   order: SalesOrderRow;
   sellerName: string | null;
   customer: CustomerRow | null;
+  stage: PipelineStatus | null;
   onClose: () => void;
   onFollowupChange: (docEntry: number, count: number) => void;
+  onStageChange: (docEntry: number, status: PipelineStatus) => void;
 }) {
   const [lines, setLines] = useState<SalesOrderLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(true);
@@ -383,6 +631,12 @@ function OrderDrawer({
   const [note, setNote] = useState("");
   const [statusTag, setStatusTag] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [currentStage, setCurrentStage] = useState<PipelineStatus | null>(stage);
+  const [stageSaving, setStageSaving] = useState<PipelineStatus | null>(null);
+
+  useEffect(() => {
+    setCurrentStage(stage);
+  }, [stage, order.doc_entry]);
 
   useEffect(() => {
     setLinesLoading(true);
@@ -436,6 +690,28 @@ function OrderDrawer({
     }
   };
 
+  const changeStage = async (next: PipelineStatus) => {
+    if (next === currentStage || stageSaving) return;
+    setStageSaving(next);
+    try {
+      const res = await fetch(`/api/b2b-admin/orders/${order.doc_entry}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next, cardCode: order.card_code }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro ao atualizar etapa");
+      setCurrentStage(next);
+      onStageChange(order.doc_entry, next);
+      loadFollowups();
+      toast.success(`Etapa alterada para “${PIPELINE_LABEL[next]}”`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar etapa");
+    } finally {
+      setStageSaving(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[90] flex justify-end">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
@@ -467,6 +743,39 @@ function OrderDrawer({
             <Info label="Entrega" value={order.doc_due_date ? fmtDateShort(order.doc_due_date) : "—"} />
             <Info label="Vendedor" value={sellerName ?? "—"} />
             <Info label="Valor total" value={fmtBRL(Number(order.doc_total) || 0)} strong />
+          </div>
+
+          {/* Etapa do funil e-commerce */}
+          <div className="rounded-lg border border-gray-200 p-3">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5" /> Etapa do pedido
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {PIPELINE.map((p) => {
+                const active = currentStage === p.key;
+                const loading = stageSaving === p.key;
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => changeStage(p.key)}
+                    disabled={stageSaving != null}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition disabled:opacity-60",
+                      active
+                        ? `${p.cls} border-transparent ring-1 ring-inset ring-current`
+                        : "bg-white text-gray-500 border-gray-200 hover:border-gray-300",
+                    )}
+                  >
+                    {loading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <span className={cn("w-2 h-2 rounded-full", p.dot)} />
+                    )}
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Contato */}

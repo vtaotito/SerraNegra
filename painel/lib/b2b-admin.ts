@@ -178,3 +178,96 @@ export function fetchB2BOrderFollowupCounts(docEntries: number[]) {
     `/b2b/admin/orders/followups/counts${qs}`,
   );
 }
+
+// ─── Status do funil e-commerce (Portal B2B) ──
+
+export const B2B_ORDER_STATUSES = [
+  "novo",
+  "em_analise",
+  "separacao",
+  "faturado",
+  "enviado",
+  "entregue",
+  "cancelado",
+] as const;
+
+export type B2BOrderStatus = (typeof B2B_ORDER_STATUSES)[number];
+
+export interface B2BOrderStatusRow {
+  doc_entry: number;
+  card_code: string | null;
+  status: B2BOrderStatus;
+  updated_by: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export function fetchB2BOrderStatusMap(docEntries: number[]) {
+  const qs = docEntries.length ? `?docEntries=${docEntries.join(",")}` : "";
+  return b2bAdminFetch<{ map: Record<string, B2BOrderStatus> }>(
+    `/b2b/admin/orders/status${qs}`,
+  );
+}
+
+export function setB2BOrderStatus(
+  docEntry: number,
+  data: { status: B2BOrderStatus; cardCode?: string | null; updatedBy?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; status: B2BOrderStatusRow }>(
+    `/b2b/admin/orders/${docEntry}/status`,
+    { method: "PUT", body: JSON.stringify(data) },
+  );
+}
+
+// ─── Venda assistida (catálogo + criação de pedido pelo vendedor) ──
+
+export interface B2BAdminCatalogItem {
+  sku: string;
+  name: string;
+  description: string;
+  category: string | null;
+  ean: string | null;
+  imageUrl: string | null;
+  price: number;
+  inStock: boolean;
+  stockQuantity: number;
+  unitOfMeasure: string;
+  packagingType: string | null;
+  unitsPerPack: number | null;
+}
+
+export function fetchB2BAdminCatalog(params: {
+  search?: string;
+  category?: string;
+  inStock?: boolean;
+  page?: number;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.category) qs.set("category", params.category);
+  if (typeof params.inStock === "boolean") qs.set("inStock", String(params.inStock));
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return b2bAdminFetch<{
+    items: B2BAdminCatalogItem[];
+    total: number;
+    page: number;
+    pages: number;
+  }>(`/b2b/admin/catalog${suffix}`);
+}
+
+export function createB2BAdminOrder(data: {
+  cardCode: string;
+  cardName?: string;
+  items: { sku: string; quantity: number; warehouse?: string }[];
+  notes?: string;
+  dueDate?: string;
+  createdBy?: string;
+}) {
+  return b2bAdminFetch<{ ok: boolean; docEntry: number; docNum: number }>(
+    `/b2b/admin/orders`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
