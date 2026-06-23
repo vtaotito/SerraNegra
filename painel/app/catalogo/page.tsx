@@ -536,7 +536,7 @@ function UnifiedProductModal({
                     <span className="text-[10px] font-semibold text-cockpit-muted uppercase truncate">{k.label}</span>
                   </div>
                   <span className={`text-lg font-bold ${k.color} block mt-1 tabular-nums`}>{k.value}</span>
-                  {k.sub && <span className="text-[10px] text-cockpit-muted">{k.sub}</span>}
+                  {k.sub && <span data-private className="text-[10px] text-cockpit-muted">{k.sub}</span>}
                 </div>
               ))}
             </div>
@@ -628,7 +628,7 @@ function UnifiedProductModal({
                 {monthlyMedian > 0 && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-700 font-semibold">
                     <span className="inline-block w-2 h-px bg-violet-600 align-middle" />
-                    Mediana {fmtBRL(monthlyMedian, 0)}
+                    Mediana <span data-private>{fmtBRL(monthlyMedian, 0)}</span>
                   </span>
                 )}
               </div>
@@ -698,11 +698,11 @@ function UnifiedProductModal({
                       <span className="w-5 h-5 rounded-full bg-cockpit-accent/10 text-cockpit-accent font-bold text-[10px] flex items-center justify-center shrink-0">{i + 1}</span>
                       <div className="min-w-0 flex-1">
                         <p className="font-bold text-gray-800 truncate">{c.name}</p>
-                        <p className="text-cockpit-muted font-mono text-[10px]">{c.code} · {c.orders} pedidos · {fmtNum(c.qty)} un</p>
+                        <p className="text-cockpit-muted font-mono text-[10px]">{c.code} · <span data-private>{c.orders} pedidos · {fmtNum(c.qty)} un</span></p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-semibold text-cockpit-accent">{fmtBRL(c.fat)}</p>
-                        <p className="text-cockpit-muted text-[10px]">{pctClient.toFixed(1)}%</p>
+                        <p className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(c.fat)}</p>
+                        <p className="text-cockpit-muted text-[10px] tabular-nums">{pctClient.toFixed(1)}%</p>
                       </div>
                     </div>
                   );
@@ -744,9 +744,9 @@ function UnifiedProductModal({
                               </span>
                             </td>
                           )}
-                          <td className="py-1.5 px-3 text-right text-gray-600">{fmtNum(r.qty)}</td>
-                          <td className="py-1.5 px-3 text-right text-gray-500">{fmtBRL(r.unitPrice, 2)}</td>
-                          <td className="py-1.5 px-3 text-right font-medium text-cockpit-accent">{fmtBRL(r.lineTotal)}</td>
+                          <td className="py-1.5 px-3 text-right text-gray-600 tabular-nums">{fmtNum(r.qty)}</td>
+                          <td className="py-1.5 px-3 text-right text-gray-500 tabular-nums">{fmtBRL(r.unitPrice, 2)}</td>
+                          <td className="py-1.5 px-3 text-right font-medium text-cockpit-accent tabular-nums">{fmtBRL(r.lineTotal)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -760,7 +760,7 @@ function UnifiedProductModal({
         {/* Footer */}
         <div className="px-6 py-3 border-t border-cockpit-border bg-cockpit-bg/50 text-xs text-cockpit-muted flex items-center justify-between">
           <span>
-            {product.codName} · {product.vendas} vendas · {product.clientes} clientes · {pctTotal.toFixed(2)}% do total
+            {product.codName} · <span data-private>{product.vendas} vendas · {product.clientes} clientes · {pctTotal.toFixed(2)}% do total</span>
             {hasMultipleVariants && ` · ${product.variants.length} embalagens`}
           </span>
           <button onClick={onClose} className="px-3 py-1.5 rounded-lg bg-cockpit-accent text-white text-xs font-medium hover:bg-cockpit-accent/90 motion-safe:transition-colors">
