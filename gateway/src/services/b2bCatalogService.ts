@@ -424,7 +424,12 @@ const UNIT_TOKENS = new Set([
 
 function distinctiveTokens(normalized: string): string[] {
   return extractTokens(normalized).filter(
-    (t) => !/^\d+$/.test(t) && !UNIT_TOKENS.has(t),
+    (t) =>
+      !/^\d+$/.test(t) &&
+      !UNIT_TOKENS.has(t) &&
+      // Tokens "numero+unidade" colados (ex.: 600ml, 1000ml, 28mm) sao medida/
+      // volume — tratados por extractVolume, nunca contam como nome do produto.
+      !/^\d+(?:[.,]\d+)?(ml|l|lt|litros?|g|gr|kg|mm|cm|un)$/.test(t),
   );
 }
 
@@ -615,7 +620,7 @@ export class B2BCatalogService {
          image_thumb_url = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url) ELSE EXCLUDED.image_thumb_url END,
          category_name = COALESCE(EXCLUDED.category_name, b2b_catalog_products.category_name),
          sap_group_code = COALESCE(EXCLUDED.sap_group_code, b2b_catalog_products.sap_group_code),
-         description_short = COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short),
+         description_short = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short) ELSE EXCLUDED.description_short END,
          ean = COALESCE(EXCLUDED.ean, b2b_catalog_products.ean),
          unit_of_measure = EXCLUDED.unit_of_measure,
          packaging_type = COALESCE(EXCLUDED.packaging_type, b2b_catalog_products.packaging_type),
