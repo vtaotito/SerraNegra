@@ -22,9 +22,12 @@ import {
   UsersRound,
   Radio,
   KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useState } from "react";
 import { WMS_BASE_URL } from "@/lib/config";
+import { usePrivacy } from "./PrivacyProvider";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, roles: null },
@@ -45,6 +48,7 @@ const moduleLinks = [
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { enabled: privacyEnabled, toggle: togglePrivacy } = usePrivacy();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -198,6 +202,48 @@ export function Sidebar() {
             </div>
           )}
         </Link>
+        <button
+          onClick={togglePrivacy}
+          title={
+            privacyEnabled
+              ? "Mostrar valores (Shift+H)"
+              : "Ocultar valores — modo privacidade (Shift+H)"
+          }
+          aria-pressed={privacyEnabled}
+          className={cn(
+            "flex items-center gap-3 w-full rounded-lg text-[13px] font-medium motion-safe:transition-all duration-200",
+            collapsed ? "px-3 py-2 justify-center" : "px-3 py-2",
+            privacyEnabled
+              ? "bg-gsn-700/10 text-gsn-700 hover:bg-gsn-700/15"
+              : "text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          )}
+        >
+          {privacyEnabled ? (
+            <EyeOff className="w-4 h-4 flex-shrink-0" />
+          ) : (
+            <Eye className="w-4 h-4 flex-shrink-0" />
+          )}
+          {!collapsed && (
+            <span className="flex-1 text-left">
+              {privacyEnabled ? "Valores ocultos" : "Ocultar valores"}
+            </span>
+          )}
+          {!collapsed && (
+            <span
+              className={cn(
+                "w-8 h-[18px] rounded-full relative motion-safe:transition-colors shrink-0",
+                privacyEnabled ? "bg-gsn-700" : "bg-gray-200"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow-sm motion-safe:transition-transform",
+                  privacyEnabled ? "translate-x-[16px]" : "translate-x-0.5"
+                )}
+              />
+            </span>
+          )}
+        </button>
         <button
           onClick={logout}
           className={cn(

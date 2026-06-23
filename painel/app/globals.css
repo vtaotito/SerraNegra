@@ -96,6 +96,25 @@
 
 tr { transition: background-color 150ms ease; }
 
+/* ── Modo privacidade: mascara números e valores ──────── */
+/* Ativado pela classe .privacy-mode no <body> (ver PrivacyProvider). */
+body.privacy-mode .tabular-nums,
+body.privacy-mode [data-private],
+body.privacy-mode .recharts-wrapper text {
+  filter: blur(7px);
+  -webkit-filter: blur(7px);
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+  transition: filter 120ms ease;
+}
+
+/* Tooltips de gráfico exibem valores — também mascarados */
+body.privacy-mode .recharts-tooltip-wrapper {
+  filter: blur(6px);
+  -webkit-filter: blur(6px);
+}
+
 :focus-visible {
   outline: 2px solid var(--gsn-primary);
   outline-offset: 2px;
