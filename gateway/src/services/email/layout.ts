@@ -14,7 +14,7 @@ export const BRAND = {
   logoUrl:
     "https://garrafariaserranegra.com.br/wp-content/uploads/2023/05/LOGO-GARRAFARIA-SERRA-NEGRA-40-ANOS-SITE-OFICIAL.png",
   portalUrl:
-    process.env.B2B_PORTAL_URL ?? "https://garrafariaserranegra.com.br/b2b",
+    process.env.B2B_PORTAL_URL ?? "https://b2b.garrafariaserranegra.com.br/b2b",
   supportEmail:
     process.env.EMAIL_SUPPORT ?? "comercial@garrafariaserranegra.com.br",
 } as const;
