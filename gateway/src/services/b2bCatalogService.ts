@@ -232,6 +232,79 @@ interface CatalogFilters {
 const GSN_API_BASE = "https://garrafariaonline.commercesuite.com.br/web_api";
 const TCDN_BASE = "https://images.tcdn.com.br/img/img_prod/1123510";
 
+// WooCommerce Store API (site institucional/catalogo da Garrafaria Serra Negra).
+// E o catalogo da propria empresa, entao os nomes batem com os itens do SAP e
+// traz imagens + descricoes ricas.
+const WOO_API_BASE = "https://garrafariaserranegra.com.br/wp-json/wc/store/v1";
+
+/**
+ * Busca todos os produtos do WooCommerce (site garrafariaserranegra.com.br),
+ * normalizando para o mesmo formato de GsnProduct usado no matching.
+ */
+export async function fetchAllWooProducts(): Promise<GsnProduct[]> {
+  const all: GsnProduct[] = [];
+
+  for (let page = 1; page <= 20; page++) {
+    try {
+      const url = `${WOO_API_BASE}/products?per_page=100&page=${page}`;
+      const res = await fetch(url, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) break;
+
+      const products = (await res.json()) as any[];
+      if (!Array.isArray(products) || products.length === 0) break;
+
+      for (const p of products) {
+        const firstImage =
+          Array.isArray(p.images) && p.images.length > 0 ? p.images[0] : null;
+        const images = firstImage
+          ? [
+              {
+                url: String(firstImage.src ?? ""),
+                thumbUrl: String(
+                  firstImage.thumbnail ?? firstImage.src ?? "",
+                ),
+              },
+            ]
+          : [];
+
+        // Descricao: WooCommerce retorna HTML; preferimos a descricao completa.
+        const description = String(
+          p.description ?? p.short_description ?? "",
+        ).trim();
+
+        const categoryName =
+          Array.isArray(p.categories) && p.categories.length > 0
+            ? String(p.categories[0].name ?? "")
+            : "";
+
+        all.push({
+          id: `woo-${p.id}`,
+          name: String(p.name ?? ""),
+          slug: String(p.slug ?? ""),
+          price: String(p.prices?.price ?? "0"),
+          promotional_price: String(p.prices?.sale_price ?? "0"),
+          available: p.is_in_stock ? "1" : "0",
+          category_name: categoryName,
+          images,
+          description_small: description,
+          // SKU do Woo costuma ser interno ("SN..."), nao um EAN confiavel para
+          // casar com o BarCode do SAP — deixamos vazio e casamos por nome+volume.
+          ean: "",
+        });
+      }
+
+      if (products.length < 100) break;
+    } catch {
+      break;
+    }
+  }
+
+  return all;
+}
+
 export async function fetchAllGsnProducts(): Promise<GsnProduct[]> {
   const all: GsnProduct[] = [];
   let offset = 0;
@@ -313,6 +386,10 @@ function normalizeForMatch(name: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\(.*?\)/g, "")
     .replace(/\b(garrafa|garrafinha|pote|vidro|para|tra|rolha|cortica|tampa|metalica|mm|pcte?|pct|un|c\/)\b/g, "")
+    // Palavras de fechamento/atributo/categoria: nao identificam a "linha" do
+    // produto e, se mantidas, geram tanto falso-positivo (ex.: tampa x garrafa
+    // compartilhando "rosca") quanto falso-negativo. Removidas do match.
+    .replace(/\b(rosca|twistoff|twist|fliptop|flip|off|premium|standard|mini|bolso|kit|de|da|do|com)\b/g, "")
     .replace(/\b\d{2}mm\b/g, "")
     .replace(/[^a-z0-9 ]/g, "")
     .replace(/\s+/g, " ")
@@ -337,14 +414,26 @@ function extractTokens(normalized: string): string[] {
   return normalized.split(" ").filter((t) => t.length > 1);
 }
 
+// Tokens irrelevantes para distinguir um produto (unidades / medidas). O volume
+// e tratado separadamente por extractVolume, entao nao deve contar como "match".
+const UNIT_TOKENS = new Set(["ml", "l", "lt", "mm", "cm", "kg", "g", "gr", "un"]);
+
+function distinctiveTokens(normalized: string): string[] {
+  return extractTokens(normalized).filter(
+    (t) => !/^\d+$/.test(t) && !UNIT_TOKENS.has(t),
+  );
+}
+
 function matchScore(sapName: string, gsnName: string): number {
   const sapNorm = normalizeForMatch(sapName);
   const gsnNorm = normalizeForMatch(gsnName);
 
-  if (sapNorm === gsnNorm) return 100;
+  if (sapNorm.length > 0 && sapNorm === gsnNorm) return 100;
 
-  const sapTokens = extractTokens(sapNorm);
-  const gsnTokens = extractTokens(gsnNorm);
+  // So consideramos tokens distintivos (nome do produto), ignorando numeros e
+  // unidades — assim "1000 ml" sozinho nao gera match.
+  const sapTokens = distinctiveTokens(sapNorm);
+  const gsnTokens = distinctiveTokens(gsnNorm);
   if (sapTokens.length === 0 || gsnTokens.length === 0) return 0;
 
   let matches = 0;
@@ -354,16 +443,24 @@ function matchScore(sapName: string, gsnName: string): number {
     }
   }
 
+  // Sem nenhum token de nome em comum => nao e o mesmo produto.
+  if (matches === 0) return 0;
+
   const sapVol = extractVolume(sapName);
   const gsnVol = extractVolume(gsnName);
   const volumeMatch = sapVol && gsnVol && sapVol === gsnVol;
   const volumeMismatch = sapVol && gsnVol && sapVol !== gsnVol;
 
-  if (volumeMismatch) return Math.min(matches, 10);
+  // Cobertura do nome mais curto: nomes do SAP costumam ter atributos extras
+  // (cor, fechamento) ausentes no titulo do site, entao usar o menor evita
+  // penalizar matches corretos.
+  const minLen = Math.min(sapTokens.length, gsnTokens.length);
+  let score = Math.round((matches / minLen) * 100);
 
-  const maxLen = Math.max(sapTokens.length, gsnTokens.length);
-  let score = Math.round((matches / maxLen) * 100);
-  if (volumeMatch && score >= 20) score = Math.min(100, score + 10);
+  // Volume diferente e forte sinal de produto diferente: derruba o score.
+  if (volumeMismatch) return Math.min(score, 15);
+  if (volumeMatch) score = Math.min(100, score + 15);
+
   return score;
 }
 
@@ -409,7 +506,7 @@ export function matchSapToGsn(
       }
     }
 
-    if (bestMatch && bestScore >= 35) {
+    if (bestMatch && bestScore >= 55) {
       result.set(sap.ItemCode, { gsn: bestMatch, score: bestScore });
       usedGsnIds.add(bestMatch.id);
     }

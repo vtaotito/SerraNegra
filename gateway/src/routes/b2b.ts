@@ -16,6 +16,7 @@ import {
 import {
   B2BCatalogService,
   fetchAllGsnProducts,
+  fetchAllWooProducts,
   matchSapToGsn,
   EXCLUDED_SAP_GROUPS,
   setSapGroupNames,
@@ -2166,13 +2167,23 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       app.log.warn({ correlationId, error: err?.message?.slice(0, 200) }, "Catalog sync: falha ao buscar grupos");
     }
 
-    const [sapItems, gsnProducts] = await Promise.all([
+    const [sapItems, gsnProducts, wooProducts] = await Promise.all([
       entSvc.listItems({ limit: 5000, onlyActive: false }, correlationId),
       fetchAllGsnProducts(),
+      fetchAllWooProducts(),
     ]);
 
+    // Catalogo do proprio site WooCommerce primeiro: nomes batem melhor com o
+    // SAP e ja trazem descricoes ricas, entao tem prioridade em empates de score.
+    const webProducts = [...wooProducts, ...gsnProducts];
+
     app.log.info(
-      { correlationId, sapCount: sapItems.length, gsnCount: gsnProducts.length },
+      {
+        correlationId,
+        sapCount: sapItems.length,
+        gsnCount: gsnProducts.length,
+        wooCount: wooProducts.length,
+      },
       "Catalog sync: dados carregados",
     );
 
@@ -2181,7 +2192,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       app.log.info({ correlationId, deactivated, groups: EXCLUDED_SAP_GROUPS }, "Catalog sync: categorias excluidas desativadas no DB");
     }
 
-    const matches = matchSapToGsn(sapItems, gsnProducts);
+    const matches = matchSapToGsn(sapItems, webProducts);
 
     const eanMatches = [...matches.values()].filter((m) => m.score === 100).length;
     const fuzzyMatches = [...matches.values()].filter((m) => m.score < 100).length;
@@ -2218,7 +2229,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const match = matches.get(item.ItemCode);
       const firstImage = match?.gsn.images[0];
 
-      const rawCategory = match?.gsn.category_name || getGroupDisplayName(groupCode);
+      // Categoria sempre do grupo do SAP (fonte de verdade) — evita categorias
+      // erradas vindas de um match fraco no site. So cai para a categoria do
+      // site quando o grupo SAP nao tem nome resolvido.
+      const groupCategory = getGroupDisplayName(groupCode);
+      const rawCategory = groupCategory || match?.gsn.category_name;
       const categoryName = normalizeCategoryName(rawCategory);
 
       const productName = match?.gsn.name || item.ItemName || item.ItemCode;
