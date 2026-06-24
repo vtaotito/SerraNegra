@@ -415,6 +415,69 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     return undefined;
   }
 
+  /**
+   * Resolve o preço unitário (UnitPrice) de cada SKU para um cliente, usando a
+   * lista de preços do BP no SAP. O catálogo do portal não carrega preço, então
+   * ao criar o pedido no SAP precisamos informar o preço para o total não vir
+   * zerado. Ordem de resolução por item:
+   *   1) preço na lista de preços do próprio cliente (PriceListNum do BP)
+   *   2) preço na lista padrão (1)
+   *   3) maior preço positivo encontrado em qualquer lista do item
+   * Se o item não tiver nenhum preço cadastrado, fica de fora (o SAP precifica).
+   * Falhas são tolerantes: nunca bloqueiam a criação do pedido.
+   */
+  async function resolveUnitPrices(
+    cardCode: string,
+    skus: string[],
+    correlationId: string,
+  ): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    const uniqueSkus = [...new Set(skus.filter(Boolean))];
+    if (uniqueSkus.length === 0) return out;
+    const client = getSapClient();
+
+    let priceList = 1;
+    try {
+      const bp = await client.get<{ PriceListNum?: number }>(
+        `/BusinessPartners('${cardCode}')?$select=PriceListNum`,
+        { correlationId },
+      );
+      if (bp.data?.PriceListNum != null) priceList = Number(bp.data.PriceListNum);
+    } catch (err) {
+      app.log.warn(
+        { err, correlationId, cardCode },
+        "resolveUnitPrices: falha ao obter PriceListNum do BP (usando lista 1)",
+      );
+    }
+
+    for (const sku of uniqueSkus) {
+      try {
+        const res = await client.get<{
+          ItemPrices?: Array<{ PriceList?: number; Price?: number }>;
+        }>(`/Items('${sku}')?$select=ItemCode,ItemPrices`, { correlationId });
+        const prices = res.data?.ItemPrices ?? [];
+        const fromCustomer = prices.find(
+          (p) => p.PriceList === priceList && (p.Price ?? 0) > 0,
+        )?.Price;
+        const fromDefault = prices.find(
+          (p) => p.PriceList === 1 && (p.Price ?? 0) > 0,
+        )?.Price;
+        const anyPositive = prices
+          .map((p) => p.Price ?? 0)
+          .filter((v) => v > 0)
+          .sort((a, b) => b - a)[0];
+        const price = fromCustomer ?? fromDefault ?? anyPositive;
+        if (price && price > 0) out.set(sku, Number(price));
+      } catch (err) {
+        app.log.warn(
+          { err, correlationId, sku },
+          "resolveUnitPrices: falha ao obter preço do item",
+        );
+      }
+    }
+    return out;
+  }
+
   // =============================================
   // AUTH - LOOKUP (busca por CNPJ)
   // =============================================
@@ -1614,6 +1677,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           ? `${baseComment} | Obs: ${pending.notes.trim()}`
           : baseComment;
 
+        const priceMap = await resolveUnitPrices(
+          pending.card_code,
+          validItems.map((i) => i.sku),
+          correlationId,
+        );
+
         const sapOrder = {
           CardCode: pending.card_code,
           DocDueDate:
@@ -1621,13 +1690,17 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
           Comments: comments,
           BPL_IDAssignedToInvoice: B2B_DEFAULT_BRANCH,
-          DocumentLines: validItems.map((item, idx) => ({
-            LineNum: idx,
-            ItemCode: item.sku,
-            Quantity: Number(item.quantity),
-            WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
-            Usage: B2B_DEFAULT_USAGE,
-          })),
+          DocumentLines: validItems.map((item, idx) => {
+            const unitPrice = priceMap.get(item.sku);
+            return {
+              LineNum: idx,
+              ItemCode: item.sku,
+              Quantity: Number(item.quantity),
+              WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+              Usage: B2B_DEFAULT_USAGE,
+              ...(unitPrice && unitPrice > 0 ? { UnitPrice: unitPrice } : {}),
+            };
+          }),
         };
 
         const response = await client.post<any>("/Orders", sapOrder, {
@@ -1802,13 +1875,23 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const seller = body.createdBy ?? admin?.user ?? "Equipe de vendas";
         const cardName = (body.cardName ?? "").trim() || cardCode;
 
-        const documentLines = validItems.map((item, idx) => ({
-          LineNum: idx,
-          ItemCode: item.sku,
-          Quantity: Number(item.quantity),
-          WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
-          Usage: B2B_DEFAULT_USAGE,
-        }));
+        const priceMap = await resolveUnitPrices(
+          cardCode,
+          validItems.map((i) => i.sku ?? ""),
+          correlationId,
+        );
+
+        const documentLines = validItems.map((item, idx) => {
+          const unitPrice = priceMap.get(item.sku ?? "");
+          return {
+            LineNum: idx,
+            ItemCode: item.sku,
+            Quantity: Number(item.quantity),
+            WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+            Usage: B2B_DEFAULT_USAGE,
+            ...(unitPrice && unitPrice > 0 ? { UnitPrice: unitPrice } : {}),
+          };
+        });
 
         // Mantém o marcador do canal (Portal B2B) para o pedido entrar no mesmo
         // funil de gestão, sinalizando que foi uma venda assistida pela equipe.
