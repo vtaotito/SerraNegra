@@ -80,6 +80,12 @@ const EMAIL_COMMERCIAL =
 const PAINEL_URL =
   process.env.PAINEL_URL ?? "https://painel.garrafariaserranegra.com.br";
 
+// Depósito padrão de saída dos pedidos do Portal B2B / venda assistida.
+// O SAP exige um depósito válido por linha; quando o item não traz um depósito
+// explícito, usamos o depósito principal de distribuição (01.02 responde por
+// ~96% das linhas históricas). Configurável por ambiente.
+const B2B_DEFAULT_WAREHOUSE = process.env.B2B_DEFAULT_WAREHOUSE ?? "01.02";
+
 interface B2BTokenPayload {
   cardCode: string;
   cardName: string;
@@ -1610,7 +1616,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             LineNum: idx,
             ItemCode: item.sku,
             Quantity: Number(item.quantity),
-            WarehouseCode: item.warehouse ?? undefined,
+            WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
           })),
         };
 
@@ -1790,7 +1796,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           LineNum: idx,
           ItemCode: item.sku,
           Quantity: Number(item.quantity),
-          WarehouseCode: item.warehouse ?? undefined,
+          WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
         }));
 
         // Mantém o marcador do canal (Portal B2B) para o pedido entrar no mesmo
