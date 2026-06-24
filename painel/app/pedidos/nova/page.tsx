@@ -114,6 +114,44 @@ export default function NovaVendaPage() {
     return m;
   }, [cart]);
 
+  // Duplicar pedido: hidrata cliente + itens vindos do drawer (sessionStorage).
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem("wms_duplicate_order");
+    } catch {
+      raw = null;
+    }
+    if (!raw) return;
+    try {
+      sessionStorage.removeItem("wms_duplicate_order");
+      const data = JSON.parse(raw) as {
+        customer?: CustomerRow | null;
+        items?: { sku: string; name: string; quantity: number }[];
+      };
+      if (data.customer) setCustomer(data.customer);
+      if (Array.isArray(data.items) && data.items.length > 0) {
+        setCart(
+          data.items.map((it) => ({
+            sku: it.sku,
+            name: it.name,
+            unit: "UN",
+            quantity: Number(it.quantity) || 1,
+            packagingType: null,
+            unitsPerPack: null,
+            stockQuantity: 0,
+          })),
+        );
+        toast.success("Pedido duplicado", {
+          description: "Revise os itens e finalize a venda assistida.",
+        });
+      }
+    } catch {
+      /* payload inválido — ignora */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const addToCart = useCallback((p: CatalogItem) => {
     setCart((prev) => {
       const existing = prev.find((l) => l.sku === p.sku);

@@ -179,6 +179,100 @@ export function fetchB2BOrderFollowupCounts(docEntries: number[]) {
   );
 }
 
+// ─── Conversa do pedido + sinalizações por item ──
+
+export type B2BMessageKind = "message" | "change_request" | "cancel_request";
+export type B2BRequestStatus = "aberto" | "resolvido" | "recusado";
+
+export interface B2BOrderMessage {
+  id: number;
+  docEntry: number;
+  authorType: "customer" | "seller";
+  authorName: string | null;
+  kind: B2BMessageKind;
+  body: string;
+  status: B2BRequestStatus | null;
+  resolutionNote: string | null;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface B2BOrderMessageSummary {
+  messages: number;
+  openRequests: number;
+  lastAuthor: "customer" | "seller" | null;
+}
+
+export function listB2BOrderMessages(docEntry: number) {
+  return b2bAdminFetch<{ messages: B2BOrderMessage[] }>(
+    `/b2b/admin/orders/${docEntry}/messages`,
+  );
+}
+
+export function replyB2BOrderMessage(
+  docEntry: number,
+  data: { body: string; authorName?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; message: B2BOrderMessage }>(
+    `/b2b/admin/orders/${docEntry}/messages`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export function resolveB2BOrderRequest(
+  docEntry: number,
+  id: number,
+  data: { status: "resolvido" | "recusado"; note?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; message: B2BOrderMessage }>(
+    `/b2b/admin/orders/${docEntry}/requests/${id}/resolve`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export function fetchB2BOrderMessageSummary(docEntries: number[]) {
+  const qs = docEntries.length ? `?docEntries=${docEntries.join(",")}` : "";
+  return b2bAdminFetch<{ map: Record<string, B2BOrderMessageSummary> }>(
+    `/b2b/admin/orders/messages/summary${qs}`,
+  );
+}
+
+export type B2BItemFlag = "falta" | "substituicao" | "observacao";
+
+export interface B2BOrderItemNote {
+  id: number;
+  doc_entry: number;
+  sku: string;
+  flag: B2BItemFlag;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export function listB2BOrderItemNotes(docEntry: number) {
+  return b2bAdminFetch<{ items: B2BOrderItemNote[] }>(
+    `/b2b/admin/orders/${docEntry}/item-notes`,
+  );
+}
+
+export function createB2BOrderItemNote(
+  docEntry: number,
+  data: { sku: string; flag: B2BItemFlag; note?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; item: B2BOrderItemNote }>(
+    `/b2b/admin/orders/${docEntry}/item-notes`,
+    { method: "POST", body: JSON.stringify(data) },
+  );
+}
+
+export function deleteB2BOrderItemNote(docEntry: number, id: number) {
+  return b2bAdminFetch<{ ok: boolean }>(
+    `/b2b/admin/orders/${docEntry}/item-notes/${id}`,
+    { method: "DELETE" },
+  );
+}
+
 // ─── Status do funil e-commerce (Portal B2B) ──
 
 export const B2B_ORDER_STATUSES = [

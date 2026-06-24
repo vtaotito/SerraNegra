@@ -284,6 +284,41 @@ export async function sendNewOrderToSellerEmail(params: {
   return sendEmail({ to, subject: `Novo pedido #${docNum} — ${cardName}`, html, text });
 }
 
+/**
+ * Notifica o comercial sobre uma nova interação do cliente em um pedido:
+ * mensagem livre ou solicitação de alteração/cancelamento.
+ */
+export async function sendOrderInteractionEmail(params: {
+  to: string;
+  cardName: string;
+  docNum: number | string;
+  kind: "message" | "change_request" | "cancel_request";
+  body: string;
+  orderUrl?: string;
+}): Promise<boolean> {
+  const { to, cardName, docNum, kind, body, orderUrl } = params;
+  const label =
+    kind === "cancel_request"
+      ? "Solicitação de cancelamento"
+      : kind === "change_request"
+        ? "Solicitação de alteração"
+        : "Nova mensagem";
+  const title = `${label} — Pedido #${docNum}`;
+  const html = renderLayout({
+    title,
+    preheader: `${cardName}: ${label.toLowerCase()} no pedido #${docNum}.`,
+    bodyHtml: `
+      ${p(`O cliente <strong>${escapeHtml(cardName)}</strong> registrou: <strong>${escapeHtml(label.toLowerCase())}</strong> no pedido <strong>#${escapeHtml(String(docNum))}</strong>.`)}
+      ${p(`<em>"${escapeHtml(body)}"</em>`)}
+      ${orderUrl ? renderButton({ label: "Abrir pedido no painel", url: orderUrl }) : ""}
+    `,
+  });
+  const text =
+    `${label} — Pedido #${docNum} (${cardName}): ${body}` +
+    (orderUrl ? ` — ${orderUrl}` : "");
+  return sendEmail({ to, subject: title, html, text });
+}
+
 export async function sendOrderApprovedEmail(params: {
   to: string;
   cardName: string;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search,
@@ -11,6 +11,7 @@ import {
   Phone,
   Mail,
   MessageCircle,
+  MessageSquare,
   X,
   Clock,
   Package,
@@ -23,6 +24,11 @@ import {
   Hourglass,
   Check,
   Ban,
+  Copy,
+  Flag,
+  AlertTriangle,
+  Replace,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort } from "@/lib/format";
@@ -36,6 +42,12 @@ import {
   type CustomerRow,
 } from "@/lib/cockpit-api";
 import { isFreightOrder } from "@/lib/orders";
+import type {
+  B2BOrderMessage,
+  B2BOrderItemNote,
+  B2BItemFlag,
+  B2BOrderMessageSummary,
+} from "@/lib/b2b-admin";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
@@ -127,6 +139,7 @@ export default function PedidosPage() {
 }
 
 function PedidosContent() {
+  const router = useRouter();
   const { range } = useDateRange();
   const { salesPersonCode, isComercial } = useSalesPersonFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
@@ -164,6 +177,7 @@ function PedidosContent() {
   const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
   const [confirmedMap, setConfirmedMap] = useState<Record<string, boolean>>({});
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  const [msgSummary, setMsgSummary] = useState<Record<string, B2BOrderMessageSummary>>({});
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
 
   const loadPendingOrders = useCallback(() => {
@@ -295,6 +309,12 @@ function PedidosContent() {
         const cmap: Record<string, boolean> = {};
         for (const [k, v] of Object.entries(detail)) cmap[k] = v.confirmed === true;
         setConfirmedMap(cmap);
+      })
+      .catch(() => undefined);
+    fetch(`/api/b2b-admin/orders/messages/summary?docEntries=${ids}`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) setMsgSummary(j.data.map ?? {});
       })
       .catch(() => undefined);
   }, [docEntriesKey]);
@@ -558,13 +578,43 @@ function PedidosContent() {
                         <StatusBadge status={deriveStatus(o)} />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {notes > 0 ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gsn-50 text-gsn-700">
-                            <StickyNote className="w-3 h-3" /> {notes}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-gray-300">—</span>
-                        )}
+                        {(() => {
+                          const sum = msgSummary[String(o.doc_entry)];
+                          const hasNotes = notes > 0;
+                          const hasMsgs = sum && sum.messages > 0;
+                          if (!hasNotes && !hasMsgs)
+                            return <span className="text-xs text-gray-300">—</span>;
+                          return (
+                            <div className="inline-flex items-center gap-1.5 justify-end">
+                              {sum && sum.openRequests > 0 && (
+                                <span
+                                  title="Solicitação do cliente em aberto"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700"
+                                >
+                                  <AlertTriangle className="w-3 h-3" /> {sum.openRequests}
+                                </span>
+                              )}
+                              {hasMsgs && (
+                                <span
+                                  title="Mensagens na conversa do pedido"
+                                  className={cn(
+                                    "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+                                    sum!.lastAuthor === "customer"
+                                      ? "bg-amber-50 text-amber-700"
+                                      : "bg-gray-100 text-gray-600",
+                                  )}
+                                >
+                                  <MessageSquare className="w-3 h-3" /> {sum!.messages}
+                                </span>
+                              )}
+                              {hasNotes && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gsn-50 text-gsn-700">
+                                  <StickyNote className="w-3 h-3" /> {notes}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -931,6 +981,7 @@ function OrderDrawer({
   onFollowupChange: (docEntry: number, count: number) => void;
   onStageChange: (docEntry: number, status: PipelineStatus) => void;
 }) {
+  const router = useRouter();
   const [lines, setLines] = useState<SalesOrderLine[]>([]);
   const [linesLoading, setLinesLoading] = useState(true);
   const [followups, setFollowups] = useState<Followup[]>([]);
@@ -939,6 +990,11 @@ function OrderDrawer({
   const [saving, setSaving] = useState(false);
   const [currentStage, setCurrentStage] = useState<PipelineStatus | null>(stage);
   const [stageSaving, setStageSaving] = useState<PipelineStatus | null>(null);
+  const [itemNotes, setItemNotes] = useState<B2BOrderItemNote[]>([]);
+  const [messages, setMessages] = useState<B2BOrderMessage[]>([]);
+  const [reply, setReply] = useState("");
+  const [replySaving, setReplySaving] = useState(false);
+  const [resolvingId, setResolvingId] = useState<number | null>(null);
 
   useEffect(() => {
     setCurrentStage(stage);
@@ -965,8 +1021,132 @@ function OrderDrawer({
     loadFollowups();
   }, [loadFollowups]);
 
+  const loadItemNotes = useCallback(() => {
+    fetch(`/api/b2b-admin/orders/${order.doc_entry}/item-notes`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) setItemNotes(j.data.items ?? []);
+      })
+      .catch(() => undefined);
+  }, [order.doc_entry]);
+
+  const loadMessages = useCallback(() => {
+    fetch(`/api/b2b-admin/orders/${order.doc_entry}/messages`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) setMessages(j.data.messages ?? []);
+      })
+      .catch(() => undefined);
+  }, [order.doc_entry]);
+
+  useEffect(() => {
+    loadItemNotes();
+    loadMessages();
+  }, [loadItemNotes, loadMessages]);
+
   const phone = customer?.phone?.replace(/\D/g, "") ?? "";
   const waLink = phone ? `https://wa.me/55${phone}` : null;
+
+  // Notas por SKU (para exibir junto de cada linha).
+  const notesBySku = useMemo(() => {
+    const m = new Map<string, B2BOrderItemNote[]>();
+    for (const n of itemNotes) {
+      const arr = m.get(n.sku) ?? [];
+      arr.push(n);
+      m.set(n.sku, arr);
+    }
+    return m;
+  }, [itemNotes]);
+
+  const sendReply = async () => {
+    const text = reply.trim();
+    if (!text) return;
+    setReplySaving(true);
+    try {
+      const res = await fetch(`/api/b2b-admin/orders/${order.doc_entry}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: text }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro ao enviar");
+      setReply("");
+      setMessages((prev) => [...prev, j.data.message]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar resposta");
+    } finally {
+      setReplySaving(false);
+    }
+  };
+
+  const resolveRequest = async (id: number, status: "resolvido" | "recusado") => {
+    setResolvingId(id);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/orders/${order.doc_entry}/requests/${id}/resolve`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        },
+      );
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro");
+      setMessages((prev) => prev.map((m) => (m.id === id ? j.data.message : m)));
+      toast.success(status === "resolvido" ? "Solicitação atendida" : "Solicitação recusada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao resolver");
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const addItemFlag = async (sku: string, flag: B2BItemFlag, noteText: string) => {
+    try {
+      const res = await fetch(`/api/b2b-admin/orders/${order.doc_entry}/item-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku, flag, note: noteText || null }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro");
+      setItemNotes((prev) => [j.data.item, ...prev]);
+      toast.success("Sinalização adicionada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao sinalizar item");
+    }
+  };
+
+  const removeItemFlag = async (id: number) => {
+    try {
+      await fetch(`/api/b2b-admin/orders/${order.doc_entry}/item-notes/${id}`, {
+        method: "DELETE",
+      });
+      setItemNotes((prev) => prev.filter((n) => n.id !== id));
+    } catch {
+      toast.error("Erro ao remover sinalização");
+    }
+  };
+
+  // Duplicar pedido: leva cliente + itens para a venda assistida.
+  const duplicateOrder = () => {
+    const payload = {
+      customer,
+      cardCode: order.card_code,
+      cardName: order.card_name,
+      items: lines.map((l) => ({
+        sku: l.ItemCode,
+        name: l.ItemDescription ?? l.ItemCode,
+        quantity: Number(l.Quantity) || 1,
+      })),
+    };
+    try {
+      sessionStorage.setItem("wms_duplicate_order", JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+    router.push("/pedidos/nova?duplicate=1");
+  };
 
   const addFollowup = async () => {
     if (!note.trim()) return;
@@ -1037,9 +1217,18 @@ function OrderDrawer({
             <h2 className="text-base font-semibold text-gray-900 mt-1">{order.card_name}</h2>
             <p className="text-xs text-gray-400">{order.card_code}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={duplicateOrder}
+              title="Duplicar pedido (venda assistida)"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-gsn-700 hover:bg-gsn-50 border border-gsn-200"
+            >
+              <Copy className="w-3.5 h-3.5" /> Duplicar
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-5 space-y-5">
@@ -1170,26 +1359,128 @@ function OrderDrawer({
             ) : (
               <div className="space-y-1.5">
                 {lines.map((l, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm border-b border-gray-50 py-1.5">
-                    <div className="min-w-0">
-                      <p className="text-gray-800 truncate">{l.ItemDescription ?? l.ItemCode}</p>
-                      <p className="text-xs text-gray-400">
-                        {fmtNum(l.Quantity ?? 0)} un × {fmtBRL(l.UnitPrice ?? l.Price ?? 0)}
-                      </p>
-                    </div>
-                    <span className="font-medium text-gray-900 whitespace-nowrap ml-3">
-                      {fmtBRL(l.LineTotal ?? 0)}
-                    </span>
-                  </div>
+                  <ItemLine
+                    key={i}
+                    line={l}
+                    flags={notesBySku.get(l.ItemCode ?? "") ?? []}
+                    onAddFlag={(flag, noteText) => addItemFlag(l.ItemCode ?? "", flag, noteText)}
+                    onRemoveFlag={removeItemFlag}
+                  />
                 ))}
               </div>
             )}
           </div>
 
+          {/* Conversa com o cliente (thread compartilhada) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5" /> Conversa com o cliente
+            </p>
+            {messages.length === 0 ? (
+              <p className="text-sm text-gray-400 mb-3">Nenhuma mensagem ainda.</p>
+            ) : (
+              <div className="space-y-2 mb-3">
+                {messages.map((m) => {
+                  const fromCustomer = m.authorType === "customer";
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "rounded-lg p-2.5 text-sm border",
+                        fromCustomer
+                          ? "bg-amber-50/60 border-amber-100"
+                          : "bg-gsn-50/60 border-gsn-100",
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-xs font-medium text-gray-700">
+                          {fromCustomer ? m.authorName ?? "Cliente" : `${m.authorName ?? "Vendedor"} (você)`}
+                        </span>
+                        <span className="text-[11px] text-gray-400">
+                          {new Date(m.createdAt).toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                      {m.kind !== "message" && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium mb-1",
+                            m.kind === "cancel_request"
+                              ? "bg-red-100 text-red-800"
+                              : "bg-amber-100 text-amber-800",
+                          )}
+                        >
+                          {m.kind === "cancel_request" ? "Cancelamento" : "Alteração"}
+                        </span>
+                      )}
+                      <p className="text-gray-700 whitespace-pre-wrap">{m.body}</p>
+                      {m.status && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          {m.status === "aberto" ? (
+                            <>
+                              <button
+                                onClick={() => resolveRequest(m.id, "resolvido")}
+                                disabled={resolvingId === m.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                {resolvingId === m.id ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Check className="w-3 h-3" />
+                                )}
+                                Atender
+                              </button>
+                              <button
+                                onClick={() => resolveRequest(m.id, "recusado")}
+                                disabled={resolvingId === m.id}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-60"
+                              >
+                                <Ban className="w-3 h-3" /> Recusar
+                              </button>
+                            </>
+                          ) : (
+                            <span
+                              className={cn(
+                                "inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] font-medium",
+                                m.status === "resolvido"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-gray-200 text-gray-600",
+                              )}
+                            >
+                              {m.status === "resolvido" ? "Atendida" : "Recusada"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="rounded-lg border border-gray-200 p-2.5">
+              <textarea
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                rows={2}
+                placeholder="Responder ao cliente…"
+                className="w-full text-sm border-0 focus:ring-0 outline-none resize-none p-0 mb-2"
+              />
+              <div className="flex justify-end">
+                <button
+                  onClick={sendReply}
+                  disabled={replySaving || !reply.trim()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50"
+                >
+                  {replySaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  Responder
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Follow-ups */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Acompanhamento
+              Acompanhamento interno
             </p>
 
             <div className="rounded-lg border border-gray-200 p-3 mb-3">
@@ -1260,6 +1551,132 @@ function Info({ label, value, strong }: { label: string; value: string; strong?:
     <div>
       <p className="text-xs text-gray-400">{label}</p>
       <p className={cn("text-gray-800", strong ? "font-semibold text-gsn-700" : "")}>{value}</p>
+    </div>
+  );
+}
+
+const ITEM_FLAG_META: Record<
+  B2BItemFlag,
+  { label: string; cls: string; icon: typeof Flag }
+> = {
+  falta: { label: "Em falta", cls: "bg-red-50 text-red-700 border-red-200", icon: AlertTriangle },
+  substituicao: { label: "Substituir", cls: "bg-amber-50 text-amber-700 border-amber-200", icon: Replace },
+  observacao: { label: "Observação", cls: "bg-blue-50 text-blue-700 border-blue-200", icon: Flag },
+};
+
+function ItemLine({
+  line,
+  flags,
+  onAddFlag,
+  onRemoveFlag,
+}: {
+  line: SalesOrderLine;
+  flags: B2BOrderItemNote[];
+  onAddFlag: (flag: B2BItemFlag, note: string) => void;
+  onRemoveFlag: (id: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [flag, setFlag] = useState<B2BItemFlag>("falta");
+  const [note, setNote] = useState("");
+
+  const submit = () => {
+    onAddFlag(flag, note.trim());
+    setNote("");
+    setOpen(false);
+  };
+
+  return (
+    <div className="border-b border-gray-50 py-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <div className="min-w-0">
+          <p className="text-gray-800 truncate">{line.ItemDescription ?? line.ItemCode}</p>
+          <p className="text-xs text-gray-400">
+            {fmtNum(line.Quantity ?? 0)} un × {fmtBRL(line.UnitPrice ?? line.Price ?? 0)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 ml-3">
+          <span className="font-medium text-gray-900 whitespace-nowrap">
+            {fmtBRL(line.LineTotal ?? 0)}
+          </span>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            title="Sinalizar item"
+            className="p-1 rounded text-gray-400 hover:text-gsn-700 hover:bg-gsn-50"
+          >
+            <Flag className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {flags.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {flags.map((f) => {
+            const meta = ITEM_FLAG_META[f.flag];
+            const Icon = meta.icon;
+            return (
+              <span
+                key={f.id}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]",
+                  meta.cls,
+                )}
+              >
+                <Icon className="w-3 h-3" />
+                {meta.label}
+                {f.note ? `: ${f.note}` : ""}
+                <button
+                  onClick={() => onRemoveFlag(f.id)}
+                  className="ml-0.5 hover:opacity-70"
+                  title="Remover"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {open && (
+        <div className="mt-2 rounded-lg border border-gray-200 p-2 space-y-2">
+          <div className="flex gap-1.5">
+            {(Object.keys(ITEM_FLAG_META) as B2BItemFlag[]).map((k) => (
+              <button
+                key={k}
+                onClick={() => setFlag(k)}
+                className={cn(
+                  "px-2 py-1 rounded-md text-[11px] font-medium border transition",
+                  flag === k
+                    ? "bg-gsn-700 text-white border-transparent"
+                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300",
+                )}
+              >
+                {ITEM_FLAG_META[k].label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Observação (opcional)…"
+            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-gsn-700/30"
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setOpen(false)}
+              className="px-2.5 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-100"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={submit}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium text-white bg-gsn-700 hover:bg-gsn-800"
+            >
+              <Plus className="w-3 h-3" /> Adicionar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

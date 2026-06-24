@@ -19,6 +19,7 @@ export {
   sendInternalAccessRequestNotification,
   sendOrderConfirmationEmail,
   sendNewOrderToSellerEmail,
+  sendOrderInteractionEmail,
   sendOrderApprovedEmail,
   sendOrderRejectedEmail,
   sendBackInStockEmail,

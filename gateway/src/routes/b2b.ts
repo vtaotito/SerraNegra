@@ -19,6 +19,15 @@ import {
   type PendingOrderRow,
 } from "../services/b2bPendingOrderService.js";
 import {
+  B2BOrderMessageService,
+  isMessageKind,
+  type RequestStatus,
+} from "../services/b2bOrderMessageService.js";
+import {
+  B2BOrderItemNoteService,
+  isItemFlag,
+} from "../services/b2bOrderItemNoteService.js";
+import {
   B2BCatalogService,
   fetchAllGsnProducts,
   fetchAllWooProducts,
@@ -44,6 +53,7 @@ import {
   sendInternalAccessRequestNotification,
   sendOrderConfirmationEmail,
   sendNewOrderToSellerEmail,
+  sendOrderInteractionEmail,
   sendOrderApprovedEmail,
   sendOrderRejectedEmail,
 } from "../services/emailService.js";
@@ -192,6 +202,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const pendingOrderService = new B2BPendingOrderService(B2B_DB_URL);
   await pendingOrderService.init();
+
+  const orderMessageService = new B2BOrderMessageService(B2B_DB_URL);
+  await orderMessageService.init();
+
+  const orderItemNoteService = new B2BOrderItemNoteService(B2B_DB_URL);
+  await orderItemNoteService.init();
 
   // Rótulos legíveis dos estágios do funil e-commerce (para a timeline).
   const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -1324,6 +1340,190 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     },
   );
 
+  // ── Conversa do pedido (visão do vendedor) ──────────────────────────
+  app.get(
+    "/b2b/admin/orders/:docEntry/messages",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const docEntry = Number((req.params as any).docEntry);
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      try {
+        const rows = await orderMessageService.listByOrder(docEntry);
+        reply.code(200).send({ messages: rows.map(mapMessage) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Vendedor responde no fio do pedido.
+  app.post(
+    "/b2b/admin/orders/:docEntry/messages",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { body?: string; authorName?: string };
+      const text = (body.body ?? "").trim();
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      if (!text) {
+        reply.code(400).send({ error: "Mensagem vazia" });
+        return;
+      }
+      try {
+        const ownerRes = await ordersPool.query(
+          "SELECT card_code FROM sap_sales_orders WHERE doc_entry = $1",
+          [docEntry],
+        );
+        const cardCode = ownerRes.rows[0]?.card_code ?? "";
+        const row = await orderMessageService.create({
+          docEntry,
+          cardCode,
+          authorType: "seller",
+          authorName: body.authorName ?? admin?.user ?? "Equipe de vendas",
+          kind: "message",
+          body: text,
+        });
+        reply.code(201).send({ ok: true, message: mapMessage(row) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Resolve/recusa uma solicitação (alteração/cancelamento) do cliente.
+  app.post(
+    "/b2b/admin/orders/:docEntry/requests/:id/resolve",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const id = Number((req.params as any).id);
+      const body = (req.body ?? {}) as { status?: string; note?: string };
+      const status = body.status;
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      if (status !== "resolvido" && status !== "recusado") {
+        reply.code(400).send({ error: "status invalido (resolvido|recusado)" });
+        return;
+      }
+      try {
+        const row = await orderMessageService.resolveRequest(id, {
+          status: status as RequestStatus,
+          note: body.note ?? null,
+          by: admin?.user ?? null,
+        });
+        if (!row) {
+          reply.code(404).send({ error: "Solicitacao nao encontrada" });
+          return;
+        }
+        reply.code(200).send({ ok: true, message: mapMessage(row) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Resumo de interações por pedido (badges na lista de pedidos do painel).
+  app.get(
+    "/b2b/admin/orders/messages/summary",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const raw = (req.query as any).docEntries as string | undefined;
+      const docEntries = (raw ?? "")
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isFinite(n));
+      try {
+        const map = await orderMessageService.summary(docEntries);
+        reply.code(200).send({ map });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // ── Sinalizações por item (vendedor) ────────────────────────────────
+  app.get(
+    "/b2b/admin/orders/:docEntry/item-notes",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const docEntry = Number((req.params as any).docEntry);
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      try {
+        const rows = await orderItemNoteService.listByOrder(docEntry);
+        reply.code(200).send({ items: rows });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/orders/:docEntry/item-notes",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { sku?: string; flag?: string; note?: string };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      if (!body.sku || !isItemFlag(body.flag)) {
+        reply.code(400).send({ error: "sku e flag (falta|substituicao|observacao) obrigatorios" });
+        return;
+      }
+      try {
+        const row = await orderItemNoteService.create({
+          docEntry,
+          sku: body.sku,
+          flag: body.flag,
+          note: body.note ?? null,
+          createdBy: admin?.user ?? null,
+        });
+        reply.code(201).send({ ok: true, item: row });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.delete(
+    "/b2b/admin/orders/:docEntry/item-notes/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        await orderItemNoteService.remove(id);
+        reply.code(200).send({ ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
   // =============================================
   // ADMIN - PEDIDOS PENDENTES (confirmação manual do vendedor)
   // =============================================
@@ -2273,15 +2473,45 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           DiscountPercent: Number(l.DiscountPercent),
         }));
 
+        // Enriquece cada item com dados do catálogo (imagem, slug, estoque) e
+        // com as sinalizações da equipe de vendas (item em falta etc.).
+        const skus = lines.map((l: any) => l.ItemCode).filter(Boolean);
+        const [catalogMap, itemNotes] = await Promise.all([
+          catalogService.getManyBySkus(skus).catch(() => ({})),
+          orderItemNoteService.listByOrder(Number(docEntry)).catch(() => []),
+        ]);
+        const notesBySku = new Map<string, any[]>();
+        for (const n of itemNotes) {
+          const arr = notesBySku.get(n.sku) ?? [];
+          arr.push({
+            id: n.id,
+            flag: n.flag,
+            note: n.note,
+            createdBy: n.created_by,
+            createdAt: n.created_at,
+          });
+          notesBySku.set(n.sku, arr);
+        }
+
         // Itens em formato camelCase para o portal.
-        const items = lines.map((l: any) => ({
-          sku: l.ItemCode,
-          description: l.ItemDescription ?? l.ItemCode,
-          quantity: l.Quantity,
-          unitPrice: l.UnitPrice || l.Price,
-          lineTotal: l.LineTotal,
-          warehouse: l.WarehouseCode ?? null,
-        }));
+        const items = lines.map((l: any) => {
+          const cat = (catalogMap as Record<string, any>)[l.ItemCode] ?? null;
+          return {
+            sku: l.ItemCode,
+            description: l.ItemDescription ?? cat?.name ?? l.ItemCode,
+            quantity: l.Quantity,
+            unitPrice: l.UnitPrice || l.Price,
+            lineTotal: l.LineTotal,
+            warehouse: l.WarehouseCode ?? null,
+            unit: cat?.unitOfMeasure ?? "UN",
+            imageUrl: cat?.imageUrl ?? null,
+            thumbUrl: cat?.thumbUrl ?? null,
+            slug: cat?.slug ?? null,
+            inCatalog: cat?.isActive ?? false,
+            isInStock: cat?.isInStock ?? false,
+            flags: notesBySku.get(l.ItemCode) ?? [],
+          };
+        });
 
         const shipAddress =
           [rawJson.Address, rawJson.Address2].filter(Boolean).join(" - ") ||
@@ -2320,6 +2550,110 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         reply.code(500).send({ error: "Erro ao buscar pedido", message });
       }
     }
+  );
+
+  // Verifica se o pedido pertence ao cliente autenticado (por card_code).
+  async function assertOrderOwnership(
+    docEntry: number,
+    cardCode: string,
+  ): Promise<boolean> {
+    const res = await ordersPool.query(
+      "SELECT card_code FROM sap_sales_orders WHERE doc_entry = $1",
+      [docEntry],
+    );
+    const owner = res.rows[0]?.card_code;
+    return (
+      owner != null && owner.toLowerCase() === cardCode.toLowerCase()
+    );
+  }
+
+  function mapMessage(m: any) {
+    return {
+      id: m.id,
+      docEntry: Number(m.doc_entry),
+      authorType: m.author_type,
+      authorName: m.author_name,
+      kind: m.kind,
+      body: m.body,
+      status: m.status,
+      resolutionNote: m.resolution_note,
+      resolvedBy: m.resolved_by,
+      resolvedAt: m.resolved_at,
+      createdAt: m.created_at,
+    };
+  }
+
+  // Fio de mensagens do pedido (visão do cliente).
+  app.get(
+    "/b2b/orders/:docEntry/messages",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const docEntry = Number((req.params as any).docEntry);
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      try {
+        if (!(await assertOrderOwnership(docEntry, customer.cardCode))) {
+          reply.code(403).send({ error: "Acesso negado a este pedido" });
+          return;
+        }
+        const rows = await orderMessageService.listByOrder(docEntry);
+        reply.code(200).send({ messages: rows.map(mapMessage) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Cliente envia mensagem ou solicitação (alteração/cancelamento).
+  app.post(
+    "/b2b/orders/:docEntry/messages",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { kind?: string; body?: string };
+      const text = (body.body ?? "").trim();
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      if (!text) {
+        reply.code(400).send({ error: "Mensagem vazia" });
+        return;
+      }
+      const kind = isMessageKind(body.kind) ? body.kind : "message";
+      try {
+        if (!(await assertOrderOwnership(docEntry, customer.cardCode))) {
+          reply.code(403).send({ error: "Acesso negado a este pedido" });
+          return;
+        }
+        const row = await orderMessageService.create({
+          docEntry,
+          cardCode: customer.cardCode,
+          authorType: "customer",
+          authorName: customer.cardName ?? customer.cardCode,
+          kind,
+          body: text,
+        });
+        // Notifica a equipe de vendas sobre a nova interação do cliente.
+        await sendOrderInteractionEmail({
+          to: EMAIL_COMMERCIAL,
+          cardName: customer.cardName ?? customer.cardCode,
+          docNum: docEntry,
+          kind,
+          body: text,
+          orderUrl: `${PAINEL_URL}/pedidos?docEntry=${docEntry}`,
+        }).catch(() => undefined);
+        reply.code(201).send({ ok: true, message: mapMessage(row) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
   );
 
   app.post(

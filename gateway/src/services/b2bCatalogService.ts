@@ -756,6 +756,49 @@ export class B2BCatalogService {
     return (rows[0] as CatalogProduct) ?? null;
   }
 
+  /**
+   * Mapa sku → dados de exibição (imagem, slug, estoque) para enriquecer as
+   * linhas de um pedido. Usado no detalhe do pedido do Portal B2B para mostrar
+   * miniatura, link para o catálogo e disponibilidade de cada item.
+   */
+  async getManyBySkus(skus: string[]): Promise<
+    Record<
+      string,
+      {
+        name: string | null;
+        imageUrl: string | null;
+        thumbUrl: string | null;
+        slug: string | null;
+        isInStock: boolean;
+        isActive: boolean;
+        unitOfMeasure: string | null;
+      }
+    >
+  > {
+    if (skus.length === 0) return {};
+    const { rows } = await this.pool.query(
+      `SELECT sap_item_code, sap_item_name, gsn_product_name, gsn_slug,
+              image_url, image_thumb_url, is_in_stock, is_active, is_sales_item,
+              unit_of_measure
+       FROM b2b_catalog_products
+       WHERE sap_item_code = ANY($1::text[])`,
+      [skus],
+    );
+    const out: Record<string, any> = {};
+    for (const r of rows) {
+      out[r.sap_item_code] = {
+        name: r.gsn_product_name ?? r.sap_item_name ?? null,
+        imageUrl: r.image_url ?? null,
+        thumbUrl: r.image_thumb_url ?? r.image_url ?? null,
+        slug: r.gsn_slug ?? null,
+        isInStock: r.is_in_stock === true,
+        isActive: r.is_active === true && r.is_sales_item === true,
+        unitOfMeasure: r.unit_of_measure ?? null,
+      };
+    }
+    return out;
+  }
+
   async getCategories(): Promise<string[]> {
     const { rows } = await this.pool.query(
       `SELECT DISTINCT category_name FROM b2b_catalog_products
