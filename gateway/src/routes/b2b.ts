@@ -1229,8 +1229,50 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         .map((s) => Number(s.trim()))
         .filter((n) => Number.isFinite(n));
       try {
-        const map = await orderStatusService.getMany(docEntries);
-        reply.code(200).send({ map });
+        // `map`: doc_entry -> status (compat). `detail`: doc_entry -> { status,
+        // confirmed } para distinguir pedidos "a confirmar" no painel.
+        const detail = await orderStatusService.getManyDetailed(docEntries);
+        const map: Record<number, string> = {};
+        for (const [k, v] of Object.entries(detail)) map[Number(k)] = v.status;
+        reply.code(200).send({ map, detail });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Confirma um pedido (estado operacional LOCAL — não altera o SAP). Marca o
+  // pedido como conferido pela equipe e o coloca no funil de acompanhamento.
+  app.post(
+    "/b2b/admin/orders/:docEntry/confirm",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { cardCode?: string; confirmedBy?: string };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry invalido" });
+        return;
+      }
+      try {
+        const confirmedBy = body.confirmedBy ?? admin?.user ?? null;
+        const row = await orderStatusService.confirm({
+          docEntry,
+          cardCode: body.cardCode ?? null,
+          by: confirmedBy,
+        });
+        // Auditoria na timeline do pedido.
+        await orderFollowupService
+          .create({
+            docEntry,
+            cardCode: body.cardCode ?? null,
+            statusTag: "Confirmado",
+            note: "Pedido confirmado pela equipe de vendas.",
+            createdBy: confirmedBy,
+          })
+          .catch(() => undefined);
+        reply.code(200).send({ ok: true, status: row });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
@@ -1383,13 +1425,14 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reviewedBy: seller,
         });
 
-        // Inicia o funil e-commerce para o pedido recém-criado.
+        // Inicia o funil e já marca como confirmado (o vendedor acabou de
+        // confirmar este pedido) para não reaparecer em "a confirmar".
         if (created.DocEntry != null) {
           await orderStatusService
-            .ensureInitial({
+            .confirm({
               docEntry: Number(created.DocEntry),
-              status: "novo",
               cardCode: pending.card_code,
+              by: seller,
             })
             .catch((err) =>
               req.log.warn({ err }, "Falha ao iniciar status do pedido confirmado"),
@@ -1572,11 +1615,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const created = response.data;
 
         if (created.DocEntry != null) {
+          // Venda assistida já nasce confirmada (foi a equipe que criou).
           await orderStatusService
-            .ensureInitial({
+            .confirm({
               docEntry: Number(created.DocEntry),
-              status: "novo",
               cardCode,
+              by: seller,
             })
             .catch((err) =>
               req.log.warn({ err }, "Falha ao iniciar status do pedido assistido"),

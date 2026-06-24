@@ -202,10 +202,27 @@ export interface B2BOrderStatusRow {
   created_at: string;
 }
 
+export interface B2BOrderStatusDetail {
+  status: B2BOrderStatus;
+  confirmed: boolean;
+}
+
 export function fetchB2BOrderStatusMap(docEntries: number[]) {
   const qs = docEntries.length ? `?docEntries=${docEntries.join(",")}` : "";
-  return b2bAdminFetch<{ map: Record<string, B2BOrderStatus> }>(
-    `/b2b/admin/orders/status${qs}`,
+  return b2bAdminFetch<{
+    map: Record<string, B2BOrderStatus>;
+    detail: Record<string, B2BOrderStatusDetail>;
+  }>(`/b2b/admin/orders/status${qs}`);
+}
+
+/** Confirma um pedido (estado operacional local — não altera o SAP). */
+export function confirmB2BOrder(
+  docEntry: number,
+  data?: { cardCode?: string | null; confirmedBy?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; status: B2BOrderStatusRow }>(
+    `/b2b/admin/orders/${docEntry}/confirm`,
+    { method: "POST", body: JSON.stringify(data ?? {}) },
   );
 }
 

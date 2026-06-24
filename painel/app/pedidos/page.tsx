@@ -47,6 +47,7 @@ import { toast } from "sonner";
 type StatusKey = "aberto" | "fechado" | "cancelado";
 type StatusFilter = "todos" | StatusKey;
 type OriginFilter = "todos" | "portal" | "outros";
+type ConfirmFilter = "todos" | "a_confirmar" | "confirmados";
 
 const STATUS_TAGS = ["Em contato", "Aguardando cliente", "Resolvido"] as const;
 
@@ -157,9 +158,12 @@ function PedidosContent() {
   // Workspace centrado no canal e-commerce: começa na origem Portal B2B.
   const [originFilter, setOriginFilter] = useState<OriginFilter>("portal");
   const [pipelineFilter, setPipelineFilter] = useState<PipelineStatus | "todos">("todos");
+  const [confirmFilter, setConfirmFilter] = useState<ConfirmFilter>("todos");
   const [selected, setSelected] = useState<SalesOrderRow | null>(null);
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
   const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
+  const [confirmedMap, setConfirmedMap] = useState<Record<string, boolean>>({});
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
 
   const loadPendingOrders = useCallback(() => {
@@ -175,15 +179,20 @@ function PedidosContent() {
     loadPendingOrders();
   }, [loadPendingOrders]);
 
-  // Etapa efetiva no funil: status salvo ou, para pedidos do portal ainda não
-  // trabalhados, "novo" como padrão. Pedidos de outras origens não têm etapa.
+  // Etapa efetiva no funil: status salvo ou "novo" como padrão. O funil agora
+  // vale para TODOS os pedidos (qualquer origem), permitindo confirmar e
+  // acompanhar tudo pelo painel.
   const effStatus = useCallback(
-    (o: SalesOrderRow): PipelineStatus | null => {
-      const s = statusMap[String(o.doc_entry)];
-      if (s) return s;
-      return isPortalOrder(o) ? "novo" : null;
+    (o: SalesOrderRow): PipelineStatus => {
+      return statusMap[String(o.doc_entry)] ?? "novo";
     },
     [statusMap],
+  );
+
+  // Pedido confirmado (estado operacional local). Não confirmado = "a confirmar".
+  const isConfirmed = useCallback(
+    (o: SalesOrderRow): boolean => confirmedMap[String(o.doc_entry)] === true,
+    [confirmedMap],
   );
 
   // Pedidos filtrados por busca + status SAP (sem origem) — base para as abas.
@@ -216,30 +225,44 @@ function PedidosContent() {
     return scoped;
   }, [scoped, originFilter]);
 
-  // Contagem por etapa do funil (chips do pipeline), sobre a origem ativa.
+  // Aplica o filtro de confirmação (a confirmar / confirmados) sobre a origem.
+  const byConfirm = useMemo(() => {
+    if (confirmFilter === "a_confirmar") return byOrigin.filter((o) => !isConfirmed(o));
+    if (confirmFilter === "confirmados") return byOrigin.filter((o) => isConfirmed(o));
+    return byOrigin;
+  }, [byOrigin, confirmFilter, isConfirmed]);
+
+  // Quantos pedidos da origem ativa ainda estão "a confirmar".
+  const toConfirmCount = useMemo(
+    () => byOrigin.reduce((n, o) => (isConfirmed(o) ? n : n + 1), 0),
+    [byOrigin, isConfirmed],
+  );
+
+  // Contagem por etapa do funil (chips do pipeline), respeitando o filtro de
+  // confirmação ativo.
   const pipelineCounts = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const o of byOrigin) {
+    for (const o of byConfirm) {
       const s = effStatus(o);
-      if (s) c[s] = (c[s] ?? 0) + 1;
+      c[s] = (c[s] ?? 0) + 1;
     }
     return c;
-  }, [byOrigin, effStatus]);
+  }, [byConfirm, effStatus]);
 
   // Aplica o filtro de etapa selecionada.
   const filtered = useMemo(() => {
-    if (pipelineFilter === "todos") return byOrigin;
-    return byOrigin.filter((o) => effStatus(o) === pipelineFilter);
-  }, [byOrigin, pipelineFilter, effStatus]);
+    if (pipelineFilter === "todos") return byConfirm;
+    return byConfirm.filter((o) => effStatus(o) === pipelineFilter);
+  }, [byConfirm, pipelineFilter, effStatus]);
 
   // KPIs
   const kpis = useMemo(() => {
     const abertos = filtered.filter((o) => deriveStatus(o) === "aberto");
     const total = filtered.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
-    const portal = filtered.filter(isPortalOrder).length;
+    const aConfirmar = filtered.reduce((n, o) => (isConfirmed(o) ? n : n + 1), 0);
     const lastDate = filtered.reduce<string>((acc, o) => (o.doc_date > acc ? o.doc_date : acc), "");
-    return { abertos: abertos.length, total, portal, lastDate };
-  }, [filtered]);
+    return { abertos: abertos.length, total, aConfirmar, lastDate };
+  }, [filtered, isConfirmed]);
 
   // Carrega anotações + status do funil para os pedidos da origem ativa
   // (independe do filtro de etapa, para manter contadores estáveis).
@@ -263,10 +286,39 @@ function PedidosContent() {
     fetch(`/api/b2b-admin/orders/status?docEntries=${ids}`)
       .then((r) => r.json())
       .then((j) => {
-        if (j.success) setStatusMap(j.data.map ?? {});
+        if (!j.success) return;
+        setStatusMap(j.data.map ?? {});
+        const detail = (j.data.detail ?? {}) as Record<
+          string,
+          { status: PipelineStatus; confirmed: boolean }
+        >;
+        const cmap: Record<string, boolean> = {};
+        for (const [k, v] of Object.entries(detail)) cmap[k] = v.confirmed === true;
+        setConfirmedMap(cmap);
       })
       .catch(() => undefined);
   }, [docEntriesKey]);
+
+  // Confirma um pedido (estado local) e atualiza a UI sem recarregar tudo.
+  const confirmOrder = useCallback((o: SalesOrderRow) => {
+    setConfirmingId(o.doc_entry);
+    fetch(`/api/b2b-admin/orders/${o.doc_entry}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cardCode: o.card_code }),
+    })
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) {
+          setConfirmedMap((m) => ({ ...m, [String(o.doc_entry)]: true }));
+          setStatusMap((m) => ({
+            ...m,
+            [String(o.doc_entry)]: m[String(o.doc_entry)] ?? "novo",
+          }));
+        }
+      })
+      .finally(() => setConfirmingId(null));
+  }, []);
 
   // Deep-link dos e-mails (?docEntry=…) abre o pedido automaticamente.
   const searchParams = useSearchParams();
@@ -343,7 +395,7 @@ function PedidosContent() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard icon={Package} label="Pedidos abertos" value={fmtNum(kpis.abertos)} tone="emerald" />
         <KpiCard icon={DollarSign} label="Valor total" value={fmtBRL(kpis.total)} tone="gsn" />
-        <KpiCard icon={Store} label="Via Portal B2B" value={fmtNum(kpis.portal)} tone="amber" />
+        <KpiCard icon={Hourglass} label="A confirmar" value={fmtNum(kpis.aConfirmar)} tone="amber" />
         <KpiCard
           icon={CalendarDays}
           label="Último pedido"
@@ -373,6 +425,25 @@ function PedidosContent() {
           <option value="fechado">Fechados</option>
           <option value="cancelado">Cancelados</option>
         </select>
+        <div className="inline-flex p-1 rounded-lg bg-gray-100 gap-1 shrink-0">
+          <ConfirmChip
+            active={confirmFilter === "todos"}
+            onClick={() => setConfirmFilter("todos")}
+            label="Todos"
+          />
+          <ConfirmChip
+            active={confirmFilter === "a_confirmar"}
+            onClick={() => setConfirmFilter("a_confirmar")}
+            label="A confirmar"
+            count={toConfirmCount > 0 ? toConfirmCount : undefined}
+            accent
+          />
+          <ConfirmChip
+            active={confirmFilter === "confirmados"}
+            onClick={() => setConfirmFilter("confirmados")}
+            label="Confirmados"
+          />
+        </div>
       </div>
 
       {/* Pipeline e-commerce (etapas) */}
@@ -384,7 +455,7 @@ function PedidosContent() {
           active={pipelineFilter === "todos"}
           onClick={() => setPipelineFilter("todos")}
           label="Todas"
-          count={byOrigin.length}
+          count={byConfirm.length}
         />
         {PIPELINE.map((p) => (
           <StageChip
@@ -422,6 +493,7 @@ function PedidosContent() {
                   <Th right>Valor</Th>
                   <Th>Origem</Th>
                   <Th>Etapa</Th>
+                  <Th>Confirmação</Th>
                   <Th>Status SAP</Th>
                   <Th right>Notas</Th>
                 </tr>
@@ -457,10 +529,29 @@ function PedidosContent() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {effStatus(o) ? (
-                          <OrderStageBadge status={effStatus(o)!} />
+                        <OrderStageBadge status={effStatus(o)} />
+                      </td>
+                      <td className="px-4 py-3">
+                        {isConfirmed(o) ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                            <Check className="w-3 h-3" /> Confirmado
+                          </span>
                         ) : (
-                          <span className="text-xs text-gray-300">—</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              confirmOrder(o);
+                            }}
+                            disabled={confirmingId === o.doc_entry}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-gsn-700 text-white hover:bg-gsn-800 disabled:opacity-60 transition"
+                          >
+                            {confirmingId === o.doc_entry ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            Confirmar
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -494,6 +585,9 @@ function PedidosContent() {
           }
           customer={custMap.get(selected.card_code) ?? null}
           stage={effStatus(selected)}
+          confirmed={isConfirmed(selected)}
+          confirming={confirmingId === selected.doc_entry}
+          onConfirm={() => confirmOrder(selected)}
           onClose={() => setSelected(null)}
           onFollowupChange={(docEntry, count) =>
             setFollowCounts((prev) => ({ ...prev, [String(docEntry)]: count }))
@@ -553,6 +647,46 @@ function OriginTab({
       {badge != null && badge > 0 && (
         <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white bg-red-500">
           {badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function ConfirmChip({
+  active,
+  onClick,
+  label,
+  count,
+  accent,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count?: number;
+  accent?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition whitespace-nowrap",
+        active
+          ? accent
+            ? "bg-white text-amber-700 shadow-sm"
+            : "bg-white text-gsn-700 shadow-sm"
+          : "text-gray-500 hover:text-gray-700",
+      )}
+    >
+      {label}
+      {count != null && (
+        <span
+          className={cn(
+            "px-1.5 py-0.5 rounded-full text-xs font-semibold",
+            active ? "bg-amber-100 text-amber-700" : "bg-amber-500 text-white",
+          )}
+        >
+          {count}
         </span>
       )}
     </button>
@@ -779,6 +913,9 @@ function OrderDrawer({
   sellerName,
   customer,
   stage,
+  confirmed,
+  confirming,
+  onConfirm,
   onClose,
   onFollowupChange,
   onStageChange,
@@ -787,6 +924,9 @@ function OrderDrawer({
   sellerName: string | null;
   customer: CustomerRow | null;
   stage: PipelineStatus | null;
+  confirmed: boolean;
+  confirming: boolean;
+  onConfirm: () => void;
   onClose: () => void;
   onFollowupChange: (docEntry: number, count: number) => void;
   onStageChange: (docEntry: number, status: PipelineStatus) => void;
@@ -909,6 +1049,43 @@ function OrderDrawer({
             <Info label="Entrega" value={order.doc_due_date ? fmtDateShort(order.doc_due_date) : "—"} />
             <Info label="Vendedor" value={sellerName ?? "—"} />
             <Info label="Valor total" value={fmtBRL(Number(order.doc_total) || 0)} strong />
+          </div>
+
+          {/* Confirmação operacional (estado local, não altera o SAP) */}
+          <div
+            className={cn(
+              "rounded-lg border p-3 flex items-center justify-between gap-3",
+              confirmed ? "border-emerald-200 bg-emerald-50/40" : "border-amber-200 bg-amber-50/40",
+            )}
+          >
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Confirmação
+              </p>
+              <p className="text-sm text-gray-700 mt-0.5">
+                {confirmed
+                  ? "Pedido confirmado pela equipe de vendas."
+                  : "Pedido ainda não confirmado."}
+              </p>
+            </div>
+            {confirmed ? (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shrink-0">
+                <Check className="w-3.5 h-3.5" /> Confirmado
+              </span>
+            ) : (
+              <button
+                onClick={onConfirm}
+                disabled={confirming}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold bg-gsn-700 text-white hover:bg-gsn-800 disabled:opacity-60 transition shrink-0"
+              >
+                {confirming ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                Confirmar
+              </button>
+            )}
           </div>
 
           {/* Etapa do funil e-commerce */}
