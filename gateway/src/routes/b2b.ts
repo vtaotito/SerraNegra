@@ -90,6 +90,10 @@ const B2B_DEFAULT_WAREHOUSE = process.env.B2B_DEFAULT_WAREHOUSE ?? "01.02";
 // 1 = "GARRAFARIA SERRA NEGRA EIRELI" (matriz, dona do depósito 01.02).
 const B2B_DEFAULT_BRANCH = Number(process.env.B2B_DEFAULT_BRANCH ?? "1");
 
+// "Utilização" (campo fiscal brasileiro `Usage` por linha) obrigatório pelo
+// add-on fiscal. 10 = venda/comercialização (padrão em ~95% das linhas).
+const B2B_DEFAULT_USAGE = Number(process.env.B2B_DEFAULT_USAGE ?? "10");
+
 interface B2BTokenPayload {
   cardCode: string;
   cardName: string;
@@ -1622,6 +1626,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             ItemCode: item.sku,
             Quantity: Number(item.quantity),
             WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+            Usage: B2B_DEFAULT_USAGE,
           })),
         };
 
@@ -1802,6 +1807,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           ItemCode: item.sku,
           Quantity: Number(item.quantity),
           WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+          Usage: B2B_DEFAULT_USAGE,
         }));
 
         // Mantém o marcador do canal (Portal B2B) para o pedido entrar no mesmo
