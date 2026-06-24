@@ -24,22 +24,25 @@ import {
 } from "lucide-react";
 
 interface CatalogProduct {
-  id: number;
-  sap_item_code: string;
-  sap_item_name: string;
-  image_url: string | null;
-  image_thumb_url: string | null;
-  category_name: string | null;
-  description_short: string | null;
+  sku: string;
+  name: string;
+  description: string;
+  fullDescription: string | null;
+  category: string | null;
   ean: string | null;
-  unit_of_measure: string;
-  packaging_type: string | null;
-  units_per_package: number | null;
-  total_stock: number;
-  is_in_stock: boolean;
-  match_score: number;
-  gsn_product_name: string | null;
-  gsn_slug: string | null;
+  imageUrl: string | null;
+  price: number;
+  inStock: boolean;
+  stockQuantity: number;
+  unitOfMeasure: string;
+  packagingType: string | null;
+  unitsPerPack: number | string | null;
+}
+
+function toUnitsPerPack(value: number | string | null): number | null {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 function packagingLabel(type: string | null): string {
@@ -71,25 +74,25 @@ export default function ProductDetailPage({
 
   const inCart = getItem(sku);
 
-  const hasPack =
-    product?.units_per_package != null && product.units_per_package > 1;
-  const packLabel = hasPack ? packagingLabel(product?.packaging_type ?? null) : "";
-  const totalUnits = hasPack ? qty * product!.units_per_package! : qty;
+  const perPack = toUnitsPerPack(product?.unitsPerPack ?? null);
+  const hasPack = perPack != null && perPack > 1;
+  const packLabel = hasPack ? packagingLabel(product?.packagingType ?? null) : "";
+  const totalUnits = hasPack ? qty * perPack! : qty;
 
   function handleAddToCart() {
     if (!product) return;
     addItem(
       {
-        sku: product.sap_item_code,
-        name: product.sap_item_name,
-        unit: product.unit_of_measure,
+        sku: product.sku,
+        name: product.name,
+        unit: product.unitOfMeasure,
       },
       totalUnits,
     );
     const desc = hasPack
-      ? `${qty} ${packLabel}(s) = ${totalUnits} ${product.unit_of_measure}`
-      : `${qty} ${product.unit_of_measure}`;
-    toast.success(`${product.sap_item_name} adicionado ao carrinho`, {
+      ? `${qty} ${packLabel}(s) = ${totalUnits} ${product.unitOfMeasure}`
+      : `${qty} ${product.unitOfMeasure}`;
+    toast.success(`${product.name} adicionado ao carrinho`, {
       description: desc,
     });
   }
@@ -150,10 +153,10 @@ export default function ProductDetailPage({
             <CardContent className="p-6">
               <div className="grid md:grid-cols-2 gap-8">
                 <div className="relative bg-gray-50 rounded-lg flex items-center justify-center min-h-[320px] overflow-hidden">
-                  {product.image_url ? (
+                  {product.imageUrl ? (
                     <Image
-                      src={product.image_url}
-                      alt={product.sap_item_name}
+                      src={product.imageUrl}
+                      alt={product.name}
                       width={500}
                       height={500}
                       className="object-contain max-h-[480px] w-auto p-6"
@@ -162,7 +165,7 @@ export default function ProductDetailPage({
                   ) : (
                     <Package className="h-24 w-24 text-muted-foreground/20" />
                   )}
-                  {!product.is_in_stock && (
+                  {!product.inStock && (
                     <Badge className="absolute top-4 left-4 bg-red-600 text-white border-0 shadow-md text-sm px-3 py-1">
                       Sem estoque
                     </Badge>
@@ -171,24 +174,24 @@ export default function ProductDetailPage({
 
                 <div className="flex flex-col">
                   <h1 className="text-2xl font-bold text-gsn-text">
-                    {product.sap_item_name}
+                    {product.name}
                   </h1>
                   <p className="text-sm text-muted-foreground font-mono mt-1">
-                    SKU: {product.sap_item_code}
+                    SKU: {product.sku}
                   </p>
 
                   <div className="flex flex-wrap gap-2 mt-4">
-                    {product.category_name && (
-                      <Badge variant="outline">{product.category_name}</Badge>
+                    {product.category && (
+                      <Badge variant="outline">{product.category}</Badge>
                     )}
                     {product.ean && (
                       <Badge variant="outline" className="font-mono">
                         EAN: {product.ean}
                       </Badge>
                     )}
-                    {product.is_in_stock ? (
+                    {product.inStock ? (
                       <Badge className="bg-green-600 text-white border-0">
-                        Em estoque ({Math.floor(product.total_stock)})
+                        Em estoque ({Math.floor(product.stockQuantity)})
                       </Badge>
                     ) : (
                       <Badge className="bg-red-600 text-white border-0">
@@ -216,22 +219,22 @@ export default function ProductDetailPage({
                         <div>
                           <p className="text-amber-700">Unidades por {packLabel.toLowerCase()}</p>
                           <p className="font-semibold text-amber-900">
-                            {product.units_per_package} {product.unit_of_measure}
+                            {perPack} {product.unitOfMeasure}
                           </p>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {product.description_short && (
+                  {(product.fullDescription || product.description) && (
                     <div className="mt-5">
                       <h3 className="text-sm font-semibold text-gsn-text mb-1">
                         Descricao
                       </h3>
-                      <p
-                        className="text-sm text-muted-foreground leading-relaxed"
+                      <div
+                        className="text-sm text-muted-foreground leading-relaxed prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{
-                          __html: product.description_short,
+                          __html: product.fullDescription || product.description,
                         }}
                       />
                     </div>
@@ -241,12 +244,12 @@ export default function ProductDetailPage({
                     <div className="flex items-center gap-2 mt-4 text-sm text-gsn-brand">
                       <Check className="h-4 w-4" />
                       Ja esta no carrinho ({inCart.quantity}{" "}
-                      {product.unit_of_measure})
+                      {product.unitOfMeasure})
                     </div>
                   )}
 
                   <div className="mt-auto pt-6">
-                    {product.is_in_stock ? (
+                    {product.inStock ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <div className="flex items-center rounded-md border">
@@ -271,7 +274,7 @@ export default function ProductDetailPage({
                             </Button>
                           </div>
                           <span className="text-sm text-muted-foreground">
-                            {hasPack ? packLabel : product.unit_of_measure}
+                            {hasPack ? packLabel : product.unitOfMeasure}
                           </span>
                         </div>
 
@@ -279,10 +282,10 @@ export default function ProductDetailPage({
                           <div className="rounded-md bg-muted px-3 py-2 text-sm">
                             <span className="text-muted-foreground">Total: </span>
                             <span className="font-semibold text-gsn-text">
-                              {totalUnits} {product.unit_of_measure}
+                              {totalUnits} {product.unitOfMeasure}
                             </span>
                             <span className="text-muted-foreground">
-                              {" "}({qty} x {product.units_per_package} un)
+                              {" "}({qty} x {perPack} un)
                             </span>
                           </div>
                         )}

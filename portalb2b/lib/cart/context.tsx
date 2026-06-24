@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useReducer, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useReducer,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from "react";
 
 export interface CartItem {
   sku: string;
@@ -12,6 +19,24 @@ export interface CartItem {
 interface CartState {
   items: CartItem[];
   totalItems: number;
+}
+
+const STORAGE_KEY = "b2b_cart";
+
+function loadInitialState(): CartState {
+  if (typeof window === "undefined") return { items: [], totalItems: 0 };
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { items: [], totalItems: 0 };
+    const items = JSON.parse(raw) as CartItem[];
+    if (!Array.isArray(items)) return { items: [], totalItems: 0 };
+    const clean = items.filter(
+      (i) => i && typeof i.sku === "string" && typeof i.quantity === "number",
+    );
+    return { items: clean, totalItems: clean.reduce((s, i) => s + i.quantity, 0) };
+  } catch {
+    return { items: [], totalItems: 0 };
+  }
 }
 
 type CartAction =
@@ -62,7 +87,22 @@ interface CartContextType extends CartState {
 const CartContext = createContext<CartContextType | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(cartReducer, { items: [], totalItems: 0 });
+  const [state, dispatch] = useReducer(
+    cartReducer,
+    undefined as unknown as CartState,
+    loadInitialState,
+  );
+
+  // Persiste o carrinho para que o cliente nao perca o pedido em andamento
+  // ao recarregar a pagina ou navegar entre as telas.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
+    } catch {
+      /* ignora cota/erros de storage */
+    }
+  }, [state.items]);
 
   const addItem = useCallback((item: Omit<CartItem, "quantity">, quantity = 1) => {
     dispatch({ type: "ADD", item, quantity });

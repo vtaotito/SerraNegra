@@ -10,6 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
+import {
+  ORDER_FLOW,
+  getOrderStatusConfig,
+  type OrderStatus,
+} from "@/lib/orders";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -18,51 +23,36 @@ import {
   Package,
   User,
   FileText,
-  Clock,
   CheckCircle2,
-  Truck,
-  ClipboardList,
+  MessageSquare,
+  XCircle,
 } from "lucide-react";
 
-interface OrderDetail {
-  orderId: string;
-  externalOrderId: string;
-  sapDocEntry: number;
-  sapDocNum: number;
-  customerId: string;
-  customerName?: string;
-  shipToAddress?: string;
-  status: string;
-  slaDueAt?: string;
-  docTotal?: number;
-  currency?: string;
-  items: Array<{
-    sku: string;
-    quantity: number;
-    description?: string;
-    warehouse?: string;
-  }>;
-  createdAt: string;
-  updatedAt: string;
-  metadata?: Record<string, unknown>;
+interface OrderItem {
+  sku: string;
+  description?: string;
+  quantity: number;
+  unitPrice?: number;
+  lineTotal?: number;
+  warehouse?: string | null;
 }
 
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "success" | "warning" | "info"; icon: React.ComponentType<{ className?: string }> }> = {
-  A_SEPARAR: { label: "A Separar", variant: "info", icon: ClipboardList },
-  EM_SEPARACAO: { label: "Em Separacao", variant: "warning", icon: Package },
-  CONFERIDO: { label: "Conferido", variant: "secondary", icon: CheckCircle2 },
-  AGUARDANDO_COTACAO: { label: "Aguardando Cotacao", variant: "warning", icon: Clock },
-  AGUARDANDO_COLETA: { label: "Aguardando Coleta", variant: "success", icon: Truck },
-  DESPACHADO: { label: "Despachado", variant: "success", icon: CheckCircle2 },
-};
-
-const STATUS_FLOW = [
-  "A_SEPARAR",
-  "EM_SEPARACAO",
-  "CONFERIDO",
-  "AGUARDANDO_COLETA",
-  "DESPACHADO",
-];
+interface OrderDetail {
+  docEntry: number;
+  docNum: number;
+  status: OrderStatus;
+  cancelled: boolean;
+  customerId: string;
+  cardName?: string | null;
+  shipToAddress?: string | null;
+  dueDate?: string | null;
+  docTotal?: number | null;
+  currency?: string | null;
+  comments?: string | null;
+  items: OrderItem[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export default function PedidoDetalhePage({ params }: { params: Promise<{ docEntry: string }> }) {
   const { docEntry } = use(params);
@@ -72,8 +62,9 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
     queryFn: () => get(`/b2b/orders/${docEntry}`),
   });
 
-  const statusConfig = order ? STATUS_MAP[order.status] : null;
-  const currentStepIdx = order ? STATUS_FLOW.indexOf(order.status) : -1;
+  const cfg = order ? getOrderStatusConfig(order.status) : null;
+  const isCancelled = order?.status === "cancelado";
+  const currentStepIdx = order ? ORDER_FLOW.indexOf(order.status) : -1;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -82,7 +73,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <Link href="/pedidos">
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" aria-label="Voltar para pedidos">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
@@ -91,12 +82,12 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                 {isLoading ? (
                   <Skeleton className="h-8 w-48" />
                 ) : (
-                  `Pedido #${order?.sapDocNum}`
+                  `Pedido #${order?.docNum}`
                 )}
               </h1>
               {order && (
                 <p className="text-sm text-muted-foreground">
-                  DocEntry: {order.sapDocEntry}
+                  Pedido nº {order.docEntry}
                 </p>
               )}
             </div>
@@ -117,58 +108,73 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
             </Card>
           ) : (
             <>
-              {/* Status Badge + Timeline */}
+              {/* Status + Timeline */}
               <Card>
                 <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3">
-                      {statusConfig && <statusConfig.icon className="h-6 w-6 text-primary" />}
-                      <div>
-                        <Badge variant={statusConfig?.variant ?? "secondary"} className="text-sm px-3 py-1">
-                          {statusConfig?.label ?? order.status}
-                        </Badge>
-                      </div>
+                      {cfg && <cfg.icon className="h-6 w-6 text-gsn-brand" />}
+                      <Badge variant={cfg?.variant ?? "secondary"} className="text-sm px-3 py-1">
+                        {cfg?.label ?? order.status}
+                      </Badge>
                     </div>
                     {order.docTotal != null && (
                       <div className="text-right">
                         <p className="text-2xl font-bold">
-                          {formatCurrency(order.docTotal, order.currency)}
+                          {formatCurrency(order.docTotal, order.currency ?? "BRL")}
                         </p>
                         <p className="text-xs text-muted-foreground">Valor total</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Timeline */}
-                  <div className="flex items-center justify-between">
-                    {STATUS_FLOW.map((step, idx) => {
-                      const stepConf = STATUS_MAP[step];
-                      const isComplete = idx <= currentStepIdx;
-                      const isCurrent = idx === currentStepIdx;
-                      return (
-                        <div key={step} className="flex flex-col items-center flex-1">
-                          <div
-                            className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                              isCurrent
-                                ? "bg-primary text-primary-foreground ring-4 ring-primary/20"
-                                : isComplete
-                                  ? "bg-primary/80 text-primary-foreground"
-                                  : "bg-muted text-muted-foreground"
-                            }`}
-                          >
-                            {isComplete ? (
-                              <CheckCircle2 className="h-4 w-4" />
-                            ) : (
-                              idx + 1
+                  {cfg?.hint && (
+                    <p className="text-sm text-muted-foreground mb-6">{cfg.hint}</p>
+                  )}
+
+                  {isCancelled ? (
+                    <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+                      <XCircle className="h-4 w-4 flex-shrink-0" />
+                      Este pedido foi cancelado.
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      {ORDER_FLOW.map((step, idx) => {
+                        const stepConf = getOrderStatusConfig(step);
+                        const isComplete = idx <= currentStepIdx;
+                        const isCurrent = idx === currentStepIdx;
+                        return (
+                          <div key={step} className="flex flex-col items-center flex-1 relative">
+                            {idx > 0 && (
+                              <div
+                                className={`absolute top-4 right-1/2 h-0.5 w-full -z-0 ${
+                                  idx <= currentStepIdx ? "bg-gsn-brand" : "bg-muted"
+                                }`}
+                              />
                             )}
+                            <div
+                              className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                                isCurrent
+                                  ? "bg-gsn-brand text-white ring-4 ring-gsn-brand/20"
+                                  : isComplete
+                                    ? "bg-gsn-brand/80 text-white"
+                                    : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              {isComplete ? (
+                                <CheckCircle2 className="h-4 w-4" />
+                              ) : (
+                                idx + 1
+                              )}
+                            </div>
+                            <span className="mt-1.5 text-[10px] text-center text-muted-foreground leading-tight hidden sm:block">
+                              {stepConf.label}
+                            </span>
                           </div>
-                          <span className="mt-1.5 text-[10px] text-center text-muted-foreground leading-tight hidden sm:block">
-                            {stepConf?.label ?? step}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -189,10 +195,10 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                       <span className="text-muted-foreground">Atualizado em</span>
                       <span>{formatDateTime(order.updatedAt)}</span>
                     </div>
-                    {order.slaDueAt && (
+                    {order.dueDate && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Prazo</span>
-                        <span>{formatDate(order.slaDueAt)}</span>
+                        <span className="text-muted-foreground">Previsao</span>
+                        <span>{formatDate(order.dueDate)}</span>
                       </div>
                     )}
                   </CardContent>
@@ -205,16 +211,16 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-2 text-sm">
+                    {order.cardName && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Nome</span>
+                        <span className="text-right max-w-[60%] truncate">{order.cardName}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Codigo</span>
                       <span className="font-mono">{order.customerId}</span>
                     </div>
-                    {order.customerName && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Nome</span>
-                        <span className="text-right max-w-[60%] truncate">{order.customerName}</span>
-                      </div>
-                    )}
                     {order.shipToAddress && (
                       <div className="flex justify-between">
                         <span className="text-muted-foreground flex items-center gap-1">
@@ -226,6 +232,20 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Observações */}
+              {order.comments && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" /> Observacoes
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">{order.comments}</p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Itens do Pedido */}
               <Card>
@@ -243,11 +263,11 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                   ) : (
                     <div className="space-y-3">
                       {order.items.map((item, idx) => (
-                        <div key={idx}>
+                        <div key={`${item.sku}-${idx}`}>
                           {idx > 0 && <Separator className="mb-3" />}
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                              <p className="font-medium text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="space-y-0.5 min-w-0">
+                              <p className="font-medium text-sm truncate">
                                 {item.description ?? item.sku}
                               </p>
                               <p className="text-xs text-muted-foreground font-mono">
@@ -255,9 +275,16 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                                 {item.warehouse && ` | Deposito: ${item.warehouse}`}
                               </p>
                             </div>
-                            <Badge variant="outline" className="font-mono">
-                              Qtde: {item.quantity}
-                            </Badge>
+                            <div className="text-right flex-shrink-0">
+                              <Badge variant="outline" className="font-mono">
+                                {item.quantity}x
+                              </Badge>
+                              {item.lineTotal != null && item.lineTotal > 0 && (
+                                <p className="text-sm font-semibold mt-1">
+                                  {formatCurrency(item.lineTotal, order.currency ?? "BRL")}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}

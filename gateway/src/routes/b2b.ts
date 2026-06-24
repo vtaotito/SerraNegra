@@ -194,6 +194,38 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     cancelado: "Cancelado",
   };
 
+  // Status efetivo do pedido no funil e-commerce, do ponto de vista do cliente:
+  // o status gerido pela equipe de vendas tem prioridade; sem ele, deriva-se do
+  // SAP (cancelado / fechado=faturado / aberto=novo).
+  function deriveFunnelStatus(
+    row: { doc_status?: string; cancelled?: unknown },
+    funnel?: OrderStatus | null,
+  ): OrderStatus {
+    if (row.cancelled === "Y" || row.cancelled === true) return "cancelado";
+    if (funnel) return funnel;
+    return row.doc_status === "C" ? "faturado" : "novo";
+  }
+
+  // DTO camelCase consumido pelo Portal B2B (lista/dashboard de pedidos).
+  function mapCustomerOrder(row: any, funnel?: OrderStatus | null) {
+    return {
+      docEntry: Number(row.doc_entry),
+      docNum: Number(row.doc_num),
+      createdAt: row.doc_date,
+      dueDate: row.doc_due_date ?? null,
+      cardCode: row.card_code,
+      cardName: row.card_name ?? null,
+      docTotal: row.doc_total != null ? Number(row.doc_total) : null,
+      currency: row.doc_currency ?? "BRL",
+      sapStatus: row.doc_status ?? null,
+      cancelled: row.cancelled === "Y" || row.cancelled === true,
+      status: deriveFunnelStatus(row, funnel),
+      itemCount: Number(row.num_lines ?? 0),
+      totalQuantity: Number(row.total_quantity ?? 0),
+      comments: row.comments ?? null,
+    };
+  }
+
   const catalogService = new B2BCatalogService(B2B_DB_URL);
   await catalogService.init();
 
@@ -1894,22 +1926,18 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           params,
         );
 
-        const items = dataRes.rows.map((r: any) => ({
-          doc_entry: r.doc_entry,
-          doc_num: r.doc_num,
-          doc_date: r.doc_date,
-          doc_due_date: r.doc_due_date,
-          card_code: r.card_code,
-          card_name: r.card_name,
-          doc_total: Number(r.doc_total),
-          doc_currency: r.doc_currency,
-          doc_status: r.doc_status,
-          cancelled: r.cancelled,
-          comments: r.comments,
-          num_lines: r.num_lines,
-          total_quantity: Number(r.total_quantity),
-          lines: [],
-        }));
+        // Enriquece com o estágio do funil e-commerce gerido pela equipe de vendas.
+        const docEntries = dataRes.rows.map((r: any) => Number(r.doc_entry));
+        const funnelMap = await orderStatusService.getMany(docEntries);
+
+        let items = dataRes.rows.map((r: any) =>
+          mapCustomerOrder(r, funnelMap[Number(r.doc_entry)]),
+        );
+
+        // Filtro opcional por estágio do funil (?status=novo|em_analise|...).
+        if (query.status && isOrderStatus(query.status)) {
+          items = items.filter((o) => o.status === query.status);
+        }
 
         reply.code(200).send({ items, total });
       } catch (error) {
@@ -1958,7 +1986,40 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         );
 
         const rawJson = row.raw_json ?? {};
+        const funnelRow = await orderStatusService.get(Number(docEntry));
+
+        const lines = linesRes.rows.map((l: any) => ({
+          ...l,
+          Quantity: Number(l.Quantity),
+          Price: Number(l.Price),
+          UnitPrice: Number(l.UnitPrice),
+          LineTotal: Number(l.LineTotal),
+          DiscountPercent: Number(l.DiscountPercent),
+        }));
+
+        // Itens em formato camelCase para o portal.
+        const items = lines.map((l: any) => ({
+          sku: l.ItemCode,
+          description: l.ItemDescription ?? l.ItemCode,
+          quantity: l.Quantity,
+          unitPrice: l.UnitPrice || l.Price,
+          lineTotal: l.LineTotal,
+          warehouse: l.WarehouseCode ?? null,
+        }));
+
+        const shipAddress =
+          [rawJson.Address, rawJson.Address2].filter(Boolean).join(" - ") ||
+          null;
+
         reply.code(200).send({
+          // DTO camelCase consumido pelo portal
+          ...mapCustomerOrder(row, funnelRow?.status ?? null),
+          customerId: row.card_code,
+          updatedAt: funnelRow?.updated_at ?? row.doc_date,
+          shipToAddress: shipAddress,
+          paymentMethod: rawJson.PaymentMethod ?? rawJson.PayToCode ?? null,
+          items,
+          // Campos legados (compatibilidade)
           doc_entry: row.doc_entry,
           doc_num: row.doc_num,
           doc_date: row.doc_date,
@@ -1972,14 +2033,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           comments: row.comments,
           num_lines: row.num_lines,
           total_quantity: Number(row.total_quantity),
-          lines: linesRes.rows.map((l: any) => ({
-            ...l,
-            Quantity: Number(l.Quantity),
-            Price: Number(l.Price),
-            UnitPrice: Number(l.UnitPrice),
-            LineTotal: Number(l.LineTotal),
-            DiscountPercent: Number(l.DiscountPercent),
-          })),
+          lines,
           payment_method: rawJson.PaymentMethod ?? rawJson.PayToCode ?? null,
           ship_to_code: rawJson.ShipToCode ?? null,
           address: rawJson.Address ?? null,
@@ -2100,46 +2154,43 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const customer = (req as any).b2bCustomer as B2BTokenPayload;
 
       try {
-        const totalRes = await ordersPool.query(
-          "SELECT COUNT(*) AS cnt FROM sap_sales_orders WHERE card_code = $1",
+        // Todos os pedidos do cliente + estágio do funil (LEFT JOIN), para
+        // KPIs por etapa do funil e-commerce.
+        const allRes = await ordersPool.query(
+          `SELECT o.doc_entry, o.doc_status, o.cancelled, s.status AS funnel_status
+           FROM sap_sales_orders o
+           LEFT JOIN b2b_order_status s ON s.doc_entry = o.doc_entry
+           WHERE o.card_code = $1`,
           [customer.cardCode],
         );
-        const totalOrders = Number(totalRes.rows[0]?.cnt ?? 0);
+        const totalOrders = allRes.rows.length;
 
-        const statusRes = await ordersPool.query(
-          "SELECT doc_status, COUNT(*) AS cnt FROM sap_sales_orders WHERE card_code = $1 GROUP BY doc_status",
-          [customer.cardCode],
-        );
         const ordersByStatus: Record<string, number> = {};
-        for (const r of statusRes.rows) {
-          ordersByStatus[r.doc_status] = Number(r.cnt);
+        for (const r of allRes.rows) {
+          const st = deriveFunnelStatus(
+            r,
+            isOrderStatus(r.funnel_status) ? r.funnel_status : null,
+          );
+          ordersByStatus[st] = (ordersByStatus[st] ?? 0) + 1;
         }
 
         const recentRes = await ordersPool.query(
-          `SELECT doc_entry, doc_num, doc_date, doc_due_date, card_code, card_name,
-                  doc_total, doc_currency, doc_status, cancelled, comments,
-                  num_lines, total_quantity
-           FROM sap_sales_orders WHERE card_code = $1
-           ORDER BY doc_date DESC, doc_entry DESC LIMIT 5`,
+          `SELECT o.doc_entry, o.doc_num, o.doc_date, o.doc_due_date, o.card_code, o.card_name,
+                  o.doc_total, o.doc_currency, o.doc_status, o.cancelled, o.comments,
+                  o.num_lines, o.total_quantity, s.status AS funnel_status
+           FROM sap_sales_orders o
+           LEFT JOIN b2b_order_status s ON s.doc_entry = o.doc_entry
+           WHERE o.card_code = $1
+           ORDER BY o.doc_date DESC, o.doc_entry DESC LIMIT 5`,
           [customer.cardCode],
         );
 
-        const recentOrders = recentRes.rows.map((r: any) => ({
-          doc_entry: r.doc_entry,
-          doc_num: r.doc_num,
-          doc_date: r.doc_date,
-          doc_due_date: r.doc_due_date,
-          card_code: r.card_code,
-          card_name: r.card_name,
-          doc_total: Number(r.doc_total),
-          doc_currency: r.doc_currency,
-          doc_status: r.doc_status,
-          cancelled: r.cancelled,
-          comments: r.comments,
-          num_lines: r.num_lines,
-          total_quantity: Number(r.total_quantity),
-          lines: [],
-        }));
+        const recentOrders = recentRes.rows.map((r: any) =>
+          mapCustomerOrder(
+            r,
+            isOrderStatus(r.funnel_status) ? r.funnel_status : null,
+          ),
+        );
 
         reply.code(200).send({ totalOrders, ordersByStatus, recentOrders });
       } catch (error) {

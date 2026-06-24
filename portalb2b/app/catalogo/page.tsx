@@ -35,19 +35,34 @@ import {
 } from "lucide-react";
 
 interface CatalogProduct {
-  id: number;
-  sap_item_code: string;
-  sap_item_name: string;
-  image_url: string | null;
-  image_thumb_url: string | null;
-  category_name: string | null;
+  sku: string;
+  name: string;
+  description: string;
+  category: string | null;
   ean: string | null;
-  unit_of_measure: string;
-  packaging_type: string | null;
-  units_per_package: number | null;
-  total_stock: number;
-  is_in_stock: boolean;
-  match_score: number;
+  imageUrl: string | null;
+  price: number;
+  inStock: boolean;
+  stockQuantity: number;
+  unitOfMeasure: string;
+  packagingType: string | null;
+  unitsPerPack: number | string | null;
+}
+
+/** Normaliza unitsPerPack (vem como number, string "24.00" ou null do backend). */
+function toUnitsPerPack(value: number | string | null): number | null {
+  if (value == null) return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Remove tags HTML da descrição para um resumo curto no card. */
+function plainText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 interface CatalogResponse {
@@ -126,27 +141,25 @@ export default function CatalogoPage() {
   }, []);
 
   function handleAddToCart(product: CatalogProduct) {
-    const qty = quantities[product.sap_item_code] ?? 1;
-    const totalUnits =
-      product.units_per_package && product.units_per_package > 1
-        ? qty * product.units_per_package
-        : qty;
+    const qty = quantities[product.sku] ?? 1;
+    const perPack = toUnitsPerPack(product.unitsPerPack);
+    const totalUnits = perPack && perPack > 1 ? qty * perPack : qty;
     addItem(
-      { sku: product.sap_item_code, name: product.sap_item_name, unit: product.unit_of_measure },
+      { sku: product.sku, name: product.name, unit: product.unitOfMeasure },
       totalUnits,
     );
     const desc =
-      product.units_per_package && product.units_per_package > 1
-        ? `${qty} ${packagingLabel(product.packaging_type)}(s) = ${totalUnits} ${product.unit_of_measure}`
-        : `${qty} ${product.unit_of_measure}`;
-    toast.success(`${product.sap_item_name} adicionado ao carrinho`, { description: desc });
+      perPack && perPack > 1
+        ? `${qty} ${packagingLabel(product.packagingType)}(s) = ${totalUnits} ${product.unitOfMeasure}`
+        : `${qty} ${product.unitOfMeasure}`;
+    toast.success(`${product.name} adicionado ao carrinho`, { description: desc });
   }
 
   async function handleNotify(product: CatalogProduct) {
     try {
-      await post(`/b2b/catalog/${product.sap_item_code}/notify`, {});
+      await post(`/b2b/catalog/${product.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description: `Voce sera notificado quando "${product.sap_item_name}" estiver disponivel.`,
+        description: `Voce sera notificado quando "${product.name}" estiver disponivel.`,
       });
     } catch {
       toast.error("Erro ao cadastrar notificacao");
@@ -467,30 +480,31 @@ export default function CatalogoPage() {
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {data.items.map((product) => {
-                  const qty = quantities[product.sap_item_code] ?? 1;
-                  const inCart = getItem(product.sap_item_code);
-                  const imgSrc = product.image_thumb_url ?? product.image_url;
-                  const hasPack =
-                    product.units_per_package != null && product.units_per_package > 1;
-                  const packLabel = packagingLabel(product.packaging_type);
-                  const totalUnits = hasPack ? qty * product.units_per_package! : qty;
+                  const qty = quantities[product.sku] ?? 1;
+                  const inCart = getItem(product.sku);
+                  const imgSrc = product.imageUrl;
+                  const perPack = toUnitsPerPack(product.unitsPerPack);
+                  const hasPack = perPack != null && perPack > 1;
+                  const packLabel = packagingLabel(product.packagingType);
+                  const totalUnits = hasPack ? qty * perPack! : qty;
+                  const descSnippet = product.description ? plainText(product.description) : "";
 
                   return (
                     <Card
-                      key={product.sap_item_code}
+                      key={product.sku}
                       className={cn(
                         "flex flex-col transition-all hover:shadow-lg group overflow-hidden",
-                        !product.is_in_stock && "opacity-75 hover:opacity-100",
+                        !product.inStock && "opacity-75 hover:opacity-100",
                       )}
                     >
                       <Link
-                        href={`/catalogo/${product.sap_item_code}`}
+                        href={`/catalogo/${product.sku}`}
                         className="relative bg-gray-50 flex items-center justify-center h-48 overflow-hidden"
                       >
                         {imgSrc ? (
                           <Image
                             src={imgSrc}
-                            alt={product.sap_item_name}
+                            alt={product.name}
                             width={280}
                             height={280}
                             className="object-contain h-full w-full p-4 group-hover:scale-105 transition-transform duration-300"
@@ -500,7 +514,7 @@ export default function CatalogoPage() {
                             <Package className="h-16 w-16" />
                           </div>
                         )}
-                        {product.is_in_stock ? (
+                        {product.inStock ? (
                           <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-emerald-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
                             <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                             Disponivel
@@ -521,24 +535,30 @@ export default function CatalogoPage() {
                       <CardContent className="flex flex-col flex-1 p-4">
                         <div className="mb-2 min-h-[3rem]">
                           <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-[var(--gsn-text)]">
-                            {product.sap_item_name}
+                            {product.name}
                           </h3>
                           <p className="text-[11px] text-muted-foreground mt-1 font-mono tracking-wide">
-                            {product.sap_item_code}
+                            {product.sku}
                           </p>
                         </div>
 
+                        {descSnippet && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-snug">
+                            {descSnippet}
+                          </p>
+                        )}
+
                         <div className="flex flex-wrap gap-1 mb-2">
-                          {product.category_name && (
+                          {product.category && (
                             <button
                               onClick={(e) => {
                                 e.preventDefault();
-                                setCategory(product.category_name!);
+                                setCategory(product.category!);
                               }}
                               className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
                             >
                               <Tag className="h-2.5 w-2.5" />
-                              {product.category_name}
+                              {product.category}
                             </button>
                           )}
                         </div>
@@ -547,12 +567,12 @@ export default function CatalogoPage() {
                           <div className="flex items-center gap-1.5 mb-3 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
                             <Box className="h-3.5 w-3.5 flex-shrink-0" />
                             <span className="font-medium">
-                              {packLabel} c/ {product.units_per_package} {product.unit_of_measure}
+                              {packLabel} c/ {perPack} {product.unitOfMeasure}
                             </span>
                           </div>
                         )}
 
-                        {product.is_in_stock ? (
+                        {product.inStock ? (
                           <div className="mt-auto space-y-2">
                             <div className="flex items-center gap-2">
                               <div className="flex items-center rounded-lg border bg-muted/30">
@@ -561,7 +581,7 @@ export default function CatalogoPage() {
                                   size="icon"
                                   className="h-8 w-8 rounded-r-none hover:bg-muted"
                                   onClick={() =>
-                                    handleQuantityChange(product.sap_item_code, -1)
+                                    handleQuantityChange(product.sku, -1)
                                   }
                                 >
                                   <Minus className="h-3 w-3" />
@@ -574,19 +594,19 @@ export default function CatalogoPage() {
                                   size="icon"
                                   className="h-8 w-8 rounded-l-none hover:bg-muted"
                                   onClick={() =>
-                                    handleQuantityChange(product.sap_item_code, 1)
+                                    handleQuantityChange(product.sku, 1)
                                   }
                                 >
                                   <Plus className="h-3 w-3" />
                                 </Button>
                               </div>
                               <span className="text-xs text-muted-foreground">
-                                {hasPack ? packLabel : product.unit_of_measure}
+                                {hasPack ? packLabel : product.unitOfMeasure}
                               </span>
                             </div>
                             {hasPack && (
                               <p className="text-xs text-muted-foreground">
-                                Total: <span className="font-semibold text-[var(--gsn-text)]">{totalUnits} {product.unit_of_measure}</span>
+                                Total: <span className="font-semibold text-[var(--gsn-text)]">{totalUnits} {product.unitOfMeasure}</span>
                               </p>
                             )}
                             <Button

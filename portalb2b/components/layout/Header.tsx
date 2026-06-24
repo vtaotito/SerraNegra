@@ -70,7 +70,7 @@ export function Header() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Link href="/carrinho">
+          <Link href="/carrinho" aria-label={`Carrinho${totalItems > 0 ? ` (${totalItems} itens)` : ""}`}>
             <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
               <ShoppingCart className="h-5 w-5" />
               {totalItems > 0 && (
@@ -88,7 +88,7 @@ export function Header() {
             </div>
           )}
 
-          <Button variant="ghost" size="icon" onClick={logout} title="Sair" className="text-gsn-gray hover:text-gsn-brand">
+          <Button variant="ghost" size="icon" onClick={logout} title="Sair" aria-label="Sair" className="text-gsn-gray hover:text-gsn-brand">
             <LogOut className="h-4 w-4" />
           </Button>
 
@@ -96,6 +96,8 @@ export function Header() {
             variant="ghost"
             size="icon"
             className="md:hidden"
+            aria-label={mobileOpen ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={mobileOpen}
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}

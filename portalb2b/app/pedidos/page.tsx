@@ -9,6 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import {
+  ORDER_STATUS_FILTERS,
+  getOrderStatusConfig,
+  type OrderStatus,
+  type OrderSummary,
+} from "@/lib/orders";
 import Link from "next/link";
 import {
   ClipboardList,
@@ -20,73 +26,32 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
-interface Order {
-  orderId: string;
-  externalOrderId: string;
-  sapDocEntry: number;
-  sapDocNum: number;
-  customerId: string;
-  customerName?: string;
-  status: string;
-  docTotal?: number;
-  currency?: string;
-  createdAt: string;
-  updatedAt: string;
-  items: Array<{ sku: string; quantity: number; description?: string }>;
-}
-
 interface OrdersResponse {
-  items: Order[];
+  items: OrderSummary[];
   total: number;
 }
 
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "success" | "warning" | "info" | "destructive" }> = {
-  A_SEPARAR: { label: "A Separar", variant: "info" },
-  EM_SEPARACAO: { label: "Em Separacao", variant: "warning" },
-  CONFERIDO: { label: "Conferido", variant: "secondary" },
-  AGUARDANDO_COTACAO: { label: "Aguardando Cotacao", variant: "warning" },
-  AGUARDANDO_COLETA: { label: "Aguardando Coleta", variant: "success" },
-  DESPACHADO: { label: "Despachado", variant: "success" },
-};
-
-const STATUS_FILTERS = [
-  { value: "", label: "Todos" },
-  { value: "A_SEPARAR", label: "A Separar" },
-  { value: "EM_SEPARACAO", label: "Em Separacao" },
-  { value: "CONFERIDO", label: "Conferido" },
-  { value: "AGUARDANDO_COLETA", label: "Aguardando Coleta" },
-  { value: "DESPACHADO", label: "Despachado" },
-];
-
 export default function PedidosPage() {
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [search, setSearch] = useState("");
 
-  const { data: openData, isLoading: loadingOpen } = useQuery<OrdersResponse>({
-    queryKey: ["b2b-orders", "open", statusFilter],
-    queryFn: () =>
-      get(`/b2b/orders?docStatus=O${statusFilter ? `&status=${statusFilter}` : ""}`),
+  const { data, isLoading } = useQuery<OrdersResponse>({
+    queryKey: ["b2b-orders"],
+    queryFn: () => get("/b2b/orders"),
   });
 
-  const { data: closedData, isLoading: loadingClosed } = useQuery<OrdersResponse>({
-    queryKey: ["b2b-orders", "closed"],
-    queryFn: () => get("/b2b/orders?docStatus=C"),
+  const allOrders = data?.items ?? [];
+
+  const filtered = allOrders.filter((o) => {
+    if (statusFilter && o.status !== statusFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!String(o.docNum).includes(search) && !String(o.docEntry).includes(search)) {
+        return false;
+      }
+    }
+    return true;
   });
-
-  const allOrders = [
-    ...(openData?.items ?? []),
-    ...(closedData?.items ?? []),
-  ];
-
-  const filtered = search
-    ? allOrders.filter(
-        (o) =>
-          String(o.sapDocNum).includes(search) ||
-          o.orderId.toLowerCase().includes(search.toLowerCase())
-      )
-    : allOrders;
-
-  const isLoading = loadingOpen || loadingClosed;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -108,6 +73,7 @@ export default function PedidosPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
+                  aria-label="Buscar pedido por número"
                 />
               </div>
               <Link href="/catalogo">
@@ -120,13 +86,14 @@ export default function PedidosPage() {
           </div>
 
           {/* Filtros de Status */}
-          <div className="flex flex-wrap gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground mt-1.5" />
-            {STATUS_FILTERS.map((f) => (
+          <div className="flex flex-wrap gap-2 items-center">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            {ORDER_STATUS_FILTERS.map((f) => (
               <Button
-                key={f.value}
+                key={f.value || "all"}
                 variant={statusFilter === f.value ? "default" : "outline"}
                 size="sm"
+                className={statusFilter === f.value ? "bg-gsn-brand hover:bg-gsn-brand-dark text-white" : ""}
                 onClick={() => setStatusFilter(f.value)}
               >
                 {f.label}
@@ -152,48 +119,52 @@ export default function PedidosPage() {
                     : "Voce ainda nao possui pedidos"}
                 </p>
                 <Link href="/catalogo" className="mt-4">
-                  <Button>Fazer primeiro pedido</Button>
+                  <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
+                    Fazer primeiro pedido
+                  </Button>
                 </Link>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
-              {filtered.map((order) => (
-                <Link key={order.orderId} href={`/pedidos/${order.sapDocEntry}`}>
-                  <Card className="transition-all hover:shadow-md hover:border-gsn-brand/20 cursor-pointer">
-                    <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-                      <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">
-                        <ClipboardList className="h-5 w-5 text-muted-foreground" />
-                      </div>
-
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold">Pedido #{order.sapDocNum}</span>
-                          <Badge variant={STATUS_MAP[order.status]?.variant ?? "secondary"}>
-                            {STATUS_MAP[order.status]?.label ?? order.status}
-                          </Badge>
+              {filtered.map((order) => {
+                const cfg = getOrderStatusConfig(order.status);
+                const StatusIcon = cfg.icon;
+                return (
+                  <Link key={order.docEntry} href={`/pedidos/${order.docEntry}`}>
+                    <Card className="transition-all hover:shadow-md hover:border-gsn-brand/20 cursor-pointer">
+                      <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                        <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">
+                          <StatusIcon className="h-5 w-5 text-muted-foreground" />
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(order.createdAt)}
-                          </span>
-                          <span>{order.items.length} item(ns)</span>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-3">
-                        {order.docTotal != null && (
-                          <span className="font-semibold text-sm whitespace-nowrap">
-                            {formatCurrency(order.docTotal, order.currency)}
-                          </span>
-                        )}
-                        <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold">Pedido #{order.docNum}</span>
+                            <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {formatDate(order.createdAt)}
+                            </span>
+                            <span>{order.itemCount} item(ns)</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          {order.docTotal != null && (
+                            <span className="font-semibold text-sm whitespace-nowrap">
+                              {formatCurrency(order.docTotal, order.currency ?? "BRL")}
+                            </span>
+                          )}
+                          <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth/context";
+import { useCart } from "@/lib/cart/context";
 import { Header } from "@/components/layout/Header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
 import { formatDate } from "@/lib/utils";
+import { getOrderStatusConfig, type OrderSummary } from "@/lib/orders";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -20,40 +22,47 @@ import {
   TrendingUp,
   ArrowRight,
 } from "lucide-react";
-import { FEATURED_PRODUCTS } from "@/lib/product-images";
 
 interface DashboardData {
   totalOrders: number;
   ordersByStatus: Record<string, number>;
-  recentOrders: Array<{
-    orderId: string;
-    externalOrderId: string;
-    sapDocEntry: number;
-    sapDocNum: number;
-    status: string;
-    docTotal?: number;
-    currency?: string;
-    createdAt: string;
-    items: Array<{ sku: string; quantity: number }>;
-  }>;
+  recentOrders: OrderSummary[];
 }
 
-const STATUS_MAP: Record<string, { label: string; variant: "default" | "secondary" | "success" | "warning" | "info" | "destructive" }> = {
-  A_SEPARAR: { label: "A Separar", variant: "info" },
-  EM_SEPARACAO: { label: "Em Separacao", variant: "warning" },
-  CONFERIDO: { label: "Conferido", variant: "secondary" },
-  AGUARDANDO_COTACAO: { label: "Aguardando Cotacao", variant: "warning" },
-  AGUARDANDO_COLETA: { label: "Aguardando Coleta", variant: "success" },
-  DESPACHADO: { label: "Despachado", variant: "success" },
-};
+interface CatalogProduct {
+  sku: string;
+  name: string;
+  imageUrl: string | null;
+  inStock: boolean;
+}
+
+interface CatalogResponse {
+  items: CatalogProduct[];
+}
 
 export default function DashboardPage() {
   const { customer } = useAuth();
+  const { totalItems } = useCart();
 
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ["b2b-dashboard"],
     queryFn: () => get("/b2b/dashboard"),
   });
+
+  const { data: featured, isLoading: loadingFeatured } = useQuery<CatalogResponse>({
+    queryKey: ["b2b-featured"],
+    queryFn: () => get("/b2b/catalog?inStock=true&limit=6"),
+    staleTime: 60_000 * 5,
+  });
+
+  const byStatus = data?.ordersByStatus ?? {};
+  const inProgress =
+    (byStatus["novo"] ?? 0) +
+    (byStatus["em_analise"] ?? 0) +
+    (byStatus["separacao"] ?? 0) +
+    (byStatus["faturado"] ?? 0) +
+    (byStatus["enviado"] ?? 0);
+  const delivered = byStatus["entregue"] ?? 0;
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -79,26 +88,21 @@ export default function DashboardPage() {
             />
             <KPICard
               title="Em Andamento"
-              value={
-                data
-                  ? (data.ordersByStatus["A_SEPARAR"] ?? 0) +
-                    (data.ordersByStatus["EM_SEPARACAO"] ?? 0)
-                  : undefined
-              }
+              value={data ? inProgress : undefined}
               icon={Clock}
               isLoading={isLoading}
               color="text-amber-600"
             />
             <KPICard
-              title="Despachados"
-              value={data?.ordersByStatus["DESPACHADO"]}
+              title="Entregues"
+              value={data ? delivered : undefined}
               icon={CheckCircle2}
               isLoading={isLoading}
               color="text-gsn-brand-dark"
             />
             <KPICard
               title="Itens no Carrinho"
-              value={0}
+              value={totalItems}
               icon={ShoppingCart}
               isLoading={false}
               color="text-gsn-brand"
@@ -153,7 +157,7 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          {/* Produtos em Destaque */}
+          {/* Produtos em Destaque (catálogo real) */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base text-gsn-text">Produtos em Destaque</CardTitle>
@@ -164,34 +168,42 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                {FEATURED_PRODUCTS.map((product) => (
-                  <Link key={product.name} href="/catalogo" className="group">
-                    <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center">
-                      <div className="relative h-24 mb-2">
-                        <Image
-                          src={product.image}
-                          alt={product.name}
-                          fill
-                          className="object-contain group-hover:scale-105 transition-transform"
-                          sizes="150px"
-                        />
-                        {product.discount && (
-                          <span className="absolute -top-1 -right-1 bg-gsn-brand text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
-                            -{product.discount}%
-                          </span>
-                        )}
+              {loadingFeatured ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-36 rounded-lg" />
+                  ))}
+                </div>
+              ) : !featured?.items?.length ? (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  Nenhum produto disponivel no momento.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  {featured.items.map((product) => (
+                    <Link key={product.sku} href={`/catalogo/${product.sku}`} className="group">
+                      <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center h-full flex flex-col">
+                        <div className="relative h-24 mb-2 flex items-center justify-center">
+                          {product.imageUrl ? (
+                            <Image
+                              src={product.imageUrl}
+                              alt={product.name}
+                              fill
+                              className="object-contain group-hover:scale-105 transition-transform"
+                              sizes="150px"
+                            />
+                          ) : (
+                            <Package className="h-10 w-10 text-muted-foreground/20" />
+                          )}
+                        </div>
+                        <p className="text-xs font-medium line-clamp-2 text-gsn-text leading-tight mt-auto">
+                          {product.name}
+                        </p>
                       </div>
-                      <p className="text-xs font-medium line-clamp-2 text-gsn-text leading-tight">
-                        {product.name}
-                      </p>
-                      <p className="text-xs font-bold text-gsn-brand-dark mt-1">
-                        {product.price}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -224,33 +236,34 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {data.recentOrders.map((order) => (
-                    <Link
-                      key={order.orderId}
-                      href={`/pedidos/${order.sapDocEntry}`}
-                      className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent/50"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gsn-text">Pedido #{order.sapDocNum}</span>
-                          <Badge variant={STATUS_MAP[order.status]?.variant ?? "secondary"}>
-                            {STATUS_MAP[order.status]?.label ?? order.status}
-                          </Badge>
+                  {data.recentOrders.map((order) => {
+                    const cfg = getOrderStatusConfig(order.status);
+                    return (
+                      <Link
+                        key={order.docEntry}
+                        href={`/pedidos/${order.docEntry}`}
+                        className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent/50"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gsn-text">Pedido #{order.docNum}</span>
+                            <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(order.createdAt)} &middot; {order.itemCount} item(ns)
+                          </p>
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDate(order.createdAt)} &middot; {order.items.length} item(ns)
-                        </p>
-                      </div>
-                      {order.docTotal != null && (
-                        <span className="text-sm font-semibold text-gsn-brand-dark">
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: order.currency ?? "BRL",
-                          }).format(order.docTotal)}
-                        </span>
-                      )}
-                    </Link>
-                  ))}
+                        {order.docTotal != null && (
+                          <span className="text-sm font-semibold text-gsn-brand-dark">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: order.currency ?? "BRL",
+                            }).format(order.docTotal)}
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
