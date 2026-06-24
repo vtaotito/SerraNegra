@@ -416,14 +416,22 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   }
 
   /**
-   * Resolve o preço unitário (UnitPrice) de cada SKU para um cliente, usando a
-   * lista de preços do BP no SAP. O catálogo do portal não carrega preço, então
-   * ao criar o pedido no SAP precisamos informar o preço para o total não vir
-   * zerado. Ordem de resolução por item:
-   *   1) preço na lista de preços do próprio cliente (PriceListNum do BP)
-   *   2) preço na lista padrão (1)
-   *   3) maior preço positivo encontrado em qualquer lista do item
-   * Se o item não tiver nenhum preço cadastrado, fica de fora (o SAP precifica).
+   * Resolve um UnitPrice de FALLBACK por SKU para a criação do pedido no SAP.
+   *
+   * O catálogo do portal não carrega preço; ao criar o pedido deixamos o SAP
+   * precificar normalmente (lista de preços do cliente + preços especiais/
+   * descontos negociados — tudo isso só é aplicado quando NÃO enviamos UnitPrice).
+   *
+   * Porém alguns itens não têm preço cadastrado em nenhuma lista (Price 0), o que
+   * gera pedidos com total R$ 0. Para esses casos — e somente eles — informamos um
+   * UnitPrice de fallback para o total não vir zerado. Estratégia por item:
+   *   - Se a lista de preços do cliente já tem preço > 0  -> NÃO retorna nada
+   *     (deixa o SAP aplicar lista + preços especiais do cliente).
+   *   - Caso a lista do cliente esteja zerada, usa, nesta ordem:
+   *       1) último preço positivo que ESTE cliente já pagou pelo item (histórico)
+   *       2) maior preço positivo em qualquer lista de preços do item
+   *       3) último preço positivo praticado para o item (qualquer cliente)
+   *
    * Falhas são tolerantes: nunca bloqueiam a criação do pedido.
    */
   async function resolveUnitPrices(
@@ -450,24 +458,59 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       );
     }
 
+    // Último preço positivo praticado para o item no histórico de pedidos.
+    const lastSoldPrice = async (
+      sku: string,
+      customerOnly: boolean,
+    ): Promise<number> => {
+      try {
+        const params = customerOnly ? [sku, cardCode] : [sku];
+        const filter = customerOnly ? "AND o.card_code = $2" : "";
+        const { rows } = await ordersPool.query(
+          `SELECT l.price FROM sap_sales_order_lines l
+           JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
+           WHERE l.item_code = $1 AND l.price > 0 ${filter}
+           ORDER BY o.doc_date DESC NULLS LAST, o.doc_entry DESC
+           LIMIT 1`,
+          params,
+        );
+        return Number(rows[0]?.price ?? 0) || 0;
+      } catch (err) {
+        app.log.warn(
+          { err, correlationId, sku },
+          "resolveUnitPrices: falha ao consultar histórico de preço",
+        );
+        return 0;
+      }
+    };
+
     for (const sku of uniqueSkus) {
       try {
         const res = await client.get<{
           ItemPrices?: Array<{ PriceList?: number; Price?: number }>;
         }>(`/Items('${sku}')?$select=ItemCode,ItemPrices`, { correlationId });
         const prices = res.data?.ItemPrices ?? [];
-        const fromCustomer = prices.find(
-          (p) => p.PriceList === priceList && (p.Price ?? 0) > 0,
-        )?.Price;
-        const fromDefault = prices.find(
-          (p) => p.PriceList === 1 && (p.Price ?? 0) > 0,
-        )?.Price;
-        const anyPositive = prices
-          .map((p) => p.Price ?? 0)
-          .filter((v) => v > 0)
-          .sort((a, b) => b - a)[0];
-        const price = fromCustomer ?? fromDefault ?? anyPositive;
-        if (price && price > 0) out.set(sku, Number(price));
+        const customerListPrice =
+          prices.find((p) => p.PriceList === priceList && (p.Price ?? 0) > 0)
+            ?.Price ?? 0;
+
+        // Lista do cliente já precifica o item: deixa o SAP resolver (preserva
+        // preços especiais e descontos negociados).
+        if (customerListPrice > 0) continue;
+
+        const customerHist = await lastSoldPrice(sku, true);
+        const anyListPrice =
+          prices
+            .map((p) => p.Price ?? 0)
+            .filter((v) => v > 0)
+            .sort((a, b) => b - a)[0] ?? 0;
+        const globalHist =
+          customerHist > 0 || anyListPrice > 0
+            ? 0
+            : await lastSoldPrice(sku, false);
+
+        const fallback = customerHist || anyListPrice || globalHist;
+        if (fallback > 0) out.set(sku, Number(fallback));
       } catch (err) {
         app.log.warn(
           { err, correlationId, sku },
