@@ -86,6 +86,10 @@ const PAINEL_URL =
 // ~96% das linhas históricas). Configurável por ambiente.
 const B2B_DEFAULT_WAREHOUSE = process.env.B2B_DEFAULT_WAREHOUSE ?? "01.02";
 
+// Filial/branch padrão (BPLId) exigida pelo SAP na criação do pedido.
+// 1 = "GARRAFARIA SERRA NEGRA EIRELI" (matriz, dona do depósito 01.02).
+const B2B_DEFAULT_BRANCH = Number(process.env.B2B_DEFAULT_BRANCH ?? "1");
+
 interface B2BTokenPayload {
   cardCode: string;
   cardName: string;
@@ -1612,6 +1616,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             pending.due_date ??
             new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
           Comments: comments,
+          BPL_IDAssignedToInvoice: B2B_DEFAULT_BRANCH,
           DocumentLines: validItems.map((item, idx) => ({
             LineNum: idx,
             ItemCode: item.sku,
@@ -1812,6 +1817,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             body.dueDate ??
             new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
           Comments: comments,
+          BPL_IDAssignedToInvoice: B2B_DEFAULT_BRANCH,
           DocumentLines: documentLines,
         };
 
