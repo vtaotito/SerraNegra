@@ -219,6 +219,62 @@ export function setB2BOrderStatus(
   );
 }
 
+// ─── Pedidos pendentes (confirmação manual do vendedor) ──
+
+export type B2BPendingOrderStatus = "pendente" | "confirmado" | "rejeitado";
+
+export interface B2BPendingOrderItem {
+  sku: string;
+  name: string | null;
+  quantity: number;
+  warehouse?: string | null;
+}
+
+export interface B2BPendingOrderRow {
+  id: number;
+  card_code: string;
+  card_name: string | null;
+  items: B2BPendingOrderItem[];
+  notes: string | null;
+  due_date: string | null;
+  status: B2BPendingOrderStatus;
+  origin: string;
+  created_by: string | null;
+  total_quantity: number;
+  sap_doc_entry: number | null;
+  sap_doc_num: number | null;
+  reject_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listB2BPendingOrders(status?: B2BPendingOrderStatus) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return b2bAdminFetch<{
+    items: B2BPendingOrderRow[];
+    total: number;
+    pendingCount: number;
+  }>(`/b2b/admin/pending-orders${qs}`);
+}
+
+export function confirmB2BPendingOrder(id: number) {
+  return b2bAdminFetch<{
+    ok: boolean;
+    docEntry: number;
+    docNum: number;
+    pending: B2BPendingOrderRow;
+  }>(`/b2b/admin/pending-orders/${id}/confirm`, { method: "POST" });
+}
+
+export function rejectB2BPendingOrder(id: number, reason?: string) {
+  return b2bAdminFetch<{ ok: boolean; pending: B2BPendingOrderRow }>(
+    `/b2b/admin/pending-orders/${id}/reject`,
+    { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
+  );
+}
+
 // ─── Venda assistida (catálogo + criação de pedido pelo vendedor) ──
 
 export interface B2BAdminCatalogItem {

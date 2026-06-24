@@ -130,37 +130,61 @@ export default function PedidosPage() {
               {filtered.map((order) => {
                 const cfg = getOrderStatusConfig(order.status);
                 const StatusIcon = cfg.icon;
+
+                const cardBody = (
+                  <CardContent className="flex items-center gap-4 p-4 sm:p-5">
+                    <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">
+                      <StatusIcon className="h-5 w-5 text-muted-foreground" />
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold">
+                          {order.pending ? `Solicitação #${order.docNum}` : `Pedido #${order.docNum}`}
+                        </span>
+                        <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {formatDate(order.createdAt)}
+                        </span>
+                        <span>{order.itemCount} item(ns)</span>
+                      </div>
+                      {order.pending && order.status === "cancelado" && order.rejectReason && (
+                        <p className="text-xs text-destructive">Motivo: {order.rejectReason}</p>
+                      )}
+                      {order.pending && order.status === "aguardando" && (
+                        <p className="text-xs text-muted-foreground">{cfg.hint}</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      {order.docTotal != null && (
+                        <span className="font-semibold text-sm whitespace-nowrap">
+                          {formatCurrency(order.docTotal, order.currency ?? "BRL")}
+                        </span>
+                      )}
+                      {!order.pending && (
+                        <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      )}
+                    </div>
+                  </CardContent>
+                );
+
+                // Pedidos pendentes não têm página de detalhe (não existem no SAP).
+                if (order.pending) {
+                  return (
+                    <Card key={order.docEntry} className="border-amber-200 bg-amber-50/30">
+                      {cardBody}
+                    </Card>
+                  );
+                }
+
                 return (
                   <Link key={order.docEntry} href={`/pedidos/${order.docEntry}`}>
                     <Card className="transition-all hover:shadow-md hover:border-gsn-brand/20 cursor-pointer">
-                      <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-                        <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">
-                          <StatusIcon className="h-5 w-5 text-muted-foreground" />
-                        </div>
-
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold">Pedido #{order.docNum}</span>
-                            <Badge variant={cfg.variant}>{cfg.label}</Badge>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {formatDate(order.createdAt)}
-                            </span>
-                            <span>{order.itemCount} item(ns)</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          {order.docTotal != null && (
-                            <span className="font-semibold text-sm whitespace-nowrap">
-                              {formatCurrency(order.docTotal, order.currency ?? "BRL")}
-                            </span>
-                          )}
-                          <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                        </div>
-                      </CardContent>
+                      {cardBody}
                     </Card>
                   </Link>
                 );

@@ -33,18 +33,18 @@ export default function CarrinhoPage() {
 
     setSubmitting(true);
     try {
-      const res = await post<{ ok: boolean; docEntry: number; docNum: number }>("/b2b/orders", {
-        items: items.map((i) => ({ sku: i.sku, quantity: i.quantity })),
+      await post<{ ok: boolean; pending: boolean; pendingId: number }>("/b2b/orders", {
+        items: items.map((i) => ({ sku: i.sku, name: i.name, quantity: i.quantity })),
         notes: notes || undefined,
       });
 
-      toast.success("Pedido criado com sucesso!", {
-        description: `Pedido #${res.docNum} registrado no SAP`,
+      toast.success("Pedido enviado!", {
+        description: "Aguarde a confirmação da nossa equipe de vendas.",
       });
       clearCart();
       router.push("/pedidos");
     } catch (error) {
-      toast.error("Erro ao criar pedido", {
+      toast.error("Erro ao enviar pedido", {
         description: error instanceof Error ? error.message : "Tente novamente",
       });
     } finally {
@@ -199,7 +199,7 @@ export default function CarrinhoPage() {
                   <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
                     <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                     <span>
-                      O pedido sera criado diretamente no SAP. Os precos serao aplicados conforme a tabela de precos do seu cadastro.
+                      Seu pedido passara por confirmacao da equipe de vendas antes de ser registrado. Os precos serao aplicados conforme a tabela de precos do seu cadastro.
                     </span>
                   </div>
                 </CardContent>

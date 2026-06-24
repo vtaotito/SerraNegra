@@ -19,5 +19,7 @@ export {
   sendInternalAccessRequestNotification,
   sendOrderConfirmationEmail,
   sendNewOrderToSellerEmail,
+  sendOrderApprovedEmail,
+  sendOrderRejectedEmail,
   sendBackInStockEmail,
 } from "./email/index.js";

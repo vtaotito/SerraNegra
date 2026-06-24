@@ -284,6 +284,51 @@ export async function sendNewOrderToSellerEmail(params: {
   return sendEmail({ to, subject: `Novo pedido #${docNum} — ${cardName}`, html, text });
 }
 
+export async function sendOrderApprovedEmail(params: {
+  to: string;
+  cardName: string;
+  docNum: number | string;
+}): Promise<boolean> {
+  const { to, cardName, docNum } = params;
+  const title = "Pedido confirmado";
+  const html = renderLayout({
+    title,
+    preheader: `Pedido #${docNum} confirmado e em processamento.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(`Seu pedido <strong>#${escapeHtml(String(docNum))}</strong> foi <strong>confirmado</strong> pela nossa equipe e já está em processamento.`)}
+      ${renderButton({ label: "Acompanhar meus pedidos", url: `${BRAND.portalUrl}/pedidos` })}
+    `,
+  });
+  const text = `Olá, ${cardName}! Seu pedido #${docNum} foi confirmado pela nossa equipe e está em processamento. Acompanhe em ${BRAND.portalUrl}/pedidos.`;
+  return sendEmail({ to, subject: `Pedido #${docNum} confirmado — ${BRAND.name}`, html, text });
+}
+
+export async function sendOrderRejectedEmail(params: {
+  to: string;
+  cardName: string;
+  reason?: string | null;
+}): Promise<boolean> {
+  const { to, cardName, reason } = params;
+  const title = "Sobre o seu pedido";
+  const html = renderLayout({
+    title,
+    preheader: `Atualização sobre o seu pedido no Portal B2B.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(`Infelizmente não foi possível dar andamento ao seu pedido feito pelo Portal B2B.`)}
+      ${reason ? p(`<strong>Motivo:</strong> ${escapeHtml(reason)}`) : ""}
+      ${p("Nossa equipe comercial pode ajudar a ajustar o pedido. Em caso de dúvidas, entre em contato conosco.")}
+      ${renderButton({ label: "Fazer um novo pedido", url: `${BRAND.portalUrl}/catalogo` })}
+    `,
+  });
+  const text =
+    `Olá, ${cardName}! Não foi possível dar andamento ao seu pedido feito pelo Portal B2B.` +
+    (reason ? ` Motivo: ${reason}.` : "") +
+    ` Faça um novo pedido em ${BRAND.portalUrl}/catalogo.`;
+  return sendEmail({ to, subject: `Atualização sobre o seu pedido — ${BRAND.name}`, html, text });
+}
+
 /* ─────────────────────── Catálogo ─────────────────────── */
 
 export async function sendBackInStockEmail(params: {

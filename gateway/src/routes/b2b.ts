@@ -14,6 +14,11 @@ import {
   type OrderStatus,
 } from "../services/b2bOrderStatusService.js";
 import {
+  B2BPendingOrderService,
+  type PendingOrderItem,
+  type PendingOrderRow,
+} from "../services/b2bPendingOrderService.js";
+import {
   B2BCatalogService,
   fetchAllGsnProducts,
   fetchAllWooProducts,
@@ -39,6 +44,8 @@ import {
   sendInternalAccessRequestNotification,
   sendOrderConfirmationEmail,
   sendNewOrderToSellerEmail,
+  sendOrderApprovedEmail,
+  sendOrderRejectedEmail,
 } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
@@ -183,6 +190,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   const orderStatusService = new B2BOrderStatusService(B2B_DB_URL);
   await orderStatusService.init();
 
+  const pendingOrderService = new B2BPendingOrderService(B2B_DB_URL);
+  await pendingOrderService.init();
+
   // Rótulos legíveis dos estágios do funil e-commerce (para a timeline).
   const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
     novo: "Novo",
@@ -223,6 +233,33 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       itemCount: Number(row.num_lines ?? 0),
       totalQuantity: Number(row.total_quantity ?? 0),
       comments: row.comments ?? null,
+      pending: false,
+    };
+  }
+
+  // DTO de um pedido AGUARDANDO confirmação do vendedor (ainda não existe no
+  // SAP). Reaproveita o mesmo formato do mapCustomerOrder para a lista/dashboard
+  // do portal, marcando `pending: true` e status sintético "aguardando".
+  function mapPendingOrder(row: PendingOrderRow) {
+    const rejected = row.status === "rejeitado";
+    return {
+      docEntry: -Number(row.id), // sintético (negativo) — não há doc no SAP
+      docNum: Number(row.id),
+      createdAt: row.created_at,
+      dueDate: row.due_date ?? null,
+      cardCode: row.card_code,
+      cardName: row.card_name ?? null,
+      docTotal: null,
+      currency: "BRL",
+      sapStatus: null,
+      cancelled: rejected,
+      status: rejected ? "cancelado" : "aguardando",
+      itemCount: Array.isArray(row.items) ? row.items.length : 0,
+      totalQuantity: Number(row.total_quantity ?? 0),
+      comments: row.notes ?? null,
+      pending: true,
+      pendingId: Number(row.id),
+      rejectReason: row.reject_reason ?? null,
     };
   }
 
@@ -1246,6 +1283,192 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
+  // ADMIN - PEDIDOS PENDENTES (confirmação manual do vendedor)
+  // =============================================
+
+  // Lista pedidos do portal aguardando confirmação (ou já confirmados/recusados).
+  app.get(
+    "/b2b/admin/pending-orders",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const status = query.status as
+        | "pendente"
+        | "confirmado"
+        | "rejeitado"
+        | undefined;
+      try {
+        const items = await pendingOrderService.list({
+          status:
+            status === "pendente" ||
+            status === "confirmado" ||
+            status === "rejeitado"
+              ? status
+              : undefined,
+          cardCode: query.cardCode || undefined,
+        });
+        const pendingCount = await pendingOrderService.countByStatus("pendente");
+        reply.code(200).send({ items, total: items.length, pendingCount });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Confirma o pedido pendente → cria o documento no SAP e inicia o funil.
+  app.post(
+    "/b2b/admin/pending-orders/:id/confirm",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const correlationId = (req as any).correlationId as string;
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id inválido" });
+        return;
+      }
+
+      try {
+        const pending = await pendingOrderService.get(id);
+        if (!pending) {
+          reply.code(404).send({ error: "Pedido pendente não encontrado" });
+          return;
+        }
+        if (pending.status !== "pendente") {
+          reply.code(409).send({
+            error: `Pedido já foi ${pending.status === "confirmado" ? "confirmado" : "recusado"}`,
+          });
+          return;
+        }
+
+        const items = Array.isArray(pending.items) ? pending.items : [];
+        const validItems = items.filter(
+          (it) => it.sku && Number(it.quantity) > 0,
+        );
+        if (validItems.length === 0) {
+          reply.code(400).send({ error: "Pedido sem itens válidos" });
+          return;
+        }
+
+        const client = getSapClient();
+        const seller = admin?.user ?? "Equipe de vendas";
+        const baseComment = `Pedido via Portal B2B (confirmado por ${seller}) - ${pending.card_name ?? pending.card_code}`;
+        const comments = pending.notes?.trim()
+          ? `${baseComment} | Obs: ${pending.notes.trim()}`
+          : baseComment;
+
+        const sapOrder = {
+          CardCode: pending.card_code,
+          DocDueDate:
+            pending.due_date ??
+            new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+          Comments: comments,
+          DocumentLines: validItems.map((item, idx) => ({
+            LineNum: idx,
+            ItemCode: item.sku,
+            Quantity: Number(item.quantity),
+            WarehouseCode: item.warehouse ?? undefined,
+          })),
+        };
+
+        const response = await client.post<any>("/Orders", sapOrder, {
+          correlationId,
+        });
+        const created = response.data;
+
+        const row = await pendingOrderService.markConfirmed(id, {
+          sapDocEntry: Number(created.DocEntry),
+          sapDocNum: created.DocNum != null ? Number(created.DocNum) : null,
+          reviewedBy: seller,
+        });
+
+        // Inicia o funil e-commerce para o pedido recém-criado.
+        if (created.DocEntry != null) {
+          await orderStatusService
+            .ensureInitial({
+              docEntry: Number(created.DocEntry),
+              status: "novo",
+              cardCode: pending.card_code,
+            })
+            .catch((err) =>
+              req.log.warn({ err }, "Falha ao iniciar status do pedido confirmado"),
+            );
+        }
+
+        // Avisa o cliente que o pedido foi confirmado e está em processamento.
+        if (pending.created_by) {
+          await sendOrderApprovedEmail({
+            to: pending.created_by,
+            cardName: pending.card_name ?? pending.card_code,
+            docNum: created.DocNum ?? created.DocEntry,
+          }).catch(() => undefined);
+        }
+
+        reply.code(200).send({
+          ok: true,
+          docEntry: created.DocEntry,
+          docNum: created.DocNum,
+          pending: row,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao confirmar pedido";
+        req.log.error({ error, correlationId }, "Erro ao confirmar pedido B2B");
+        reply.code(500).send({ error: "Erro ao confirmar pedido", message });
+      }
+    },
+  );
+
+  // Recusa o pedido pendente (não cria nada no SAP) e avisa o cliente.
+  app.post(
+    "/b2b/admin/pending-orders/:id/reject",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const id = Number((req.params as any).id);
+      const body = (req.body ?? {}) as { reason?: string };
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id inválido" });
+        return;
+      }
+
+      try {
+        const pending = await pendingOrderService.get(id);
+        if (!pending) {
+          reply.code(404).send({ error: "Pedido pendente não encontrado" });
+          return;
+        }
+        if (pending.status !== "pendente") {
+          reply.code(409).send({
+            error: `Pedido já foi ${pending.status === "confirmado" ? "confirmado" : "recusado"}`,
+          });
+          return;
+        }
+
+        const row = await pendingOrderService.markRejected(id, {
+          reason: body.reason?.trim() || null,
+          reviewedBy: admin?.user ?? null,
+        });
+
+        if (pending.created_by) {
+          await sendOrderRejectedEmail({
+            to: pending.created_by,
+            cardName: pending.card_name ?? pending.card_code,
+            reason: body.reason?.trim() || null,
+          }).catch(() => undefined);
+        }
+
+        reply.code(200).send({ ok: true, pending: row });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao recusar pedido";
+        reply.code(500).send({ error: "Erro ao recusar pedido", message });
+      }
+    },
+  );
+
+  // =============================================
   // ADMIN - VENDA ASSISTIDA (catálogo + criação de pedido)
   // =============================================
 
@@ -1930,16 +2153,25 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const docEntries = dataRes.rows.map((r: any) => Number(r.doc_entry));
         const funnelMap = await orderStatusService.getMany(docEntries);
 
-        let items = dataRes.rows.map((r: any) =>
+        const sapItems = dataRes.rows.map((r: any) =>
           mapCustomerOrder(r, funnelMap[Number(r.doc_entry)]),
         );
 
-        // Filtro opcional por estágio do funil (?status=novo|em_analise|...).
-        if (query.status && isOrderStatus(query.status)) {
+        // Pedidos aguardando confirmação do vendedor (ainda não estão no SAP):
+        // entram no topo da lista para o cliente acompanhar o andamento.
+        const pendingRows = await pendingOrderService
+          .listPendingForCustomer(customer.cardCode)
+          .catch(() => [] as PendingOrderRow[]);
+        const pendingItems = pendingRows.map(mapPendingOrder);
+
+        let items = [...pendingItems, ...sapItems];
+
+        // Filtro opcional por estágio (?status=aguardando|novo|...).
+        if (query.status) {
           items = items.filter((o) => o.status === query.status);
         }
 
-        reply.code(200).send({ items, total });
+        reply.code(200).send({ items, total: total + pendingItems.length });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         req.log.error({ error }, "Erro ao listar pedidos B2B");
@@ -2066,80 +2298,66 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       }
 
       try {
-        const client = getSapClient();
+        // Pedidos do portal NÃO vão direto ao SAP: ficam pendentes de
+        // confirmação manual do vendedor pelo painel. Só após a confirmação o
+        // documento é criado no SAP (ver POST /b2b/admin/pending-orders/:id/confirm).
+        const items: PendingOrderItem[] = body.items
+          .filter((it: any) => it?.sku && Number(it?.quantity) > 0)
+          .map((it: any) => ({
+            sku: String(it.sku),
+            name: typeof it.name === "string" ? it.name : null,
+            quantity: Number(it.quantity),
+            warehouse: it.warehouse ?? null,
+          }));
 
-        const documentLines = body.items.map(
-          (item: any, idx: number) => ({
-            LineNum: idx,
-            ItemCode: item.sku,
-            Quantity: item.quantity,
-            WarehouseCode: item.warehouse ?? undefined,
-          })
-        );
+        if (items.length === 0) {
+          reply.code(400).send({
+            error: "Inclua ao menos um item com quantidade válida",
+          });
+          return;
+        }
 
-        const sapOrder = {
-          CardCode: customer.cardCode,
-          DocDueDate:
-            body.dueDate ??
-            new Date(Date.now() + 7 * 86400000)
-              .toISOString()
-              .split("T")[0],
-          Comments:
-            body.notes ??
-            `Pedido via Portal B2B - ${customer.cardName}`,
-          DocumentLines: documentLines,
-        };
-
-        const response = await client.post<any>("/Orders", sapOrder, {
-          correlationId,
+        const pending = await pendingOrderService.create({
+          cardCode: customer.cardCode,
+          cardName: customer.cardName,
+          items,
+          notes: body.notes ?? null,
+          dueDate: body.dueDate ?? null,
+          origin: "portal",
+          createdBy: customer.email ?? null,
         });
-        const created = response.data;
 
-        // Confirmação ao cliente + alerta operacional ao comercial/vendedor.
+        // Confirmação ao cliente (recebido / aguardando) + alerta ao comercial.
         if (customer.email) {
           await sendOrderConfirmationEmail({
             to: customer.email,
             cardName: customer.cardName,
-            docNum: created.DocNum ?? created.DocEntry,
+            docNum: pending.id,
           }).catch(() => undefined);
         }
         await sendNewOrderToSellerEmail({
           to: EMAIL_COMMERCIAL,
           cardName: customer.cardName,
-          docNum: created.DocNum ?? created.DocEntry,
-          orderUrl: `${PAINEL_URL}/pedidos?docEntry=${created.DocEntry}`,
+          docNum: pending.id,
+          orderUrl: `${PAINEL_URL}/pedidos`,
         }).catch(() => undefined);
-
-        // Inicializa o pedido como "novo" no funil e-commerce para a equipe de
-        // vendas (best-effort: não bloqueia a resposta ao cliente).
-        if (created.DocEntry != null) {
-          await orderStatusService
-            .ensureInitial({
-              docEntry: Number(created.DocEntry),
-              status: "novo",
-              cardCode: customer.cardCode,
-            })
-            .catch((err) =>
-              req.log.warn({ err }, "Falha ao iniciar status do pedido B2B"),
-            );
-        }
 
         reply.code(201).send({
           ok: true,
-          message: "Pedido criado com sucesso",
-          docEntry: created.DocEntry,
-          docNum: created.DocNum,
+          pending: true,
+          message: "Pedido enviado. Aguardando confirmação da equipe de vendas.",
+          pendingId: pending.id,
         });
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Erro ao criar pedido";
+          error instanceof Error ? error.message : "Erro ao registrar pedido";
         req.log.error(
           { error, correlationId },
-          "Erro ao criar pedido B2B"
+          "Erro ao registrar pedido pendente B2B"
         );
         reply
           .code(500)
-          .send({ error: "Erro ao criar pedido", message });
+          .send({ error: "Erro ao registrar pedido", message });
       }
     }
   );
@@ -2185,14 +2403,28 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           [customer.cardCode],
         );
 
-        const recentOrders = recentRes.rows.map((r: any) =>
+        // Pedidos aguardando confirmação contam no funil e aparecem em recentes.
+        const pendingRows = await pendingOrderService
+          .listPendingForCustomer(customer.cardCode)
+          .catch(() => [] as PendingOrderRow[]);
+        const pendingItems = pendingRows.map(mapPendingOrder);
+        for (const p of pendingItems) {
+          ordersByStatus[p.status] = (ordersByStatus[p.status] ?? 0) + 1;
+        }
+
+        const recentSap = recentRes.rows.map((r: any) =>
           mapCustomerOrder(
             r,
             isOrderStatus(r.funnel_status) ? r.funnel_status : null,
           ),
         );
+        const recentOrders = [...pendingItems, ...recentSap].slice(0, 5);
 
-        reply.code(200).send({ totalOrders, ordersByStatus, recentOrders });
+        reply.code(200).send({
+          totalOrders: totalOrders + pendingItems.length,
+          ordersByStatus,
+          recentOrders,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });

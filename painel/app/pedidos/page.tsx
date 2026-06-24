@@ -20,6 +20,9 @@ import {
   StickyNote,
   Layers,
   Plus,
+  Hourglass,
+  Check,
+  Ban,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort } from "@/lib/format";
@@ -157,6 +160,20 @@ function PedidosContent() {
   const [selected, setSelected] = useState<SalesOrderRow | null>(null);
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
   const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
+  const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
+
+  const loadPendingOrders = useCallback(() => {
+    fetch(`/api/b2b-admin/pending-orders?status=pendente`)
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success) setPendingOrders(j.data.items ?? []);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    loadPendingOrders();
+  }, [loadPendingOrders]);
 
   // Etapa efetiva no funil: status salvo ou, para pedidos do portal ainda não
   // trabalhados, "novo" como padrão. Pedidos de outras origens não têm etapa.
@@ -297,6 +314,7 @@ function PedidosContent() {
           icon={Store}
           label="Portal B2B"
           count={originCounts.portal}
+          badge={pendingOrders.length > 0 ? pendingOrders.length : undefined}
           accent
         />
         <OriginTab
@@ -312,6 +330,14 @@ function PedidosContent() {
           count={originCounts.todos}
         />
       </div>
+
+      {/* Pedidos aguardando confirmação (somente na aba Portal B2B) */}
+      {originFilter === "portal" && (
+        <PendingOrdersSection
+          orders={pendingOrders}
+          onChanged={loadPendingOrders}
+        />
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -487,6 +513,7 @@ function OriginTab({
   icon: Icon,
   label,
   count,
+  badge,
   accent,
 }: {
   active: boolean;
@@ -494,13 +521,14 @@ function OriginTab({
   icon?: typeof Store;
   label: string;
   count: number;
+  badge?: number;
   accent?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition",
+        "relative inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition",
         active
           ? accent
             ? "bg-white text-amber-700 shadow-sm"
@@ -522,7 +550,145 @@ function OriginTab({
       >
         {count}
       </span>
+      {badge != null && badge > 0 && (
+        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white bg-red-500">
+          {badge}
+        </span>
+      )}
     </button>
+  );
+}
+
+interface PendingOrderItem {
+  sku: string;
+  name: string | null;
+  quantity: number;
+}
+
+interface PendingOrder {
+  id: number;
+  card_code: string;
+  card_name: string | null;
+  items: PendingOrderItem[];
+  notes: string | null;
+  total_quantity: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+function PendingOrdersSection({
+  orders,
+  onChanged,
+}: {
+  orders: PendingOrder[];
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState<number | null>(null);
+
+  const confirmOrder = async (id: number) => {
+    setBusy(id);
+    try {
+      const res = await fetch(`/api/b2b-admin/pending-orders/${id}/confirm`, {
+        method: "POST",
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro ao confirmar");
+      toast.success(
+        `Pedido confirmado e enviado ao SAP (#${j.data.docNum ?? j.data.docEntry}). Aparecerá na lista após a sincronização.`,
+      );
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao confirmar pedido");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const rejectOrder = async (id: number) => {
+    const reason = window.prompt("Motivo da recusa (opcional):") ?? undefined;
+    setBusy(id);
+    try {
+      const res = await fetch(`/api/b2b-admin/pending-orders/${id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro ao recusar");
+      toast.success("Pedido recusado. O cliente foi notificado.");
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao recusar pedido");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (orders.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Hourglass className="w-4 h-4 text-amber-600" />
+        <h2 className="text-sm font-semibold text-amber-800">
+          Aguardando confirmação ({orders.length})
+        </h2>
+        <span className="text-xs text-amber-700/80">
+          Pedidos feitos no Portal B2B só vão ao SAP após sua confirmação.
+        </span>
+      </div>
+      <div className="space-y-2">
+        {orders.map((o) => (
+          <div
+            key={o.id}
+            className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg bg-white border border-amber-100 p-3"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-mono text-gray-500">#{o.id}</span>
+                <span className="text-sm font-medium text-gray-900 truncate">
+                  {o.card_name ?? o.card_code}
+                </span>
+                <span className="text-xs text-gray-400">{o.card_code}</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {fmtDateShort(o.created_at)} · {o.items?.length ?? 0} item(ns) ·{" "}
+                {fmtNum(o.total_quantity)} un
+              </p>
+              <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                {(o.items ?? [])
+                  .map((it) => `${it.quantity}× ${it.name ?? it.sku}`)
+                  .join(", ")}
+              </p>
+              {o.notes && (
+                <p className="text-xs text-gray-500 mt-1 italic">Obs: {o.notes}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => rejectOrder(o.id)}
+                disabled={busy === o.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition disabled:opacity-50"
+              >
+                <Ban className="w-3.5 h-3.5" /> Recusar
+              </button>
+              <button
+                onClick={() => confirmOrder(o.id)}
+                disabled={busy === o.id}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
+              >
+                {busy === o.id ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5" />
+                )}
+                Confirmar e enviar ao SAP
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

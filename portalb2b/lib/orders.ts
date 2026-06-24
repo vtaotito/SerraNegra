@@ -1,6 +1,7 @@
 import {
   ClipboardList,
   Clock,
+  Hourglass,
   Package,
   Receipt,
   Truck,
@@ -15,6 +16,7 @@ import {
  * vendedor enxerguem o pedido na mesma etapa.
  */
 export type OrderStatus =
+  | "aguardando"
   | "novo"
   | "em_analise"
   | "separacao"
@@ -41,6 +43,12 @@ interface OrderStatusConfig {
 }
 
 export const ORDER_STATUS_CONFIG: Record<OrderStatus, OrderStatusConfig> = {
+  aguardando: {
+    label: "Aguardando confirmação",
+    variant: "warning",
+    icon: Hourglass,
+    hint: "Pedido enviado. Aguardando a confirmação da nossa equipe de vendas.",
+  },
   novo: {
     label: "Novo",
     variant: "info",
@@ -98,6 +106,7 @@ export const ORDER_FLOW: OrderStatus[] = [
 /** Filtros de status para a lista de pedidos. */
 export const ORDER_STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
+  { value: "aguardando", label: "Aguardando" },
   { value: "novo", label: "Novos" },
   { value: "em_analise", label: "Em análise" },
   { value: "separacao", label: "Em separação" },
@@ -134,4 +143,8 @@ export interface OrderSummary {
   itemCount: number;
   totalQuantity: number;
   comments?: string | null;
+  /** true quando o pedido ainda aguarda confirmação do vendedor (não existe no SAP). */
+  pending?: boolean;
+  pendingId?: number;
+  rejectReason?: string | null;
 }

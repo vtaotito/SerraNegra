@@ -238,15 +238,13 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   {data.recentOrders.map((order) => {
                     const cfg = getOrderStatusConfig(order.status);
-                    return (
-                      <Link
-                        key={order.docEntry}
-                        href={`/pedidos/${order.docEntry}`}
-                        className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent/50"
-                      >
+                    const inner = (
+                      <>
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-gsn-text">Pedido #{order.docNum}</span>
+                            <span className="font-medium text-gsn-text">
+                              {order.pending ? `Solicitação #${order.docNum}` : `Pedido #${order.docNum}`}
+                            </span>
                             <Badge variant={cfg.variant}>{cfg.label}</Badge>
                           </div>
                           <p className="text-xs text-muted-foreground">
@@ -261,6 +259,27 @@ export default function DashboardPage() {
                             }).format(order.docTotal)}
                           </span>
                         )}
+                      </>
+                    );
+
+                    if (order.pending) {
+                      return (
+                        <div
+                          key={order.docEntry}
+                          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/30 p-4"
+                        >
+                          {inner}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <Link
+                        key={order.docEntry}
+                        href={`/pedidos/${order.docEntry}`}
+                        className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent/50"
+                      >
+                        {inner}
                       </Link>
                     );
                   })}
