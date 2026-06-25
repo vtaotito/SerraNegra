@@ -218,6 +218,26 @@ interface UnifiedProductRow {
 
 /* ═══════════════════ Build from server-aggregated rows ═══════════════════ */
 
+/**
+ * Rótulo de embalagem a partir do cadastro B2B autoritativo (mesma regra do
+ * portalb2b `resolveVariantPackagingType`): quando o tipo vem vazio/"Unidade"
+ * mas há mais de 1 unidade por embalagem, classifica como "CAIXA". Produz o
+ * mesmo formato usado pelo painel ("CAIXA C/12", "FARDO C/24", "UND").
+ */
+function resolveEmbalaLabel(packagingType: string | null | undefined, units: number): string {
+  const raw = (packagingType ?? "").trim();
+  let type: string;
+  if (raw && raw.toLowerCase() !== "unidade" && raw.toUpperCase() !== "UN") {
+    type = raw.toUpperCase();
+  } else if (units > 1) {
+    type = "CAIXA";
+  } else {
+    type = "UND";
+  }
+  if (units > 1 && type !== "UND") return `${type} C/${units}`;
+  return "UND";
+}
+
 function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
   products: ProductRow[];
   codGroups: CodGroup[];
@@ -236,8 +256,17 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
         hiddenRevenue += r.total_revenue;
         return null;
       }
+      // Embalagem/unidades autoritativos do cadastro B2B (mesma fonte do
+      // portalb2b). Quando o cadastro SAP informa unidades por embalagem
+      // (units_per_package > 1), prevalecem sobre o parsing da descrição —
+      // garantindo o volume total correto mesmo quando a descrição não traz
+      // "CAIXA/FARDO/PALETE" (ex.: itens "- UND" que são caixas de 24/100).
+      const dbUnits = Number(r.units_per_package ?? 0);
+      const useDb = Number.isFinite(dbUnits) && dbUnits > 1;
+      const embalaQty = useDb ? dbUnits : info.embalaQty;
+      const embala = useDb ? resolveEmbalaLabel(r.packaging_type, dbUnits) : info.embala;
       const qtdEmb = r.total_qty;
-      const qtdUnd = qtdEmb * info.embalaQty;
+      const qtdUnd = qtdEmb * embalaQty;
       const fat = r.total_revenue;
       const fat3m = Number(r.revenue_3m ?? 0);
       return {
@@ -248,8 +277,8 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
         capacidade: info.capacidade,
         cor: info.cor,
         fechamento: info.fechamento,
-        embala: info.embala,
-        embalaQty: info.embalaQty,
+        embala,
+        embalaQty,
         qtdEmb,
         fat3m,
         qtdUnd,
@@ -260,7 +289,7 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
         clientes: r.unique_clients,
         maxSaleValue: r.max_sale ?? 0,
         minSaleValue: r.min_sale ?? 0,
-        qty3mUnd: (r.qty_3m ?? 0) * info.embalaQty,
+        qty3mUnd: (r.qty_3m ?? 0) * embalaQty,
       } satisfies ProductRow;
     })
     .filter((p): p is ProductRow => p !== null)

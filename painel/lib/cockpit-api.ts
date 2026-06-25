@@ -377,6 +377,13 @@ export interface ProductAnalyticsRow {
   revenue_3m?: number;
   first_sale_date?: string | null;
   last_sale_date?: string | null;
+  /**
+   * Unidades por embalagem autoritativas do cadastro B2B (b2b_catalog_products),
+   * mesma fonte do portalb2b. Quando > 1, prevalece sobre o parsing da descrição.
+   */
+  units_per_package?: number | null;
+  /** Tipo de embalagem autoritativo do cadastro B2B (ex.: "Caixa", "Fardo"). */
+  packaging_type?: string | null;
 }
 
 export interface ProductAnalyticsResult {
