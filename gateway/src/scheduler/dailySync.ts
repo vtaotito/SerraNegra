@@ -933,20 +933,14 @@ export async function queryProductAnalytics(opts: {
   const sql = `
     WITH all_lines AS (
       SELECT o.doc_entry, o.doc_date, o.card_code, o.sales_person_code,
-             l.item_code, l.item_description, l.quantity, l.line_total, l.unit_price, l.discount_percent,
-             bcp.units_per_package, bcp.packaging_type
+             l.item_code, l.item_description, l.quantity, l.line_total, l.unit_price, l.discount_percent
       FROM sap_sales_orders o
       INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
-      LEFT JOIN b2b_catalog_products bcp ON bcp.sap_item_code = l.item_code
       WHERE ${where}
     )
     SELECT
       item_code,
       item_description,
-      -- Embalagem/unidades autoritativos do cadastro B2B (mesma fonte do portalb2b),
-      -- usados para converter quantidade vendida em volume total de unidades.
-      MAX(units_per_package)::float                                AS units_per_package,
-      MAX(packaging_type)                                          AS packaging_type,
       SUM(quantity)::float                                         AS total_qty,
       SUM(line_total)::float                                       AS total_revenue,
       MAX(CASE WHEN line_total > 0 THEN line_total END)::float     AS max_sale,
