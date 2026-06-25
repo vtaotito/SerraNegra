@@ -106,29 +106,42 @@ export function normalizeCategoryName(raw: string | null | undefined): string | 
     .join(" ");
 }
 
+/**
+ * Converte a quantidade capturada do nome (ex.: "1.200", "5.661", "24") em
+ * inteiro. No padrão brasileiro o "." (e às vezes ",") é separador de MILHAR
+ * para contagens de embalagem ("PALETE C/ 1.200 UND" = 1200), então removemos
+ * esses separadores antes de converter.
+ */
+function parsePackUnits(raw: string): number {
+  const digits = raw.replace(/[.,]/g, "");
+  return parseInt(digits, 10);
+}
+
 export function parsePackagingFromName(name: string): { type: string | null; units: number | null } {
   const lower = name.toLowerCase();
 
   const qtyWord = `(?:(?:com|c[/.]?)\\s+)`;
+  // Captura a contagem aceitando separador de milhar ("1.200", "5.661").
+  const N = "([\\d.,]+)";
   const patterns: [RegExp, string][] = [
-    [new RegExp(`\\bcaixa\\s+${qtyWord}?(\\d+)`, "i"), "Caixa"],
-    [new RegExp(`\\bcx\\s*${qtyWord}?(\\d+)`, "i"), "Caixa"],
-    [new RegExp(`\\bfardo\\s+${qtyWord}?(\\d+)`, "i"), "Fardo"],
-    [new RegExp(`\\bfd\\s*${qtyWord}?(\\d+)`, "i"), "Fardo"],
-    [new RegExp(`\\bpack\\s+${qtyWord}?(\\d+)`, "i"), "Pack"],
-    [new RegExp(`\\bpacote\\s+${qtyWord}?(\\d+)`, "i"), "Pacote"],
-    [new RegExp(`\\bpcte?\\s*${qtyWord}?(\\d+)`, "i"), "Pacote"],
-    [new RegExp(`\\bsaco\\s+${qtyWord}?(\\d+)`, "i"), "Saco"],
-    [new RegExp(`\\bpalet[e]?\\s+${qtyWord}?(\\d+)`, "i"), "Palete"],
-    [new RegExp(`\\bengradado\\s+${qtyWord}?(\\d+)`, "i"), "Engradado"],
-    [/(\d+)\s*(?:un(?:id(?:ades?)?)?|pcs?|pecas?)\b/i, "_units_first"],
+    [new RegExp(`\\bcaixa\\s+${qtyWord}?${N}`, "i"), "Caixa"],
+    [new RegExp(`\\bcx\\s*${qtyWord}?${N}`, "i"), "Caixa"],
+    [new RegExp(`\\bfardo\\s+${qtyWord}?${N}`, "i"), "Fardo"],
+    [new RegExp(`\\bfd\\s*${qtyWord}?${N}`, "i"), "Fardo"],
+    [new RegExp(`\\bpack\\s+${qtyWord}?${N}`, "i"), "Pack"],
+    [new RegExp(`\\bpacote\\s+${qtyWord}?${N}`, "i"), "Pacote"],
+    [new RegExp(`\\bpcte?\\s*${qtyWord}?${N}`, "i"), "Pacote"],
+    [new RegExp(`\\bsaco\\s+${qtyWord}?${N}`, "i"), "Saco"],
+    [new RegExp(`\\bpalet[e]?\\s+${qtyWord}?${N}`, "i"), "Palete"],
+    [new RegExp(`\\bengradado\\s+${qtyWord}?${N}`, "i"), "Engradado"],
+    [/([\d.,]+)\s*(?:un(?:id(?:ades?)?)?|pcs?|pecas?)\b/i, "_units_first"],
   ];
 
   for (const [re, type] of patterns) {
     const m = lower.match(re);
     if (m) {
-      const units = parseInt(m[1], 10);
-      if (units > 0 && units <= 9999) {
+      const units = parsePackUnits(m[1]);
+      if (units > 0 && units <= 999999) {
         if (type === "_units_first") return { type: "Caixa", units };
         return { type, units };
       }
@@ -172,29 +185,43 @@ export function resolvePackaging(
   salesItemsPerUnit: number | null | undefined,
   productName: string,
 ): { type: string; units: number | null } {
+  // O NOME do item é a fonte autoritativa da embalagem neste catálogo: o sufixo
+  // descreve a embalagem do SKU ("- CAIXA C/ 24 UND", "- PALETE C/ 4.972 UND",
+  // "- UND"). Os campos de embalagem do master do SAP estão frequentemente
+  // errados (ex.: garrafa "- UND" gravada como Caixa/100), por isso o nome tem
+  // prioridade. O master só é usado como fallback quando o nome não traz nada.
   const fromName = parsePackagingFromName(productName);
 
+  if (fromName.type && fromName.units) {
+    return { type: fromName.type, units: fromName.units };
+  }
+
+  const sapUnits =
+    salesQtyPerPack && salesQtyPerPack > 1
+      ? salesQtyPerPack
+      : salesItemsPerUnit && salesItemsPerUnit > 1
+        ? salesItemsPerUnit
+        : null;
+
+  if (fromName.type) {
+    // Embalagem identificada no nome mas sem contagem explícita (ex.: "CAIXA").
+    return { type: fromName.type, units: sapUnits };
+  }
+
+  // Nome sem palavra de embalagem (ex.: "- UND") → unidade individual.
+  if (productName && productName.trim() !== "") {
+    return { type: "Unidade", units: null };
+  }
+
+  // Nome ausente — fallback raro ao master do SAP.
   const sapType = salesPackagingUnit || salesUnit || sapUOM || null;
-  const sapUnits = salesQtyPerPack || salesItemsPerUnit || null;
-
   let resolvedType = "Unidade";
-  let resolvedUnits: number | null = null;
-
   if (sapType && sapType !== "UN" && UOM_PACKAGING_MAP[sapType.toUpperCase()]) {
     resolvedType = UOM_PACKAGING_MAP[sapType.toUpperCase()];
-  } else if (fromName.type) {
-    resolvedType = fromName.type;
   } else if (sapType && sapType !== "UN") {
     resolvedType = sapType;
   }
-
-  if (sapUnits && sapUnits > 1) {
-    resolvedUnits = sapUnits;
-  } else if (fromName.units) {
-    resolvedUnits = fromName.units;
-  }
-
-  return { type: resolvedType, units: resolvedUnits };
+  return { type: resolvedType, units: sapUnits };
 }
 
 // ─── Unificação de produtos (mesma lógica do painel da garrafaria) ────
