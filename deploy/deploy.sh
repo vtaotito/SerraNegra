@@ -25,7 +25,12 @@ rsync -a --delete \
   --exclude ".next" \
   ./ "$RELEASE_DIR/"
 
-export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-wms}"
+# IMPORTANTE: o stack em producao roda no projeto Compose "deploy" (volume de
+# dados = deploy_postgres_data). Se usarmos outro nome (ex.: "wms"), o Compose
+# criaria/usaria um volume DIFERENTE e VAZIO (wms_postgres_data) e ainda colidiria
+# com os container_name fixos ja em uso. Mantenha "deploy" para apontar para o
+# banco correto e recriar os containers existentes no lugar.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-deploy}"
 
 PREVIOUS_RELEASE=""
 if [ -L "$CURRENT_LINK" ]; then
