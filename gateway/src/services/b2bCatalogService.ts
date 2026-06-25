@@ -249,6 +249,17 @@ export const PRODUCT_GROUP_NAMES: Record<string, string> = {
   TP: "Tampa Plástica",
 };
 
+/**
+ * Categorias que NÃO devem aparecer no catálogo do Portal B2B (itens internos /
+ * não comercializáveis para o cliente). Comparação case-insensitive.
+ */
+export const EXCLUDED_B2B_CATEGORIES = new Set(["embalagens", "moldura", "palete"]);
+
+/** Indica se uma categoria deve ser ocultada do Portal B2B. */
+export function isExcludedB2BCategory(category: string | null | undefined): boolean {
+  return !!category && EXCLUDED_B2B_CATEGORIES.has(category.trim().toLowerCase());
+}
+
 /** Sigla (2 chars) do código SAP — ex.: "GN0000022" → "GN". */
 export function getProductPrefix(itemCode: string | null | undefined): string {
   if (!itemCode) return "OUTRO";
@@ -883,7 +894,7 @@ export class B2BCatalogService {
   async listUnifiedProducts(filters: CatalogFilters = {}): Promise<{
     items: B2BUnifiedProductDto[];
     total: number;
-    categories: string[];
+    categories: { name: string; count: number }[];
   }> {
     // Apenas is_active (mesmo critério do catálogo legado listProducts). O flag
     // is_sales_item nem sempre é populado pelo sync, então não filtramos por ele
@@ -917,10 +928,18 @@ export class B2BCatalogService {
 
     let unified = Array.from(groups.values()).map((g) => buildUnifiedProduct(g));
 
-    // Lista completa de categorias (antes dos filtros de categoria/estoque).
-    const categories = Array.from(
-      new Set(unified.map((u) => u.category).filter((c): c is string => !!c)),
-    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    // Remove categorias não comercializáveis no Portal B2B (Embalagens, Moldura, Palete).
+    unified = unified.filter((u) => !isExcludedB2BCategory(u.category));
+
+    // Categorias com contagem de produtos (antes dos filtros de categoria/estoque).
+    const categoryCounts = new Map<string, number>();
+    for (const u of unified) {
+      if (!u.category) continue;
+      categoryCounts.set(u.category, (categoryCounts.get(u.category) ?? 0) + 1);
+    }
+    const categories = Array.from(categoryCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 
     if (filters.category) {
       unified = unified.filter((u) => u.category === filters.category);
@@ -971,7 +990,10 @@ export class B2BCatalogService {
         getBaseProductName(r.sap_item_name) === base,
     );
 
-    return buildUnifiedProduct(variants.length > 0 ? variants : [target]);
+    const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
+    // Não expõe produtos de categorias removidas do Portal B2B.
+    if (isExcludedB2BCategory(unified.category)) return null;
+    return unified;
   }
 
   /**

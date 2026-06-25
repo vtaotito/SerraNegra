@@ -102,3 +102,42 @@ export function groupColor(groupCode: string | null | undefined): string {
   if (!groupCode) return "#A81C2C";
   return GROUP_COLORS[groupCode.toUpperCase()] ?? "#A81C2C";
 }
+
+/**
+ * Cor por nome de categoria comercial (espelha as cores de grupo). Permite
+ * colorir os filtros de categoria de forma consistente com os badges dos cards.
+ */
+const CATEGORY_COLORS: Record<string, string> = {
+  "garrafas artesanais": GROUP_COLORS.AR,
+  "equipamentos": GROUP_COLORS.EQ,
+  "garrafão": GROUP_COLORS.GF,
+  "garrafao": GROUP_COLORS.GF,
+  "garrafa importada": GROUP_COLORS.GI,
+  "garrafa nacional": GROUP_COLORS.GN,
+  "insumos": GROUP_COLORS.IS,
+  "lacre": GROUP_COLORS.LA,
+  "medidores": GROUP_COLORS.ME,
+  "pote": GROUP_COLORS.PO,
+  "rolha": GROUP_COLORS.RO,
+  "tampa alumínio": GROUP_COLORS.TA,
+  "tampa aluminio": GROUP_COLORS.TA,
+  "tampa metálica": GROUP_COLORS.TM,
+  "tampa metalica": GROUP_COLORS.TM,
+  "tampa plástica": GROUP_COLORS.TP,
+  "tampa plastica": GROUP_COLORS.TP,
+};
+
+/** Paleta de fallback determinística para categorias sem cor mapeada. */
+const FALLBACK_CATEGORY_COLORS = [
+  "#A81C2C", "#0ea5e9", "#65a30d", "#8b5cf6", "#f59e0b",
+  "#ec4899", "#14b8a6", "#6366f1", "#d97706", "#475569",
+];
+
+export function categoryColor(name: string | null | undefined): string {
+  if (!name) return "#A81C2C";
+  const mapped = CATEGORY_COLORS[name.trim().toLowerCase()];
+  if (mapped) return mapped;
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return FALLBACK_CATEGORY_COLORS[hash % FALLBACK_CATEGORY_COLORS.length];
+}

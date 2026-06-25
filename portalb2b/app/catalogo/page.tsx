@@ -39,14 +39,20 @@ import {
   packagingLabel,
   packagingShort,
   groupColor,
+  categoryColor,
 } from "@/lib/catalog";
+
+interface CategoryFacet {
+  name: string;
+  count: number;
+}
 
 interface UnifiedResponse {
   items: UnifiedProduct[];
   total: number;
   page: number;
   pages: number;
-  categories: string[];
+  categories: CategoryFacet[];
 }
 
 const PAGE_SIZE = 24;
@@ -91,6 +97,7 @@ export default function CatalogoPage() {
   });
 
   const categories = data?.categories ?? [];
+  const totalCatalogCount = categories.reduce((s, c) => s + c.count, 0);
 
   const getSelectedVariant = useCallback(
     (product: UnifiedProduct): PackagingVariant => {
@@ -251,30 +258,21 @@ export default function CatalogoPage() {
           {categories.length > 0 && (
             <div className="hidden sm:flex items-center gap-1.5 pb-3 overflow-x-auto scrollbar-hide">
               <Layers className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mr-0.5" />
-              <button
+              <CategoryPill
+                label="Todas"
+                count={totalCatalogCount}
+                active={category === ""}
                 onClick={() => setCategory("")}
-                className={cn(
-                  "flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all",
-                  category === ""
-                    ? "bg-[var(--gsn-brand)] text-white border-[var(--gsn-brand)]"
-                    : "bg-white text-muted-foreground border-border hover:border-foreground/30 hover:text-foreground"
-                )}
-              >
-                Todas
-              </button>
+              />
               {categories.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCategory(category === c ? "" : c)}
-                  className={cn(
-                    "flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border transition-all whitespace-nowrap",
-                    category === c
-                      ? "bg-[var(--gsn-brand)] text-white border-[var(--gsn-brand)]"
-                      : "bg-white text-muted-foreground border-border hover:border-foreground/30 hover:text-foreground"
-                  )}
-                >
-                  {c}
-                </button>
+                <CategoryPill
+                  key={c.name}
+                  label={c.name}
+                  count={c.count}
+                  color={categoryColor(c.name)}
+                  active={category === c.name}
+                  onClick={() => setCategory(category === c.name ? "" : c.name)}
+                />
               ))}
             </div>
           )}
@@ -312,30 +310,21 @@ export default function CatalogoPage() {
                     <Tag className="h-3 w-3" /> Categoria
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    <button
+                    <CategoryPill
+                      label="Todas"
+                      count={totalCatalogCount}
+                      active={category === ""}
                       onClick={() => setCategory("")}
-                      className={cn(
-                        "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                        category === ""
-                          ? "bg-[var(--gsn-brand)] text-white border-[var(--gsn-brand)]"
-                          : "bg-white border-border text-muted-foreground"
-                      )}
-                    >
-                      Todas
-                    </button>
+                    />
                     {categories.map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => { setCategory(category === c ? "" : c); }}
-                        className={cn(
-                          "px-3 py-1.5 rounded-full text-xs font-medium border transition-all",
-                          category === c
-                            ? "bg-[var(--gsn-brand)] text-white border-[var(--gsn-brand)]"
-                            : "bg-white border-border text-muted-foreground"
-                        )}
-                      >
-                        {c}
-                      </button>
+                      <CategoryPill
+                        key={c.name}
+                        label={c.name}
+                        count={c.count}
+                        color={categoryColor(c.name)}
+                        active={category === c.name}
+                        onClick={() => setCategory(category === c.name ? "" : c.name)}
+                      />
                     ))}
                   </div>
                 </div>
@@ -517,6 +506,56 @@ export default function CatalogoPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+/* ─── Pílula de filtro de categoria ─── */
+
+function CategoryPill({
+  label,
+  count,
+  color,
+  active,
+  onClick,
+}: {
+  label: string;
+  count?: number;
+  color?: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const c = color ?? "var(--gsn-brand)";
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={cn(
+        "flex-shrink-0 inline-flex items-center gap-1.5 rounded-full border py-1 pl-2.5 pr-1.5 text-xs font-medium transition-all whitespace-nowrap",
+        active
+          ? "shadow-sm"
+          : "bg-white border-border text-foreground/80 hover:border-foreground/30 hover:text-foreground",
+      )}
+      style={active ? { backgroundColor: `${c}14`, borderColor: c, color: c } : undefined}
+    >
+      {color && (
+        <span
+          className="h-2 w-2 rounded-full flex-shrink-0"
+          style={{ backgroundColor: c }}
+        />
+      )}
+      <span>{label}</span>
+      {typeof count === "number" && (
+        <span
+          className={cn(
+            "rounded-full px-1.5 py-px text-[10px] font-semibold tabular-nums",
+            !active && "bg-muted text-muted-foreground",
+          )}
+          style={active ? { backgroundColor: `${c}26`, color: c } : undefined}
+        >
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
