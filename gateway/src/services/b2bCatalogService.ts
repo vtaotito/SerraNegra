@@ -858,7 +858,10 @@ export class B2BCatalogService {
     total: number;
     categories: string[];
   }> {
-    const conditions: string[] = ["is_active = TRUE", "is_sales_item = TRUE"];
+    // Apenas is_active (mesmo critério do catálogo legado listProducts). O flag
+    // is_sales_item nem sempre é populado pelo sync, então não filtramos por ele
+    // aqui para não esvaziar o catálogo.
+    const conditions: string[] = ["is_active = TRUE"];
     const params: unknown[] = [];
     let idx = 1;
 
@@ -929,7 +932,7 @@ export class B2BCatalogService {
 
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_catalog_products
-       WHERE is_active = TRUE AND is_sales_item = TRUE
+       WHERE is_active = TRUE
          AND UPPER(LEFT(sap_item_code, 2)) = $1
          AND UPPER(sap_item_name) LIKE $2`,
       [prefix, likeBase],
