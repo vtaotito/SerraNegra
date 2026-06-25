@@ -253,7 +253,12 @@ export const PRODUCT_GROUP_NAMES: Record<string, string> = {
  * Categorias que NÃO devem aparecer no catálogo do Portal B2B (itens internos /
  * não comercializáveis para o cliente). Comparação case-insensitive.
  */
-export const EXCLUDED_B2B_CATEGORIES = new Set(["embalagens", "moldura", "palete"]);
+export const EXCLUDED_B2B_CATEGORIES = new Set([
+  "embalagens",
+  "moldura",
+  "palete",
+  "serv prestados",
+]);
 
 /** Indica se uma categoria deve ser ocultada do Portal B2B. */
 export function isExcludedB2BCategory(category: string | null | undefined): boolean {

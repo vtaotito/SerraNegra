@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
@@ -25,6 +25,8 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   X,
   Box,
   PackageCheck,
@@ -81,6 +83,16 @@ export default function CatalogoPage() {
   const { addItem, getItem } = useCart();
 
   useEffect(() => { setPage(1); }, [search, category, stockFilter]);
+
+  // Rola para o topo ao trocar de página/filtro (melhora a navegação no grid).
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [page]);
 
   const queryParams = new URLSearchParams();
   if (search) queryParams.set("search", search);
@@ -159,6 +171,9 @@ export default function CatalogoPage() {
   const hasFilters = !!search || !!category || !!stockFilter;
   const activeFilterCount = (search ? 1 : 0) + (category ? 1 : 0) + (stockFilter ? 1 : 0);
   const pageNumbers = getPageNumbers(page, data?.pages ?? 1);
+  const total = data?.total ?? 0;
+  const rangeStart = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -256,24 +271,27 @@ export default function CatalogoPage() {
 
           {/* Category Pills - Desktop */}
           {categories.length > 0 && (
-            <div className="hidden sm:flex items-center gap-1.5 pb-3 overflow-x-auto scrollbar-hide">
-              <Layers className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mr-0.5" />
-              <CategoryPill
-                label="Todas"
-                count={totalCatalogCount}
-                active={category === ""}
-                onClick={() => setCategory("")}
-              />
-              {categories.map((c) => (
+            <div className="hidden sm:block relative pb-3">
+              <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide pr-10">
+                <Layers className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mr-0.5" />
                 <CategoryPill
-                  key={c.name}
-                  label={c.name}
-                  count={c.count}
-                  color={categoryColor(c.name)}
-                  active={category === c.name}
-                  onClick={() => setCategory(category === c.name ? "" : c.name)}
+                  label="Todas"
+                  count={totalCatalogCount}
+                  active={category === ""}
+                  onClick={() => setCategory("")}
                 />
-              ))}
+                {categories.map((c) => (
+                  <CategoryPill
+                    key={c.name}
+                    label={c.name}
+                    count={c.count}
+                    color={categoryColor(c.name)}
+                    active={category === c.name}
+                    onClick={() => setCategory(category === c.name ? "" : c.name)}
+                  />
+                ))}
+              </div>
+              <div className="pointer-events-none absolute right-0 top-0 bottom-3 w-10 bg-gradient-to-l from-white via-white/85 to-transparent" />
             </div>
           )}
 
@@ -397,9 +415,13 @@ export default function CatalogoPage() {
               )}
             </div>
 
-            {data && data.pages > 1 && (
-              <p className="text-xs text-muted-foreground">
-                Pagina {page} de {data.pages}
+            {data && data.total > 0 && data.pages > 1 && (
+              <p className="text-xs text-muted-foreground whitespace-nowrap">
+                Mostrando{" "}
+                <span className="font-medium text-foreground tabular-nums">
+                  {rangeStart}–{rangeEnd}
+                </span>{" "}
+                de <span className="tabular-nums">{data.total}</span>
               </p>
             )}
           </div>
@@ -460,45 +482,73 @@ export default function CatalogoPage() {
 
               {/* Pagination */}
               {data.pages > 1 && (
-                <div className="flex items-center justify-center gap-1 pt-6 pb-2">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => p - 1)}
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </Button>
+                <div className="flex flex-col items-center gap-2.5 pt-8 pb-2">
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 hidden sm:inline-flex"
+                      disabled={page <= 1}
+                      onClick={() => setPage(1)}
+                      aria-label="Primeira página"
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => p - 1)}
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
 
-                  {pageNumbers.map((p, i) =>
-                    p === "..." ? (
-                      <span key={`dots-${i}`} className="px-1 text-muted-foreground text-sm">...</span>
-                    ) : (
-                      <button
-                        key={p}
-                        onClick={() => setPage(p as number)}
-                        className={cn(
-                          "h-9 min-w-[2.25rem] rounded-lg text-sm font-medium transition-all",
-                          page === p
-                            ? "bg-[var(--gsn-brand)] text-white shadow-sm"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
+                    {pageNumbers.map((p, i) =>
+                      p === "..." ? (
+                        <span key={`dots-${i}`} className="px-1 text-muted-foreground text-sm select-none">…</span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setPage(p as number)}
+                          aria-current={page === p ? "page" : undefined}
+                          className={cn(
+                            "h-9 min-w-[2.25rem] px-1 rounded-lg text-sm font-medium transition-all",
+                            page === p
+                              ? "bg-[var(--gsn-brand)] text-white shadow-sm"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          )}
+                        >
+                          {p}
+                        </button>
+                      )
+                    )}
 
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9"
-                    disabled={page >= data.pages}
-                    onClick={() => setPage((p) => p + 1)}
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      disabled={page >= data.pages}
+                      onClick={() => setPage((p) => p + 1)}
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 hidden sm:inline-flex"
+                      disabled={page >= data.pages}
+                      onClick={() => setPage(data.pages)}
+                      aria-label="Última página"
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    Página {page} de {data.pages}
+                  </p>
                 </div>
               )}
             </>
