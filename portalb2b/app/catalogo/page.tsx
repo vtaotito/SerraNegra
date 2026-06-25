@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCart } from "@/lib/cart/context";
 import { useQuery } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
-import { getProductImageUrl } from "@/lib/product-images";
+import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -632,7 +632,7 @@ function ProductCard({
   onNotify: (variant: PackagingVariant) => void;
   onCategoryClick: (category: string) => void;
 }) {
-  const imgSrc = product.imageUrl ?? getProductImageUrl(product.name);
+  const imgSrc = product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name);
   const hasMultipleVariants = product.variants.length > 1;
   const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
   const totalUnits = qty * perPack;

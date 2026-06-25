@@ -11,7 +11,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import { useCart } from "@/lib/cart/context";
-import { getProductImageUrl } from "@/lib/product-images";
+import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import { toast } from "sonner";
 import {
   ORDER_FLOW,
@@ -118,7 +118,7 @@ const REQUEST_STATUS_META: Record<string, { label: string; cls: string }> = {
 };
 
 function itemImage(item: OrderItem): string | null {
-  return item.thumbUrl || item.imageUrl || getProductImageUrl(item.description ?? item.sku);
+  return item.thumbUrl || item.imageUrl || getProductImageBySku(item.sku) || getProductImageUrl(item.description ?? item.sku);
 }
 
 export default function PedidoDetalhePage({ params }: { params: Promise<{ docEntry: string }> }) {

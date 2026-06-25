@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCart } from "@/lib/cart/context";
 import { useQuery } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
-import { getProductImageUrl } from "@/lib/product-images";
+import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import {
   type UnifiedProductDetail,
   type PackagingVariant,
@@ -62,7 +62,7 @@ export default function ProductDetailPage({
   const perPack = variant && variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
   const totalUnits = qty * perPack;
   const inCart = variant ? getItem(variant.sku) : undefined;
-  const imgSrc = product ? product.imageUrl ?? getProductImageUrl(product.name) : null;
+  const imgSrc = product ? product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name) : null;
   const gColor = product ? groupColor(product.groupCode) : "#A81C2C";
 
   function handleAddToCart() {

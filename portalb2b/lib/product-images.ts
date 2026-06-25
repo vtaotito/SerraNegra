@@ -1,4 +1,16 @@
+import { IMAGE_BY_SKU } from "./product-images.generated";
+
 const TCDN_BASE = "https://images.tcdn.com.br/img/img_prod/1123510";
+
+/**
+ * Imagem do produto a partir do SKU do produto unificado, usando o mapa gerado
+ * do catálogo público da Garrafaria Serra Negra. Fonte mais confiável que o
+ * casamento por nome (abaixo), pois é 1:1 com o SKU.
+ */
+export function getProductImageBySku(sku: string | null | undefined): string | null {
+  if (!sku) return null;
+  return IMAGE_BY_SKU[sku] ?? null;
+}
 
 const IMAGE_CATALOG: Record<string, string> = {
   "diamantina 200": `${TCDN_BASE}/180_diamantina_200ml_51_1_45decf039b05a35747b1b6c7d12d4910.jpg`,

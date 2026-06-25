@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import { getOrderStatusConfig, type OrderSummary } from "@/lib/orders";
+import { getProductImageBySku } from "@/lib/product-images";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -180,13 +181,15 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                  {featured.items.map((product) => (
+                  {featured.items.map((product) => {
+                    const imgSrc = product.imageUrl ?? getProductImageBySku(product.sku);
+                    return (
                     <Link key={product.sku} href={`/catalogo/${product.sku}`} className="group">
                       <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center h-full flex flex-col">
                         <div className="relative h-24 mb-2 flex items-center justify-center">
-                          {product.imageUrl ? (
+                          {imgSrc ? (
                             <Image
-                              src={product.imageUrl}
+                              src={imgSrc}
                               alt={product.name}
                               fill
                               className="object-contain group-hover:scale-105 transition-transform"
@@ -201,7 +204,8 @@ export default function DashboardPage() {
                         </p>
                       </div>
                     </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
