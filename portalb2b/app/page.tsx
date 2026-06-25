@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatCurrency } from "@/lib/utils";
 import { getOrderStatusConfig, type OrderSummary } from "@/lib/orders";
 import Link from "next/link";
 import Image from "next/image";
@@ -253,10 +253,7 @@ export default function DashboardPage() {
                         </div>
                         {order.docTotal != null && (
                           <span className="text-sm font-semibold text-gsn-brand-dark">
-                            {new Intl.NumberFormat("pt-BR", {
-                              style: "currency",
-                              currency: order.currency ?? "BRL",
-                            }).format(order.docTotal)}
+                            {formatCurrency(order.docTotal, order.currency ?? "BRL")}
                           </span>
                         )}
                       </>
