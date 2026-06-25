@@ -20,6 +20,9 @@ rsync -a --delete \
   --exclude "dist" \
   --exclude "web/dist" \
   --exclude "deploy/.env" \
+  --exclude "releases" \
+  --exclude "current" \
+  --exclude ".next" \
   ./ "$RELEASE_DIR/"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-wms}"
