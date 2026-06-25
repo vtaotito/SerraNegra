@@ -197,6 +197,97 @@ export function resolvePackaging(
   return { type: resolvedType, units: resolvedUnits };
 }
 
+// ─── Unificação de produtos (mesma lógica do painel da garrafaria) ────
+//
+// O catálogo do portal B2B passa a agrupar as variações de embalagem de um
+// mesmo produto (UND, CAIXA C/12, FARDO C/24, ...) em um único "produto
+// unificado", expondo o grupo (categoria), os atributos (capacidade/cor/
+// fechamento) e a lista de embalagens disponíveis — espelhando o catálogo do
+// painel (painel/lib/format.ts + painel/lib/item-parser.ts).
+
+/** Catálogo de grupos comerciais por prefixo (2 chars) do código SAP. */
+export const PRODUCT_GROUP_NAMES: Record<string, string> = {
+  AR: "Garrafas Artesanais",
+  EQ: "Equipamentos",
+  GF: "Garrafão",
+  GI: "Garrafa Importada",
+  GN: "Garrafa Nacional",
+  IS: "Insumos",
+  LA: "Lacre",
+  ME: "Medidores",
+  PO: "Pote",
+  RO: "Rolha",
+  TA: "Tampa Alumínio",
+  TM: "Tampa Metálica",
+  TP: "Tampa Plástica",
+};
+
+/** Sigla (2 chars) do código SAP — ex.: "GN0000022" → "GN". */
+export function getProductPrefix(itemCode: string | null | undefined): string {
+  if (!itemCode) return "OUTRO";
+  return itemCode.substring(0, 2).toUpperCase() || "OUTRO";
+}
+
+/** Nome amigável do grupo a partir do código SAP. */
+export function getProductGroupName(itemCode: string | null | undefined): string | null {
+  const prefix = getProductPrefix(itemCode);
+  return PRODUCT_GROUP_NAMES[prefix] ?? null;
+}
+
+const PACK_WORD =
+  "(?:CAIXA|CX|FARDO|FD|PALETE|PALET|PALLET|PLT|PACK|PACOTE|PCTE?|SACO|SC|ENGRADADO|DUZIA|DZ)";
+
+/**
+ * Nome "base" do produto, sem o sufixo/inline de embalagem
+ * ("- CAIXA C/12 UND", "- UND", "FARDO C/1.000" etc.). Em maiúsculas e sem
+ * espaços duplicados — pronto para servir de chave de agrupamento.
+ */
+export function getBaseProductName(name: string | null | undefined): string {
+  let s = (name ?? "").trim();
+  // " - <PACK> [C/]N [UND]" no final
+  s = s.replace(
+    new RegExp(`\\s*[-–]\\s*${PACK_WORD}\\s*(?:C\\s*/\\s*)?[\\d.,]*\\s*(?:UND|UNID)?\\s*$`, "i"),
+    "",
+  );
+  // " - UND" no final
+  s = s.replace(/\s*[-–]\s*(?:UND|UNID)\s*$/i, "");
+  // "<PACK> [C/]N [UND]" inline no final (sem hífen)
+  s = s.replace(
+    new RegExp(`\\s+${PACK_WORD}\\s*(?:C\\s*/\\s*)?[\\d.,]+\\s*(?:UND|UNID)?\\s*$`, "i"),
+    "",
+  );
+  return s.replace(/\s{2,}/g, " ").trim().toUpperCase();
+}
+
+/** Chave de unificação: "<prefixo>::<nome_base>". */
+export function getUnifiedKey(itemCode: string | null | undefined, name: string | null | undefined): string {
+  return `${getProductPrefix(itemCode)}::${getBaseProductName(name) || (itemCode ?? "—")}`;
+}
+
+const COLOR_MAP: Record<string, string> = {
+  TRA: "Transparente", TRANSPARENTE: "Transparente", AMB: "Âmbar", AMBAR: "Âmbar",
+  BRANCA: "Branca", PRETA: "Preta", DOURADA: "Dourada", PRATA: "Prata",
+  CREME: "Creme", MARROM: "Marrom", VERMELHA: "Vermelha", VERDE: "Verde", AZUL: "Azul",
+};
+
+/** Extrai atributos (capacidade/cor/fechamento) do nome-base. */
+export function parseProductAttributes(baseName: string): {
+  capacity: string | null;
+  color: string | null;
+  closure: string | null;
+} {
+  const capM = baseName.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
+  const capacity = capM ? `${capM[1]} ${capM[2].toUpperCase()}` : null;
+
+  const corM = baseName.match(/\b(TRA|AMB|AMBAR|BRANCA|PRETA|DOURADA|PRATA|CREME|MARROM|VERMELHA|VERDE|AZUL|TRANSPARENTE)\b/i);
+  const color = corM ? COLOR_MAP[corM[1].toUpperCase()] ?? corM[1] : null;
+
+  const fM = baseName.match(/\b(ROLHA|ROSCA|TWIST[.-]?OFF|FLIP[.-]?TOP|CONTA[.-]?GOTAS|COROA[.-]?PRY[.-]?OFF|COROA[.-]?TWIST[.-]?OFF)\b/i);
+  const closure = fM ? fM[1].replace(/\./g, "-").toUpperCase() : null;
+
+  return { capacity, color, closure };
+}
+
 export interface StockNotification {
   id: number;
   sap_item_code: string;
@@ -757,6 +848,103 @@ export class B2BCatalogService {
   }
 
   /**
+   * Catálogo unificado: agrupa as variações de embalagem de um mesmo produto
+   * em um único item (espelha o catálogo do painel da garrafaria). A busca é
+   * aplicada no banco; o agrupamento, filtro por categoria/estoque e paginação
+   * acontecem em memória (necessário para paginar por produto, não por SKU).
+   */
+  async listUnifiedProducts(filters: CatalogFilters = {}): Promise<{
+    items: B2BUnifiedProductDto[];
+    total: number;
+    categories: string[];
+  }> {
+    const conditions: string[] = ["is_active = TRUE", "is_sales_item = TRUE"];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (filters.search) {
+      conditions.push(
+        `(LOWER(sap_item_name) LIKE $${idx} OR LOWER(sap_item_code) LIKE $${idx} OR LOWER(COALESCE(ean,'')) LIKE $${idx})`,
+      );
+      params.push(`%${filters.search.toLowerCase()}%`);
+      idx++;
+    }
+
+    const where = `WHERE ${conditions.join(" AND ")}`;
+    const { rows } = await this.pool.query(
+      `SELECT * FROM b2b_catalog_products ${where} ORDER BY sap_item_name ASC`,
+      params,
+    );
+
+    // Agrupa por chave de unificação.
+    const groups = new Map<string, CatalogProduct[]>();
+    for (const r of rows as CatalogProduct[]) {
+      const key = getUnifiedKey(r.sap_item_code, r.sap_item_name);
+      const arr = groups.get(key) ?? [];
+      arr.push(r);
+      groups.set(key, arr);
+    }
+
+    let unified = Array.from(groups.values()).map((g) => buildUnifiedProduct(g));
+
+    // Lista completa de categorias (antes dos filtros de categoria/estoque).
+    const categories = Array.from(
+      new Set(unified.map((u) => u.category).filter((c): c is string => !!c)),
+    ).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+    if (filters.category) {
+      unified = unified.filter((u) => u.category === filters.category);
+    }
+    if (filters.inStock === true) {
+      unified = unified.filter((u) => u.inStock);
+    } else if (filters.inStock === false) {
+      unified = unified.filter((u) => !u.inStock);
+    }
+
+    // Em estoque primeiro, depois ordem alfabética.
+    unified.sort(
+      (a, b) =>
+        Number(b.inStock) - Number(a.inStock) ||
+        a.name.localeCompare(b.name, "pt-BR"),
+    );
+
+    const total = unified.length;
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 24));
+    const offset = (page - 1) * limit;
+
+    return { items: unified.slice(offset, offset + limit), total, categories };
+  }
+
+  /** Produto unificado que contém um SKU específico (para a tela de detalhe). */
+  async getUnifiedProductBySku(
+    sku: string,
+  ): Promise<B2BUnifiedProductDetailDto | null> {
+    const target = await this.getProduct(sku);
+    if (!target) return null;
+
+    const prefix = getProductPrefix(target.sap_item_code);
+    const base = getBaseProductName(target.sap_item_name);
+    const likeBase = `${base.replace(/[%_]/g, " ")}%`;
+
+    const { rows } = await this.pool.query(
+      `SELECT * FROM b2b_catalog_products
+       WHERE is_active = TRUE AND is_sales_item = TRUE
+         AND UPPER(LEFT(sap_item_code, 2)) = $1
+         AND UPPER(sap_item_name) LIKE $2`,
+      [prefix, likeBase],
+    );
+
+    const variants = (rows as CatalogProduct[]).filter(
+      (r) =>
+        getProductPrefix(r.sap_item_code) === prefix &&
+        getBaseProductName(r.sap_item_name) === base,
+    );
+
+    return buildUnifiedProduct(variants.length > 0 ? variants : [target]);
+  }
+
+  /**
    * Mapa sku → dados de exibição (imagem, slug, estoque) para enriquecer as
    * linhas de um pedido. Usado no detalhe do pedido do Portal B2B para mostrar
    * miniatura, link para o catálogo e disponibilidade de cada item.
@@ -926,5 +1114,119 @@ export function toB2BProductDetail(p: CatalogProduct): B2BProductDetailDto {
   return {
     ...toB2BCatalogItem(p),
     fullDescription: p.description_short ?? null,
+  };
+}
+
+// ─── DTOs do catálogo unificado ──────────────────────────────────────
+
+/** Uma embalagem disponível de um produto unificado (cada uma é um SKU SAP). */
+export interface B2BPackagingVariant {
+  sku: string;
+  /** Tipo de embalagem resolvido ("Unidade" | "Caixa" | "Fardo" | ...). */
+  packagingType: string;
+  /** Unidades por embalagem (>= 1). */
+  unitsPerPack: number;
+  unitOfMeasure: string;
+  inStock: boolean;
+  stockQuantity: number;
+}
+
+export interface B2BUnifiedProductDto {
+  /** Chave de unificação ("<prefixo>::<nome_base>"). */
+  id: string;
+  /** SKU da variante padrão (menor embalagem disponível). */
+  sku: string;
+  /** Nome-base do produto (sem sufixo de embalagem). */
+  name: string;
+  description: string;
+  /** Categoria comercial (grupo do produto) — ex.: "Garrafa Nacional". */
+  category: string | null;
+  /** Sigla do grupo (2 chars) — ex.: "GN". */
+  groupCode: string;
+  capacity: string | null;
+  color: string | null;
+  closure: string | null;
+  ean: string | null;
+  imageUrl: string | null;
+  inStock: boolean;
+  variants: B2BPackagingVariant[];
+}
+
+export interface B2BUnifiedProductDetailDto extends B2BUnifiedProductDto {
+  fullDescription: string | null;
+}
+
+/** Normaliza units_per_package (number | string | null) para inteiro >= 1. */
+function normUnitsPerPack(value: number | string | null | undefined): number {
+  if (value == null) return 1;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+/** Resolve o tipo de embalagem para exibição a partir das colunas do catálogo. */
+function resolveVariantPackagingType(p: CatalogProduct, unitsPerPack: number): string {
+  const raw = (p.packaging_type ?? "").trim();
+  if (raw && raw.toLowerCase() !== "unidade" && raw.toUpperCase() !== "UN") return raw;
+  if (unitsPerPack > 1) return "Caixa";
+  return "Unidade";
+}
+
+/**
+ * Constrói um produto unificado a partir das variantes (linhas SAP que
+ * compartilham a mesma chave de unificação).
+ */
+export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDetailDto {
+  const baseName = getBaseProductName(rows[0]?.sap_item_name);
+  const groupCode = getProductPrefix(rows[0]?.sap_item_code);
+  const attrs = parseProductAttributes(baseName || rows[0]?.sap_item_name || "");
+
+  const variants: B2BPackagingVariant[] = rows
+    .map((r) => {
+      const unitsPerPack = normUnitsPerPack(r.units_per_package);
+      return {
+        sku: r.sap_item_code,
+        packagingType: resolveVariantPackagingType(r, unitsPerPack),
+        unitsPerPack,
+        unitOfMeasure: r.unit_of_measure ?? "UN",
+        inStock: r.is_in_stock === true,
+        stockQuantity: Number(r.total_stock ?? 0),
+      } satisfies B2BPackagingVariant;
+    })
+    // Ordena por unidades por embalagem (menor primeiro: UND → CAIXA → FARDO).
+    .sort((a, b) => a.unitsPerPack - b.unitsPerPack || a.sku.localeCompare(b.sku));
+
+  // Variante padrão: menor embalagem em estoque; senão a menor embalagem.
+  const primaryVariant = variants.find((v) => v.inStock) ?? variants[0];
+  const primaryRow =
+    rows.find((r) => r.sap_item_code === primaryVariant?.sku) ?? rows[0];
+
+  const imageUrl =
+    primaryRow?.image_url ?? rows.find((r) => r.image_url)?.image_url ?? null;
+  const ean = primaryRow?.ean || rows.find((r) => r.ean)?.ean || null;
+  const category =
+    getProductGroupName(rows[0]?.sap_item_code) ??
+    primaryRow?.category_name ??
+    rows.find((r) => r.category_name)?.category_name ??
+    null;
+  const descriptionShort =
+    primaryRow?.description_short ??
+    rows.find((r) => r.description_short)?.description_short ??
+    "";
+
+  return {
+    id: getUnifiedKey(rows[0]?.sap_item_code, rows[0]?.sap_item_name),
+    sku: primaryVariant?.sku ?? rows[0]?.sap_item_code,
+    name: baseName || rows[0]?.sap_item_name || rows[0]?.sap_item_code,
+    description: descriptionShort,
+    fullDescription: descriptionShort || null,
+    category,
+    groupCode,
+    capacity: attrs.capacity,
+    color: attrs.color,
+    closure: attrs.closure,
+    ean,
+    imageUrl,
+    inStock: variants.some((v) => v.inStock),
+    variants,
   };
 }

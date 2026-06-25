@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCart } from "@/lib/cart/context";
 import { useQuery } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
+import { getProductImageUrl } from "@/lib/product-images";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -29,68 +30,26 @@ import {
   PackageCheck,
   PackageX,
   SlidersHorizontal,
-  ChevronDown,
   Tag,
   Layers,
 } from "lucide-react";
+import {
+  type UnifiedProduct,
+  type PackagingVariant,
+  packagingLabel,
+  packagingShort,
+  groupColor,
+} from "@/lib/catalog";
 
-interface CatalogProduct {
-  sku: string;
-  name: string;
-  description: string;
-  category: string | null;
-  ean: string | null;
-  imageUrl: string | null;
-  price: number;
-  inStock: boolean;
-  stockQuantity: number;
-  unitOfMeasure: string;
-  packagingType: string | null;
-  unitsPerPack: number | string | null;
-}
-
-/** Normaliza unitsPerPack (vem como number, string "24.00" ou null do backend). */
-function toUnitsPerPack(value: number | string | null): number | null {
-  if (value == null) return null;
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-/** Remove tags HTML da descrição para um resumo curto no card. */
-function plainText(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-interface CatalogResponse {
-  items: CatalogProduct[];
+interface UnifiedResponse {
+  items: UnifiedProduct[];
   total: number;
   page: number;
   pages: number;
-}
-
-interface CategoriesResponse {
   categories: string[];
 }
 
 const PAGE_SIZE = 24;
-
-function packagingLabel(type: string | null): string {
-  if (!type) return "Unidade";
-  const t = type.toLowerCase().trim();
-  if (t.includes("cx") || t.includes("caixa")) return "Caixa";
-  if (t.includes("frd") || t.includes("fardo")) return "Fardo";
-  if (t.includes("plt") || t.includes("palet") || t.includes("pallet")) return "Palet";
-  if (t.includes("sc") || t.includes("saco")) return "Saco";
-  if (t.includes("pct") || t.includes("pcte") || t.includes("pacote")) return "Pacote";
-  if (t.includes("dz") || t.includes("duzia")) return "Duzia";
-  if (t.includes("engradado")) return "Engradado";
-  if (t.includes("un")) return "Unidade";
-  return type;
-}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -107,8 +66,12 @@ export default function CatalogoPage() {
   const [category, setCategory] = useState("");
   const [stockFilter, setStockFilter] = useState<"" | "in" | "out">("");
   const [page, setPage] = useState(1);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+
+  // Por produto unificado: SKU da embalagem selecionada e quantidade.
+  const [selectedSku, setSelectedSku] = useState<Record<string, string>>({});
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+
   const { addItem, getItem } = useCart();
 
   useEffect(() => { setPage(1); }, [search, category, stockFilter]);
@@ -121,45 +84,58 @@ export default function CatalogoPage() {
   queryParams.set("page", String(page));
   queryParams.set("limit", String(PAGE_SIZE));
 
-  const { data, isLoading, isFetching } = useQuery<CatalogResponse>({
-    queryKey: ["b2b-catalog", search, category, stockFilter, page],
-    queryFn: () => get(`/b2b/catalog?${queryParams.toString()}`),
+  const { data, isLoading, isFetching } = useQuery<UnifiedResponse>({
+    queryKey: ["b2b-catalog-unified", search, category, stockFilter, page],
+    queryFn: () => get(`/b2b/catalog/unified?${queryParams.toString()}`),
     placeholderData: (prev) => prev,
   });
 
-  const { data: catData } = useQuery<CategoriesResponse>({
-    queryKey: ["b2b-catalog-categories"],
-    queryFn: () => get("/b2b/catalog/categories"),
-    staleTime: 60_000 * 5,
-  });
+  const categories = data?.categories ?? [];
 
-  const handleQuantityChange = useCallback((sku: string, delta: number) => {
+  const getSelectedVariant = useCallback(
+    (product: UnifiedProduct): PackagingVariant => {
+      const sku = selectedSku[product.id];
+      return (
+        product.variants.find((v) => v.sku === sku) ??
+        product.variants.find((v) => v.sku === product.sku) ??
+        product.variants[0]
+      );
+    },
+    [selectedSku],
+  );
+
+  const handleQuantityChange = useCallback((id: string, delta: number) => {
     setQuantities((prev) => ({
       ...prev,
-      [sku]: Math.max(1, (prev[sku] ?? 1) + delta),
+      [id]: Math.max(1, (prev[id] ?? 1) + delta),
     }));
   }, []);
 
-  function handleAddToCart(product: CatalogProduct) {
-    const qty = quantities[product.sku] ?? 1;
-    const perPack = toUnitsPerPack(product.unitsPerPack);
-    const totalUnits = perPack && perPack > 1 ? qty * perPack : qty;
+  function handleAddToCart(product: UnifiedProduct, variant: PackagingVariant) {
+    const qty = quantities[product.id] ?? 1;
+    const perPack = variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
+    const totalUnits = qty * perPack;
+    const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
+    const displayName =
+      variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
+
     addItem(
-      { sku: product.sku, name: product.name, unit: product.unitOfMeasure },
+      { sku: variant.sku, name: displayName, unit: variant.unitOfMeasure },
       totalUnits,
     );
+
     const desc =
-      perPack && perPack > 1
-        ? `${qty} ${packagingLabel(product.packagingType)}(s) = ${totalUnits} ${product.unitOfMeasure}`
-        : `${qty} ${product.unitOfMeasure}`;
+      perPack > 1
+        ? `${qty} ${label} = ${totalUnits} ${variant.unitOfMeasure}`
+        : `${qty} ${variant.unitOfMeasure}`;
     toast.success(`${product.name} adicionado ao carrinho`, { description: desc });
   }
 
-  async function handleNotify(product: CatalogProduct) {
+  async function handleNotify(variant: PackagingVariant, productName: string) {
     try {
-      await post(`/b2b/catalog/${product.sku}/notify`, {});
+      await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description: `Voce sera notificado quando "${product.name}" estiver disponivel.`,
+        description: `Voce sera notificado quando "${productName}" estiver disponivel.`,
       });
     } catch {
       toast.error("Erro ao cadastrar notificacao");
@@ -175,7 +151,6 @@ export default function CatalogoPage() {
 
   const hasFilters = !!search || !!category || !!stockFilter;
   const activeFilterCount = (search ? 1 : 0) + (category ? 1 : 0) + (stockFilter ? 1 : 0);
-
   const pageNumbers = getPageNumbers(page, data?.pages ?? 1);
 
   return (
@@ -273,7 +248,7 @@ export default function CatalogoPage() {
           </div>
 
           {/* Category Pills - Desktop */}
-          {catData?.categories && catData.categories.length > 0 && (
+          {categories.length > 0 && (
             <div className="hidden sm:flex items-center gap-1.5 pb-3 overflow-x-auto scrollbar-hide">
               <Layers className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mr-0.5" />
               <button
@@ -287,7 +262,7 @@ export default function CatalogoPage() {
               >
                 Todas
               </button>
-              {catData.categories.map((c) => (
+              {categories.map((c) => (
                 <button
                   key={c}
                   onClick={() => setCategory(category === c ? "" : c)}
@@ -307,7 +282,6 @@ export default function CatalogoPage() {
           {/* Mobile Filter Panel */}
           {showMobileFilters && (
             <div className="sm:hidden pb-3 space-y-3 border-t pt-3 animate-in slide-in-from-top-2 duration-200">
-              {/* Mobile Stock Toggles */}
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
                   <Package className="h-3 w-3" /> Disponibilidade
@@ -332,8 +306,7 @@ export default function CatalogoPage() {
                 </div>
               </div>
 
-              {/* Mobile Categories */}
-              {catData?.categories && catData.categories.length > 0 && (
+              {categories.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
                     <Tag className="h-3 w-3" /> Categoria
@@ -350,7 +323,7 @@ export default function CatalogoPage() {
                     >
                       Todas
                     </button>
-                    {catData.categories.map((c) => (
+                    {categories.map((c) => (
                       <button
                         key={c}
                         onClick={() => { setCategory(category === c ? "" : c); }}
@@ -400,7 +373,6 @@ export default function CatalogoPage() {
                 ) : "Carregando..."}
               </p>
 
-              {/* Active Filter Chips */}
               {search && (
                 <Badge
                   variant="secondary"
@@ -479,162 +451,22 @@ export default function CatalogoPage() {
           ) : (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {data.items.map((product) => {
-                  const qty = quantities[product.sku] ?? 1;
-                  const inCart = getItem(product.sku);
-                  const imgSrc = product.imageUrl;
-                  const perPack = toUnitsPerPack(product.unitsPerPack);
-                  const hasPack = perPack != null && perPack > 1;
-                  const packLabel = packagingLabel(product.packagingType);
-                  const totalUnits = hasPack ? qty * perPack! : qty;
-                  const descSnippet = product.description ? plainText(product.description) : "";
-
-                  return (
-                    <Card
-                      key={product.sku}
-                      className={cn(
-                        "flex flex-col transition-all hover:shadow-lg group overflow-hidden",
-                        !product.inStock && "opacity-75 hover:opacity-100",
-                      )}
-                    >
-                      <Link
-                        href={`/catalogo/${product.sku}`}
-                        className="relative bg-gray-50 flex items-center justify-center h-48 overflow-hidden"
-                      >
-                        {imgSrc ? (
-                          <Image
-                            src={imgSrc}
-                            alt={product.name}
-                            width={280}
-                            height={280}
-                            className="object-contain h-full w-full p-4 group-hover:scale-105 transition-transform duration-300"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center text-muted-foreground/20">
-                            <Package className="h-16 w-16" />
-                          </div>
-                        )}
-                        {product.inStock ? (
-                          <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-emerald-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
-                            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                            Disponivel
-                          </span>
-                        ) : (
-                          <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-red-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
-                            Indisponivel
-                          </span>
-                        )}
-                        {inCart && (
-                          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-[var(--gsn-brand)]/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
-                            <Check className="h-2.5 w-2.5" />
-                            No carrinho
-                          </span>
-                        )}
-                      </Link>
-
-                      <CardContent className="flex flex-col flex-1 p-4">
-                        <div className="mb-2 min-h-[3rem]">
-                          <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-[var(--gsn-text)]">
-                            {product.name}
-                          </h3>
-                          <p className="text-[11px] text-muted-foreground mt-1 font-mono tracking-wide">
-                            {product.sku}
-                          </p>
-                        </div>
-
-                        {descSnippet && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 mb-2 leading-snug">
-                            {descSnippet}
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-1 mb-2">
-                          {product.category && (
-                            <button
-                              onClick={(e) => {
-                                e.preventDefault();
-                                setCategory(product.category!);
-                              }}
-                              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-colors"
-                            >
-                              <Tag className="h-2.5 w-2.5" />
-                              {product.category}
-                            </button>
-                          )}
-                        </div>
-
-                        {hasPack && (
-                          <div className="flex items-center gap-1.5 mb-3 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
-                            <Box className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span className="font-medium">
-                              {packLabel} c/ {perPack} {product.unitOfMeasure}
-                            </span>
-                          </div>
-                        )}
-
-                        {product.inStock ? (
-                          <div className="mt-auto space-y-2">
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center rounded-lg border bg-muted/30">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 rounded-r-none hover:bg-muted"
-                                  onClick={() =>
-                                    handleQuantityChange(product.sku, -1)
-                                  }
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
-                                <span className="w-10 text-center text-sm font-semibold tabular-nums">
-                                  {qty}
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 rounded-l-none hover:bg-muted"
-                                  onClick={() =>
-                                    handleQuantityChange(product.sku, 1)
-                                  }
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
-                              </div>
-                              <span className="text-xs text-muted-foreground">
-                                {hasPack ? packLabel : product.unitOfMeasure}
-                              </span>
-                            </div>
-                            {hasPack && (
-                              <p className="text-xs text-muted-foreground">
-                                Total: <span className="font-semibold text-[var(--gsn-text)]">{totalUnits} {product.unitOfMeasure}</span>
-                              </p>
-                            )}
-                            <Button
-                              size="sm"
-                              className="w-full bg-[var(--gsn-brand)] hover:bg-[var(--gsn-brand-dark)] text-white shadow-sm"
-                              onClick={() => handleAddToCart(product)}
-                            >
-                              <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-                              Adicionar ao Carrinho
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="mt-auto">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="w-full border-amber-400/60 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
-                              onClick={() => handleNotify(product)}
-                            >
-                              <Bell className="h-3.5 w-3.5 mr-1.5" />
-                              Avise-me quando disponivel
-                            </Button>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+                {data.items.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    variant={getSelectedVariant(product)}
+                    qty={quantities[product.id] ?? 1}
+                    inCart={!!getItem(getSelectedVariant(product)?.sku ?? "")}
+                    onSelectVariant={(sku) =>
+                      setSelectedSku((prev) => ({ ...prev, [product.id]: sku }))
+                    }
+                    onQtyChange={(delta) => handleQuantityChange(product.id, delta)}
+                    onAdd={(v) => handleAddToCart(product, v)}
+                    onNotify={(v) => handleNotify(v, product.name)}
+                    onCategoryClick={(c) => setCategory(c)}
+                  />
+                ))}
               </div>
 
               {/* Pagination */}
@@ -685,6 +517,233 @@ export default function CatalogoPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+/* ─── Card de produto unificado ─── */
+
+function ProductCard({
+  product,
+  variant,
+  qty,
+  inCart,
+  onSelectVariant,
+  onQtyChange,
+  onAdd,
+  onNotify,
+  onCategoryClick,
+}: {
+  product: UnifiedProduct;
+  variant: PackagingVariant;
+  qty: number;
+  inCart: boolean;
+  onSelectVariant: (sku: string) => void;
+  onQtyChange: (delta: number) => void;
+  onAdd: (variant: PackagingVariant) => void;
+  onNotify: (variant: PackagingVariant) => void;
+  onCategoryClick: (category: string) => void;
+}) {
+  const imgSrc = product.imageUrl ?? getProductImageUrl(product.name);
+  const hasMultipleVariants = product.variants.length > 1;
+  const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
+  const totalUnits = qty * perPack;
+  const selectedInStock = variant?.inStock ?? false;
+  const gColor = groupColor(product.groupCode);
+
+  return (
+    <Card
+      className={cn(
+        "flex flex-col transition-all hover:shadow-lg group overflow-hidden",
+        !product.inStock && "opacity-75 hover:opacity-100",
+      )}
+    >
+      <Link
+        href={`/catalogo/${encodeURIComponent(variant?.sku ?? product.sku)}`}
+        className="relative bg-gray-50 flex items-center justify-center h-48 overflow-hidden"
+      >
+        {imgSrc ? (
+          <Image
+            src={imgSrc}
+            alt={product.name}
+            width={280}
+            height={280}
+            className="object-contain h-full w-full p-4 group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center text-muted-foreground/20">
+            <Package className="h-16 w-16" />
+          </div>
+        )}
+        {product.inStock ? (
+          <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-emerald-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+            <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+            Disponivel
+          </span>
+        ) : (
+          <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-red-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+            Indisponivel
+          </span>
+        )}
+        {inCart && (
+          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-[var(--gsn-brand)]/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+            <Check className="h-2.5 w-2.5" />
+            No carrinho
+          </span>
+        )}
+      </Link>
+
+      <CardContent className="flex flex-col flex-1 p-4">
+        <div className="mb-2 min-h-[3rem]">
+          <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-[var(--gsn-text)]">
+            {product.name}
+          </h3>
+          <p className="text-[11px] text-muted-foreground mt-1 font-mono tracking-wide">
+            {variant?.sku ?? product.sku}
+          </p>
+        </div>
+
+        {/* Atributos + categoria */}
+        <div className="flex flex-wrap gap-1 mb-2">
+          {product.category && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                onCategoryClick(product.category!);
+              }}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors hover:brightness-95"
+              style={{ background: `${gColor}1a`, color: gColor }}
+            >
+              <Tag className="h-2.5 w-2.5" />
+              {product.category}
+            </button>
+          )}
+          {product.capacity && (
+            <span className="inline-flex items-center rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700">
+              {product.capacity}
+            </span>
+          )}
+          {product.color && (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {product.color}
+            </span>
+          )}
+          {product.closure && (
+            <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+              {product.closure}
+            </span>
+          )}
+        </div>
+
+        {/* Seletor de embalagem */}
+        <div className="mb-3">
+          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
+            <Box className="h-3 w-3" />
+            {hasMultipleVariants ? "Escolha a embalagem" : "Embalagem"}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {product.variants.map((v) => {
+              const isSelected = v.sku === variant?.sku;
+              return (
+                <button
+                  key={v.sku}
+                  onClick={() => onSelectVariant(v.sku)}
+                  disabled={!hasMultipleVariants}
+                  title={`${packagingLabel(v.packagingType, v.unitsPerPack)}${v.inStock ? "" : " · sem estoque"}`}
+                  className={cn(
+                    "relative inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all",
+                    isSelected
+                      ? "border-[var(--gsn-brand)] bg-[var(--gsn-brand)]/10 text-[var(--gsn-brand)]"
+                      : "border-border bg-white text-muted-foreground hover:border-foreground/30",
+                    !v.inStock && "opacity-60",
+                    !hasMultipleVariants && "cursor-default",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      v.inStock ? "bg-emerald-500" : "bg-red-400",
+                    )}
+                  />
+                  {packagingShort(v.packagingType, v.unitsPerPack)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {perPack > 1 && (
+          <div className="flex items-center gap-1.5 mb-3 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
+            <Box className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="font-medium">
+              {packagingLabel(variant.packagingType, variant.unitsPerPack)} ={" "}
+              {perPack} {variant.unitOfMeasure}
+            </span>
+          </div>
+        )}
+
+        {/* Ações */}
+        {selectedInStock ? (
+          <div className="mt-auto space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border bg-muted/30">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-r-none hover:bg-muted"
+                  onClick={() => onQtyChange(-1)}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span className="w-10 text-center text-sm font-semibold tabular-nums">
+                  {qty}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-l-none hover:bg-muted"
+                  onClick={() => onQtyChange(1)}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {perPack > 1
+                  ? packagingShort(variant.packagingType, variant.unitsPerPack)
+                  : variant.unitOfMeasure}
+              </span>
+            </div>
+            {perPack > 1 && (
+              <p className="text-xs text-muted-foreground">
+                Total:{" "}
+                <span className="font-semibold text-[var(--gsn-text)]">
+                  {totalUnits} {variant.unitOfMeasure}
+                </span>
+              </p>
+            )}
+            <Button
+              size="sm"
+              className="w-full bg-[var(--gsn-brand)] hover:bg-[var(--gsn-brand-dark)] text-white shadow-sm"
+              onClick={() => onAdd(variant)}
+            >
+              <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+              Adicionar ao Carrinho
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-amber-400/60 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
+              onClick={() => onNotify(variant)}
+            >
+              <Bell className="h-3.5 w-3.5 mr-1.5" />
+              Avise-me quando disponivel
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

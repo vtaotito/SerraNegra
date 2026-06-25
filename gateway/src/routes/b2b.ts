@@ -3208,6 +3208,53 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     },
   );
 
+  // Catálogo UNIFICADO: agrupa as variações de embalagem (UND/CAIXA/FARDO...)
+  // de um mesmo produto em um único item, com categoria (grupo), atributos e a
+  // lista de embalagens — espelha o catálogo do painel da garrafaria.
+  app.get(
+    "/b2b/catalog/unified",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const limit = Number(query.limit) || 24;
+      const page = Number(query.page) || 1;
+      const result = await catalogService.listUnifiedProducts({
+        search: query.search,
+        category: query.category,
+        inStock:
+          query.inStock === "true"
+            ? true
+            : query.inStock === "false"
+              ? false
+              : undefined,
+        page,
+        limit,
+      });
+      const pages = Math.ceil(result.total / limit);
+      reply.send({
+        items: result.items,
+        total: result.total,
+        page,
+        pages,
+        categories: result.categories,
+      });
+    },
+  );
+
+  app.get(
+    "/b2b/catalog/unified/:sku",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const product = await catalogService.getUnifiedProductBySku(sku);
+      if (!product) {
+        reply.code(404).send({ error: "Produto nao encontrado" });
+        return;
+      }
+      reply.send(product);
+    },
+  );
+
   app.get(
     "/b2b/catalog/categories",
     { preHandler: b2bAuth },

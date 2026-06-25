@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
@@ -11,7 +11,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useCart } from "@/lib/cart/context";
 import { useQuery } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
+import { getProductImageUrl } from "@/lib/product-images";
+import {
+  type UnifiedProductDetail,
+  type PackagingVariant,
+  packagingLabel,
+  packagingShort,
+  groupColor,
+} from "@/lib/catalog";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   ArrowLeft,
   ShoppingCart,
@@ -23,41 +32,6 @@ import {
   Box,
 } from "lucide-react";
 
-interface CatalogProduct {
-  sku: string;
-  name: string;
-  description: string;
-  fullDescription: string | null;
-  category: string | null;
-  ean: string | null;
-  imageUrl: string | null;
-  price: number;
-  inStock: boolean;
-  stockQuantity: number;
-  unitOfMeasure: string;
-  packagingType: string | null;
-  unitsPerPack: number | string | null;
-}
-
-function toUnitsPerPack(value: number | string | null): number | null {
-  if (value == null) return null;
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function packagingLabel(type: string | null): string {
-  if (!type) return "Unidade";
-  const t = type.toLowerCase().trim();
-  if (t.includes("cx") || t.includes("caixa")) return "Caixa";
-  if (t.includes("frd") || t.includes("fardo")) return "Fardo";
-  if (t.includes("plt") || t.includes("palet") || t.includes("pallet")) return "Palet";
-  if (t.includes("sc") || t.includes("saco")) return "Saco";
-  if (t.includes("pct") || t.includes("pcte") || t.includes("pacote")) return "Pacote";
-  if (t.includes("dz") || t.includes("duzia")) return "Duzia";
-  if (t.includes("un")) return "Unidade";
-  return type;
-}
-
 export default function ProductDetailPage({
   params,
 }: {
@@ -65,41 +39,52 @@ export default function ProductDetailPage({
 }) {
   const { sku } = use(params);
   const [qty, setQty] = useState(1);
+  const [selectedSku, setSelectedSku] = useState<string | null>(null);
   const { addItem, getItem } = useCart();
 
-  const { data: product, isLoading } = useQuery<CatalogProduct>({
-    queryKey: ["b2b-catalog-product", sku],
-    queryFn: () => get(`/b2b/catalog/${sku}`),
+  const { data: product, isLoading } = useQuery<UnifiedProductDetail>({
+    queryKey: ["b2b-catalog-unified-product", sku],
+    queryFn: () => get(`/b2b/catalog/unified/${encodeURIComponent(sku)}`),
   });
 
-  const inCart = getItem(sku);
+  // A variante inicialmente selecionada é a do SKU da URL (ou a padrão).
+  useEffect(() => {
+    if (!product) return;
+    const exists = product.variants.find((v) => v.sku === sku);
+    setSelectedSku(exists?.sku ?? product.sku);
+  }, [product, sku]);
 
-  const perPack = toUnitsPerPack(product?.unitsPerPack ?? null);
-  const hasPack = perPack != null && perPack > 1;
-  const packLabel = hasPack ? packagingLabel(product?.packagingType ?? null) : "";
-  const totalUnits = hasPack ? qty * perPack! : qty;
+  const variant: PackagingVariant | undefined =
+    product?.variants.find((v) => v.sku === selectedSku) ??
+    product?.variants.find((v) => v.sku === product?.sku) ??
+    product?.variants[0];
+
+  const perPack = variant && variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
+  const totalUnits = qty * perPack;
+  const inCart = variant ? getItem(variant.sku) : undefined;
+  const imgSrc = product ? product.imageUrl ?? getProductImageUrl(product.name) : null;
+  const gColor = product ? groupColor(product.groupCode) : "#A81C2C";
 
   function handleAddToCart() {
-    if (!product) return;
+    if (!product || !variant) return;
+    const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
+    const displayName =
+      variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
     addItem(
-      {
-        sku: product.sku,
-        name: product.name,
-        unit: product.unitOfMeasure,
-      },
+      { sku: variant.sku, name: displayName, unit: variant.unitOfMeasure },
       totalUnits,
     );
-    const desc = hasPack
-      ? `${qty} ${packLabel}(s) = ${totalUnits} ${product.unitOfMeasure}`
-      : `${qty} ${product.unitOfMeasure}`;
-    toast.success(`${product.name} adicionado ao carrinho`, {
-      description: desc,
-    });
+    const desc =
+      perPack > 1
+        ? `${qty} ${label} = ${totalUnits} ${variant.unitOfMeasure}`
+        : `${qty} ${variant.unitOfMeasure}`;
+    toast.success(`${product.name} adicionado ao carrinho`, { description: desc });
   }
 
   async function handleNotify() {
+    if (!variant) return;
     try {
-      await post(`/b2b/catalog/${sku}/notify`, {});
+      await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
         description:
           "Voce sera notificado quando este produto estiver disponivel.",
@@ -135,7 +120,7 @@ export default function ProductDetailPage({
               </div>
             </CardContent>
           </Card>
-        ) : !product ? (
+        ) : !product || !variant ? (
           <Card>
             <CardContent className="flex flex-col items-center py-16 text-center">
               <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
@@ -153,9 +138,9 @@ export default function ProductDetailPage({
             <CardContent className="p-6">
               <div className="grid md:grid-cols-2 gap-8">
                 <div className="relative bg-gray-50 rounded-lg flex items-center justify-center min-h-[320px] overflow-hidden">
-                  {product.imageUrl ? (
+                  {imgSrc ? (
                     <Image
-                      src={product.imageUrl}
+                      src={imgSrc}
                       alt={product.name}
                       width={500}
                       height={500}
@@ -165,7 +150,7 @@ export default function ProductDetailPage({
                   ) : (
                     <Package className="h-24 w-24 text-muted-foreground/20" />
                   )}
-                  {!product.inStock && (
+                  {!variant.inStock && (
                     <Badge className="absolute top-4 left-4 bg-red-600 text-white border-0 shadow-md text-sm px-3 py-1">
                       Sem estoque
                     </Badge>
@@ -177,21 +162,39 @@ export default function ProductDetailPage({
                     {product.name}
                   </h1>
                   <p className="text-sm text-muted-foreground font-mono mt-1">
-                    SKU: {product.sku}
+                    SKU: {variant.sku}
                   </p>
 
                   <div className="flex flex-wrap gap-2 mt-4">
                     {product.category && (
-                      <Badge variant="outline">{product.category}</Badge>
+                      <Badge
+                        variant="outline"
+                        style={{ borderColor: `${gColor}55`, color: gColor }}
+                      >
+                        {product.category}
+                      </Badge>
+                    )}
+                    {product.capacity && (
+                      <Badge variant="outline" className="text-sky-700 border-sky-200">
+                        {product.capacity}
+                      </Badge>
+                    )}
+                    {product.color && (
+                      <Badge variant="outline">{product.color}</Badge>
+                    )}
+                    {product.closure && (
+                      <Badge variant="outline" className="text-violet-700 border-violet-200">
+                        {product.closure}
+                      </Badge>
                     )}
                     {product.ean && (
                       <Badge variant="outline" className="font-mono">
                         EAN: {product.ean}
                       </Badge>
                     )}
-                    {product.inStock ? (
+                    {variant.inStock ? (
                       <Badge className="bg-green-600 text-white border-0">
-                        Em estoque ({Math.floor(product.stockQuantity)})
+                        Em estoque ({Math.floor(variant.stockQuantity)})
                       </Badge>
                     ) : (
                       <Badge className="bg-red-600 text-white border-0">
@@ -200,26 +203,56 @@ export default function ProductDetailPage({
                     )}
                   </div>
 
-                  {/* Packaging info */}
-                  {hasPack && (
-                    <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Box className="h-5 w-5 text-amber-700" />
-                        <h3 className="font-semibold text-sm text-amber-900">
-                          Embalagem
-                        </h3>
-                      </div>
+                  {/* Seletor de embalagem */}
+                  <div className="mt-5">
+                    <h3 className="text-sm font-semibold text-gsn-text mb-2 flex items-center gap-1.5">
+                      <Box className="h-4 w-4 text-amber-700" />
+                      {product.variants.length > 1
+                        ? "Escolha a embalagem"
+                        : "Embalagem"}
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {product.variants.map((v) => {
+                        const isSelected = v.sku === variant.sku;
+                        return (
+                          <button
+                            key={v.sku}
+                            onClick={() => { setSelectedSku(v.sku); setQty(1); }}
+                            className={cn(
+                              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
+                              isSelected
+                                ? "border-gsn-brand bg-gsn-brand/10 text-gsn-brand"
+                                : "border-border bg-white text-muted-foreground hover:border-foreground/30",
+                              !v.inStock && "opacity-60",
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                "h-2 w-2 rounded-full",
+                                v.inStock ? "bg-emerald-500" : "bg-red-400",
+                              )}
+                            />
+                            {packagingLabel(v.packagingType, v.unitsPerPack)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Detalhe da embalagem selecionada */}
+                  {perPack > 1 && (
+                    <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <p className="text-amber-700">Tipo</p>
                           <p className="font-semibold text-amber-900">
-                            {packLabel}
+                            {packagingShort(variant.packagingType, variant.unitsPerPack)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-amber-700">Unidades por {packLabel.toLowerCase()}</p>
+                          <p className="text-amber-700">Unidades por embalagem</p>
                           <p className="font-semibold text-amber-900">
-                            {perPack} {product.unitOfMeasure}
+                            {perPack} {variant.unitOfMeasure}
                           </p>
                         </div>
                       </div>
@@ -244,12 +277,12 @@ export default function ProductDetailPage({
                     <div className="flex items-center gap-2 mt-4 text-sm text-gsn-brand">
                       <Check className="h-4 w-4" />
                       Ja esta no carrinho ({inCart.quantity}{" "}
-                      {product.unitOfMeasure})
+                      {variant.unitOfMeasure})
                     </div>
                   )}
 
                   <div className="mt-auto pt-6">
-                    {product.inStock ? (
+                    {variant.inStock ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <div className="flex items-center rounded-md border">
@@ -274,15 +307,17 @@ export default function ProductDetailPage({
                             </Button>
                           </div>
                           <span className="text-sm text-muted-foreground">
-                            {hasPack ? packLabel : product.unitOfMeasure}
+                            {perPack > 1
+                              ? packagingShort(variant.packagingType, variant.unitsPerPack)
+                              : variant.unitOfMeasure}
                           </span>
                         </div>
 
-                        {hasPack && (
+                        {perPack > 1 && (
                           <div className="rounded-md bg-muted px-3 py-2 text-sm">
                             <span className="text-muted-foreground">Total: </span>
                             <span className="font-semibold text-gsn-text">
-                              {totalUnits} {product.unitOfMeasure}
+                              {totalUnits} {variant.unitOfMeasure}
                             </span>
                             <span className="text-muted-foreground">
                               {" "}({qty} x {perPack} un)
