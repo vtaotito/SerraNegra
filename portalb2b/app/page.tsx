@@ -185,7 +185,7 @@ export default function DashboardPage() {
                     const imgSrc = product.imageUrl ?? getProductImageBySku(product.sku);
                     return (
                     <Link key={product.sku} href={`/catalogo/${product.sku}`} className="group">
-                      <div className="rounded-lg border bg-gray-50 p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center h-full flex flex-col">
+                      <div className="rounded-lg border bg-white p-3 transition-all hover:shadow-md hover:border-gsn-brand/30 text-center h-full flex flex-col">
                         <div className="relative h-24 mb-2 flex items-center justify-center">
                           {imgSrc ? (
                             <Image

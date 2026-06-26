@@ -137,7 +137,7 @@ export default function ProductDetailPage({
           <Card>
             <CardContent className="p-6">
               <div className="grid md:grid-cols-2 gap-8">
-                <div className="relative bg-gray-50 rounded-lg flex items-center justify-center min-h-[320px] overflow-hidden">
+                <div className="relative bg-white rounded-lg flex items-center justify-center min-h-[320px] overflow-hidden">
                   {imgSrc ? (
                     <Image
                       src={imgSrc}

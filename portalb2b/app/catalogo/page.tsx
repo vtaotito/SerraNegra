@@ -648,7 +648,7 @@ function ProductCard({
     >
       <Link
         href={`/catalogo/${encodeURIComponent(variant?.sku ?? product.sku)}`}
-        className="relative bg-gray-50 flex items-center justify-center h-48 overflow-hidden"
+        className="relative bg-white flex items-center justify-center h-48 overflow-hidden"
       >
         {imgSrc ? (
           <Image
