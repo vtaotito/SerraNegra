@@ -244,22 +244,8 @@ export class SapEntitiesService {
   ): Promise<SapEnrichedInventoryRow[]> {
     const helper = new WmsQueriesHelper(this.client);
 
-    const FALLBACK_QUERY = {
-      QueryCategory: -1,
-      QueryDescription: "WMS_Inventory_Enriched",
-      Query: `SELECT T0.ItemCode, T0.ItemName, T0.InvntryUom AS UoM, T0.AvgPrice, T0.LastPurPrc, T0.LastPurDat, T0.LstSalDate, T0.SWeight1 AS GrossWeight, T0.MaxInvtry AS MaxStock, T0.LeadTime, T0.NumInSale AS LastSaleQty, T0.NumInBuy AS LastBuyQty, T0.ItmsGrpCod, T2.ItmsGrpNam AS GroupName, T1.WhsCode AS WarehouseCode, T1.OnHand, T1.IsCommited AS Committed, T1.OnOrder AS Ordered, T1.MinStock AS WhsMinStock, T1.MaxStock AS WhsMaxStock, T1.CountDate AS LastCountDate FROM OITM T0 INNER JOIN OITW T1 ON T0.ItemCode = T1.ItemCode LEFT JOIN OITB T2 ON T0.ItmsGrpCod = T2.ItmsGrpCod WHERE T0.frozenFor = 'N' AND T0.validFor = 'Y' AND (T1.OnHand <> 0 OR T1.IsCommited <> 0 OR T1.OnOrder <> 0) ORDER BY T0.ItemCode, T1.WhsCode`,
-    };
-
     try {
-      try {
-        await helper.ensureQuery(WMS_QUERIES.INVENTORY_ENRICHED, { correlationId });
-      } catch (e1) {
-        console.warn(`[listInventoryEnriched] ensureQuery com UDFs falhou, tentando sem UDFs:`, e1 instanceof Error ? e1.message : e1);
-        try {
-          await helper.deleteQuery("WMS_Inventory_Enriched", { correlationId }).catch(() => {});
-        } catch { /* ignore */ }
-        await helper.ensureQuery(FALLBACK_QUERY, { correlationId });
-      }
+      await helper.ensureQuery(WMS_QUERIES.INVENTORY_ENRICHED, { correlationId });
 
       const result = await helper.getInventoryEnriched({ correlationId });
       const rows = result.value || [];

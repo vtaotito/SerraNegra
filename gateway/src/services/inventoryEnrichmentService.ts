@@ -67,9 +67,20 @@ export class InventoryEnrichmentService {
       if (enriched.length > 0) {
         const hasUDFs = enriched.some((r) => r.U_COD || r.U_UNIT || r.U_EMBALA || r.U_SubNome);
         const level: EnrichmentLevel = hasUDFs ? 1 : 2;
-        console.log(`[enrichment] Nível ${level} (SQLQuery${hasUDFs ? " + UDFs" : ""}) - ${enriched.length} linhas`);
+
+        // A SQLQuery não traz o nome do grupo (OITB inacessível nesta instância).
+        // Resolvemos via OData /ItemGroups usando o ItmsGrpCod.
+        const groupMap = new Map<number, string>();
+        try {
+          const groups = await this.entSvc.listItemGroups(correlationId);
+          for (const g of groups) groupMap.set(g.Number, g.GroupName);
+        } catch (gerr) {
+          console.warn("[enrichment] Falha ao resolver grupos via OData:", gerr instanceof Error ? gerr.message : gerr);
+        }
+
+        console.log(`[enrichment] Nível ${level} (SQLQuery${hasUDFs ? " + UDFs" : ""}) - ${enriched.length} linhas, ${groupMap.size} grupos`);
         return {
-          items: enriched.map((r) => mapEnrichedToInventoryBulk(r, now)),
+          items: enriched.map((r) => mapEnrichedToInventoryBulk(r, now, groupMap)),
           level,
           message: `${enriched.length} itens via SQLQuery (nível ${level})`,
         };
@@ -245,7 +256,14 @@ export class InventoryEnrichmentService {
   }
 }
 
-function mapEnrichedToInventoryBulk(row: SapEnrichedInventoryRow, now: string): InventoryBulkItem {
+function mapEnrichedToInventoryBulk(
+  row: SapEnrichedInventoryRow,
+  now: string,
+  groupMap?: Map<number, string>,
+): InventoryBulkItem {
+  const groupCode = row.ItmsGrpCod ?? null;
+  const groupName = row.GroupName ?? (groupCode != null ? (groupMap?.get(groupCode) ?? null) : null);
+
   return {
     sku: row.ItemCode,
     warehouse_code: row.WarehouseCode,
@@ -263,8 +281,8 @@ function mapEnrichedToInventoryBulk(row: SapEnrichedInventoryRow, now: string): 
     last_sale_date: row.LstSalDate ?? null,
     gross_weight: row.GrossWeight ?? 0,
     lead_time: row.LeadTime ?? 0,
-    item_group_code: row.ItmsGrpCod ?? null,
-    item_group_name: row.GroupName ?? null,
+    item_group_code: groupCode,
+    item_group_name: groupName,
     last_count_date: row.LastCountDate ?? null,
     sap_update_date: now,
   };

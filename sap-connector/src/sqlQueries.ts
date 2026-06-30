@@ -59,9 +59,18 @@ export class SqlQueriesHelper {
 
   /**
    * Cria uma nova SQLQuery no SAP B1.
+   *
+   * O Service Layer (B1 9.x / HANA) espera o payload com SqlCode/SqlName/SqlText.
+   * Mantemos o tipo SqlQueryDefinition (QueryCategory/QueryDescription/Query) por
+   * compatibilidade e mapeamos para o schema correto aqui.
    */
   async createQuery(definition: SqlQueryDefinition, opts?: SapRequestOptions): Promise<void> {
-    await this.client.post("/SQLQueries", definition, opts);
+    const payload = {
+      SqlCode: definition.QueryDescription,
+      SqlName: definition.QueryDescription,
+      SqlText: definition.Query,
+    };
+    await this.client.post("/SQLQueries", payload, opts);
   }
 
   /**
@@ -100,7 +109,12 @@ export class SqlQueriesHelper {
     } catch (err) {
       queryStateCache.set(name, { available: false, checkedAt: Date.now() });
       const status = (err as { status?: number }).status;
-      if (status === 400 || status === 404 || status === 405) {
+      // Atenção: um 400 normalmente é específico da query (SQL inválido, tabela
+      // não acessível, payload), NÃO indica que o endpoint /SQLQueries está
+      // indisponível. Marcar o endpoint como indisponível aqui faria queries
+      // válidas (ex.: inventário enriquecido) caírem no fallback indevidamente.
+      // Só consideramos o endpoint ausente em 404/405 (rota inexistente).
+      if (status === 404 || status === 405) {
         sqlQueriesEndpointAvailable = false;
         sqlQueriesCheckedAt = Date.now();
       }
@@ -109,7 +123,11 @@ export class SqlQueriesHelper {
   }
 
   /**
-   * Executa uma SQLQuery já criada.
+   * Executa uma SQLQuery já criada, paginando o endpoint /List.
+   *
+   * O Service Layer retorna no máximo 20 registros por página e expõe
+   * `odata.nextLink` para a próxima página. Aqui acumulamos todas as páginas
+   * em um único `value` para o chamador (que espera o conjunto completo).
    */
   async executeQuery<T = unknown>(
     queryName: string,
@@ -117,8 +135,22 @@ export class SqlQueriesHelper {
     opts?: SapRequestOptions
   ): Promise<SqlQueryResult<T>> {
     const body = params.length > 0 ? { ParamsCollection: params } : undefined;
-    const res = await this.client.post<SqlQueryResult<T>>(`/SQLQueries('${queryName}')/List`, body, opts);
-    return res.data;
+    const all: T[] = [];
+    let path: string | null = `/SQLQueries('${queryName}')/List`;
+    let guard = 0;
+
+    while (path && guard < 5000) {
+      const res = await this.client.post<
+        SqlQueryResult<T> & { "odata.nextLink"?: string; "@odata.nextLink"?: string }
+      >(path, body, opts);
+      const data = res.data;
+      if (Array.isArray(data.value)) all.push(...data.value);
+      const next = data["odata.nextLink"] ?? data["@odata.nextLink"];
+      path = next ? (next.startsWith("/") ? next : `/${next}`) : null;
+      guard++;
+    }
+
+    return { value: all };
   }
 
   /**
@@ -206,7 +238,10 @@ export const WMS_QUERIES = {
   INVENTORY_ENRICHED: {
     QueryCategory: -1,
     QueryDescription: "WMS_Inventory_Enriched",
-    Query: `SELECT T0.ItemCode, T0.ItemName, T0.InvntryUom AS UoM, T0.AvgPrice, T0.LastPurPrc, T0.LastPurDat, T0.LstSalDate, T0.SWeight1 AS GrossWeight, T0.MaxInvtry AS MaxStock, T0.LeadTime, T0.NumInSale AS LastSaleQty, T0.NumInBuy AS LastBuyQty, T0.ItmsGrpCod, T2.ItmsGrpNam AS GroupName, T0.U_COD, T0.U_UNIT, T0.U_EMBALA, T0.U_SubNome, T1.WhsCode AS WarehouseCode, T1.OnHand, T1.IsCommited AS Committed, T1.OnOrder AS Ordered, T1.MinStock AS WhsMinStock, T1.MaxStock AS WhsMaxStock, T1.CountDate AS LastCountDate FROM OITM T0 INNER JOIN OITW T1 ON T0.ItemCode = T1.ItemCode LEFT JOIN OITB T2 ON T0.ItmsGrpCod = T2.ItmsGrpCod WHERE T0.frozenFor = 'N' AND T0.validFor = 'Y' AND (T1.OnHand <> 0 OR T1.IsCommited <> 0 OR T1.OnOrder <> 0) ORDER BY T0.ItemCode, T1.WhsCode`
+    // Apenas OITM + OITW: nesta instância (HANA) a tabela OITB e UDFs não são
+    // acessíveis via SQLQueries (retornam 400). O nome do grupo é resolvido
+    // posteriormente via OData (/ItemGroups) usando ItmsGrpCod.
+    Query: `SELECT T0.ItemCode, T0.ItemName, T0.InvntryUom AS UoM, T0.AvgPrice, T0.LastPurPrc, T0.LastPurDat, T0.LstSalDate, T0.SWeight1 AS GrossWeight, T0.LeadTime, T0.ItmsGrpCod, T1.WhsCode AS WarehouseCode, T1.OnHand, T1.IsCommited AS Committed, T1.OnOrder AS Ordered, T1.MinStock AS WhsMinStock, T1.MaxStock AS WhsMaxStock FROM OITM T0 INNER JOIN OITW T1 ON T0.ItemCode = T1.ItemCode WHERE T0.frozenFor = 'N' AND T0.validFor = 'Y' AND (T1.OnHand <> 0 OR T1.IsCommited <> 0 OR T1.OnOrder <> 0) ORDER BY T0.ItemCode, T1.WhsCode`
   },
 
   /**
@@ -338,23 +373,24 @@ export type EnrichedInventoryRow = {
   LastPurDat: string | null;
   LstSalDate: string | null;
   GrossWeight: number;
-  MaxStock: number;
   LeadTime: number;
-  LastSaleQty: number;
-  LastBuyQty: number;
   ItmsGrpCod: number;
-  GroupName: string | null;
-  U_COD: string | null;
-  U_UNIT: string | null;
-  U_EMBALA: string | null;
-  U_SubNome: string | null;
   WarehouseCode: string;
   OnHand: number;
   Committed: number;
   Ordered: number;
   WhsMinStock: number;
   WhsMaxStock: number;
-  LastCountDate: string | null;
+  // Campos não disponíveis nesta instância (OITB/UDFs/MaxInvtry inacessíveis):
+  MaxStock?: number;
+  LastSaleQty?: number;
+  LastBuyQty?: number;
+  GroupName?: string | null;
+  U_COD?: string | null;
+  U_UNIT?: string | null;
+  U_EMBALA?: string | null;
+  U_SubNome?: string | null;
+  LastCountDate?: string | null;
 };
 
 export type StockMovementRow = {
