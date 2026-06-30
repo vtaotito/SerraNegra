@@ -9,7 +9,7 @@
  * Período de análise: últimos 12 meses (consumo médio: últimos 3 meses).
  * ═══════════════════════════════════════════════════════════════ */
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { format, subMonths, startOfMonth } from "date-fns";
 import {
   ShoppingCart,
@@ -56,6 +56,19 @@ import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 
 /* ═══════════════════ Tipos ═══════════════════ */
 
+/** Detalhe de estoque por SKU/depósito que compõe o ESTOQUE (UND) */
+interface StockDetail {
+  sku: string;
+  descricao: string;
+  warehouse: string;
+  /** Disponível na unidade da SKU = on_hand − comprometido */
+  disponivelDeposito: number;
+  /** Unidades por embalagem (CAIXA/FARDO/PALETE → N; UND → 1) */
+  unidadesPorEmbalagem: number;
+  /** disponivelDeposito × unidadesPorEmbalagem */
+  und: number;
+}
+
 interface CompraRow {
   key: string;
   nome: string;
@@ -72,6 +85,8 @@ interface CompraRow {
   estoqueUnd: number;
   /** Em pedido de compra (unidades) */
   emPedidoUnd: number;
+  /** Composição do ESTOQUE (UND) por SKU/depósito */
+  stockDetail: StockDetail[];
   cobertura: number | null;
   cls: ComprasClassification;
   faixa: CoberturaFaixa;
@@ -146,6 +161,7 @@ export default function ComprasPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showAll, setShowAll] = useState(false);
   const [showRegras, setShowRegras] = useState(false);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   /* ── Construção das linhas ── */
   const rows = useMemo<CompraRow[]>(() => {
@@ -155,13 +171,14 @@ export default function ComprasPage() {
       nome: string; group: string; skuSet: Set<string>;
       fat12m: number; vol12mUnd: number; vol3mUnd: number;
       estoqueUnd: number; emPedidoUnd: number;
+      stockDetail: StockDetail[];
     };
     const map = new Map<string, Agg>();
 
     const ensure = (key: string, nome: string, group: string): Agg => {
       let a = map.get(key);
       if (!a) {
-        a = { nome, group, skuSet: new Set(), fat12m: 0, vol12mUnd: 0, vol3mUnd: 0, estoqueUnd: 0, emPedidoUnd: 0 };
+        a = { nome, group, skuSet: new Set(), fat12m: 0, vol12mUnd: 0, vol3mUnd: 0, estoqueUnd: 0, emPedidoUnd: 0, stockDetail: [] };
         map.set(key, a);
       }
       return a;
@@ -191,9 +208,18 @@ export default function ComprasPage() {
       const emb = getEmbalaQty(desc);
       const a = ensure(key, nome, group);
       a.skuSet.add(inv.product_id);
-      const disponivelUnd = Math.max((inv.quantity_available ?? 0) - (inv.quantity_reserved ?? 0), 0);
-      a.estoqueUnd += disponivelUnd * emb;
+      const disponivelDeposito = Math.max((inv.quantity_available ?? 0) - (inv.quantity_reserved ?? 0), 0);
+      const und = disponivelDeposito * emb;
+      a.estoqueUnd += und;
       a.emPedidoUnd += (inv.quantity_on_order ?? 0) * emb;
+      a.stockDetail.push({
+        sku: inv.product_id,
+        descricao: desc || inv.product_id,
+        warehouse: inv.warehouse_id,
+        disponivelDeposito,
+        unidadesPorEmbalagem: emb,
+        und,
+      });
     }
 
     // Remove ruído: nada vendido e nada em estoque
@@ -232,6 +258,7 @@ export default function ComprasPage() {
         consumoBase,
         estoqueUnd: a.estoqueUnd,
         emPedidoUnd: a.emPedidoUnd,
+        stockDetail: [...a.stockDetail].sort((x, y) => y.und - x.und),
         cobertura,
         cls,
         faixa,
@@ -491,13 +518,23 @@ export default function ComprasPage() {
                 const classe = nivel === "grupo" ? r.cls.classeGrupo : r.cls.classeGeral;
                 const outraClasse = nivel === "grupo" ? r.cls.classeGeral : r.cls.classeGrupo;
                 const share = nivel === "grupo" ? r.cls.shareGrupo : r.cls.shareGeral;
+                const isExpanded = expandedKey === r.key;
                 return (
-                  <tr key={r.key} className={`border-b border-gray-50 border-l-4 ${ui.border} hover:bg-gray-50/60 transition`}>
+                  <Fragment key={r.key}>
+                  <tr
+                    className={`border-b border-gray-50 border-l-4 ${ui.border} hover:bg-gray-50/60 transition cursor-pointer ${isExpanded ? "bg-gray-50/70" : ""}`}
+                    onClick={() => setExpandedKey((k) => (k === r.key ? null : r.key))}
+                  >
                     <td className="px-3 py-2.5">
-                      <p className="font-medium text-gray-900 leading-snug">{r.nome}</p>
-                      <p className="text-[11px] text-cockpit-muted">
-                        {r.group} · {r.groupName}{r.skus > 1 ? ` · ${r.skus} SKUs` : ""}
-                      </p>
+                      <div className="flex items-start gap-1.5">
+                        <ChevronRight className={`w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                        <div>
+                          <p className="font-medium text-gray-900 leading-snug">{r.nome}</p>
+                          <p className="text-[11px] text-cockpit-muted">
+                            {r.group} · {r.groupName}{r.skus > 1 ? ` · ${r.skus} SKUs` : ""}
+                          </p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <ClasseBadge classe={classe} />
@@ -552,6 +589,14 @@ export default function ComprasPage() {
                       </span>
                     </td>
                   </tr>
+                  {isExpanded && (
+                    <tr className="bg-gray-50/40 border-b border-gray-100">
+                      <td colSpan={10} className="px-4 py-3">
+                        <StockBreakdown row={r} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -598,6 +643,68 @@ function Th({
         {active && (sortDir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
       </span>
     </th>
+  );
+}
+
+/** Sufixo de embalagem da descrição SAP (ex.: "FARDO C/ 24 UND"). */
+function embalaLabel(descricao: string): string {
+  const idx = descricao.lastIndexOf(" - ");
+  return idx > 0 ? descricao.slice(idx + 3).trim() : "UND";
+}
+
+/**
+ * Detalhamento do ESTOQUE (UND): mostra, por SKU/depósito, o disponível
+ * (on_hand − comprometido), as unidades por embalagem e o subtotal em unidades.
+ */
+function StockBreakdown({ row }: { row: CompraRow }) {
+  if (row.stockDetail.length === 0) {
+    return <p className="text-xs text-cockpit-muted">Sem estoque disponível para este produto.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
+        <Info className="w-3.5 h-3.5 text-cockpit-accent" />
+        Composição do Estoque (UND) — disponível por depósito × unidades por embalagem
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-gray-500 bg-gray-50/70 border-b border-gray-200">
+              <th className="text-left py-1.5 px-2.5 font-semibold">SKU</th>
+              <th className="text-left py-1.5 px-2.5 font-semibold">Embalagem</th>
+              <th className="text-center py-1.5 px-2.5 font-semibold">Depósito</th>
+              <th className="text-right py-1.5 px-2.5 font-semibold">Disponível (depósito)</th>
+              <th className="text-right py-1.5 px-2.5 font-semibold">Unid./Emb.</th>
+              <th className="text-right py-1.5 px-2.5 font-semibold">= UND</th>
+            </tr>
+          </thead>
+          <tbody>
+            {row.stockDetail.map((d, i) => (
+              <tr key={`${d.sku}-${d.warehouse}-${i}`} className="border-b border-gray-50 last:border-0">
+                <td className="py-1.5 px-2.5 font-mono text-gray-700">{d.sku}</td>
+                <td className="py-1.5 px-2.5 text-gray-500">{embalaLabel(d.descricao)}</td>
+                <td className="py-1.5 px-2.5 text-center text-gray-700">{d.warehouse}</td>
+                <td className="py-1.5 px-2.5 text-right tabular-nums text-gray-900">{fmtNum(d.disponivelDeposito)}</td>
+                <td className="py-1.5 px-2.5 text-right tabular-nums text-gray-600">× {fmtNum(d.unidadesPorEmbalagem)}</td>
+                <td className="py-1.5 px-2.5 text-right tabular-nums font-semibold text-gray-900">{fmtUnd(d.und)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-300 bg-gray-50/50">
+              <td className="py-1.5 px-2.5 font-semibold text-gray-700" colSpan={5}>Total ESTOQUE (UND)</td>
+              <td className="py-1.5 px-2.5 text-right tabular-nums font-bold text-cockpit-accent">{fmtUnd(row.estoqueUnd)}</td>
+            </tr>
+            {row.emPedidoUnd > 0 && (
+              <tr>
+                <td className="py-1 px-2.5 text-[11px] text-blue-600" colSpan={5}>Em pedido de compra (não conta no estoque)</td>
+                <td className="py-1 px-2.5 text-right tabular-nums text-blue-600">+{fmtUnd(row.emPedidoUnd)}</td>
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </div>
+    </div>
   );
 }
 
