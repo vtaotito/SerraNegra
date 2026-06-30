@@ -809,7 +809,7 @@ export default function EstoquePage() {
       {/* KPIs */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { title: "Estoque Total", value: `${fmtNum(kpis.estoqueTotal)}`, sub: `${fmtNum(kpis.dispTotal)} disponível`, icon: Boxes, color: "text-sky-600", accent: "bg-sky-50" },
+          { title: "Estoque Disponível", value: `${fmtNum(kpis.dispTotal)}`, sub: `${fmtNum(kpis.estoqueTotal - kpis.dispTotal)} comprometido · ${fmtNum(kpis.estoqueTotal)} físico`, icon: Boxes, color: "text-sky-600", accent: "bg-sky-50" },
           { title: "Valor em Estoque", value: fmtBRL(kpis.valorEstoqueTotal), sub: `${sapGroupDistrib.length} grupos SAP`, icon: Wallet, color: "text-violet-600", accent: "bg-violet-50" },
           { title: "Faturamento", value: fmtBRL(kpis.fatTotal), sub: `${fmtNum(kpis.saidaTotal)} un saída`, icon: TrendingUp, color: "text-emerald-600", accent: "bg-emerald-50" },
           { title: "Pedidos", value: fmtNum(kpis.totalPedidos), sub: `${fmtNum(kpis.totalClientes)} clientes`, icon: Layers, color: "text-indigo-600", accent: "bg-indigo-50" },
@@ -1248,7 +1248,7 @@ export default function EstoquePage() {
                 <th className="text-center py-2.5 px-1 font-semibold bg-gray-50 hidden lg:table-cell">Cat.</th>
                 <th className="text-left py-2.5 px-1 font-semibold bg-gray-50 hidden xl:table-cell">Grupo SAP</th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("estoqueTotal")}>
-                  <span className="inline-flex items-center gap-1 justify-end">Estoque <SortIcon field="estoqueTotal" /></span>
+                  <span className="inline-flex items-center gap-1 justify-end">Físico <SortIcon field="estoqueTotal" /></span>
                 </th>
                 <th className="text-right py-2.5 px-2 font-semibold cursor-pointer hover:text-gray-700 bg-gray-50" onClick={() => toggleSort("disponivel")}>
                   <span className="inline-flex items-center gap-1 justify-end">Disp. <SortIcon field="disponivel" /></span>
@@ -1540,7 +1540,7 @@ export default function EstoquePage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-2 text-xs gap-1">
               <span className="text-cockpit-muted">{filtered.length} produtos · {filtered.reduce((s, i) => s + i.skuCount, 0)} SKUs</span>
               <div className="flex items-center gap-3 tabular-nums flex-wrap">
-                <span className="text-gray-500">Est: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
+                <span className="text-gray-500">Físico: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.estoqueTotal, 0))}</strong></span>
                 <span className="text-emerald-700">Disp: <strong>{fmtNum(filtered.reduce((s, i) => s + i.disponivel, 0))}</strong></span>
                 <span className="text-violet-600">Valor: <strong>{fmtBRL(filtered.reduce((s, i) => s + i.valorEstoque, 0))}</strong></span>
                 <span className="text-gray-500">Saída: <strong className="text-gray-800">{fmtNum(filtered.reduce((s, i) => s + i.qtdVendida, 0))}</strong></span>
