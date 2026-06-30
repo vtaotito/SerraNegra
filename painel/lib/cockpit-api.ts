@@ -133,6 +133,116 @@ export function fetchInventory(opts?: {
   return get("/v1/inventory", p);
 }
 
+// ─── Estoque: movimentações, sync history e analytics ──────────
+
+export interface InventoryMovementRow {
+  id: number;
+  sku: string;
+  warehouse_code: string;
+  doc_date: string | null;
+  create_date: string | null;
+  in_qty: number;
+  out_qty: number;
+  net_qty: number;
+  trans_type: number | null;
+  base_ref: string | null;
+  calc_price: number;
+  balance: number;
+}
+
+export function fetchInventoryMovements(opts: {
+  sku?: string;
+  warehouseCode?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<Paginated<InventoryMovementRow>> {
+  const p: Record<string, string> = {};
+  if (opts.sku) p.sku = opts.sku;
+  if (opts.warehouseCode) p.warehouseCode = opts.warehouseCode;
+  if (opts.limit) p.limit = String(opts.limit);
+  if (opts.offset) p.offset = String(opts.offset);
+  return get("/v1/inventory/movements", p);
+}
+
+export interface SyncLogRow {
+  id: number;
+  entity: string;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  fetched: number;
+  upserted: number;
+  duration_ms: number;
+  message: string | null;
+  error_detail: string | null;
+}
+
+export function fetchInventorySyncHistory(limit = 10): Promise<{ ok: boolean; items: SyncLogRow[] }> {
+  return get("/sap/sync/inventory/history", { limit: String(limit) });
+}
+
+export function syncInventory(): Promise<{ ok: boolean; message: string; upserted?: number; enrichment_level?: number | null }> {
+  return post("/sap/sync/inventory");
+}
+
+export function syncInventoryMovements(): Promise<{ ok: boolean; message: string; fetched?: number; inserted?: number }> {
+  return post("/sap/sync/inventory/movements");
+}
+
+export interface InventoryAnalyticsRow {
+  sku: string;
+  item_name: string | null;
+  on_hand: number;
+  committed: number;
+  available: number;
+  on_order: number;
+  min_stock: number;
+  max_stock: number;
+  avg_price: number;
+  lead_time: number;
+  item_group_name: string | null;
+  warehouses: number;
+  is_stale: boolean;
+  qty_sold: number;
+  qty_sold_3m: number;
+  revenue: number;
+  revenue_3m: number;
+  order_count: number;
+  client_count: number;
+  last_sale_date: string | null;
+  media_diaria: number;
+  cobertura_dias: number;
+  stock_value: number;
+  curva: "A" | "B" | "C";
+}
+
+export interface InventoryAnalyticsSummary {
+  totalSkus: number;
+  totalStockValue: number;
+  totalRevenue: number;
+  ruptura: number;
+  abaixoMin: number;
+  parados: number;
+  totalDays: number;
+}
+
+export function fetchInventoryAnalytics(opts: {
+  dateFrom: string;
+  dateTo: string;
+  date3mCutoff: string;
+  salesPerson?: number;
+  includeStale?: boolean;
+}): Promise<{ ok: boolean; items: InventoryAnalyticsRow[]; summary: InventoryAnalyticsSummary }> {
+  const p: Record<string, string> = {
+    dateFrom: opts.dateFrom,
+    dateTo: opts.dateTo,
+    date3mCutoff: opts.date3mCutoff,
+  };
+  if (opts.salesPerson != null) p.salesPerson = String(opts.salesPerson);
+  if (opts.includeStale != null) p.includeStale = String(opts.includeStale);
+  return get("/sap/inventory/analytics", p);
+}
+
 export function fetchCustomers(opts?: {
   search?: string;
   active?: boolean;

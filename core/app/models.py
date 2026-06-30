@@ -116,8 +116,35 @@ class InventoryStock(Base):
     item_group_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_count_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     sap_update_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Marca o momento da última sincronização que tocou este registro.
+    # Usado para detectar SKUs ausentes no snapshot mais recente do SAP.
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # True quando o registro não veio na última sincronização (provavelmente obsoleto/zerado no SAP).
+    is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class InventoryMovement(Base):
+    """Movimentações de estoque (espelho do OINM do SAP B1)."""
+
+    __tablename__ = "inventory_movements"
+    __table_args__ = (UniqueConstraint("signature", name="uq_movement_signature"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    warehouse_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    doc_date: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    create_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    in_qty: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    out_qty: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    trans_type: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    base_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    calc_price: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    balance: Mapped[float] = mapped_column(Numeric(18, 6), nullable=False, default=0)
+    # Assinatura sintética para deduplicação (OINM não expõe chave simples na SQLQuery).
+    signature: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 # ========================================

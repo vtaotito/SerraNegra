@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, runInvoicesSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, runInvoicesSync, runInventorySync, runMovementsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -935,23 +935,202 @@ export async function registerSapRoutes(app: FastifyInstance) {
   /**
    * POST /api/sap/sync/inventory
    * Sincroniza Estoque do SAP com fallback multi-nível (SQLQuery → OData enriquecido → OData básico).
+   * Usa runInventorySync (registra histórico em sap_sync_log, entity='inventory').
    */
   app.post("/sap/sync/inventory", async (req, reply) => {
-    const correlationId = (req as any).correlationId as string;
-    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
-
     try {
-      const result = await getInventoryEnrichment().syncToCore(coreUrl, correlationId);
-
-      reply.code(200).send({
+      const result = await runInventorySync();
+      reply.code(result.ok ? 200 : 500).send({
         ok: result.ok,
         message: result.message,
-        upserted: result.count,
+        upserted: result.upserted,
         enrichment_level: result.level,
+        duration_ms: result.durationMs,
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * GET /api/sap/sync/inventory/history
+   * Histórico das últimas sincronizações de estoque.
+   */
+  app.get("/sap/sync/inventory/history", async (req, reply) => {
+    const query = req.query as any;
+    try {
+      const history = await querySyncHistory(Number(query.limit) || 20, "inventory");
+      reply.code(200).send({ ok: true, items: history, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/sync/inventory/movements
+   * Sincroniza movimentações de estoque (OINM) do SAP para o Core.
+   * Query: days (janela em dias, default via env).
+   */
+  app.post("/sap/sync/inventory/movements", async (req, reply) => {
+    const query = req.query as any;
+    try {
+      const days = query.days ? Number(query.days) : undefined;
+      const result = await runMovementsSync(days);
+      reply.code(result.ok ? 200 : 500).send({
+        ok: result.ok,
+        message: result.message,
+        fetched: result.fetched,
+        inserted: result.inserted,
+        duration_ms: result.durationMs,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * GET /api/sap/inventory/analytics
+   * Analytics agregado de estoque (server-side): cruza o estoque do Core com as
+   * vendas locais do gateway e retorna uma linha compacta por SKU com faturamento,
+   * giro, cobertura e valor de estoque pré-calculados.
+   * Query: dateFrom, dateTo, date3mCutoff, salesPerson, includeStale
+   */
+  app.get("/sap/inventory/analytics", async (req, reply) => {
+    const q = req.query as any;
+    const coreUrl = process.env.CORE_BASE_URL ?? "http://localhost:8000";
+    const correlationId = (req as any).correlationId as string;
+
+    try {
+      if (!q.dateFrom || !q.dateTo || !q.date3mCutoff) {
+        return reply.code(400).send({ ok: false, message: "dateFrom, dateTo e date3mCutoff são obrigatórios" });
+      }
+
+      // 1. Vendas agregadas por SKU (pesado, feito no Postgres do gateway)
+      const sales = await queryInventoryAnalytics({
+        dateFrom: q.dateFrom,
+        dateTo: q.dateTo,
+        date3mCutoff: q.date3mCutoff,
+        salesPerson: q.salesPerson ? Number(q.salesPerson) : undefined,
+      });
+      const salesMap = new Map(sales.items.map((s) => [s.sku, s]));
+
+      // 2. Snapshot de estoque do Core (agregado por SKU somando depósitos)
+      const includeStale = q.includeStale === "true" || q.includeStale === true;
+      const invRes = await fetch(
+        `${coreUrl}/v1/inventory?limit=5000&includeStale=${includeStale ? "true" : "false"}`,
+        { headers: { "x-correlation-id": correlationId } }
+      );
+      const invJson = invRes.ok ? ((await invRes.json()) as { data: any[] }) : { data: [] };
+
+      type Agg = {
+        sku: string;
+        item_name: string | null;
+        on_hand: number; committed: number; available: number; on_order: number;
+        min_stock: number; max_stock: number;
+        avg_price: number; lead_time: number;
+        item_group_name: string | null;
+        last_sale_date: string | null;
+        warehouses: number;
+        is_stale: boolean;
+      };
+      const stockMap = new Map<string, Agg>();
+      for (const row of invJson.data) {
+        const sku = row.product_id as string;
+        const cur = stockMap.get(sku) ?? {
+          sku, item_name: row.item_name ?? null,
+          on_hand: 0, committed: 0, available: 0, on_order: 0,
+          min_stock: 0, max_stock: 0, avg_price: 0, lead_time: 0,
+          item_group_name: row.item_group_name ?? null,
+          last_sale_date: row.last_sale_date ?? null,
+          warehouses: 0, is_stale: true,
+        };
+        cur.on_hand += Number(row.quantity_available) || 0;
+        cur.committed += Number(row.quantity_reserved) || 0;
+        cur.available += Number(row.quantity_free) || 0;
+        cur.on_order += Number(row.quantity_on_order) || 0;
+        cur.min_stock = Math.max(cur.min_stock, Number(row.min_stock) || 0);
+        cur.max_stock = Math.max(cur.max_stock, Number(row.max_stock) || 0);
+        if (!cur.avg_price && row.avg_price) cur.avg_price = Number(row.avg_price) || 0;
+        if (!cur.lead_time && row.lead_time) cur.lead_time = Number(row.lead_time) || 0;
+        if (!cur.item_name && row.item_name) cur.item_name = row.item_name;
+        if (!cur.item_group_name && row.item_group_name) cur.item_group_name = row.item_group_name;
+        if (row.is_stale === false) cur.is_stale = false;
+        cur.warehouses += 1;
+        stockMap.set(sku, cur);
+      }
+
+      // 3. Merge + métricas derivadas
+      const totalDays = sales.totalDays;
+      const skus = new Set<string>([...stockMap.keys(), ...salesMap.keys()]);
+      const items = [...skus].map((sku) => {
+        const st = stockMap.get(sku);
+        const sl = salesMap.get(sku);
+        const qtySold = sl?.qty_sold ?? 0;
+        const revenue = sl?.revenue ?? 0;
+        const available = st?.available ?? 0;
+        const onHand = st?.on_hand ?? 0;
+        const avgPrice = st?.avg_price ?? 0;
+        const mediaDiaria = qtySold / totalDays;
+        const coberturaDias = mediaDiaria > 0 ? available / mediaDiaria : available > 0 ? 999 : 0;
+        const stockValue = avgPrice > 0 ? avgPrice * onHand : 0;
+        return {
+          sku,
+          item_name: st?.item_name ?? null,
+          on_hand: onHand,
+          committed: st?.committed ?? 0,
+          available,
+          on_order: st?.on_order ?? 0,
+          min_stock: st?.min_stock ?? 0,
+          max_stock: st?.max_stock ?? 0,
+          avg_price: avgPrice,
+          lead_time: st?.lead_time ?? 0,
+          item_group_name: st?.item_group_name ?? null,
+          warehouses: st?.warehouses ?? 0,
+          is_stale: st?.is_stale ?? false,
+          qty_sold: qtySold,
+          qty_sold_3m: sl?.qty_sold_3m ?? 0,
+          revenue,
+          revenue_3m: sl?.revenue_3m ?? 0,
+          order_count: sl?.order_count ?? 0,
+          client_count: sl?.client_count ?? 0,
+          last_sale_date: sl?.last_sale_date ?? st?.last_sale_date ?? null,
+          media_diaria: mediaDiaria,
+          cobertura_dias: Math.min(coberturaDias, 999),
+          stock_value: stockValue,
+        };
+      });
+
+      // 4. Curva ABC (por faturamento acumulado 80/95)
+      const sorted = [...items].sort((a, b) => b.revenue - a.revenue);
+      const totalRev = sorted.reduce((s, i) => s + i.revenue, 0);
+      let cum = 0;
+      const curvaMap = new Map<string, "A" | "B" | "C">();
+      for (const i of sorted) {
+        cum += i.revenue;
+        const ratio = totalRev > 0 ? cum / totalRev : 1;
+        curvaMap.set(i.sku, totalRev > 0 ? (ratio <= 0.8 ? "A" : ratio <= 0.95 ? "B" : "C") : "C");
+      }
+      const enriched = items.map((i) => ({ ...i, curva: curvaMap.get(i.sku) ?? "C" }));
+
+      const summary = {
+        totalSkus: enriched.length,
+        totalStockValue: enriched.reduce((s, i) => s + i.stock_value, 0),
+        totalRevenue: totalRev,
+        ruptura: enriched.filter((i) => i.available <= 0).length,
+        abaixoMin: enriched.filter((i) => i.min_stock > 0 && i.available < i.min_stock && i.available > 0).length,
+        parados: enriched.filter((i) => i.qty_sold <= 0 && i.on_hand > 0).length,
+        totalDays,
+      };
+
+      reply.code(200).send({ ok: true, items: enriched, summary, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      req.log.error({ error, correlationId }, "Erro no analytics de estoque");
       reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
     }
   });

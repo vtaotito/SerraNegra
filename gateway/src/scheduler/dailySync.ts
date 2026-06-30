@@ -3,15 +3,19 @@ import pg from "pg";
 import { createSapClient } from "../config/sap.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { SapEntitiesService, type SapSalesOrderRow, type SapInvoiceRow, type SapInvoiceLine } from "../services/sapEntitiesService.js";
+import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 
 // ─── Config ───────────────────────────────────────────────────
 const SYNC_CRON = process.env.SAP_SYNC_CRON ?? "0 * * * *"; // cada hora, minuto 0
 const DB_URL = process.env.B2B_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
+const CORE_BASE_URL = process.env.CORE_BASE_URL ?? "http://localhost:8000";
 const BOOT_SYNC_DELAY_MS = Number(process.env.SAP_BOOT_SYNC_DELAY_MS ?? "15000");
 // 400 dias cobre os 12 meses exibidos no catálogo/detalhe de produto, com folga
 const LINES_ENRICH_DAYS = Number(process.env.SAP_LINES_ENRICH_DAYS ?? "400");
 const LINES_ENRICH_CONCURRENCY = Number(process.env.SAP_LINES_ENRICH_CONCURRENCY ?? "10");
 const LINES_ENRICH_BATCH = Number(process.env.SAP_LINES_ENRICH_BATCH ?? "2000");
+// Janela (dias) de movimentações de estoque (OINM) sincronizadas a cada execução.
+const MOVEMENTS_SYNC_DAYS = Number(process.env.SAP_MOVEMENTS_SYNC_DAYS ?? "120");
 
 // ─── Pool ─────────────────────────────────────────────────────
 let pool: pg.Pool | null = null;
@@ -1055,15 +1059,239 @@ export async function queryProductOrders(opts: {
   return { orders: res.rows };
 }
 
-export async function querySyncHistory(limit = 20) {
+export async function querySyncHistory(limit = 20, entity = "sales_orders") {
   const db = getPool();
   const res = await db.query(
     `SELECT id, entity, started_at, finished_at, status, fetched, upserted, lines_written, errors, duration_ms, message, error_detail
-     FROM sap_sync_log WHERE entity = 'sales_orders'
+     FROM sap_sync_log WHERE entity = $2
      ORDER BY started_at DESC LIMIT $1`,
-    [limit]
+    [limit, entity]
   );
   return res.rows;
+}
+
+// ─── Inventory sync (estoque SAP → Core) ──────────────────────
+let inventorySyncRunning = false;
+
+export async function runInventorySync(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  level: number | null;
+  message: string;
+  durationMs: number;
+}> {
+  if (inventorySyncRunning) {
+    return { ok: true, fetched: 0, upserted: 0, level: null, message: "Inventory sync já em execução", durationMs: 0 };
+  }
+  inventorySyncRunning = true;
+  const startMs = Date.now();
+  const db = getPool();
+
+  console.log("[syncInventory] Iniciando sync de Estoque...");
+
+  const logRes = await db.query(
+    `INSERT INTO sap_sync_log (entity, started_at, status) VALUES ('inventory', NOW(), 'running') RETURNING id`
+  );
+  const logId = logRes.rows[0]?.id;
+
+  const svc = getSapEntitiesService();
+  if (!svc) {
+    inventorySyncRunning = false;
+    const msg = "SAP client não configurado";
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), message=$1, duration_ms=$2 WHERE id=$3`,
+      [msg, Date.now() - startMs, logId]
+    );
+    return { ok: false, fetched: 0, upserted: 0, level: null, message: msg, durationMs: Date.now() - startMs };
+  }
+
+  try {
+    const enrichment = new InventoryEnrichmentService(svc);
+    const result = await enrichment.syncToCore(CORE_BASE_URL, `sync-inv-${Date.now()}`);
+    const durationMs = Date.now() - startMs;
+    const msg = result.message;
+    console.log(`[syncInventory] ${msg} (${(durationMs / 1000).toFixed(1)}s)`);
+
+    await db.query(
+      `UPDATE sap_sync_log SET status=$1, finished_at=NOW(), fetched=$2, upserted=$3, duration_ms=$4, message=$5 WHERE id=$6`,
+      [result.ok ? "success" : "error", result.count, result.count, durationMs, msg, logId]
+    );
+
+    return { ok: result.ok, fetched: result.count, upserted: result.count, level: result.level, message: msg, durationMs };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const durationMs = Date.now() - startMs;
+    console.error(`[syncInventory] Erro: ${msg}`);
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), duration_ms=$1, message='Erro na sync estoque', error_detail=$2 WHERE id=$3`,
+      [durationMs, msg.slice(0, 2000), logId]
+    ).catch(() => {});
+    return { ok: false, fetched: 0, upserted: 0, level: null, message: msg, durationMs };
+  } finally {
+    inventorySyncRunning = false;
+  }
+}
+
+// ─── Movements sync (OINM → Core) ─────────────────────────────
+let movementsSyncRunning = false;
+
+export async function runMovementsSync(daysBack = MOVEMENTS_SYNC_DAYS): Promise<{
+  ok: boolean;
+  fetched: number;
+  inserted: number;
+  message: string;
+  durationMs: number;
+}> {
+  if (movementsSyncRunning) {
+    return { ok: true, fetched: 0, inserted: 0, message: "Movements sync já em execução", durationMs: 0 };
+  }
+  movementsSyncRunning = true;
+  const startMs = Date.now();
+  const db = getPool();
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - daysBack);
+  const dateFrom = cutoff.toISOString().slice(0, 10);
+
+  console.log(`[syncMovements] Iniciando sync de Movimentações (desde ${dateFrom})...`);
+
+  const logRes = await db.query(
+    `INSERT INTO sap_sync_log (entity, started_at, status) VALUES ('inventory_movements', NOW(), 'running') RETURNING id`
+  );
+  const logId = logRes.rows[0]?.id;
+
+  const svc = getSapEntitiesService();
+  if (!svc) {
+    movementsSyncRunning = false;
+    const msg = "SAP client não configurado";
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), message=$1, duration_ms=$2 WHERE id=$3`,
+      [msg, Date.now() - startMs, logId]
+    );
+    return { ok: false, fetched: 0, inserted: 0, message: msg, durationMs: Date.now() - startMs };
+  }
+
+  try {
+    const correlationId = `sync-mov-${Date.now()}`;
+    const rows = await svc.listStockMovements(dateFrom, correlationId);
+    const fetched = rows.length;
+
+    const items = rows.map((r) => ({
+      sku: r.ItemCode,
+      warehouse_code: r.Warehouse,
+      doc_date: r.DocDate ? String(r.DocDate).slice(0, 10) : null,
+      create_date: r.CreateDate ? String(r.CreateDate).slice(0, 10) : null,
+      in_qty: Number(r.InQty) || 0,
+      out_qty: Number(r.OutQty) || 0,
+      trans_type: r.TransType != null ? Number(r.TransType) : null,
+      base_ref: r.BASE_REF ?? null,
+      calc_price: Number(r.CalcPrice) || 0,
+      balance: Number(r.Balance) || 0,
+    }));
+
+    let inserted = 0;
+    if (items.length > 0) {
+      const res = await fetch(`${CORE_BASE_URL}/v1/inventory/movements/bulk`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-correlation-id": correlationId },
+        body: JSON.stringify({ items, date_from: dateFrom }),
+      });
+      const result = res.ok ? ((await res.json()) as { inserted?: number }) : null;
+      inserted = result?.inserted ?? 0;
+    }
+
+    const durationMs = Date.now() - startMs;
+    const msg = `${fetched} movimentações obtidas, ${inserted} inseridas (desde ${dateFrom})`;
+    console.log(`[syncMovements] ${msg} (${(durationMs / 1000).toFixed(1)}s)`);
+
+    await db.query(
+      `UPDATE sap_sync_log SET status='success', finished_at=NOW(), fetched=$1, upserted=$2, duration_ms=$3, message=$4 WHERE id=$5`,
+      [fetched, inserted, durationMs, msg, logId]
+    );
+
+    return { ok: true, fetched, inserted, message: msg, durationMs };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const durationMs = Date.now() - startMs;
+    console.error(`[syncMovements] Erro: ${msg}`);
+    await db.query(
+      `UPDATE sap_sync_log SET status='error', finished_at=NOW(), duration_ms=$1, message='Erro na sync movimentações', error_detail=$2 WHERE id=$3`,
+      [durationMs, msg.slice(0, 2000), logId]
+    ).catch(() => {});
+    return { ok: false, fetched: 0, inserted: 0, message: msg, durationMs };
+  } finally {
+    movementsSyncRunning = false;
+  }
+}
+
+/**
+ * Analytics agregado de estoque: cruza o snapshot de estoque (Core) com as vendas
+ * (base local do gateway), retornando uma linha compacta por SKU já com faturamento,
+ * giro e valor de estoque pré-calculados — evitando enviar 50k pedidos ao browser.
+ */
+export async function queryInventoryAnalytics(opts: {
+  dateFrom: string;
+  dateTo: string;
+  date3mCutoff: string;
+  salesPerson?: number;
+}): Promise<{
+  items: Array<{
+    sku: string;
+    qty_sold: number;
+    qty_sold_3m: number;
+    revenue: number;
+    revenue_3m: number;
+    order_count: number;
+    client_count: number;
+    last_sale_date: string | null;
+  }>;
+  totalDays: number;
+}> {
+  const db = getPool();
+  const conditions: string[] = ["o.cancelled = 'N'"];
+  const params: unknown[] = [];
+  let idx = 1;
+
+  conditions.push(`o.doc_date >= $${idx++}`); params.push(opts.dateFrom);
+  conditions.push(`o.doc_date <= $${idx++}`); params.push(opts.dateTo);
+  const date3mIdx = idx++;
+  params.push(opts.date3mCutoff);
+  if (opts.salesPerson != null) {
+    conditions.push(`o.sales_person_code = $${idx++}`);
+    params.push(opts.salesPerson);
+  }
+  const where = conditions.join(" AND ");
+
+  const sql = `
+    WITH all_lines AS (
+      SELECT o.doc_entry, o.doc_num, o.doc_date, o.card_code,
+             l.item_code, l.quantity, l.line_total
+      FROM sap_sales_orders o
+      INNER JOIN sap_sales_order_lines l ON l.doc_entry = o.doc_entry
+      WHERE ${where}
+    )
+    SELECT
+      item_code AS sku,
+      SUM(quantity)::float                                                      AS qty_sold,
+      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN quantity ELSE 0 END)::float   AS qty_sold_3m,
+      SUM(line_total)::float                                                    AS revenue,
+      SUM(CASE WHEN doc_date >= $${date3mIdx} THEN line_total ELSE 0 END)::float AS revenue_3m,
+      COUNT(DISTINCT doc_num)::int                                              AS order_count,
+      COUNT(DISTINCT card_code)::int                                           AS client_count,
+      MAX(doc_date)::text                                                       AS last_sale_date
+    FROM all_lines
+    WHERE item_code IS NOT NULL AND item_code <> ''
+    GROUP BY item_code
+    ORDER BY revenue DESC
+  `;
+
+  const res = await db.query(sql, params);
+  const fromDate = new Date(opts.dateFrom);
+  const toDate = new Date(opts.dateTo);
+  const totalDays = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
+
+  return { items: res.rows, totalDays };
 }
 
 // ─── Invoice sync (Problema 1) ────────────────────────────────
@@ -1262,11 +1490,13 @@ export async function startSyncScheduler() {
 
   console.log(`[syncOrders] Scheduler ativado — cron: "${SYNC_CRON}" (a cada hora)`);
 
-  // Job recorrente — pedidos + notas fiscais
+  // Job recorrente — pedidos + notas fiscais + estoque + movimentações
   cron.schedule(SYNC_CRON, async () => {
     console.log(`[sync] Cron disparado: ${new Date().toISOString()}`);
     await runSalesOrdersSync();
     await runInvoicesSync();
+    await runInventorySync();
+    await runMovementsSync();
   });
 
   // Sync inicial após boot (com delay para garantir que o SAP está acessível)
@@ -1274,6 +1504,8 @@ export async function startSyncScheduler() {
     console.log("[sync] Executando sync inicial pós-boot...");
     await runSalesOrdersSync();
     await runInvoicesSync();
+    await runInventorySync();
+    await runMovementsSync();
   }, BOOT_SYNC_DELAY_MS);
 }
 

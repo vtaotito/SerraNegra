@@ -1,6 +1,6 @@
 import { SapServiceLayerClient } from "../../../sap-connector/src/index.js";
 import { SapHttpError } from "../../../sap-connector/src/errors.js";
-import { WmsQueriesHelper, WMS_QUERIES, type EnrichedInventoryRow, type ItemPriceRow } from "../../../sap-connector/src/sqlQueries.js";
+import { WmsQueriesHelper, WMS_QUERIES, type EnrichedInventoryRow, type ItemPriceRow, type StockMovementRow } from "../../../sap-connector/src/sqlQueries.js";
 
 /**
  * Serviço para sincronizar entidades adicionais do SAP B1:
@@ -768,6 +768,33 @@ export class SapEntitiesService {
     }
 
     return [];
+  }
+
+  // ========================================
+  // STOCK MOVEMENTS (OINM via SQLQuery)
+  // ========================================
+
+  /**
+   * Busca movimentações de estoque (OINM) desde uma data.
+   * Só funciona se /SQLQueries estiver disponível na instância SAP;
+   * caso contrário retorna vazio (não há equivalente OData simples).
+   */
+  async listStockMovements(
+    dateFrom: string,
+    correlationId?: string
+  ): Promise<StockMovementRow[]> {
+    try {
+      const helper = new WmsQueriesHelper(this.client);
+      await helper.ensureQuery(WMS_QUERIES.STOCK_MOVEMENTS, { correlationId });
+      const result = await helper.getStockMovements(dateFrom, { correlationId });
+      const rows = result.value || [];
+      console.log(`[listStockMovements] SQLQuery OK - ${rows.length} movimentações desde ${dateFrom}`);
+      return rows;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[listStockMovements] SQLQuery indisponível (${msg}) - movimentações não sincronizadas`);
+      return [];
+    }
   }
 
   private async loadPriceLists(

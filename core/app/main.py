@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from .db import Base, engine, get_session
@@ -24,6 +24,7 @@ from .models import (
     OrderItem as DbOrderItem,
     Product as DbProduct,
     InventoryStock as DbInventoryStock,
+    InventoryMovement as DbInventoryMovement,
     Customer as DbCustomer,
 )
 from .schemas import (
@@ -72,10 +73,37 @@ def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def run_migrations() -> None:
+    """Migrações idempotentes leves (ALTER TABLE ADD COLUMN) para colunas novas.
+
+    `create_all` cria tabelas inexistentes, mas não adiciona colunas a tabelas já
+    existentes. Aqui adicionamos colunas faltantes de forma compatível com Postgres e SQLite.
+    """
+    inspector = sa_inspect(engine)
+    tables = set(inspector.get_table_names())
+    is_pg = engine.dialect.name == "postgresql"
+    ts_type = "TIMESTAMPTZ" if is_pg else "TIMESTAMP"
+    bool_default = "BOOLEAN DEFAULT FALSE" if is_pg else "BOOLEAN DEFAULT 0"
+
+    if "inventory_stock" in tables:
+        cols = {c["name"] for c in inspector.get_columns("inventory_stock")}
+        stmts: list[str] = []
+        if "last_synced_at" not in cols:
+            stmts.append(f"ALTER TABLE inventory_stock ADD COLUMN last_synced_at {ts_type}")
+        if "is_stale" not in cols:
+            stmts.append(f"ALTER TABLE inventory_stock ADD COLUMN is_stale {bool_default}")
+        if stmts:
+            with engine.begin() as conn:
+                for sql in stmts:
+                    conn.execute(text(sql))
+            log.info("Migração aplicada em inventory_stock.", extra={"columns": stmts})
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     configure_logging()
     Base.metadata.create_all(bind=engine)
+    run_migrations()
     log.info("Core iniciado.")
 
 
@@ -170,17 +198,24 @@ def list_inventory(
     db: Session = Depends(get_session),
     sku: str | None = None,
     warehouseCode: str | None = None,
+    includeStale: bool = True,
     limit: int = 50,
     offset: int = 0,
 ):
     """Listagem de estoque por depósito."""
     q = select(DbInventoryStock).order_by(DbInventoryStock.sku.asc())
+    count_q = select(DbInventoryStock)
     if sku:
         q = q.where(DbInventoryStock.sku.ilike(f"%{sku}%"))
+        count_q = count_q.where(DbInventoryStock.sku.ilike(f"%{sku}%"))
     if warehouseCode:
         q = q.where(DbInventoryStock.warehouse_code == warehouseCode)
+        count_q = count_q.where(DbInventoryStock.warehouse_code == warehouseCode)
+    if not includeStale:
+        q = q.where(DbInventoryStock.is_stale.is_(False))
+        count_q = count_q.where(DbInventoryStock.is_stale.is_(False))
 
-    total = len(db.execute(select(DbInventoryStock)).scalars().all())
+    total = len(db.execute(count_q).scalars().all())
     rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 5000))).scalars().all()
 
     return {
@@ -207,9 +242,150 @@ def list_inventory(
                 "item_group_name": s.item_group_name,
                 "last_count_date": s.last_count_date,
                 "sap_update_date": s.sap_update_date,
+                "is_stale": bool(s.is_stale),
+                "last_synced_at": s.last_synced_at.isoformat() if s.last_synced_at else None,
                 "updated_at": s.updated_at.isoformat() if s.updated_at else None,
             }
             for s in rows
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+# ========================================
+# Movimentações de Estoque (OINM)
+# ========================================
+
+class BulkMovementItem(BaseModel):
+    sku: str
+    warehouse_code: str
+    doc_date: str | None = None
+    create_date: str | None = None
+    in_qty: float = 0
+    out_qty: float = 0
+    trans_type: int | None = None
+    base_ref: str | None = None
+    calc_price: float = 0
+    balance: float = 0
+
+
+class BulkMovementsRequest(BaseModel):
+    items: list[BulkMovementItem]
+    # Janela sincronizada (YYYY-MM-DD). Movimentos com doc_date >= date_from são
+    # apagados antes da reinserção, tornando a operação idempotente para a janela.
+    date_from: str | None = None
+
+
+def _movement_signature(item: BulkMovementItem) -> str:
+    raw = "|".join(
+        str(x)
+        for x in [
+            item.sku,
+            item.warehouse_code,
+            item.doc_date or "",
+            item.create_date or "",
+            item.in_qty,
+            item.out_qty,
+            item.trans_type if item.trans_type is not None else "",
+            item.base_ref or "",
+            item.balance,
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:64]
+
+
+@app.post("/v1/inventory/movements/bulk")
+def bulk_upsert_movements(
+    req: BulkMovementsRequest,
+    request: Request,
+    db: Session = Depends(get_session),
+):
+    """Bulk insert de movimentações (OINM). Idempotente por janela de data."""
+    correlation_id = request.state.correlation_id
+    now = now_utc()
+
+    if req.date_from:
+        db.execute(
+            DbInventoryMovement.__table__.delete().where(
+                DbInventoryMovement.doc_date >= req.date_from
+            )
+        )
+        db.commit()
+
+    inserted = 0
+    seen: set[str] = set()
+    existing_sigs = {
+        row[0]
+        for row in db.execute(select(DbInventoryMovement.signature)).all()
+    }
+    for item in req.items:
+        sig = _movement_signature(item)
+        if sig in seen or sig in existing_sigs:
+            continue
+        seen.add(sig)
+        db.add(DbInventoryMovement(
+            sku=item.sku,
+            warehouse_code=item.warehouse_code,
+            doc_date=item.doc_date,
+            create_date=item.create_date,
+            in_qty=item.in_qty,
+            out_qty=item.out_qty,
+            trans_type=item.trans_type,
+            base_ref=item.base_ref,
+            calc_price=item.calc_price,
+            balance=item.balance,
+            signature=sig,
+            created_at=now,
+        ))
+        inserted += 1
+
+    db.commit()
+    log.info("Bulk movements sync.", extra={"correlationId": correlation_id, "inserted": inserted})
+    return {"inserted": inserted, "received": len(req.items)}
+
+
+@app.get("/v1/inventory/movements")
+def list_movements(
+    db: Session = Depends(get_session),
+    sku: str | None = None,
+    warehouseCode: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+):
+    """Listagem de movimentações de estoque (mais recentes primeiro)."""
+    q = select(DbInventoryMovement).order_by(
+        DbInventoryMovement.doc_date.desc(), DbInventoryMovement.id.desc()
+    )
+    count_q = select(DbInventoryMovement)
+    if sku:
+        q = q.where(DbInventoryMovement.sku == sku)
+        count_q = count_q.where(DbInventoryMovement.sku == sku)
+    if warehouseCode:
+        q = q.where(DbInventoryMovement.warehouse_code == warehouseCode)
+        count_q = count_q.where(DbInventoryMovement.warehouse_code == warehouseCode)
+
+    total = len(db.execute(count_q).scalars().all())
+    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 5000))).scalars().all()
+
+    return {
+        "data": [
+            {
+                "id": m.id,
+                "sku": m.sku,
+                "warehouse_code": m.warehouse_code,
+                "doc_date": m.doc_date,
+                "create_date": m.create_date,
+                "in_qty": float(m.in_qty),
+                "out_qty": float(m.out_qty),
+                "net_qty": float(m.in_qty) - float(m.out_qty),
+                "trans_type": m.trans_type,
+                "base_ref": m.base_ref,
+                "calc_price": float(m.calc_price),
+                "balance": float(m.balance),
+            }
+            for m in rows
         ],
         "total": total,
         "limit": limit,
@@ -366,11 +542,18 @@ def bulk_upsert_inventory(
     req: BulkInventoryRequest,
     request: Request,
     db: Session = Depends(get_session),
+    markStale: bool = True,
 ):
-    """Bulk upsert de estoque vindo do SAP."""
+    """Bulk upsert de estoque vindo do SAP.
+
+    Cada registro tocado recebe `last_synced_at = sync_ts` e `is_stale = False`.
+    Quando `markStale` é True, registros que não vieram neste snapshot (last_synced_at
+    anterior a sync_ts) são marcados como `is_stale = True` — soft-flag em vez de delete.
+    """
     correlation_id = request.state.correlation_id
     created = 0
     updated = 0
+    sync_ts = now_utc()
 
     for item in req.items:
         existing = db.execute(
@@ -381,7 +564,7 @@ def bulk_upsert_inventory(
         ).scalar_one_or_none()
 
         computed_available = item.available if item.available else max(item.on_hand - item.committed, 0)
-        now = now_utc()
+        now = sync_ts
         if existing:
             existing.item_name = item.item_name
             existing.on_hand = item.on_hand
@@ -401,6 +584,8 @@ def bulk_upsert_inventory(
             existing.item_group_name = item.item_group_name
             existing.last_count_date = item.last_count_date
             existing.sap_update_date = item.sap_update_date
+            existing.last_synced_at = sync_ts
+            existing.is_stale = False
             existing.updated_at = now
             updated += 1
         else:
@@ -425,14 +610,35 @@ def bulk_upsert_inventory(
                 item_group_name=item.item_group_name,
                 last_count_date=item.last_count_date,
                 sap_update_date=item.sap_update_date,
+                last_synced_at=sync_ts,
+                is_stale=False,
                 created_at=now,
                 updated_at=now,
             ))
             created += 1
 
     db.commit()
-    log.info("Bulk inventory sync.", extra={"correlationId": correlation_id, "items_created": created, "items_updated": updated})
-    return {"upserted": created + updated, "created": created, "updated": updated}
+
+    marked_stale = 0
+    # Só marca obsoletos quando o payload tem itens (evita zerar tudo num snapshot vazio).
+    if markStale and req.items:
+        result = db.execute(
+            DbInventoryStock.__table__.update()
+            .where(
+                (DbInventoryStock.last_synced_at.is_(None))
+                | (DbInventoryStock.last_synced_at < sync_ts)
+            )
+            .where(DbInventoryStock.is_stale.is_(False))
+            .values(is_stale=True)
+        )
+        marked_stale = result.rowcount or 0
+        db.commit()
+
+    log.info(
+        "Bulk inventory sync.",
+        extra={"correlationId": correlation_id, "items_created": created, "items_updated": updated, "marked_stale": marked_stale},
+    )
+    return {"upserted": created + updated, "created": created, "updated": updated, "marked_stale": marked_stale}
 
 
 class BulkCustomerItem(BaseModel):

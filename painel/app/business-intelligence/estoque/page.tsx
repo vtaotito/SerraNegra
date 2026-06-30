@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Package, Boxes, AlertTriangle, Search, CalendarDays,
   TrendingUp, TrendingDown, ShieldAlert, ArrowUpDown, ArrowUp, ArrowDown,
   Download, Gauge, BarChart3, Layers, Flame, Snowflake, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Tag,
-  Wallet, Clock, Weight, Truck,
+  Wallet, Clock, Weight, Truck, RefreshCw, Warehouse, Activity,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Cell, PieChart, Pie,
+  CartesianGrid, Cell, PieChart, Pie, LineChart, Line,
 } from "recharts";
 import { fmtNum, fmtBRL, exportCSV, getProductGroup } from "@/lib/format";
 import {
-  fetchCatalog, fetchInventory, fetchSalesOrders,
-  type CatalogItem, type InventoryRow,
+  fetchCatalog, fetchInventory, fetchProductAnalytics,
+  fetchInventorySyncHistory, syncInventory, syncInventoryMovements,
+  fetchInventoryMovements,
+  type CatalogItem,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
@@ -23,7 +26,7 @@ import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
 import { CHART_GRID, chartAxisTick } from "@/lib/chart-theme";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, subMonths } from "date-fns";
 
 /* ── SKU prefix exclusion & category mapping ── */
 const EXCLUDED_PREFIXES = new Set(["AT", "DA", "DD", "DF", "DT", "DV"]);
@@ -106,6 +109,74 @@ interface StockItem {
   itemGroupName: string | null;
   lastCountDate: string | null;
   valorEstoque: number;
+  warehouses: WarehouseBreakdown[];
+}
+
+interface WarehouseBreakdown {
+  code: string;
+  onHand: number;
+  committed: number;
+  available: number;
+  onOrder: number;
+}
+
+/** Sugestão de ponto de reposição (ROP) e quantidade sugerida de compra. */
+function computeReorder(item: { mediaDiaria: number; leadTime: number; minStock: number; maxStock: number; disponivel: number }) {
+  const rop = item.mediaDiaria * item.leadTime + item.minStock;
+  const target = item.maxStock > 0 ? item.maxStock : rop;
+  const suggested = Math.max(Math.ceil(target - item.disponivel), 0);
+  return { rop, suggested };
+}
+
+/** Timeline de movimentações de estoque (entradas/saídas) de um SKU. */
+function MovementsTimeline({ skus }: { skus: string[] }) {
+  const [rows, setRows] = useState<{ date: string; entrada: number; saida: number; saldo: number }[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all(skus.slice(0, 6).map((sku) => fetchInventoryMovements({ sku, limit: 200 }).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return;
+        const byDate = new Map<string, { entrada: number; saida: number; saldo: number }>();
+        for (const res of results) {
+          for (const m of res?.data ?? []) {
+            const date = (m.doc_date ?? m.create_date ?? "").slice(0, 10);
+            if (!date) continue;
+            const cur = byDate.get(date) ?? { entrada: 0, saida: 0, saldo: 0 };
+            cur.entrada += m.in_qty;
+            cur.saida += m.out_qty;
+            cur.saldo = m.balance;
+            byDate.set(date, cur);
+          }
+        }
+        const arr = [...byDate.entries()]
+          .map(([date, v]) => ({ date, ...v }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        setRows(arr);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [skus]);
+
+  if (loading) return <p className="text-[10px] text-gray-400 py-2">Carregando movimentações…</p>;
+  if (!rows || rows.length === 0) return <p className="text-[10px] text-gray-400 py-2">Sem movimentações registradas (sincronize OINM em Integrações).</p>;
+
+  return (
+    <div className="h-[140px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={rows} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
+          <XAxis dataKey="date" tick={{ ...chartAxisTick("sm"), fontSize: 8 }} axisLine={false} tickLine={false} tickFormatter={(d) => String(d).slice(5)} />
+          <YAxis tick={{ ...chartAxisTick("sm"), fontSize: 8 }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip content={<BiChartTooltip variant="cockpit" formatValue={(_, v) => fmtNum(v)} />} />
+          <Line type="monotone" dataKey="entrada" name="Entradas" stroke="#10b981" strokeWidth={1.5} dot={false} />
+          <Line type="monotone" dataKey="saida" name="Saídas" stroke="#ef4444" strokeWidth={1.5} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 /* ── Helpers ── */
@@ -202,8 +273,11 @@ const PAGE_SIZES = [25, 50, 100] as const;
 /* ── Main page ── */
 export default function EstoquePage() {
   const { label: periodoLabel, range } = useDateRange();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
+  const date3mCutoff = format(subMonths(range.to, 3), "yyyy-MM-dd");
   const totalDays = Math.max(1, differenceInDays(range.to, range.from) + 1);
 
   const { data: catalogData, loading: l1, error: e1, refetch: r1 } =
@@ -211,15 +285,31 @@ export default function EstoquePage() {
   const { data: invData, loading: l2, error: e2, refetch: r2 } =
     useFetch(() => fetchInventory({ limit: 5000 }), []);
   const { salesPersonCode } = useSalesPersonFilter();
-  const { data: ordData, loading: l3, error: e3, refetch: r3 } =
-    useFetch(() => fetchSalesOrders({ dateFrom, dateTo, limit: 50000, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
+  // Agregação server-side (substitui o fetch de ~50k pedidos): retorna ~centenas de linhas por item.
+  const { data: analyticsData, loading: l3, error: e3, refetch: r3 } =
+    useFetch(() => fetchProductAnalytics({ dateFrom, dateTo, date3mCutoff, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
+
+  // Histórico de sincronização de estoque (indicador de "última sincronização")
+  const { data: syncHist, refetch: refetchSync } = useFetch(() => fetchInventorySyncHistory(5), []);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleResync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await syncInventory();
+      await syncInventoryMovements().catch(() => null);
+      await Promise.all([r2(), refetchSync()]);
+    } finally {
+      setSyncing(false);
+    }
+  }, [r2, refetchSync]);
 
   const loading = l1 || l2 || l3;
   const error = e1 || e2 || e3;
 
   /* ── Build items (with exclusion filter) ── */
   const allItems = useMemo<StockItem[]>(() => {
-    if (!catalogData || !invData || !ordData) return [];
+    if (!catalogData || !invData || !analyticsData) return [];
 
     type InvAgg = {
       avail: number; free: number; reserved: number; onOrder: number;
@@ -227,6 +317,7 @@ export default function EstoquePage() {
       avgPrice: number; lastPurchasePrice: number; lastPurchaseDate: string | null;
       lastSaleDate: string | null; grossWeight: number; leadTime: number;
       itemGroupName: string | null; lastCountDate: string | null;
+      warehouses: Map<string, WarehouseBreakdown>;
     };
     const invMap = new Map<string, InvAgg>();
     for (const inv of invData.data) {
@@ -236,6 +327,7 @@ export default function EstoquePage() {
         itemName: null, avgPrice: 0, lastPurchasePrice: 0,
         lastPurchaseDate: null, lastSaleDate: null, grossWeight: 0,
         leadTime: 0, itemGroupName: null, lastCountDate: null,
+        warehouses: new Map<string, WarehouseBreakdown>(),
       };
       cur.avail += inv.quantity_available;
       cur.free += inv.quantity_free;
@@ -243,6 +335,14 @@ export default function EstoquePage() {
       cur.onOrder += inv.quantity_on_order;
       cur.minStock = Math.max(cur.minStock, inv.min_stock ?? 0);
       cur.maxStock = Math.max(cur.maxStock, inv.max_stock ?? 0);
+      // Quebra por depósito (warehouse_id = código do depósito no SAP)
+      const whCode = inv.warehouse_id || "—";
+      const wh = cur.warehouses.get(whCode) ?? { code: whCode, onHand: 0, committed: 0, available: 0, onOrder: 0 };
+      wh.onHand += inv.quantity_available;
+      wh.committed += inv.quantity_reserved;
+      wh.available += inv.quantity_free;
+      wh.onOrder += inv.quantity_on_order;
+      cur.warehouses.set(whCode, wh);
       if (inv.item_name && !cur.itemName) cur.itemName = inv.item_name;
       if (inv.avg_price && !cur.avgPrice) cur.avgPrice = inv.avg_price;
       if (inv.last_purchase_price && !cur.lastPurchasePrice) cur.lastPurchasePrice = inv.last_purchase_price;
@@ -255,19 +355,17 @@ export default function EstoquePage() {
       invMap.set(inv.product_id, cur);
     }
 
-    const salesMap = new Map<string, { qty: number; fat: number; pedidos: Set<number>; clientes: Set<string> }>();
-    for (const o of ordData.items) {
-      if (o.cancelled === "Y") continue;
-      for (const l of (o.lines ?? [])) {
-        const code = l.ItemCode ?? "";
-        if (!code || EXCLUDED_PREFIXES.has(getSkuPrefix(code))) continue;
-        const cur = salesMap.get(code) ?? { qty: 0, fat: 0, pedidos: new Set(), clientes: new Set() };
-        cur.qty += Number(l.Quantity) || 0;
-        cur.fat += Number(l.LineTotal) || 0;
-        cur.pedidos.add(o.doc_num);
-        cur.clientes.add(o.card_code);
-        salesMap.set(code, cur);
-      }
+    // Vendas por item (agregação server-side: total_qty, total_revenue, sale_count, unique_clients)
+    const salesMap = new Map<string, { qty: number; fat: number; pedidos: number; clientes: number }>();
+    for (const p of analyticsData.products ?? []) {
+      const code = p.item_code ?? "";
+      if (!code || EXCLUDED_PREFIXES.has(getSkuPrefix(code))) continue;
+      salesMap.set(code, {
+        qty: Number(p.total_qty) || 0,
+        fat: Number(p.total_revenue) || 0,
+        pedidos: Number(p.sale_count) || 0,
+        clientes: Number(p.unique_clients) || 0,
+      });
     }
 
     type RawItem = {
@@ -275,10 +373,11 @@ export default function EstoquePage() {
       embalaQty: number; baseName: string; estoqueTotal: number; confirmado: number;
       disponivel: number; reservado: number; emPedido: number; minStock: number; maxStock: number;
       qtdEmb: number; qtdVendida: number; fatVendido: number;
-      pedidos: Set<number>; clientes: Set<string>;
+      pedidos: number; clientes: number;
       avgPrice: number; lastPurchasePrice: number; lastPurchaseDate: string | null;
       lastSaleDate: string | null; grossWeight: number; leadTime: number;
       itemGroupName: string | null; lastCountDate: string | null;
+      warehouses: WarehouseBreakdown[];
     };
 
     const rawItems: RawItem[] = catalogData.data
@@ -287,6 +386,7 @@ export default function EstoquePage() {
         const inv = invMap.get(cat.sku);
         const sales = salesMap.get(cat.sku);
         const { embalaQty, embala } = parseEmbalaQty(cat.description);
+        // total_qty já vem em unidades de linha; mantém compatibilidade com o cálculo anterior
         const qtdEmb = sales?.qty ?? 0;
         return {
           sku: cat.sku, description: inv?.itemName || cat.description,
@@ -296,8 +396,8 @@ export default function EstoquePage() {
           disponivel: inv?.free ?? 0, reservado: inv?.reserved ?? 0,
           emPedido: inv?.onOrder ?? 0, minStock: inv?.minStock ?? 0, maxStock: inv?.maxStock ?? 0,
           qtdEmb, qtdVendida: qtdEmb * embalaQty, fatVendido: sales?.fat ?? 0,
-          pedidos: sales?.pedidos ?? new Set<number>(),
-          clientes: sales?.clientes ?? new Set<string>(),
+          pedidos: sales?.pedidos ?? 0,
+          clientes: sales?.clientes ?? 0,
           avgPrice: inv?.avgPrice ?? 0,
           lastPurchasePrice: inv?.lastPurchasePrice ?? 0,
           lastPurchaseDate: inv?.lastPurchaseDate ?? null,
@@ -306,6 +406,7 @@ export default function EstoquePage() {
           leadTime: inv?.leadTime ?? 0,
           itemGroupName: inv?.itemGroupName ?? null,
           lastCountDate: inv?.lastCountDate ?? null,
+          warehouses: inv ? [...inv.warehouses.values()] : [],
         };
       });
 
@@ -329,9 +430,19 @@ export default function EstoquePage() {
       const qtdVendida = group.reduce((s, i) => s + i.qtdVendida, 0);
       const qtdEmb = group.reduce((s, i) => s + i.qtdEmb, 0);
       const fatVendido = group.reduce((s, i) => s + i.fatVendido, 0);
-      const allPedidos = new Set<number>();
-      const allClientes = new Set<string>();
-      for (const i of group) { for (const p of i.pedidos) allPedidos.add(p); for (const c of i.clientes) allClientes.add(c); }
+      // Contagens agregadas (vindas da agregação server-side; aproximação ao somar SKUs do grupo)
+      const numPedidos = group.reduce((s, i) => s + i.pedidos, 0);
+      const numClientes = Math.max(...group.map((i) => i.clientes), 0);
+      // Agrega quebra por depósito somando os SKUs do grupo
+      const whMap = new Map<string, WarehouseBreakdown>();
+      for (const i of group) {
+        for (const w of i.warehouses) {
+          const cur = whMap.get(w.code) ?? { code: w.code, onHand: 0, committed: 0, available: 0, onOrder: 0 };
+          cur.onHand += w.onHand; cur.committed += w.committed; cur.available += w.available; cur.onOrder += w.onOrder;
+          whMap.set(w.code, cur);
+        }
+      }
+      const warehouses = [...whMap.values()].sort((a, b) => b.onHand - a.onHand);
       const mediaDiaria = qtdVendida / totalDays;
       const coberturaDias = mediaDiaria > 0 ? disponivel / mediaDiaria : disponivel > 0 ? 999 : 0;
       const avgPrice = undItem.avgPrice;
@@ -346,7 +457,7 @@ export default function EstoquePage() {
         coberturaDias: Math.min(coberturaDias, 999),
         giro: "parado" as Giro, curva: "C" as CurvaABC,
         coberturaClass: classifyCobertura(coberturaDias, qtdVendida > 0),
-        numPedidos: allPedidos.size, numClientes: allClientes.size,
+        numPedidos, numClientes,
         skuCount: group.length, allSkus: group.map((i) => i.sku),
         embalas: [...new Set(group.map((i) => i.embala))],
         belowMinStock: minStock > 0 && disponivel < minStock,
@@ -359,6 +470,7 @@ export default function EstoquePage() {
         itemGroupName: undItem.itemGroupName,
         lastCountDate: undItem.lastCountDate,
         valorEstoque,
+        warehouses,
       });
     }
 
@@ -369,7 +481,7 @@ export default function EstoquePage() {
       item.giro = classifyGiro(item.mediaDiaria, maxMedia);
     }
     return mergedItems;
-  }, [catalogData, invData, ordData, totalDays]);
+  }, [catalogData, invData, analyticsData, totalDays]);
 
   /* ── Category distribution (for filter badges) ── */
   const categoryDistrib = useMemo(() => {
@@ -439,19 +551,47 @@ export default function EstoquePage() {
       }));
   }, [allItems]);
 
-  /* ── State ── */
-  const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState<ProductCategory | "ALL">("ALL");
-  const [groupFilter, setGroupFilter] = useState<string>("ALL");
-  const [curvaFilter, setCurvaFilter] = useState<CurvaABC | "ALL">("ALL");
-  const [giroFilter, setGiroFilter] = useState<Giro | "ALL">("ALL");
-  const [cobFilter, setCobFilter] = useState<Cobertura | "ALL">("ALL");
-  const [quickFilter, setQuickFilter] = useState<"all" | "atencao" | "comVenda" | "semVenda">("all");
+  /* ── State (inicializado a partir da URL) ── */
+  type AlertFilter = "ALL" | "ruptura" | "abaixoMin" | "excesso" | "parado";
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [catFilter, setCatFilter] = useState<ProductCategory | "ALL">(() => (searchParams.get("cat") as ProductCategory) ?? "ALL");
+  const [groupFilter, setGroupFilter] = useState<string>(() => searchParams.get("grupo") ?? "ALL");
+  const [curvaFilter, setCurvaFilter] = useState<CurvaABC | "ALL">(() => (searchParams.get("curva") as CurvaABC) ?? "ALL");
+  const [giroFilter, setGiroFilter] = useState<Giro | "ALL">(() => (searchParams.get("giro") as Giro) ?? "ALL");
+  const [cobFilter, setCobFilter] = useState<Cobertura | "ALL">(() => (searchParams.get("cob") as Cobertura) ?? "ALL");
+  const [quickFilter, setQuickFilter] = useState<"all" | "atencao" | "comVenda" | "semVenda">(() => (searchParams.get("quick") as any) ?? "all");
+  const [whFilter, setWhFilter] = useState<string>(() => searchParams.get("dep") ?? "ALL");
+  const [alertFilter, setAlertFilter] = useState<AlertFilter>(() => (searchParams.get("alerta") as AlertFilter) ?? "ALL");
   const [sortField, setSortField] = useState<SortField>("fatVendido");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedSku, setExpandedSku] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(50);
+
+  /* ── Lista de depósitos (do snapshot de estoque) ── */
+  const warehouseList = useMemo(() => {
+    const set = new Set<string>();
+    for (const inv of invData?.data ?? []) {
+      if (inv.warehouse_id) set.add(inv.warehouse_id);
+    }
+    return [...set].sort();
+  }, [invData]);
+
+  /* ── Persistência dos filtros na URL ── */
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (catFilter !== "ALL") params.set("cat", catFilter);
+    if (groupFilter !== "ALL") params.set("grupo", groupFilter);
+    if (curvaFilter !== "ALL") params.set("curva", curvaFilter);
+    if (giroFilter !== "ALL") params.set("giro", giroFilter);
+    if (cobFilter !== "ALL") params.set("cob", cobFilter);
+    if (quickFilter !== "all") params.set("quick", quickFilter);
+    if (whFilter !== "ALL") params.set("dep", whFilter);
+    if (alertFilter !== "ALL") params.set("alerta", alertFilter);
+    const qs = params.toString();
+    router.replace(qs ? `?${qs}` : "?", { scroll: false });
+  }, [search, catFilter, groupFilter, curvaFilter, giroFilter, cobFilter, quickFilter, whFilter, alertFilter, router]);
 
   /* ── Filtered + sorted ── */
   const filtered = useMemo(() => {
@@ -464,6 +604,11 @@ export default function EstoquePage() {
     if (quickFilter === "atencao") res = res.filter((i) => i.coberturaClass === "critico" || i.coberturaClass === "atencao" || i.belowMinStock);
     else if (quickFilter === "comVenda") res = res.filter((i) => i.qtdVendida > 0);
     else if (quickFilter === "semVenda") res = res.filter((i) => i.qtdVendida === 0 && i.estoqueTotal > 0);
+    if (whFilter !== "ALL") res = res.filter((i) => i.warehouses.some((w) => w.code === whFilter && (w.onHand !== 0 || w.committed !== 0 || w.onOrder !== 0)));
+    if (alertFilter === "ruptura") res = res.filter((i) => i.disponivel <= 0);
+    else if (alertFilter === "abaixoMin") res = res.filter((i) => i.belowMinStock);
+    else if (alertFilter === "excesso") res = res.filter((i) => i.coberturaClass === "excesso");
+    else if (alertFilter === "parado") res = res.filter((i) => i.giro === "parado" && i.estoqueTotal > 0);
     if (search.trim()) {
       const q = search.toLowerCase();
       res = res.filter((i) => i.sku.toLowerCase().includes(q) || i.descricao.toLowerCase().includes(q) || i.cod.toLowerCase().includes(q));
@@ -484,7 +629,7 @@ export default function EstoquePage() {
       }
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [allItems, catFilter, groupFilter, curvaFilter, giroFilter, cobFilter, quickFilter, search, sortField, sortDir]);
+  }, [allItems, catFilter, groupFilter, curvaFilter, giroFilter, cobFilter, quickFilter, whFilter, alertFilter, search, sortField, sortDir]);
 
   /* ── Pagination ── */
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -513,11 +658,10 @@ export default function EstoquePage() {
     const criticos = allItems.filter((i) => i.coberturaClass === "critico").length;
     const parados = allItems.filter((i) => i.giro === "parado" && i.estoqueTotal > 0).length;
     const belowMin = allItems.filter((i) => i.belowMinStock).length;
-    const orderNums = new Set<number>();
-    const cardCodes = new Set<string>();
-    if (ordData) { for (const o of ordData.items) { if (o.cancelled !== "Y") { orderNums.add(o.doc_num); cardCodes.add(o.card_code); } } }
-    return { total, totalSkus, estoqueTotal, dispTotal, fatTotal, saidaTotal, valorEstoqueTotal, criticos, parados, belowMin, totalPedidos: orderNums.size, totalClientes: cardCodes.size };
-  }, [allItems, ordData]);
+    const totalPedidos = analyticsData?.summary?.totalOrders ?? 0;
+    const totalClientes = analyticsData?.summary?.totalClients ?? 0;
+    return { total, totalSkus, estoqueTotal, dispTotal, fatTotal, saidaTotal, valorEstoqueTotal, criticos, parados, belowMin, totalPedidos, totalClientes };
+  }, [allItems, analyticsData]);
 
   const curvaDistrib = useMemo(() => {
     const a = allItems.filter((i) => i.curva === "A");
@@ -542,6 +686,34 @@ export default function EstoquePage() {
     allItems.filter((i) => i.curva === "A" && i.coberturaClass === "critico").sort((a, b) => a.coberturaDias - b.coberturaDias).slice(0, 6),
   [allItems]);
 
+  /* ── Alertas operacionais (ruptura / abaixo do mínimo / excesso) ── */
+  const reorderAlerts = useMemo(() => {
+    const ruptura = allItems
+      .filter((i) => i.disponivel <= 0 && (i.qtdVendida > 0 || i.minStock > 0))
+      .map((i) => ({ item: i, ...computeReorder(i) }))
+      .sort((a, b) => b.item.fatVendido - a.item.fatVendido)
+      .slice(0, 8);
+    const abaixoMin = allItems
+      .filter((i) => i.belowMinStock && i.disponivel > 0)
+      .map((i) => ({ item: i, ...computeReorder(i) }))
+      .sort((a, b) => a.item.coberturaDias - b.item.coberturaDias)
+      .slice(0, 8);
+    const excesso = allItems
+      .filter((i) => i.coberturaClass === "excesso" && i.estoqueTotal > 0 && i.valorEstoque > 0)
+      .sort((a, b) => b.valorEstoque - a.valorEstoque)
+      .slice(0, 8);
+    return {
+      ruptura, abaixoMin, excesso,
+      counts: {
+        ruptura: allItems.filter((i) => i.disponivel <= 0).length,
+        abaixoMin: allItems.filter((i) => i.belowMinStock).length,
+        excesso: allItems.filter((i) => i.coberturaClass === "excesso" && i.estoqueTotal > 0).length,
+      },
+    };
+  }, [allItems]);
+
+  const lastSync = syncHist?.items?.[0] ?? null;
+
   /* ── Sort ── */
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -555,22 +727,38 @@ export default function EstoquePage() {
   }
 
   /* ── Export ── */
+  const alertStatus = (i: StockItem): string => {
+    if (i.disponivel <= 0) return "Ruptura";
+    if (i.belowMinStock) return "Abaixo do minimo";
+    if (i.coberturaClass === "excesso") return "Excesso";
+    if (i.giro === "parado" && i.estoqueTotal > 0) return "Parado";
+    return "OK";
+  };
+
   const handleExport = () => {
-    exportCSV(filtered.map((i) => ({
-      SKU: i.sku, COD: i.cod, Produto: i.descricao, Categoria: CATEGORY_CFG[i.categoria].label,
-      "Grupo SAP": i.itemGroupName ?? "",
-      Curva: i.curva, "SKUs Agrup.": i.skuCount, Embalagens: i.embalas.join(", "),
-      Estoque: i.estoqueTotal, Confirmado: i.confirmado, Disponivel: i.disponivel,
-      "Em Pedido": i.emPedido, "Est. Minimo": i.minStock, "Est. Maximo": i.maxStock,
-      "Abaixo Min.": i.belowMinStock ? "Sim" : "Nao",
-      "Custo Medio": i.avgPrice.toFixed(2), "Valor Estoque": i.valorEstoque.toFixed(2),
-      "Ult. Preco Compra": i.lastPurchasePrice.toFixed(2),
-      "Lead Time (dias)": i.leadTime, "Peso Bruto": i.grossWeight.toFixed(3),
-      "Ult. Compra": i.lastPurchaseDate ?? "", "Ult. Venda": i.lastSaleDate ?? "",
-      "Saida (un)": i.qtdVendida, Pedidos: i.numPedidos, Clientes: i.numClientes,
-      Faturamento: i.fatVendido.toFixed(2), "Media/Dia": i.mediaDiaria.toFixed(2),
-      "Cobertura Dias": i.coberturaDias.toFixed(0), Giro: i.giro,
-    })), `estoque-${dateFrom}-${dateTo}`);
+    exportCSV(filtered.map((i) => {
+      const { rop, suggested } = computeReorder(i);
+      return {
+        SKU: i.sku, COD: i.cod, Produto: i.descricao, Categoria: CATEGORY_CFG[i.categoria].label,
+        "Grupo SAP": i.itemGroupName ?? "",
+        Curva: i.curva, "SKUs Agrup.": i.skuCount, Embalagens: i.embalas.join(", "),
+        Estoque: i.estoqueTotal, Confirmado: i.confirmado, Disponivel: i.disponivel,
+        "Em Pedido": i.emPedido, "Est. Minimo": i.minStock, "Est. Maximo": i.maxStock,
+        "Abaixo Min.": i.belowMinStock ? "Sim" : "Nao",
+        "Status Alerta": alertStatus(i),
+        "Ponto Reposicao (ROP)": Math.ceil(rop),
+        "Sugestao Compra": suggested,
+        "Depositos": i.warehouses.length,
+        "Detalhe Depositos": i.warehouses.map((w) => `${w.code}:${fmtNum(w.available)}`).join(" | "),
+        "Custo Medio": i.avgPrice.toFixed(2), "Valor Estoque": i.valorEstoque.toFixed(2),
+        "Ult. Preco Compra": i.lastPurchasePrice.toFixed(2),
+        "Lead Time (dias)": i.leadTime, "Peso Bruto": i.grossWeight.toFixed(3),
+        "Ult. Compra": i.lastPurchaseDate ?? "", "Ult. Venda": i.lastSaleDate ?? "",
+        "Saida (un)": i.qtdVendida, Pedidos: i.numPedidos, Clientes: i.numClientes,
+        Faturamento: i.fatVendido.toFixed(2), "Media/Dia": i.mediaDiaria.toFixed(2),
+        "Cobertura Dias": i.coberturaDias.toFixed(0), Giro: i.giro,
+      };
+    }), `estoque-${dateFrom}-${dateTo}`);
   };
 
   if (loading) return (
@@ -597,9 +785,25 @@ export default function EstoquePage() {
             <span>{totalDays} dias</span>
           </p>
         </div>
-        <button onClick={handleExport} className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition min-h-[44px] sm:min-h-0 w-full sm:w-auto">
-          <Download className="w-4 h-4" /> Exportar CSV
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Indicador de última sincronização + re-sync inline */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-[11px] flex-1 sm:flex-none min-h-[44px] sm:min-h-0">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${lastSync?.status === "success" ? "bg-emerald-500" : lastSync?.status === "error" ? "bg-red-500" : "bg-gray-300"}`} />
+            <div className="min-w-0 leading-tight">
+              <p className="text-[9px] uppercase tracking-wider text-gray-400">Última sincronização</p>
+              <p className="text-gray-700 font-medium truncate" title={lastSync?.message ?? ""}>
+                {lastSync?.finished_at ? new Date(lastSync.finished_at).toLocaleString("pt-BR") : "Nunca sincronizado"}
+              </p>
+            </div>
+            <button onClick={handleResync} disabled={syncing}
+              className="ml-1 p-1.5 rounded-md hover:bg-gray-100 text-gray-500 disabled:opacity-40 shrink-0" title="Sincronizar estoque agora">
+              <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          <button onClick={handleExport} className="flex items-center justify-center gap-2 px-3.5 py-2.5 sm:py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition min-h-[44px] sm:min-h-0 shrink-0">
+            <Download className="w-4 h-4" /> <span className="hidden sm:inline">Exportar</span> CSV
+          </button>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -664,6 +868,80 @@ export default function EstoquePage() {
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Alertas operacionais: ruptura / abaixo do mínimo / excesso */}
+      {(reorderAlerts.counts.ruptura > 0 || reorderAlerts.counts.abaixoMin > 0 || reorderAlerts.counts.excesso > 0) && (
+        <section className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          {/* Ruptura */}
+          <div className="rounded-xl border border-red-200 bg-white overflow-hidden">
+            <button onClick={() => { setAlertFilter(alertFilter === "ruptura" ? "ALL" : "ruptura"); resetPage(); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 border-b border-red-100 ${alertFilter === "ruptura" ? "bg-red-100" : "bg-red-50/70 hover:bg-red-50"}`}>
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <h2 className="text-xs font-semibold text-red-800">Ruptura</h2>
+              <span className="ml-auto text-[11px] font-bold text-red-700 tabular-nums">{reorderAlerts.counts.ruptura}</span>
+            </button>
+            <div className="divide-y divide-gray-100 max-h-[220px] overflow-y-auto">
+              {reorderAlerts.ruptura.length === 0 ? (
+                <p className="text-[10px] text-gray-400 px-3 py-3">Nenhum item em ruptura</p>
+              ) : reorderAlerts.ruptura.map(({ item, suggested }) => (
+                <div key={item.sku} className="px-3 py-2 flex items-center gap-2 hover:bg-gray-50">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-gray-800 truncate" title={item.descricao}>{toTitleCase(item.descricao)}</p>
+                    <p className="text-[9px] text-gray-400 font-mono">{item.sku} · {item.mediaDiaria.toFixed(1)}/dia</p>
+                  </div>
+                  {suggested > 0 && <span className="text-[10px] font-semibold text-red-600 shrink-0 tabular-nums" title="Quantidade sugerida de reposição">repor {fmtNum(suggested)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Abaixo do mínimo */}
+          <div className="rounded-xl border border-amber-200 bg-white overflow-hidden">
+            <button onClick={() => { setAlertFilter(alertFilter === "abaixoMin" ? "ALL" : "abaixoMin"); resetPage(); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 border-b border-amber-100 ${alertFilter === "abaixoMin" ? "bg-amber-100" : "bg-amber-50/70 hover:bg-amber-50"}`}>
+              <TrendingDown className="w-4 h-4 text-amber-600 shrink-0" />
+              <h2 className="text-xs font-semibold text-amber-800">Abaixo do mínimo</h2>
+              <span className="ml-auto text-[11px] font-bold text-amber-700 tabular-nums">{reorderAlerts.counts.abaixoMin}</span>
+            </button>
+            <div className="divide-y divide-gray-100 max-h-[220px] overflow-y-auto">
+              {reorderAlerts.abaixoMin.length === 0 ? (
+                <p className="text-[10px] text-gray-400 px-3 py-3">Nenhum item abaixo do mínimo</p>
+              ) : reorderAlerts.abaixoMin.map(({ item, suggested }) => (
+                <div key={item.sku} className="px-3 py-2 flex items-center gap-2 hover:bg-gray-50">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-gray-800 truncate" title={item.descricao}>{toTitleCase(item.descricao)}</p>
+                    <p className="text-[9px] text-gray-400 font-mono">{item.sku} · disp {fmtNum(item.disponivel)} / mín {fmtNum(item.minStock)}</p>
+                  </div>
+                  {suggested > 0 && <span className="text-[10px] font-semibold text-amber-600 shrink-0 tabular-nums" title="Quantidade sugerida de reposição">repor {fmtNum(suggested)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Excesso */}
+          <div className="rounded-xl border border-violet-200 bg-white overflow-hidden">
+            <button onClick={() => { setAlertFilter(alertFilter === "excesso" ? "ALL" : "excesso"); resetPage(); }}
+              className={`w-full flex items-center gap-2 px-3 py-2 border-b border-violet-100 ${alertFilter === "excesso" ? "bg-violet-100" : "bg-violet-50/70 hover:bg-violet-50"}`}>
+              <Wallet className="w-4 h-4 text-violet-600 shrink-0" />
+              <h2 className="text-xs font-semibold text-violet-800">Excesso (capital parado)</h2>
+              <span className="ml-auto text-[11px] font-bold text-violet-700 tabular-nums">{reorderAlerts.counts.excesso}</span>
+            </button>
+            <div className="divide-y divide-gray-100 max-h-[220px] overflow-y-auto">
+              {reorderAlerts.excesso.length === 0 ? (
+                <p className="text-[10px] text-gray-400 px-3 py-3">Nenhum item em excesso</p>
+              ) : reorderAlerts.excesso.map((item) => (
+                <div key={item.sku} className="px-3 py-2 flex items-center gap-2 hover:bg-gray-50">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-gray-800 truncate" title={item.descricao}>{toTitleCase(item.descricao)}</p>
+                    <p className="text-[9px] text-gray-400 font-mono">{item.sku} · {item.coberturaDias >= 999 ? "∞" : `${item.coberturaDias.toFixed(0)}d`} cobertura</p>
+                  </div>
+                  <span className="text-[10px] font-semibold text-violet-600 shrink-0 tabular-nums">{fmtBRL(item.valorEstoque)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -857,6 +1135,16 @@ export default function EstoquePage() {
               <option key={g.name} value={g.name}>{g.name} ({g.count})</option>
             ))}
           </select>
+          {warehouseList.length > 0 && (
+            <select value={whFilter} onChange={(e) => { setWhFilter(e.target.value); resetPage(); }}
+              className={`border rounded-lg px-2.5 py-2 sm:py-1.5 text-xs font-medium bg-white focus:outline-none focus:ring-2 focus:ring-cockpit-accent/20 min-h-[44px] sm:min-h-0 max-w-[160px] ${whFilter !== "ALL" ? "border-sky-300 text-sky-700 bg-sky-50" : "border-gray-200 text-gray-600"}`}
+              title="Filtrar por depósito">
+              <option value="ALL">Todos os Depósitos</option>
+              {warehouseList.map((w) => (
+                <option key={w} value={w}>Depósito {w}</option>
+              ))}
+            </select>
+          )}
           <div className="flex gap-1 rounded-lg bg-gray-100 p-0.5 shrink-0">
             {([
               { key: "all", label: "Todos" },
@@ -894,6 +1182,20 @@ export default function EstoquePage() {
                 className={`px-2 py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors ${
                   cobFilter === opt ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
                 }`}>{opt === "ALL" ? "Cobert." : COB_CFG[opt].label}</button>
+            ))}
+          </div>
+          <div className="flex gap-0.5 rounded-lg bg-gray-100 p-0.5 shrink-0">
+            {([
+              { key: "ALL", label: "Alerta" },
+              { key: "ruptura", label: "Ruptura" },
+              { key: "abaixoMin", label: "Abaixo mín." },
+              { key: "excesso", label: "Excesso" },
+              { key: "parado", label: "Parado" },
+            ] as const).map(({ key, label }) => (
+              <button key={key} onClick={() => { setAlertFilter(key); resetPage(); }}
+                className={`px-2 py-1.5 rounded-md text-xs font-medium motion-safe:transition-colors whitespace-nowrap ${
+                  alertFilter === key ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
+                }`}>{label}</button>
             ))}
           </div>
         </div>
@@ -1136,6 +1438,55 @@ export default function EstoquePage() {
                               <span className={`text-gray-500`}>Categoria: <strong className={catCfg.color}>{catCfg.label}</strong></span>
                             </div>
                           )}
+
+                          {/* Sugestão de reposição */}
+                          {(() => {
+                            const { rop, suggested } = computeReorder(item);
+                            if (item.disponivel > 0 && !item.belowMinStock && suggested <= 0) return null;
+                            return (
+                              <div className="mt-2.5 pt-2.5 border-t border-gray-200/60 flex flex-wrap items-center gap-4 text-[11px]">
+                                <span className="text-gray-500 flex items-center gap-1"><ShieldAlert className="w-3 h-3 text-amber-500" />Ponto de reposição (ROP): <strong className="text-gray-700">{fmtNum(Math.ceil(rop))}</strong></span>
+                                {suggested > 0 && <span className="text-gray-500">Sugestão de compra: <strong className="text-red-600">{fmtNum(suggested)} un</strong></span>}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Quebra por depósito */}
+                          {item.warehouses.length > 0 && (
+                            <div className="mt-2.5 pt-2.5 border-t border-gray-200/60">
+                              <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-1.5 flex items-center gap-1"><Warehouse className="w-2.5 h-2.5" />Estoque por Depósito ({item.warehouses.length})</p>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[10px] min-w-[360px]">
+                                  <thead>
+                                    <tr className="text-gray-400 uppercase tracking-wider text-[9px]">
+                                      <th className="text-left font-semibold py-1">Depósito</th>
+                                      <th className="text-right font-semibold py-1">Em Estoque</th>
+                                      <th className="text-right font-semibold py-1">Comprometido</th>
+                                      <th className="text-right font-semibold py-1">Disponível</th>
+                                      <th className="text-right font-semibold py-1">Em Pedido</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {item.warehouses.map((w) => (
+                                      <tr key={w.code} className="border-t border-gray-100">
+                                        <td className="py-1 font-medium text-gray-700">Dep. {w.code}</td>
+                                        <td className="py-1 text-right tabular-nums text-gray-600">{fmtNum(w.onHand)}</td>
+                                        <td className="py-1 text-right tabular-nums text-amber-600">{w.committed > 0 ? fmtNum(w.committed) : "—"}</td>
+                                        <td className={`py-1 text-right tabular-nums font-semibold ${w.available <= 0 ? "text-red-600" : "text-emerald-700"}`}>{fmtNum(w.available)}</td>
+                                        <td className="py-1 text-right tabular-nums text-sky-600">{w.onOrder > 0 ? fmtNum(w.onOrder) : "—"}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Timeline de movimentações (OINM) */}
+                          <div className="mt-2.5 pt-2.5 border-t border-gray-200/60">
+                            <p className="text-[9px] uppercase tracking-wider text-gray-400 mb-1 flex items-center gap-1"><Activity className="w-2.5 h-2.5" />Movimentações (entradas/saídas)</p>
+                            <MovementsTimeline skus={item.allSkus} />
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -1201,7 +1552,7 @@ export default function EstoquePage() {
       </div>
 
       <footer className="text-center text-[10px] text-cockpit-muted py-2">
-        Dados SAP B1 sincronizados · {ordData?.total ?? 0} pedidos · {totalDays} dias · Produtos agrupados por embalagem
+        Dados SAP B1 sincronizados · {fmtNum(kpis.totalPedidos)} pedidos · {totalDays} dias · Produtos agrupados por embalagem
       </footer>
     </div>
   );
