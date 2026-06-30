@@ -198,11 +198,16 @@ def list_inventory(
     db: Session = Depends(get_session),
     sku: str | None = None,
     warehouseCode: str | None = None,
-    includeStale: bool = True,
+    includeStale: bool = False,
     limit: int = 50,
     offset: int = 0,
 ):
-    """Listagem de estoque por depósito."""
+    """Listagem de estoque por depósito.
+
+    Por padrão exclui registros obsoletos (`is_stale=True`) — SKUs/depósitos que
+    deixaram de vir no último snapshot do SAP. Use `includeStale=true` para trazê-los.
+    Default False evita dupla contagem (ex.: linhas legadas do depósito 'GERAL'
+    coexistindo com a quebra real por depósito)."""
     q = select(DbInventoryStock).order_by(DbInventoryStock.sku.asc())
     count_q = select(DbInventoryStock)
     if sku:
