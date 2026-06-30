@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useMemo, useCallback, Suspense } from "react";
+import Link from "next/link";
 import {
   Tag, Search, X, Download, Package, DollarSign,
   TrendingUp, TrendingDown, Minus, Hash, BarChart3, Layers,
-  ArrowUpDown, ArrowUp, ArrowDown, ChevronRight,
+  ArrowUpDown, ArrowUp, ArrowDown, ChevronRight, ChevronDown,
   Users, Boxes, MapPin, Briefcase, Loader2, AlertCircle,
+  Repeat, CalendarDays, Calculator, ExternalLink, Clock,
 } from "lucide-react";
 import {
   BarChart, Bar, PieChart, Pie, Cell,
@@ -42,6 +44,7 @@ import {
 import { useFetch } from "@/hooks/useFetch";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { classifyCompras, getComprasGroup, type CurvaABCD } from "@/lib/compras-engine";
+import { isMarkupCatalogItem } from "@/lib/markup-engine";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
@@ -72,6 +75,26 @@ function median(arr: number[]): number {
   const s = [...arr].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Diferença em dias inteiros entre duas datas "yyyy-MM-dd" (ou ISO). */
+function daysBetween(fromISO: string, toISO: string): number {
+  const a = new Date(`${fromISO.substring(0, 10)}T12:00:00`).getTime();
+  const b = new Date(`${toISO.substring(0, 10)}T12:00:00`).getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Rótulo humano de frequência a partir do intervalo médio (em dias). */
+function frequencyLabel(avgIntervalDays: number | null): string {
+  if (avgIntervalDays == null) return "Compra única";
+  const d = Math.round(avgIntervalDays);
+  if (d <= 0) return "Mesmo dia";
+  if (d < 25) return `~a cada ${d} dias`;
+  const months = avgIntervalDays / 30;
+  if (months < 1.5) return "~mensal";
+  if (months < 11) return `~a cada ${Math.round(months)} meses`;
+  const years = months / 12;
+  return years < 1.5 ? "~anual" : `~a cada ${years.toFixed(1)} anos`;
 }
 
 /* ═══════════════════ Item parsing ═══════════════════ */
@@ -380,6 +403,15 @@ function UnifiedProductModal({
 }) {
   const itemCodes = useMemo(() => product.variants.map((v) => v.itemCode), [product.variants]);
 
+  // Cliente expandido na lista de frequência (mostra a linha do tempo de compras).
+  const [expandedClient, setExpandedClient] = useState<string | null>(null);
+
+  // SKU elegível para MarkUp — usa o primário, ou a 1ª variante com prefixo válido.
+  const markupItemCode = useMemo(() => {
+    if (isMarkupCatalogItem(product.itemCode)) return product.itemCode;
+    return product.variants.find((v) => isMarkupCatalogItem(v.itemCode))?.itemCode ?? null;
+  }, [product.itemCode, product.variants]);
+
   // ─── Detalhe do produto SEMPRE em janela fixa de 12 meses ───
   // Independe do range global. Permite ver evolução completa do produto.
   const today = useMemo(() => new Date(), []);
@@ -436,18 +468,70 @@ function UnifiedProductModal({
     };
   }, [productOrders]);
 
-  const topClients = useMemo(() => {
-    const map = new Map<string, { name: string; fat: number; qty: number; orders: number }>();
+  // ─── Clientes com datas e frequência de compra (janela de 12 meses) ───
+  // Frequência é derivada de PEDIDOS DISTINTOS (doc_num), não de linhas, para
+  // não inflar a contagem quando um pedido tem várias embalagens.
+  const clientStats = useMemo(() => {
+    const map = new Map<string, {
+      name: string;
+      fat: number;
+      qty: number;
+      /** data (yyyy-MM-dd) -> soma de qty naquele dia, p/ tooltip */
+      docs: Map<number, { date: string; qty: number; fat: number }>;
+    }>();
     for (const r of productOrders) {
-      const cur = map.get(r.cardCode) ?? { name: r.cardName, fat: 0, qty: 0, orders: 0 };
-      cur.fat += r.lineTotal; cur.qty += r.qty; cur.orders += 1;
-      map.set(r.cardCode, cur);
+      let cur = map.get(r.cardCode);
+      if (!cur) { cur = { name: r.cardName, fat: 0, qty: 0, docs: new Map() }; map.set(r.cardCode, cur); }
+      cur.fat += r.lineTotal;
+      cur.qty += r.qty;
+      const d = cur.docs.get(r.docNum) ?? { date: r.docDate.substring(0, 10), qty: 0, fat: 0 };
+      d.qty += r.qty;
+      d.fat += r.lineTotal;
+      cur.docs.set(r.docNum, d);
     }
+
+    const todayISO = formatDateOnly(today);
+
     return Array.from(map.entries())
-      .map(([code, v]) => ({ code, ...v }))
-      .sort((a, b) => b.fat - a.fat)
-      .slice(0, 8);
-  }, [productOrders]);
+      .map(([code, v]) => {
+        const purchases = Array.from(v.docs.values()).sort((a, b) => a.date.localeCompare(b.date));
+        const dates = purchases.map((p) => p.date);
+        const orders = purchases.length;
+        const firstDate = dates[0];
+        const lastDate = dates[dates.length - 1];
+        const spanDays = orders >= 2 ? daysBetween(firstDate, lastDate) : 0;
+        const avgIntervalDays = orders >= 2 ? spanDays / (orders - 1) : null;
+        const ordersPerMonth = spanDays > 0 ? orders / (spanDays / 30) : null;
+        const daysSinceLast = daysBetween(lastDate, todayISO);
+        return {
+          code,
+          name: v.name,
+          fat: v.fat,
+          qty: v.qty,
+          orders,
+          purchases,
+          firstDate,
+          lastDate,
+          avgIntervalDays,
+          ordersPerMonth,
+          daysSinceLast,
+        };
+      })
+      .sort((a, b) => b.fat - a.fat);
+  }, [productOrders, today]);
+
+  // Mediana do intervalo médio entre os clientes recorrentes — referência de cadência.
+  const medianInterval = useMemo(() => {
+    const intervals = clientStats
+      .filter((c) => c.avgIntervalDays != null)
+      .map((c) => c.avgIntervalDays as number);
+    return intervals.length ? median(intervals) : null;
+  }, [clientStats]);
+
+  const recurringCount = useMemo(
+    () => clientStats.filter((c) => c.orders >= 2).length,
+    [clientStats],
+  );
 
   // Evolução mensal: 12 meses fixos (do mais antigo ao corrente), com slots zerados quando sem vendas.
   const monthlyData = useMemo(() => {
@@ -507,9 +591,22 @@ function UnifiedProductModal({
               )}
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 motion-safe:transition-colors shrink-0">
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {markupItemCode && (
+              <Link
+                href={`/business-intelligence/markup/${encodeURIComponent(markupItemCode)}`}
+                title={`Abrir simulador de MarkUp · ${markupItemCode}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cockpit-accent/10 text-cockpit-accent text-xs font-semibold hover:bg-cockpit-accent/20 motion-safe:transition-colors"
+              >
+                <Calculator className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">MarkUp</span>
+                <ExternalLink className="w-3 h-3 opacity-60" />
+              </Link>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-black/5 motion-safe:transition-colors">
+              <X className="w-5 h-5 text-gray-400" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
@@ -686,24 +783,107 @@ function UnifiedProductModal({
             </div>
           )}
 
-          {/* Top clientes */}
-          {!ordersLoading && topClients.length > 0 && (
+          {/* Clientes & Frequência de Compra */}
+          {!ordersLoading && clientStats.length > 0 && (
             <div>
-              <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2">Top Clientes</h4>
-              <div className="space-y-1.5">
-                {topClients.map((c, i) => {
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider flex items-center gap-1.5">
+                  <Repeat className="w-3.5 h-3.5" /> Clientes &amp; Frequência de Compra
+                </h4>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-violet-50 text-violet-700 font-semibold">
+                    <Users className="w-3 h-3" /> {clientStats.length} clientes
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 font-semibold">
+                    <Repeat className="w-3 h-3" /> {recurringCount} recorrentes
+                  </span>
+                  {medianInterval != null && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-50 text-amber-700 font-semibold"
+                      title="Mediana do intervalo médio entre pedidos dos clientes recorrentes">
+                      <Clock className="w-3 h-3" /> Cadência mediana {frequencyLabel(medianInterval)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-cockpit-muted mb-2">
+                Clique em um cliente para ver a linha do tempo das compras. Frequência calculada por pedidos distintos nos últimos 12 meses.
+              </p>
+              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                {clientStats.map((c, i) => {
                   const pctClient = productKpis.fat > 0 ? (c.fat / productKpis.fat * 100) : 0;
+                  const isExpanded = expandedClient === c.code;
+                  const recurring = c.orders >= 2;
                   return (
-                    <div key={c.code} className="flex items-center gap-3 text-xs bg-cockpit-bg/50 rounded-lg px-3 py-2 border border-cockpit-border/50">
-                      <span className="w-5 h-5 rounded-full bg-cockpit-accent/10 text-cockpit-accent font-bold text-[10px] flex items-center justify-center shrink-0">{i + 1}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-gray-800 truncate">{c.name}</p>
-                        <p className="text-cockpit-muted font-mono text-[10px]">{c.code} · <span data-private>{c.orders} pedidos · {fmtNum(c.qty)} un</span></p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(c.fat)}</p>
-                        <p className="text-cockpit-muted text-[10px] tabular-nums">{pctClient.toFixed(1)}%</p>
-                      </div>
+                    <div key={c.code} className="text-xs bg-cockpit-bg/50 rounded-lg border border-cockpit-border/50 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedClient(isExpanded ? null : c.code)}
+                        className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors"
+                        aria-expanded={isExpanded}
+                      >
+                        <span className="w-5 h-5 rounded-full bg-cockpit-accent/10 text-cockpit-accent font-bold text-[10px] flex items-center justify-center shrink-0">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-gray-800 truncate">{c.name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <span className="text-cockpit-muted font-mono text-[10px]">{c.code}</span>
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${recurring ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"}`}
+                              title={recurring ? `Intervalo médio entre pedidos: ${Math.round(c.avgIntervalDays ?? 0)} dias` : "Apenas 1 pedido nos últimos 12 meses"}
+                            >
+                              <Repeat className="w-2.5 h-2.5" /> {frequencyLabel(c.avgIntervalDays)}
+                            </span>
+                            <span data-private className="text-cockpit-muted text-[10px]">{c.orders} pedidos · {fmtNum(c.qty)} un</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-semibold text-cockpit-accent tabular-nums">{fmtBRL(c.fat)}</p>
+                          <p className="text-cockpit-muted text-[10px] tabular-nums">{pctClient.toFixed(1)}%</p>
+                        </div>
+                        <div className="shrink-0 text-right min-w-[58px]">
+                          <p className="text-[9px] text-cockpit-muted uppercase">Última</p>
+                          <p className="text-[10px] font-medium text-gray-600 tabular-nums">{fmtDateShort(c.lastDate)}</p>
+                          <p className="text-[9px] text-gray-400">há {c.daysSinceLast}d</p>
+                        </div>
+                        <ChevronDown className={`w-3.5 h-3.5 text-cockpit-muted shrink-0 motion-safe:transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      </button>
+                      {isExpanded && (
+                        <div className="px-3 pb-3 pt-1 border-t border-cockpit-border/50 bg-white/60">
+                          <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-[10px] text-cockpit-muted mb-2">
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays className="w-3 h-3" /> 1ª compra <strong className="text-gray-700">{fmtDateShort(c.firstDate)}</strong>
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarDays className="w-3 h-3" /> Última <strong className="text-gray-700">{fmtDateShort(c.lastDate)}</strong>
+                            </span>
+                            {c.ordersPerMonth != null && (
+                              <span className="inline-flex items-center gap-1">
+                                <Repeat className="w-3 h-3" /> <strong className="text-gray-700">{c.ordersPerMonth.toFixed(1)}</strong> pedidos/mês
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[9px] font-semibold text-cockpit-muted uppercase tracking-wider mb-1.5">
+                            Linha do tempo de compras ({c.purchases.length})
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[...c.purchases].reverse().map((p, pi, arr) => {
+                              // gap = dias desde a compra ANTERIOR (mais antiga) deste cliente
+                              const older = arr[pi + 1];
+                              const gap = older ? daysBetween(older.date, p.date) : null;
+                              return (
+                                <span
+                                  key={`${p.date}-${pi}`}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-cockpit-bg border border-cockpit-border/60 text-[10px] tabular-nums"
+                                  title={`${fmtNum(p.qty)} un · ${fmtBRL(p.fat)}`}
+                                >
+                                  <CalendarDays className="w-2.5 h-2.5 text-cockpit-accent" />
+                                  <span className="font-medium text-gray-700">{fmtDateShort(p.date)}</span>
+                                  {gap != null && <span className="text-gray-400">(+{gap}d)</span>}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
