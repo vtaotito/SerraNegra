@@ -191,7 +191,8 @@ export default function ComprasPage() {
       const emb = getEmbalaQty(desc);
       const a = ensure(key, nome, group);
       a.skuSet.add(inv.product_id);
-      a.estoqueUnd += (inv.quantity_free ?? 0) * emb;
+      const disponivelUnd = Math.max((inv.quantity_available ?? 0) - (inv.quantity_reserved ?? 0), 0);
+      a.estoqueUnd += disponivelUnd * emb;
       a.emPedidoUnd += (inv.quantity_on_order ?? 0) * emb;
     }
 
