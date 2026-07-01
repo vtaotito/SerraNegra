@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/lib/cart/context";
+import { packStep, formatStockUnits } from "@/lib/catalog";
+import { cn } from "@/lib/utils";
 import { post } from "@/lib/api/client";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -99,60 +101,96 @@ export default function CarrinhoPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {/* Lista de Itens */}
             <div className="lg:col-span-2 space-y-3">
-              {items.map((item) => (
-                <Card key={item.sku}>
-                  <CardContent className="flex items-center gap-4 p-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-                      <Package className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-sm line-clamp-1">{item.name}</h3>
-                      <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>
-                    </div>
+              {items.map((item) => {
+                const step = packStep(item.unitsPerPack);
+                const hasLimit = item.maxUnits > 0;
+                const atMax = hasLimit && item.quantity >= item.maxUnits;
+                const packs = step > 1 ? Math.round(item.quantity / step) : null;
+                return (
+                  <Card key={item.sku}>
+                    <CardContent className="flex items-center gap-4 p-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
+                        <Package className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-sm line-clamp-1">{item.name}</h3>
+                        <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>
+                        {hasLimit && (
+                          <p
+                            className={cn(
+                              "text-[11px] mt-0.5",
+                              atMax ? "text-amber-600 font-medium" : "text-muted-foreground",
+                            )}
+                          >
+                            {atMax ? "Máximo em estoque · " : "Estoque: "}
+                            {formatStockUnits(item.maxUnits)} {item.unit}
+                          </p>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-1 rounded-md border">
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="flex items-center gap-1 rounded-md border">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => updateQuantity(item.sku, item.quantity - step)}
+                          >
+                            <Minus className="h-3 w-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            min={1}
+                            step={step}
+                            max={hasLimit ? item.maxUnits : undefined}
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const parsed = Math.max(1, parseInt(e.target.value) || 1);
+                              const capped = hasLimit ? Math.min(parsed, item.maxUnits) : parsed;
+                              updateQuantity(item.sku, capped);
+                            }}
+                            className="h-8 w-16 border-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={atMax}
+                            onClick={() =>
+                              updateQuantity(
+                                item.sku,
+                                hasLimit
+                                  ? Math.min(item.maxUnits, item.quantity + step)
+                                  : item.quantity + step,
+                              )
+                            }
+                          >
+                            <Plus className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {packs !== null && (
+                          <span className="text-[11px] text-muted-foreground tabular-nums">
+                            {packs} × {step} {item.unit}
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="text-xs text-muted-foreground w-8 text-center">
+                        {item.unit}
+                      </span>
+
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
-                        onClick={() => updateQuantity(item.sku, item.quantity - 1)}
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => removeItem(item.sku)}
                       >
-                        <Minus className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateQuantity(item.sku, Math.max(1, parseInt(e.target.value) || 1))
-                        }
-                        className="h-8 w-14 border-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => updateQuantity(item.sku, item.quantity + 1)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                    </div>
-
-                    <span className="text-xs text-muted-foreground w-8 text-center">
-                      {item.unit}
-                    </span>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => removeItem(item.sku)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
 
             {/* Resumo */}

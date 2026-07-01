@@ -46,6 +46,33 @@ export function formatStockUnits(units: number): string {
   return new Intl.NumberFormat("pt-BR").format(Math.max(0, Math.round(units)));
 }
 
+/** Passo de compra em unidades (unidades por embalagem; 1 = unidade avulsa). */
+export function packStep(unitsPerPack: number): number {
+  return unitsPerPack > 1 ? unitsPerPack : 1;
+}
+
+/**
+ * Máximo de UNIDADES que podem ser pedidas de uma variante, respeitando
+ * embalagens inteiras (não se vende meia caixa). Ex.: 84 un disponíveis de uma
+ * "Caixa c/24" → 72 un (3 caixas). Para unidade avulsa, é o próprio estoque.
+ */
+export function maxOrderableUnits(variant: {
+  stockUnits: number;
+  unitsPerPack: number;
+}): number {
+  const step = packStep(variant.unitsPerPack);
+  const units = Math.max(0, Math.floor(variant.stockUnits));
+  return Math.floor(units / step) * step;
+}
+
+/** Máximo de EMBALAGENS que podem ser pedidas (estoque ÷ un. por embalagem). */
+export function maxOrderablePacks(variant: {
+  stockUnits: number;
+  unitsPerPack: number;
+}): number {
+  return Math.floor(maxOrderableUnits(variant) / packStep(variant.unitsPerPack));
+}
+
 /** Nome amigável e curto do tipo de embalagem. */
 export function packagingTypeName(type: string | null | undefined): string {
   if (!type) return "Unidade";

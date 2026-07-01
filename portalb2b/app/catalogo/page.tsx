@@ -44,6 +44,8 @@ import {
   groupColor,
   categoryColor,
   formatStockUnits,
+  packStep,
+  maxOrderableUnits,
 } from "@/lib/catalog";
 
 interface CategoryFacet {
@@ -125,31 +127,66 @@ export default function CatalogoPage() {
     [selectedSku],
   );
 
-  const handleQuantityChange = useCallback((id: string, delta: number) => {
-    setQuantities((prev) => ({
-      ...prev,
-      [id]: Math.max(1, (prev[id] ?? 1) + delta),
-    }));
+  const handleQuantityChange = useCallback((id: string, delta: number, maxPacks: number) => {
+    setQuantities((prev) => {
+      const cur = prev[id] ?? 1;
+      let next = Math.max(1, cur + delta);
+      if (maxPacks > 0) next = Math.min(next, maxPacks);
+      return { ...prev, [id]: next };
+    });
   }, []);
 
   function handleAddToCart(product: UnifiedProduct, variant: PackagingVariant) {
-    const qty = quantities[product.id] ?? 1;
-    const perPack = variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
-    const totalUnits = qty * perPack;
+    const perPack = packStep(variant.unitsPerPack);
     const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
     const displayName =
       variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
 
+    // Limite: nunca exceder o estoque disponível (em embalagens inteiras),
+    // considerando o que já está no carrinho para esta variante.
+    const maxUnits = maxOrderableUnits(variant);
+    const inCartUnits = getItem(variant.sku)?.quantity ?? 0;
+    const remainingUnits = Math.max(0, maxUnits - inCartUnits);
+    const remainingPacks = Math.floor(remainingUnits / perPack);
+
+    if (remainingPacks < 1) {
+      toast.info("Estoque máximo já no carrinho", {
+        description: `Você já tem ${formatStockUnits(inCartUnits)} ${variant.unitOfMeasure} — todo o estoque disponível.`,
+      });
+      return;
+    }
+
+    const qty = quantities[product.id] ?? 1;
+    const addPacks = Math.min(qty, remainingPacks);
+    const addUnits = addPacks * perPack;
+    const clamped = addPacks < qty;
+
     addItem(
-      { sku: variant.sku, name: displayName, unit: variant.unitOfMeasure },
-      totalUnits,
+      {
+        sku: variant.sku,
+        name: displayName,
+        unit: variant.unitOfMeasure,
+        unitsPerPack: perPack,
+        maxUnits,
+      },
+      addUnits,
     );
 
-    const desc =
-      perPack > 1
-        ? `${qty} ${label} = ${totalUnits} ${variant.unitOfMeasure}`
-        : `${qty} ${variant.unitOfMeasure}`;
-    toast.success(`${product.name} adicionado ao carrinho`, { description: desc });
+    if (clamped) {
+      toast.warning("Quantidade ajustada ao estoque", {
+        description:
+          perPack > 1
+            ? `Adicionado ${addPacks} ${label} (${addUnits} ${variant.unitOfMeasure}) — limite de estoque.`
+            : `Adicionado ${addUnits} ${variant.unitOfMeasure} — limite de estoque.`,
+      });
+    } else {
+      toast.success(`${product.name} adicionado ao carrinho`, {
+        description:
+          perPack > 1
+            ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
+            : `${addUnits} ${variant.unitOfMeasure}`,
+      });
+    }
   }
 
   async function handleNotify(variant: PackagingVariant, productName: string) {
@@ -464,22 +501,29 @@ export default function CatalogoPage() {
           ) : (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {data.items.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    variant={getSelectedVariant(product)}
-                    qty={quantities[product.id] ?? 1}
-                    inCart={!!getItem(getSelectedVariant(product)?.sku ?? "")}
-                    onSelectVariant={(sku) =>
-                      setSelectedSku((prev) => ({ ...prev, [product.id]: sku }))
-                    }
-                    onQtyChange={(delta) => handleQuantityChange(product.id, delta)}
-                    onAdd={(v) => handleAddToCart(product, v)}
-                    onNotify={(v) => handleNotify(v, product.name)}
-                    onCategoryClick={(c) => setCategory(c)}
-                  />
-                ))}
+                {data.items.map((product) => {
+                  const selVariant = getSelectedVariant(product);
+                  const cartUnits = getItem(selVariant?.sku ?? "")?.quantity ?? 0;
+                  return (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      variant={selVariant}
+                      qty={quantities[product.id] ?? 1}
+                      cartUnits={cartUnits}
+                      inCart={cartUnits > 0}
+                      onSelectVariant={(sku) =>
+                        setSelectedSku((prev) => ({ ...prev, [product.id]: sku }))
+                      }
+                      onQtyChange={(delta, maxPacks) =>
+                        handleQuantityChange(product.id, delta, maxPacks)
+                      }
+                      onAdd={(v) => handleAddToCart(product, v)}
+                      onNotify={(v) => handleNotify(v, product.name)}
+                      onCategoryClick={(c) => setCategory(c)}
+                    />
+                  );
+                })}
               </div>
 
               {/* Pagination */}
@@ -617,6 +661,7 @@ function ProductCard({
   product,
   variant,
   qty,
+  cartUnits,
   inCart,
   onSelectVariant,
   onQtyChange,
@@ -627,9 +672,10 @@ function ProductCard({
   product: UnifiedProduct;
   variant: PackagingVariant;
   qty: number;
+  cartUnits: number;
   inCart: boolean;
   onSelectVariant: (sku: string) => void;
-  onQtyChange: (delta: number) => void;
+  onQtyChange: (delta: number, maxPacks: number) => void;
   onAdd: (variant: PackagingVariant) => void;
   onNotify: (variant: PackagingVariant) => void;
   onCategoryClick: (category: string) => void;
@@ -637,9 +683,18 @@ function ProductCard({
   const imgSrc = product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name);
   const hasMultipleVariants = product.variants.length > 1;
   const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
-  const totalUnits = qty * perPack;
   const selectedInStock = variant?.inStock ?? false;
   const gColor = groupColor(product.groupCode);
+
+  // Limite de pedido: estoque disponível (em embalagens inteiras) menos o que
+  // já está no carrinho desta variante.
+  const maxUnits = variant ? maxOrderableUnits(variant) : 0;
+  const remainingUnits = Math.max(0, maxUnits - cartUnits);
+  const remainingPacks = Math.floor(remainingUnits / perPack);
+  const effQty = Math.min(qty, Math.max(1, remainingPacks));
+  const totalUnits = effQty * perPack;
+  const atMax = effQty >= remainingPacks;
+  const canAdd = remainingPacks >= 1;
 
   return (
     <Card
@@ -804,18 +859,20 @@ function ProductCard({
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 rounded-r-none hover:bg-muted"
-                  onClick={() => onQtyChange(-1)}
+                  disabled={!canAdd || effQty <= 1}
+                  onClick={() => onQtyChange(-1, remainingPacks)}
                 >
                   <Minus className="h-3 w-3" />
                 </Button>
                 <span className="w-10 text-center text-sm font-semibold tabular-nums">
-                  {qty}
+                  {canAdd ? effQty : 0}
                 </span>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 rounded-l-none hover:bg-muted"
-                  onClick={() => onQtyChange(1)}
+                  disabled={!canAdd || atMax}
+                  onClick={() => onQtyChange(1, remainingPacks)}
                 >
                   <Plus className="h-3 w-3" />
                 </Button>
@@ -826,7 +883,7 @@ function ProductCard({
                   : variant.unitOfMeasure}
               </span>
             </div>
-            {perPack > 1 && (
+            {perPack > 1 && canAdd && (
               <p className="text-xs text-muted-foreground">
                 Total:{" "}
                 <span className="font-semibold text-[var(--gsn-text)]">
@@ -834,13 +891,19 @@ function ProductCard({
                 </span>
               </p>
             )}
+            {atMax && canAdd && (
+              <p className="text-[11px] text-amber-600">
+                Máximo disponível{cartUnits > 0 ? " (considerando o carrinho)" : ""}
+              </p>
+            )}
             <Button
               size="sm"
               className="w-full bg-[var(--gsn-brand)] hover:bg-[var(--gsn-brand-dark)] text-white shadow-sm"
+              disabled={!canAdd}
               onClick={() => onAdd(variant)}
             >
               <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-              Adicionar ao Carrinho
+              {canAdd ? "Adicionar ao Carrinho" : "Máximo no carrinho"}
             </Button>
           </div>
         ) : (

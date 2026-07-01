@@ -13,7 +13,12 @@ export interface CartItem {
   sku: string;
   name: string;
   unit: string;
+  /** Quantidade total em UNIDADES. */
   quantity: number;
+  /** Unidades por embalagem (passo de compra; 1 = unidade avulsa). */
+  unitsPerPack: number;
+  /** Estoque máximo pedível em UNIDADES (0 = sem limite conhecido). */
+  maxUnits: number;
 }
 
 interface CartState {
@@ -23,6 +28,12 @@ interface CartState {
 
 const STORAGE_KEY = "b2b_cart";
 
+/** Ajusta a quantidade a >= 0 e ao teto de estoque (quando conhecido). */
+function clampQty(quantity: number, maxUnits: number): number {
+  const q = Math.max(0, Math.round(quantity));
+  return maxUnits && maxUnits > 0 ? Math.min(q, maxUnits) : q;
+}
+
 function loadInitialState(): CartState {
   if (typeof window === "undefined") return { items: [], totalItems: 0 };
   try {
@@ -30,9 +41,17 @@ function loadInitialState(): CartState {
     if (!raw) return { items: [], totalItems: 0 };
     const items = JSON.parse(raw) as CartItem[];
     if (!Array.isArray(items)) return { items: [], totalItems: 0 };
-    const clean = items.filter(
-      (i) => i && typeof i.sku === "string" && typeof i.quantity === "number",
-    );
+    const clean: CartItem[] = items
+      .filter((i) => i && typeof i.sku === "string" && typeof i.quantity === "number")
+      .map((i) => ({
+        sku: i.sku,
+        name: i.name,
+        unit: i.unit ?? "UN",
+        quantity: i.quantity,
+        unitsPerPack:
+          typeof i.unitsPerPack === "number" && i.unitsPerPack > 0 ? i.unitsPerPack : 1,
+        maxUnits: typeof i.maxUnits === "number" && i.maxUnits > 0 ? i.maxUnits : 0,
+      }));
     return { items: clean, totalItems: clean.reduce((s, i) => s + i.quantity, 0) };
   } catch {
     return { items: [], totalItems: 0 };
@@ -49,20 +68,36 @@ function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case "ADD": {
       const existing = state.items.find((i) => i.sku === action.item.sku);
+      // O item recebido traz os limites de estoque mais recentes do catálogo.
+      const maxUnits = action.item.maxUnits ?? 0;
+      const unitsPerPack = action.item.unitsPerPack ?? 1;
       let items: CartItem[];
       if (existing) {
         items = state.items.map((i) =>
-          i.sku === action.item.sku ? { ...i, quantity: i.quantity + action.quantity } : i
+          i.sku === action.item.sku
+            ? {
+                ...i,
+                ...action.item,
+                unitsPerPack,
+                maxUnits,
+                quantity: clampQty(i.quantity + action.quantity, maxUnits),
+              }
+            : i,
         );
       } else {
-        items = [...state.items, { ...action.item, quantity: action.quantity }];
+        items = [
+          ...state.items,
+          { ...action.item, unitsPerPack, maxUnits, quantity: clampQty(action.quantity, maxUnits) },
+        ];
       }
       return { items, totalItems: items.reduce((s, i) => s + i.quantity, 0) };
     }
     case "UPDATE_QTY": {
       const items = action.quantity <= 0
         ? state.items.filter((i) => i.sku !== action.sku)
-        : state.items.map((i) => (i.sku === action.sku ? { ...i, quantity: action.quantity } : i));
+        : state.items.map((i) =>
+            i.sku === action.sku ? { ...i, quantity: clampQty(action.quantity, i.maxUnits) } : i,
+          );
       return { items, totalItems: items.reduce((s, i) => s + i.quantity, 0) };
     }
     case "REMOVE": {

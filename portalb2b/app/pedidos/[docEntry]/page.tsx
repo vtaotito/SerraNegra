@@ -140,7 +140,13 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
     if (!order) return;
     for (const it of order.items) {
       addItem(
-        { sku: it.sku, name: it.description ?? it.sku, unit: it.unit ?? "UN" },
+        {
+          sku: it.sku,
+          name: it.description ?? it.sku,
+          unit: it.unit ?? "UN",
+          unitsPerPack: 1,
+          maxUnits: 0,
+        },
         it.quantity,
       );
     }
@@ -151,7 +157,16 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
   }
 
   function addOneToCart(it: OrderItem) {
-    addItem({ sku: it.sku, name: it.description ?? it.sku, unit: it.unit ?? "UN" }, it.quantity);
+    addItem(
+      {
+        sku: it.sku,
+        name: it.description ?? it.sku,
+        unit: it.unit ?? "UN",
+        unitsPerPack: 1,
+        maxUnits: 0,
+      },
+      it.quantity,
+    );
     toast.success(`${it.description ?? it.sku} adicionado ao carrinho`);
   }
 

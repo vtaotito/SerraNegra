@@ -20,6 +20,8 @@ import {
   packagingTypeName,
   groupColor,
   formatStockUnits,
+  packStep,
+  maxOrderableUnits,
 } from "@/lib/catalog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -61,25 +63,49 @@ export default function ProductDetailPage({
     product?.variants.find((v) => v.sku === product?.sku) ??
     product?.variants[0];
 
-  const perPack = variant && variant.unitsPerPack > 1 ? variant.unitsPerPack : 1;
-  const totalUnits = qty * perPack;
+  const perPack = variant ? packStep(variant.unitsPerPack) : 1;
   const inCart = variant ? getItem(variant.sku) : undefined;
   const imgSrc = product ? product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name) : null;
   const gColor = product ? groupColor(product.groupCode) : "#A81C2C";
 
+  // Limite de pedido: estoque disponível (em embalagens inteiras) menos o que
+  // já está no carrinho desta variante.
+  const maxUnits = variant ? maxOrderableUnits(variant) : 0;
+  const inCartUnits = inCart?.quantity ?? 0;
+  const remainingUnits = Math.max(0, maxUnits - inCartUnits);
+  const remainingPacks = Math.floor(remainingUnits / perPack);
+  const effQty = Math.min(qty, Math.max(1, remainingPacks));
+  const totalUnits = effQty * perPack;
+  const atMax = effQty >= remainingPacks;
+  const canAdd = remainingPacks >= 1;
+
   function handleAddToCart() {
     if (!product || !variant) return;
+    if (remainingPacks < 1) {
+      toast.info("Estoque máximo já no carrinho", {
+        description: `Você já tem ${formatStockUnits(inCartUnits)} ${variant.unitOfMeasure} — todo o estoque disponível.`,
+      });
+      return;
+    }
     const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
     const displayName =
       variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
+    const addPacks = Math.min(effQty, remainingPacks);
+    const addUnits = addPacks * perPack;
     addItem(
-      { sku: variant.sku, name: displayName, unit: variant.unitOfMeasure },
-      totalUnits,
+      {
+        sku: variant.sku,
+        name: displayName,
+        unit: variant.unitOfMeasure,
+        unitsPerPack: perPack,
+        maxUnits,
+      },
+      addUnits,
     );
     const desc =
       perPack > 1
-        ? `${qty} ${label} = ${totalUnits} ${variant.unitOfMeasure}`
-        : `${qty} ${variant.unitOfMeasure}`;
+        ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
+        : `${addUnits} ${variant.unitOfMeasure}`;
     toast.success(`${product.name} adicionado ao carrinho`, { description: desc });
   }
 
@@ -307,18 +333,22 @@ export default function ProductDetailPage({
                               variant="ghost"
                               size="icon"
                               className="h-10 w-10 rounded-r-none"
+                              disabled={!canAdd || effQty <= 1}
                               onClick={() => setQty((q) => Math.max(1, q - 1))}
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
                             <span className="w-14 text-center text-base font-medium">
-                              {qty}
+                              {canAdd ? effQty : 0}
                             </span>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-10 w-10 rounded-l-none"
-                              onClick={() => setQty((q) => q + 1)}
+                              disabled={!canAdd || atMax}
+                              onClick={() =>
+                                setQty((q) => Math.min(remainingPacks, q + 1))
+                              }
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
@@ -330,24 +360,32 @@ export default function ProductDetailPage({
                           </span>
                         </div>
 
-                        {perPack > 1 && (
+                        {perPack > 1 && canAdd && (
                           <div className="rounded-md bg-muted px-3 py-2 text-sm">
                             <span className="text-muted-foreground">Total: </span>
                             <span className="font-semibold text-gsn-text">
                               {totalUnits} {variant.unitOfMeasure}
                             </span>
                             <span className="text-muted-foreground">
-                              {" "}({qty} x {perPack} un)
+                              {" "}({effQty} x {perPack} un)
                             </span>
                           </div>
                         )}
 
+                        {atMax && canAdd && (
+                          <p className="text-xs text-amber-600">
+                            Quantidade máxima disponível em estoque
+                            {inCartUnits > 0 ? " (considerando o carrinho)" : ""}.
+                          </p>
+                        )}
+
                         <Button
                           className="w-full bg-gsn-brand hover:bg-gsn-brand-dark text-white h-10"
+                          disabled={!canAdd}
                           onClick={handleAddToCart}
                         >
                           <ShoppingCart className="h-4 w-4 mr-2" />
-                          Adicionar ao carrinho
+                          {canAdd ? "Adicionar ao carrinho" : "Máximo no carrinho"}
                         </Button>
                       </div>
                     ) : (
