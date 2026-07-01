@@ -12,7 +12,30 @@ export function cleanCnpj(value: string): string {
   return value.replace(/\D/g, "");
 }
 
+/**
+ * Validacao de formato do CNPJ para o portal B2B.
+ *
+ * Proposital: NAO valida os digitos verificadores. O SAP B1 e a fonte da
+ * verdade sobre a existencia do cliente e contem cadastros com CNPJs que
+ * falham no digito verificador (ex.: clientes reais migrados/cadastrados
+ * manualmente). Uma validacao matematica estrita aqui impediria esses
+ * clientes legitimos de sequer iniciar o login. Portanto exigimos apenas
+ * 14 digitos e barramos sequencias repetidas obvias; a existencia real e
+ * decidida pelo backend (/b2b/auth/lookup -> SAP).
+ */
 export function isValidCnpj(cnpj: string): boolean {
+  const d = cnpj.replace(/\D/g, "");
+  if (d.length !== 14) return false;
+  if (/^(\d)\1+$/.test(d)) return false;
+  return true;
+}
+
+/**
+ * Validacao completa com digitos verificadores (algoritmo oficial). Mantida
+ * para casos em que a conferencia matematica seja desejada (ex.: cadastro de
+ * cliente novo), sem bloquear o login de clientes ja existentes no SAP.
+ */
+export function isValidCnpjChecksum(cnpj: string): boolean {
   const d = cnpj.replace(/\D/g, "");
   if (d.length !== 14) return false;
   if (/^(\d)\1+$/.test(d)) return false;
