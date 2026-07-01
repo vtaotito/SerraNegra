@@ -3229,6 +3229,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         inStock: query.inStock === "true" ? true : query.inStock === "false" ? false : undefined,
         page: Number(query.page) || 1,
         limit,
+        // Catálogo público: só produtos com pedido de venda nos últimos 12 meses.
+        onlyRecentlySold: true,
       });
       const pages = Math.ceil(result.total / limit);
       reply.send({

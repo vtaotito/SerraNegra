@@ -388,7 +388,12 @@ interface CatalogFilters {
   inStock?: boolean;
   page?: number;
   limit?: number;
+  /** Se true, restringe a itens com pedido de venda nos últimos 12 meses. */
+  onlyRecentlySold?: boolean;
 }
+
+/** Janela (em meses) da regra "produtos com pedido de venda recente". */
+export const RECENT_SALES_MONTHS = 12;
 
 // ─── GSN Online API fetcher ──────────────────────────────────────────
 
@@ -963,6 +968,20 @@ export class B2BCatalogService {
       conditions.push("is_in_stock = FALSE");
     }
 
+    // Regra de negócio: só produtos com pedido de venda nos últimos N meses.
+    if (filters.onlyRecentlySold) {
+      conditions.push(
+        `sap_item_code IN (
+           SELECT DISTINCT l.item_code
+             FROM sap_sales_order_lines l
+             JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
+            WHERE o.cancelled = 'N'
+              AND l.item_code IS NOT NULL
+              AND o.doc_date >= (CURRENT_DATE - (${RECENT_SALES_MONTHS}::int * INTERVAL '1 month'))
+         )`,
+      );
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const page = Math.max(1, filters.page ?? 1);
     const limit = Math.min(100, Math.max(1, filters.limit ?? 24));
@@ -1038,6 +1057,15 @@ export class B2BCatalogService {
     // Remove categorias não comercializáveis no Portal B2B (Embalagens, Moldura, Palete).
     unified = unified.filter((u) => !isExcludedB2BCategory(u.category));
 
+    // Regra de negócio: só exibir produtos com pedido de venda nos últimos 12
+    // meses. Mantém o produto se QUALQUER variação de embalagem vendeu (assim as
+    // demais embalagens do mesmo produto continuam disponíveis para pedido).
+    // Se o conjunto vier vazio (dados de venda indisponíveis), não filtra.
+    const soldSkus = await this.getRecentlySoldSkus();
+    if (soldSkus.size > 0) {
+      unified = unified.filter((u) => u.variants.some((v) => soldSkus.has(v.sku)));
+    }
+
     // Categorias com contagem de produtos (antes dos filtros de categoria/estoque).
     const categoryCounts = new Map<string, number>();
     for (const u of unified) {
@@ -1100,6 +1128,13 @@ export class B2BCatalogService {
     const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
     // Não expõe produtos de categorias removidas do Portal B2B.
     if (isExcludedB2BCategory(unified.category)) return null;
+
+    // Regra de negócio: só expõe produtos com pedido de venda nos últimos 12
+    // meses (qualquer variação de embalagem). Conjunto vazio = não filtra.
+    const soldSkus = await this.getRecentlySoldSkus();
+    if (soldSkus.size > 0 && !unified.variants.some((v) => soldSkus.has(v.sku))) {
+      return null;
+    }
     return unified;
   }
 
@@ -1153,6 +1188,34 @@ export class B2BCatalogService {
        ORDER BY category_name`,
     );
     return rows.map((r: any) => r.category_name);
+  }
+
+  /**
+   * Conjunto de SKUs (item_code do SAP) com pelo menos um pedido de venda NÃO
+   * cancelado nos últimos `months` meses. Base para a regra de negócio "o
+   * catálogo do Portal B2B só exibe produtos vendidos recentemente".
+   *
+   * Em caso de falha (ex.: tabelas de pedidos ainda não sincronizadas) retorna
+   * um conjunto vazio; os chamadores tratam o conjunto vazio como "não filtrar",
+   * evitando esvaziar o catálogo por indisponibilidade dos dados de venda.
+   */
+  async getRecentlySoldSkus(
+    months: number = RECENT_SALES_MONTHS,
+  ): Promise<Set<string>> {
+    try {
+      const { rows } = await this.pool.query(
+        `SELECT DISTINCT l.item_code
+           FROM sap_sales_order_lines l
+           JOIN sap_sales_orders o ON o.doc_entry = l.doc_entry
+          WHERE o.cancelled = 'N'
+            AND l.item_code IS NOT NULL
+            AND o.doc_date >= (CURRENT_DATE - ($1::int * INTERVAL '1 month'))`,
+        [months],
+      );
+      return new Set(rows.map((r: any) => String(r.item_code)));
+    } catch {
+      return new Set<string>();
+    }
   }
 
   async requestNotification(
