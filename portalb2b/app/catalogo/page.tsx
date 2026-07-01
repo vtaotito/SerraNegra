@@ -219,7 +219,7 @@ export default function CatalogoPage() {
       <Header />
 
       {/* ─── Sticky Filter Bar ─── */}
-      <div className="sticky top-16 z-40 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
+      <div className="sticky top-14 sm:top-16 z-40 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 shadow-sm">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3 py-3">
             {/* Search */}
@@ -229,7 +229,7 @@ export default function CatalogoPage() {
                 placeholder="Buscar produto, codigo ou EAN..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9 pr-9 h-9 text-sm bg-muted/50 border-transparent focus:border-input focus:bg-white transition-colors"
+                className="pl-9 pr-9 h-9 text-base sm:text-sm bg-muted/50 border-transparent focus:border-input focus:bg-white transition-colors"
               />
               {searchInput && (
                 <button
@@ -400,7 +400,7 @@ export default function CatalogoPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 pt-5 pb-24 sm:px-6 lg:px-8 md:pb-8">
         <div className="space-y-4">
           {/* Results Header + Active Filter Chips */}
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -858,11 +858,12 @@ function ProductCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-r-none hover:bg-muted"
+                  className="h-9 w-9 rounded-r-none hover:bg-muted"
+                  aria-label="Diminuir quantidade"
                   disabled={!canAdd || effQty <= 1}
                   onClick={() => onQtyChange(-1, remainingPacks)}
                 >
-                  <Minus className="h-3 w-3" />
+                  <Minus className="h-3.5 w-3.5" />
                 </Button>
                 <span className="w-10 text-center text-sm font-semibold tabular-nums">
                   {canAdd ? effQty : 0}
@@ -870,11 +871,12 @@ function ProductCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-l-none hover:bg-muted"
+                  className="h-9 w-9 rounded-l-none hover:bg-muted"
+                  aria-label="Aumentar quantidade"
                   disabled={!canAdd || atMax}
                   onClick={() => onQtyChange(1, remainingPacks)}
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               </div>
               <span className="text-xs text-muted-foreground">

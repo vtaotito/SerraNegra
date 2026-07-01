@@ -175,17 +175,17 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
       <div className="print:hidden">
         <Header />
       </div>
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 print:max-w-none print:py-2">
+      <main className="mx-auto max-w-4xl px-4 pt-6 pb-24 sm:px-6 lg:px-8 md:pb-8 print:max-w-none print:py-2">
         <div className="space-y-6">
-          <div className="flex items-center justify-between gap-3 print:hidden">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+            <div className="flex min-w-0 items-center gap-3">
               <Link href="/pedidos">
                 <Button variant="ghost" size="icon" aria-label="Voltar para pedidos">
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               </Link>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">
+              <div className="min-w-0">
+                <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
                   {isLoading ? <Skeleton className="h-8 w-48" /> : `Pedido #${order?.docNum}`}
                 </h1>
                 {order && (
@@ -194,12 +194,12 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
               </div>
             </div>
             {order && (
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <div className="flex flex-1 items-center gap-2 sm:flex-none">
+                <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => window.print()}>
                   <Printer className="h-4 w-4 mr-1.5" /> Imprimir
                 </Button>
-                <Button size="sm" onClick={addAllToCart}>
-                  <RotateCcw className="h-4 w-4 mr-1.5" /> Comprar novamente
+                <Button size="sm" className="flex-1 sm:flex-none" onClick={addAllToCart}>
+                  <RotateCcw className="h-4 w-4 mr-1.5" /> <span className="sm:inline">Comprar novamente</span>
                 </Button>
               </div>
             )}
@@ -601,7 +601,7 @@ function MessagesThread({
                     ? "Descreva a alteração desejada (quantidades, itens, entrega)…"
                     : "Escreva sua mensagem para o vendedor…"
               }
-              className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-gsn-brand/30"
+              className="w-full resize-none rounded-md border border-input bg-transparent px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-gsn-brand/30"
             />
             <div className="flex justify-end mt-2">
               <Button

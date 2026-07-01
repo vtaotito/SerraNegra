@@ -58,7 +58,7 @@ export default function CarrinhoPage() {
     return (
       <div className="min-h-screen bg-muted/30">
         <Header />
-        <main className="mx-auto max-w-3xl px-4 py-12 sm:px-6 text-center">
+        <main className="mx-auto max-w-3xl px-4 pt-12 pb-24 sm:px-6 text-center md:pb-12">
           <div className="flex flex-col items-center gap-4">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
               <ShoppingCart className="h-10 w-10 text-muted-foreground/50" />
@@ -82,7 +82,7 @@ export default function CarrinhoPage() {
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
-      <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-4xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 md:pb-8">
         <div className="space-y-6">
           <div className="flex items-center gap-3">
             <Link href="/catalogo">
@@ -108,53 +108,72 @@ export default function CarrinhoPage() {
                 const packs = step > 1 ? Math.round(item.quantity / step) : null;
                 return (
                   <Card key={item.sku}>
-                    <CardContent className="flex items-center gap-4 p-4">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-                        <Package className="h-6 w-6 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-sm line-clamp-1">{item.name}</h3>
-                        <p className="text-xs text-muted-foreground font-mono">{item.sku}</p>
-                        {hasLimit && (
-                          <p
-                            className={cn(
-                              "text-[11px] mt-0.5",
-                              atMax ? "text-amber-600 font-medium" : "text-muted-foreground",
-                            )}
-                          >
-                            {atMax ? "Máximo em estoque · " : "Estoque: "}
-                            {formatStockUnits(item.maxUnits)} {item.unit}
-                          </p>
-                        )}
+                    <CardContent className="p-3 sm:p-4">
+                      {/* Linha 1: identificacao do item */}
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Package className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-medium leading-snug line-clamp-2 sm:line-clamp-1">
+                            {item.name}
+                          </h3>
+                          <p className="font-mono text-xs text-muted-foreground">{item.sku}</p>
+                          {hasLimit && (
+                            <p
+                              className={cn(
+                                "mt-0.5 text-[11px]",
+                                atMax ? "font-medium text-amber-600" : "text-muted-foreground",
+                              )}
+                            >
+                              {atMax ? "Máximo em estoque · " : "Estoque: "}
+                              {formatStockUnits(item.maxUnits)} {item.unit}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="-mr-1 -mt-1 flex-shrink-0 text-destructive hover:text-destructive"
+                          aria-label={`Remover ${item.name}`}
+                          onClick={() => removeItem(item.sku)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
 
-                      <div className="flex flex-col items-end gap-1">
-                        <div className="flex items-center gap-1 rounded-md border">
+                      {/* Linha 2: quantidade / unidade */}
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="flex items-center rounded-lg border">
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-10 w-10 rounded-r-none"
+                            aria-label="Diminuir quantidade"
                             onClick={() => updateQuantity(item.sku, item.quantity - step)}
                           >
-                            <Minus className="h-3 w-3" />
+                            <Minus className="h-4 w-4" />
                           </Button>
                           <Input
                             type="number"
+                            inputMode="numeric"
                             min={1}
                             step={step}
                             max={hasLimit ? item.maxUnits : undefined}
                             value={item.quantity}
+                            aria-label="Quantidade"
                             onChange={(e) => {
                               const parsed = Math.max(1, parseInt(e.target.value) || 1);
                               const capped = hasLimit ? Math.min(parsed, item.maxUnits) : parsed;
                               updateQuantity(item.sku, capped);
                             }}
-                            className="h-8 w-16 border-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            className="h-10 w-16 border-0 text-center text-base [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           />
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8"
+                            className="h-10 w-10 rounded-l-none"
+                            aria-label="Aumentar quantidade"
                             disabled={atMax}
                             onClick={() =>
                               updateQuantity(
@@ -165,28 +184,18 @@ export default function CarrinhoPage() {
                               )
                             }
                           >
-                            <Plus className="h-3 w-3" />
+                            <Plus className="h-4 w-4" />
                           </Button>
                         </div>
-                        {packs !== null && (
-                          <span className="text-[11px] text-muted-foreground tabular-nums">
-                            {packs} × {step} {item.unit}
-                          </span>
-                        )}
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gsn-text">{item.unit}</span>
+                          {packs !== null && (
+                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                              {packs} × {step} {item.unit}
+                            </span>
+                          )}
+                        </div>
                       </div>
-
-                      <span className="text-xs text-muted-foreground w-8 text-center">
-                        {item.unit}
-                      </span>
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => removeItem(item.sku)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
                     </CardContent>
                   </Card>
                 );
@@ -227,7 +236,7 @@ export default function CarrinhoPage() {
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Observacoes</label>
                     <textarea
-                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       placeholder="Observacoes sobre o pedido..."
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}

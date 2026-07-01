@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import "@/styles/globals.css";
 import { Providers } from "./providers";
@@ -12,6 +12,13 @@ const montserrat = Montserrat({
 export const metadata: Metadata = {
   title: "Portal - Garrafaria Serra Negra",
   description: "Portal de pedidos B2B - Garrafaria Serra Negra",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#AA1A1B",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -68,7 +68,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 pt-6 pb-24 sm:px-6 lg:px-8 md:pb-8">
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-gsn-text">
@@ -80,7 +80,7 @@ export default function DashboardPage() {
           </div>
 
           {/* KPIs */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <KPICard
               title="Total de Pedidos"
               value={data?.totalOrders}
@@ -309,17 +309,17 @@ function KPICard({
 }) {
   return (
     <Card>
-      <CardContent className="flex items-center gap-4 p-6">
-        <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg bg-muted", color)}>
+      <CardContent className="flex items-center gap-3 p-4 sm:gap-4 sm:p-6">
+        <div className={cn("flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-muted", color)}>
           <Icon className="h-5 w-5" />
         </div>
-        <div>
+        <div className="min-w-0">
           {isLoading ? (
             <Skeleton className="h-7 w-12 mb-1" />
           ) : (
-            <p className="text-2xl font-bold">{value ?? 0}</p>
+            <p className="text-xl font-bold sm:text-2xl">{value ?? 0}</p>
           )}
-          <p className="text-xs text-muted-foreground">{title}</p>
+          <p className="text-xs leading-tight text-muted-foreground">{title}</p>
         </div>
       </CardContent>
     </Card>

@@ -125,7 +125,7 @@ export default function ProductDetailPage({
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-5xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 md:pb-8">
         <Link
           href="/catalogo"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-gsn-brand mb-6"
