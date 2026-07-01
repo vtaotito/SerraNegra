@@ -24,7 +24,9 @@ import {
   Send,
   RefreshCw,
   ChevronRight,
+  Mail,
 } from "lucide-react";
+import { EmailRequestsPanel } from "@/components/admin/EmailRequestsPanel";
 
 interface Registration {
   id: number;
@@ -59,6 +61,9 @@ function formatCnpj(cnpj: string): string {
 export default function AdminPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading, user, logout } = useAdmin();
+  const [tab, setTab] = useState<"registrations" | "email-requests">(
+    "registrations",
+  );
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [filter, setFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,9 +76,9 @@ export default function AdminPage() {
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || tab !== "registrations") return;
     loadRegistrations();
-  }, [isAuthenticated, filter]);
+  }, [isAuthenticated, filter, tab]);
 
   async function loadRegistrations() {
     setLoading(true);
@@ -131,6 +136,35 @@ export default function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-6 flex gap-2 border-b border-slate-700">
+          <button
+            onClick={() => setTab("registrations")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "registrations"
+                ? "border-emerald-400 text-white"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Cadastros novos
+          </button>
+          <button
+            onClick={() => setTab("email-requests")}
+            className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              tab === "email-requests"
+                ? "border-emerald-400 text-white"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Mail className="h-4 w-4" />
+            Acessos por e-mail
+          </button>
+        </div>
+
+        {tab === "email-requests" ? (
+          <EmailRequestsPanel />
+        ) : (
+          <>
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {(["pending", "approved", "rejected", "published"] as const).map((s) => {
             const cfg = STATUS_CONFIG[s];
@@ -231,6 +265,8 @@ export default function AdminPage() {
             )}
           </CardContent>
         </Card>
+          </>
+        )}
       </main>
     </div>
   );

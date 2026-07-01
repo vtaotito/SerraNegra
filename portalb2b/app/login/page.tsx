@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/lib/auth/context";
 import { post } from "@/lib/api/client";
-import { formatCnpj, cleanCnpj, isValidCnpj, maskEmail } from "@/lib/cnpj";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { formatCnpj, cleanCnpj, isValidCnpj } from "@/lib/cnpj";
 import {
   Card,
   CardContent,
@@ -15,43 +13,26 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Package,
-  LogIn,
-  AlertCircle,
-  ArrowLeft,
-  Mail,
-  KeyRound,
-  UserPlus,
-  Check,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, UserPlus } from "lucide-react";
 import { GSN_LOGO_URL } from "@/lib/product-images";
 
-type Step =
-  | "cnpj"
-  | "password"
-  | "email"
-  | "request-email"
-  | "otp"
-  | "set-password"
-  | "register"
-  | "pending-approval";
-
-interface LookupResult {
-  status: "has_password" | "needs_verification" | "not_found";
-  cardCode?: string;
-  cardName?: string;
-  maskedEmail?: string;
-  hasEmail?: boolean;
-  emailRequestStatus?: "pending" | "none";
-}
-
-const ESTADOS_BR = [
-  "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
-  "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
-];
+import {
+  EMPTY_REG_FORM,
+  isValidEmail,
+  type LookupResult,
+  type PendingKind,
+  type RegForm,
+  type Step,
+} from "@/components/onboarding/types";
+import { OnboardingStepper } from "@/components/onboarding/OnboardingStepper";
+import { CnpjStep } from "@/components/onboarding/CnpjStep";
+import { PasswordStep } from "@/components/onboarding/PasswordStep";
+import { EmailVerifyStep } from "@/components/onboarding/EmailVerifyStep";
+import { RequestEmailStep } from "@/components/onboarding/RequestEmailStep";
+import { OtpStep } from "@/components/onboarding/OtpStep";
+import { SetPasswordStep } from "@/components/onboarding/SetPasswordStep";
+import { RegisterStep } from "@/components/onboarding/RegisterStep";
+import { PendingStep } from "@/components/onboarding/PendingStep";
 
 export default function LoginPage() {
   const { isAuthenticated, setAuth } = useAuth();
@@ -75,19 +56,9 @@ export default function LoginPage() {
   const [tempToken, setTempToken] = useState("");
   // Diferencia a mensagem da tela de "pending-approval":
   // empresa nova (register) vs. cliente SAP sem e-mail (email-access).
-  const [pendingKind, setPendingKind] = useState<"register" | "email-access">("register");
+  const [pendingKind, setPendingKind] = useState<PendingKind>("register");
 
-  const [regForm, setRegForm] = useState({
-    razaoSocial: "",
-    nomeFantasia: "",
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    contactName: "",
-  });
+  const [regForm, setRegForm] = useState<RegForm>(EMPTY_REG_FORM);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -98,6 +69,10 @@ export default function LoginPage() {
   if (isAuthenticated) {
     return null;
   }
+
+  const isExistingCustomer =
+    !!lookupResult && lookupResult.status !== "not_found";
+  const isNewCustomer = step === "register";
 
   function handleCnpjChange(e: React.ChangeEvent<HTMLInputElement>) {
     setCnpj(formatCnpj(e.target.value));
@@ -179,7 +154,10 @@ export default function LoginPage() {
 
   async function handleVerifyEmail(e: React.FormEvent) {
     e.preventDefault();
-    if (!emailInput.trim()) return;
+    if (!isValidEmail(emailInput)) {
+      setError("Informe um e-mail valido");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -201,6 +179,15 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleResendOtp() {
+    // Reenvia o código para o mesmo e-mail sem alterar o passo atual.
+    const res = await post<{ devOtp?: string }>("/b2b/auth/verify-email", {
+      cnpj: cleanCnpj(cnpj),
+      email: emailInput.trim(),
+    });
+    if (res.devOtp) setDevOtp(res.devOtp);
   }
 
   async function handleVerifyOtp(e: React.FormEvent) {
@@ -254,8 +241,8 @@ export default function LoginPage() {
 
   async function handleRequestEmailAccess(e: React.FormEvent) {
     e.preventDefault();
-    if (!emailInput.trim()) {
-      setError("Informe um e-mail para acesso");
+    if (!isValidEmail(emailInput)) {
+      setError("Informe um e-mail valido para acesso");
       return;
     }
 
@@ -283,8 +270,8 @@ export default function LoginPage() {
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
-    if (!regForm.razaoSocial || !regForm.email) {
-      setError("Razao social e email sao obrigatorios");
+    if (!regForm.razaoSocial || !isValidEmail(regForm.email)) {
+      setError("Razao social e um email valido sao obrigatorios");
       return;
     }
 
@@ -304,12 +291,23 @@ export default function LoginPage() {
       setPendingKind("register");
       setStep("pending-approval");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Erro ao cadastrar"
-      );
+      setError(err instanceof Error ? err.message : "Erro ao cadastrar");
     } finally {
       setLoading(false);
     }
+  }
+
+  function resetFlow() {
+    setStep("cnpj");
+    setCnpj("");
+    setEmailInput("");
+    setContactInput("");
+    setLookupResult(null);
+    setRegForm(EMPTY_REG_FORM);
+    setPassword("");
+    setConfirmPassword("");
+    setOtpInput("");
+    setDevOtp(null);
   }
 
   function goBack() {
@@ -333,6 +331,20 @@ export default function LoginPage() {
     }
   }
 
+  const description: Record<Step, string> = {
+    cnpj: "Informe o CNPJ da sua empresa",
+    password: `Ola, ${lookupResult?.cardName ?? ""}`,
+    email: "Confirme seu endereco de e-mail",
+    "request-email": "Cadastre um e-mail de acesso",
+    otp: "Codigo de verificacao",
+    "set-password": "Crie sua senha de acesso",
+    register: "Cadastro de novo cliente",
+    "pending-approval":
+      pendingKind === "email-access"
+        ? "Solicitacao recebida!"
+        : "Cadastro recebido!",
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#fdf2f2] via-white to-[#fef5f5] p-4">
       <Card className="w-full max-w-md shadow-xl border-t-4 border-t-gsn-brand">
@@ -345,24 +357,40 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <CardTitle className="text-2xl text-gsn-text">Portal Garrafaria Serra Negra</CardTitle>
+            <CardTitle className="text-2xl text-gsn-text">
+              Portal Garrafaria Serra Negra
+            </CardTitle>
             <CardDescription className="mt-1">
-              {step === "cnpj" && "Informe o CNPJ da sua empresa"}
-              {step === "password" && `Ola, ${lookupResult?.cardName}`}
-              {step === "email" && "Confirme seu endereco de email"}
-              {step === "request-email" && "Cadastre um e-mail de acesso"}
-              {step === "otp" && "Codigo de verificacao"}
-              {step === "set-password" && "Crie sua senha de acesso"}
-              {step === "register" && "Cadastro de novo cliente"}
-              {step === "pending-approval" &&
-                (pendingKind === "email-access"
-                  ? "Solicitacao recebida!"
-                  : "Cadastro recebido!")}
+              {description[step]}
             </CardDescription>
           </div>
+
+          {(isExistingCustomer || isNewCustomer) && step !== "pending-approval" && (
+            <div className="flex justify-center">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+                  isNewCustomer
+                    ? "bg-blue-50 text-blue-700"
+                    : "bg-emerald-50 text-emerald-700"
+                }`}
+              >
+                {isNewCustomer ? (
+                  <>
+                    <UserPlus className="h-3.5 w-3.5" /> Novo cliente
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="h-3.5 w-3.5" /> Cliente Garrafaria
+                  </>
+                )}
+              </span>
+            </div>
+          )}
         </CardHeader>
 
         <CardContent>
+          <OnboardingStepper step={step} pendingKind={pendingKind} />
+
           {error && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -380,496 +408,86 @@ export default function LoginPage() {
             </button>
           )}
 
-          {/* STEP: CNPJ */}
           {step === "cnpj" && (
-            <form onSubmit={handleLookup} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="cnpj" className="text-sm font-medium">
-                  CNPJ
-                </label>
-                <Input
-                  id="cnpj"
-                  type="text"
-                  placeholder="00.000.000/0000-00"
-                  value={cnpj}
-                  onChange={handleCnpjChange}
-                  disabled={loading}
-                  autoFocus
-                  className="h-11 text-center text-lg tracking-wider"
-                  maxLength={18}
-                />
-              </div>
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={loading || cleanCnpj(cnpj).length !== 14}
-              >
-                {loading ? (
-                  <Spinner />
-                ) : (
-                  <LogIn className="h-4 w-4" />
-                )}
-                {loading ? "Buscando..." : "Continuar"}
-              </Button>
-            </form>
+            <CnpjStep
+              cnpj={cnpj}
+              loading={loading}
+              onChange={handleCnpjChange}
+              onSubmit={handleLookup}
+            />
           )}
 
-          {/* STEP: PASSWORD (usuario com senha) */}
           {step === "password" && (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p className="font-medium">{lookupResult?.cardName}</p>
-                <p className="text-muted-foreground">CNPJ: {cnpj}</p>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">
-                  Senha
-                </label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Digite sua senha"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    autoFocus
-                    className="h-11 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={loading || !password}
-              >
-                {loading ? <Spinner /> : <LogIn className="h-4 w-4" />}
-                {loading ? "Entrando..." : "Entrar"}
-              </Button>
-
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className="w-full text-center text-sm text-primary hover:underline"
-              >
-                Esqueci minha senha
-              </button>
-            </form>
+            <PasswordStep
+              cardName={lookupResult?.cardName}
+              cnpj={cnpj}
+              password={password}
+              showPassword={showPassword}
+              loading={loading}
+              onPasswordChange={setPassword}
+              onToggleShowPassword={() => setShowPassword((v) => !v)}
+              onSubmit={handleLogin}
+              onForgotPassword={handleForgotPassword}
+            />
           )}
 
-          {/* STEP: EMAIL VERIFICATION */}
           {step === "email" && (
-            <form onSubmit={handleVerifyEmail} className="space-y-4">
-              <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
-                <p className="font-medium">{lookupResult?.cardName}</p>
-                {lookupResult?.maskedEmail && (
-                  <p className="text-muted-foreground">
-                    Email cadastrado: {lookupResult.maskedEmail}
-                  </p>
-                )}
-              </div>
-
-              <p className="text-sm text-muted-foreground">
-                Para continuar, confirme seu endereco de email digitando-o
-                abaixo.
-              </p>
-
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium">
-                  Seu email
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  disabled={loading}
-                  autoFocus
-                  className="h-11"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={loading || !emailInput.trim()}
-              >
-                {loading ? <Spinner /> : <Mail className="h-4 w-4" />}
-                {loading
-                  ? "Enviando..."
-                  : "Confirmar e enviar codigo"}
-              </Button>
-            </form>
+            <EmailVerifyStep
+              cardName={lookupResult?.cardName}
+              maskedEmail={lookupResult?.maskedEmail}
+              emailInput={emailInput}
+              loading={loading}
+              onEmailChange={setEmailInput}
+              onSubmit={handleVerifyEmail}
+            />
           )}
 
-          {/* STEP: REQUEST EMAIL ACCESS (cliente SAP sem e-mail) */}
           {step === "request-email" && (
-            <form onSubmit={handleRequestEmailAccess} className="space-y-4">
-              <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
-                <p className="font-medium">{lookupResult?.cardName}</p>
-                <p className="text-muted-foreground">
-                  Encontramos sua empresa, mas ainda nao ha um e-mail de acesso
-                  cadastrado.
-                </p>
-              </div>
-
-              <p className="text-sm text-muted-foreground">
-                Informe o e-mail que deseja usar para acessar o portal. A
-                Garrafaria Serra Negra vai validar a solicitacao e liberar seu
-                acesso.
-              </p>
-
-              <div className="space-y-2">
-                <label htmlFor="access-email" className="text-sm font-medium">
-                  E-mail de acesso
-                </label>
-                <Input
-                  id="access-email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  disabled={loading}
-                  autoFocus
-                  className="h-11"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="access-contact" className="text-sm font-medium">
-                  Nome do contato{" "}
-                  <span className="text-muted-foreground font-normal">(opcional)</span>
-                </label>
-                <Input
-                  id="access-contact"
-                  type="text"
-                  placeholder="Responsavel pela conta"
-                  value={contactInput}
-                  onChange={(e) => setContactInput(e.target.value)}
-                  disabled={loading}
-                  className="h-11"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={loading || !emailInput.trim()}
-              >
-                {loading ? <Spinner /> : <UserPlus className="h-4 w-4" />}
-                {loading ? "Enviando..." : "Solicitar acesso"}
-              </Button>
-            </form>
+            <RequestEmailStep
+              cardName={lookupResult?.cardName}
+              emailInput={emailInput}
+              contactInput={contactInput}
+              loading={loading}
+              onEmailChange={setEmailInput}
+              onContactChange={setContactInput}
+              onSubmit={handleRequestEmailAccess}
+            />
           )}
 
-          {/* STEP: OTP */}
           {step === "otp" && (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Enviamos um codigo de 6 digitos para o seu email.
-              </p>
-
-              {devOtp && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
-                  <p className="font-medium text-amber-800">
-                    Modo teste (SMTP nao configurado)
-                  </p>
-                  <p className="text-amber-700 mt-1">
-                    Codigo:{" "}
-                    <span className="font-mono font-bold text-lg">
-                      {devOtp}
-                    </span>
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label htmlFor="otp" className="text-sm font-medium">
-                  Codigo de verificacao
-                </label>
-                <Input
-                  id="otp"
-                  type="text"
-                  placeholder="000000"
-                  value={otpInput}
-                  onChange={(e) =>
-                    setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  disabled={loading}
-                  autoFocus
-                  className="h-11 text-center text-2xl tracking-[0.5em] font-mono"
-                  maxLength={6}
-                />
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={loading || otpInput.length !== 6}
-              >
-                {loading ? <Spinner /> : <Check className="h-4 w-4" />}
-                {loading ? "Verificando..." : "Verificar"}
-              </Button>
-            </form>
+            <OtpStep
+              devOtp={devOtp}
+              otpInput={otpInput}
+              loading={loading}
+              onOtpChange={setOtpInput}
+              onSubmit={handleVerifyOtp}
+              onResend={handleResendOtp}
+            />
           )}
 
-          {/* STEP: SET PASSWORD */}
           {step === "set-password" && (
-            <form onSubmit={handleSetPassword} className="space-y-4">
-              <div className="rounded-lg bg-green-50 border border-green-200 p-3 text-sm text-green-800">
-                <div className="flex items-center gap-2">
-                  <Check className="h-4 w-4" />
-                  Email verificado com sucesso!
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label htmlFor="newPassword" className="text-sm font-medium">
-                  Nova senha
-                </label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  placeholder="Minimo 8 caracteres"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                  autoFocus
-                  className="h-11"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="confirmPassword"
-                  className="text-sm font-medium"
-                >
-                  Confirme a senha
-                </label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="Repita a senha"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  disabled={loading}
-                  className="h-11"
-                />
-              </div>
-
-              {password && password.length < 8 && (
-                <p className="text-xs text-destructive">
-                  A senha deve ter no minimo 8 caracteres
-                </p>
-              )}
-
-              <Button
-                type="submit"
-                className="w-full h-11"
-                disabled={
-                  loading ||
-                  password.length < 8 ||
-                  password !== confirmPassword
-                }
-              >
-                {loading ? (
-                  <Spinner />
-                ) : (
-                  <KeyRound className="h-4 w-4" />
-                )}
-                {loading ? "Criando..." : "Criar senha e acessar"}
-              </Button>
-            </form>
+            <SetPasswordStep
+              password={password}
+              confirmPassword={confirmPassword}
+              loading={loading}
+              onPasswordChange={setPassword}
+              onConfirmPasswordChange={setConfirmPassword}
+              onSubmit={handleSetPassword}
+            />
           )}
 
-          {/* STEP: REGISTER */}
           {step === "register" && (
-            <form onSubmit={handleRegister} className="space-y-3">
-              <p className="text-sm text-muted-foreground mb-2">
-                CNPJ nao encontrado. Preencha seus dados para cadastro.
-              </p>
-
-              <div className="rounded-lg bg-muted/50 p-2 text-sm text-center font-mono">
-                {cnpj}
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Razao Social *
-                </label>
-                <Input
-                  value={regForm.razaoSocial}
-                  onChange={(e) =>
-                    setRegForm({ ...regForm, razaoSocial: e.target.value })
-                  }
-                  placeholder="Razao Social da empresa"
-                  disabled={loading}
-                  className="h-10"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Nome Fantasia</label>
-                <Input
-                  value={regForm.nomeFantasia}
-                  onChange={(e) =>
-                    setRegForm({ ...regForm, nomeFantasia: e.target.value })
-                  }
-                  placeholder="Nome fantasia (opcional)"
-                  disabled={loading}
-                  className="h-10"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Email *</label>
-                  <Input
-                    type="email"
-                    value={regForm.email}
-                    onChange={(e) =>
-                      setRegForm({ ...regForm, email: e.target.value })
-                    }
-                    placeholder="email@empresa.com"
-                    disabled={loading}
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Telefone</label>
-                  <Input
-                    value={regForm.phone}
-                    onChange={(e) =>
-                      setRegForm({ ...regForm, phone: e.target.value })
-                    }
-                    placeholder="(00) 00000-0000"
-                    disabled={loading}
-                    className="h-10"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Endereco</label>
-                <Input
-                  value={regForm.address}
-                  onChange={(e) =>
-                    setRegForm({ ...regForm, address: e.target.value })
-                  }
-                  placeholder="Rua, numero, bairro"
-                  disabled={loading}
-                  className="h-10"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Cidade</label>
-                  <Input
-                    value={regForm.city}
-                    onChange={(e) =>
-                      setRegForm({ ...regForm, city: e.target.value })
-                    }
-                    disabled={loading}
-                    className="h-10"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">UF</label>
-                  <select
-                    value={regForm.state}
-                    onChange={(e) =>
-                      setRegForm({ ...regForm, state: e.target.value })
-                    }
-                    disabled={loading}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  >
-                    <option value="">UF</option>
-                    {ESTADOS_BR.map((uf) => (
-                      <option key={uf} value={uf}>
-                        {uf}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">CEP</label>
-                  <Input
-                    value={regForm.zipCode}
-                    onChange={(e) =>
-                      setRegForm({ ...regForm, zipCode: e.target.value })
-                    }
-                    placeholder="00000-000"
-                    disabled={loading}
-                    className="h-10"
-                  />
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11 mt-2"
-                disabled={
-                  loading || !regForm.razaoSocial || !regForm.email
-                }
-              >
-                {loading ? (
-                  <Spinner />
-                ) : (
-                  <UserPlus className="h-4 w-4" />
-                )}
-                {loading ? "Cadastrando..." : "Cadastrar"}
-              </Button>
-            </form>
+            <RegisterStep
+              cnpj={cnpj}
+              regForm={regForm}
+              loading={loading}
+              onChange={(patch) => setRegForm((prev) => ({ ...prev, ...patch }))}
+              onSubmit={handleRegister}
+            />
           )}
 
-          {/* STEP: PENDING APPROVAL */}
           {step === "pending-approval" && (
-            <div className="space-y-4 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 border-2 border-emerald-200">
-                <Check className="h-8 w-8 text-emerald-600" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-base font-medium text-foreground">
-                  {pendingKind === "email-access"
-                    ? "Solicitacao de acesso enviada!"
-                    : "Cadastro enviado com sucesso!"}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {pendingKind === "email-access"
-                    ? "Recebemos sua solicitacao de acesso. A Garrafaria Serra Negra vai validar e voce recebera um e-mail quando o acesso for liberado para fazer o primeiro acesso."
-                    : "Sua solicitacao foi recebida e sera analisada pela nossa equipe comercial. Voce recebera um email quando o cadastro for aprovado."}
-                </p>
-              </div>
-              <Button
-                onClick={() => {
-                  setStep("cnpj");
-                  setCnpj("");
-                  setEmailInput("");
-                  setContactInput("");
-                  setLookupResult(null);
-                  setRegForm({ razaoSocial: "", nomeFantasia: "", email: "", phone: "", address: "", city: "", state: "", zipCode: "", contactName: "" });
-                }}
-                variant="outline"
-                className="mt-2"
-              >
-                Voltar ao inicio
-              </Button>
-            </div>
+            <PendingStep pendingKind={pendingKind} onRestart={resetFlow} />
           )}
 
           <div className="mt-6 text-center space-y-1">
@@ -883,11 +501,5 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
   );
 }
