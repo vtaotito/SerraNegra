@@ -32,6 +32,8 @@ import {
   fetchAllGsnProducts,
   fetchAllWooProducts,
   matchSapToGsn,
+  buildFamilyImageIndex,
+  familyKeyOfName,
   EXCLUDED_SAP_GROUPS,
   setSapGroupNames,
   getGroupDisplayName,
@@ -2999,6 +3001,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
     const matches = matchSapToGsn(sapItems, webProducts);
 
+    // Índice de imagens por FAMÍLIA (nome sem litragem + grupo físico). Usado
+    // como fallback para variantes sem match direto: ex.: "Burdeos 500 ml" e as
+    // demais embalagens/fechos herdam a foto de "Garrafa Burdeos 750 ml".
+    const familyImageIndex = buildFamilyImageIndex(webProducts);
+
     const eanMatches = [...matches.values()].filter((m) => m.score === 100).length;
     const fuzzyMatches = [...matches.values()].filter((m) => m.score < 100).length;
     app.log.info(
@@ -3058,7 +3065,15 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
       const isSalesItem = item.SalesItem === "tYES";
       const match = matches.get(item.ItemCode);
-      const firstImage = match?.gsn.images[0];
+      // Imagem: 1) do match direto (mesmo produto/volume no site); 2) fallback
+      // por FAMÍLIA, ignorando a litragem/embalagem/fecho (mesma linha de
+      // produto). Ex.: BURDEOS 500 ml herda a foto de "Garrafa Burdeos 750 ml".
+      let firstImage = match?.gsn.images[0];
+      if (!firstImage?.url) {
+        const famKey = familyKeyOfName(item.ItemName ?? "");
+        const famImg = famKey ? familyImageIndex.get(famKey) : undefined;
+        if (famImg) firstImage = famImg;
+      }
 
       // Categoria sempre do grupo do SAP (fonte de verdade) — evita categorias
       // erradas vindas de um match fraco no site. So cai para a categoria do

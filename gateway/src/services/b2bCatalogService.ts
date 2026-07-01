@@ -636,6 +636,64 @@ function matchScore(sapName: string, gsnName: string): number {
   return score;
 }
 
+/**
+ * Grupo físico grosseiro do produto a partir do nome. Serve de guarda para o
+ * fallback de imagem por família: nunca aplica a foto de uma garrafa em um
+ * fecho/pote e vice-versa.
+ */
+export function physGroupOfName(name: string): string {
+  const n = (name ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (/\b(garrafa|garrafinha|gfa|growler|garrafao)\b/.test(n)) return "bottle";
+  if (/\b(pote|copo|frasco|erlenmeyer|balao|becker|proveta)\b/.test(n)) return "pot";
+  if (/\b(tampa|batoque|gotejador|valvula|dosador|conta.?gotas|flip.?top|pump|spray)\b/.test(n))
+    return "cap";
+  if (/\b(rolha|cortica)\b/.test(n)) return "cork";
+  if (/\b(lacre|selo|termoencolhivel|termo.?encolhivel)\b/.test(n)) return "seal";
+  if (/\b(saco|sacola|bag)\b/.test(n)) return "bag";
+  return "other";
+}
+
+/**
+ * Chave de "família" para casar imagens IGNORANDO a litragem/volume e a
+ * embalagem: grupo físico + tokens distintivos do nome (marca/linha), sem
+ * números, unidades nem palavras genéricas. Ex.: "GARRAFA BURDEOS 500 ML ..."
+ * e "Garrafa Burdeos 750 ml" → ambas "bottle|burdeos".
+ */
+export function familyKeyOfName(name: string): string | null {
+  // Usa o nome-base (sem sufixo de embalagem "- UND" / "- FARDO C/ 24 UND"),
+  // senão tokens como "und" poluiriam a família e quebrariam o agrupamento.
+  const base = getBaseProductName(name);
+  const tokens = distinctiveTokens(normalizeForMatch(base));
+  if (tokens.length === 0) return null;
+  const uniq = [...new Set(tokens)].sort();
+  return `${physGroupOfName(name)}|${uniq.join(" ")}`;
+}
+
+/**
+ * Índice família → imagem, a partir dos produtos do site (WooCommerce da
+ * Garrafaria + gsnonline). Como o WooCommerce vem primeiro na lista, ele tem
+ * prioridade em caso de empate de família. Usado como fallback quando uma
+ * variante do SAP não tem imagem própria (mesma linha, litragem diferente).
+ */
+export function buildFamilyImageIndex(
+  products: GsnProduct[],
+): Map<string, { url: string; thumbUrl: string }> {
+  const idx = new Map<string, { url: string; thumbUrl: string }>();
+  for (const p of products) {
+    const img = p.images?.[0];
+    if (!img || !img.url) continue;
+    const key = familyKeyOfName(p.name);
+    if (!key) continue;
+    if (!idx.has(key)) {
+      idx.set(key, { url: img.url, thumbUrl: img.thumbUrl || img.url });
+    }
+  }
+  return idx;
+}
+
 export function matchSapToGsn(
   sapItems: { ItemCode: string; ItemName?: string; BarCode?: string }[],
   gsnProducts: GsnProduct[],
