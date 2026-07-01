@@ -17,7 +17,9 @@ import {
   type PackagingVariant,
   packagingLabel,
   packagingShort,
+  packagingTypeName,
   groupColor,
+  formatStockUnits,
 } from "@/lib/catalog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -194,7 +196,7 @@ export default function ProductDetailPage({
                     )}
                     {variant.inStock ? (
                       <Badge className="bg-green-600 text-white border-0">
-                        Em estoque ({Math.floor(variant.stockQuantity)})
+                        Em estoque · {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
                       </Badge>
                     ) : (
                       <Badge className="bg-red-600 text-white border-0">
@@ -255,6 +257,21 @@ export default function ProductDetailPage({
                             {perPack} {variant.unitOfMeasure}
                           </p>
                         </div>
+                        {variant.inStock && (
+                          <div className="col-span-2 border-t border-amber-200 pt-3">
+                            <p className="text-amber-700">Disponível</p>
+                            <p className="font-semibold text-amber-900">
+                              {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
+                              {variant.stockQuantity >= 1 && (
+                                <span className="font-normal text-amber-700">
+                                  {" "}· {Math.floor(variant.stockQuantity)}{" "}
+                                  {packagingTypeName(variant.packagingType).toLowerCase()}
+                                  {Math.floor(variant.stockQuantity) !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

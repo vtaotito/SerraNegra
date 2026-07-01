@@ -117,43 +117,70 @@ function parsePackUnits(raw: string): number {
   return parseInt(digits, 10);
 }
 
+/** Palavras de embalagem reconhecidas (com abreviações). Mais longas primeiro. */
+const PACK_ALT =
+  "pallet|palete|palet|plt|caixa|cx|fardo|fd|pacote|pcte|pct|pack|saco|sc|engradado";
+
+/** Normaliza a palavra de embalagem capturada para o rótulo de exibição. */
+function packWordToType(w: string): string {
+  const t = w.toLowerCase();
+  if (t === "fardo" || t === "fd") return "Fardo";
+  if (t === "pallet" || t.startsWith("palet") || t === "plt") return "Palete";
+  if (t === "saco" || t === "sc") return "Saco";
+  if (t === "pacote" || t === "pcte" || t === "pct") return "Pacote";
+  if (t === "pack") return "Pack";
+  if (t === "engradado") return "Engradado";
+  return "Caixa"; // caixa | cx | fallback genérico multi-unidade
+}
+
+/**
+ * Extrai a embalagem (tipo + unidades) do NOME do item. Fonte autoritativa da
+ * contagem de unidades por embalagem no portal. Robusto a variações reais do
+ * SAP da Garrafaria:
+ *   - "CAIXA C / 24 UND"        (espaços em "C / N")
+ *   - "PALETE C/ 2.025 UND VDP" ("lixo" após a contagem)
+ *   - "PALETE C/ 4.224 UN"      ("UN" em vez de "UND")
+ *   - "... - ROSCA 31 PALETE C/ 1232 UND" (hífen usado no meio do nome)
+ *   - "FARDO  C/20"             (sem "UND")
+ *   - "ROLHA- 980 UNID"         (contagem sem palavra de embalagem)
+ * Evita falsos positivos como "CAIXA 550 ML 425X250X130" (produto que É a
+ * caixa) e "... 22,5MM - UND" (diâmetro/rosca), que resultam em 1.
+ */
 export function parsePackagingFromName(name: string): { type: string | null; units: number | null } {
-  const lower = name.toLowerCase();
+  const lower = (name ?? "").toLowerCase();
+  const UNIT = "(?:un|und|unid|unidades?)";
 
-  const qtyWord = `(?:(?:com|c[/.]?)\\s+)`;
-  // Captura a contagem aceitando separador de milhar ("1.200", "5.661").
-  const N = "([\\d.,]+)";
-  const patterns: [RegExp, string][] = [
-    [new RegExp(`\\bcaixa\\s+${qtyWord}?${N}`, "i"), "Caixa"],
-    [new RegExp(`\\bcx\\s*${qtyWord}?${N}`, "i"), "Caixa"],
-    [new RegExp(`\\bfardo\\s+${qtyWord}?${N}`, "i"), "Fardo"],
-    [new RegExp(`\\bfd\\s*${qtyWord}?${N}`, "i"), "Fardo"],
-    [new RegExp(`\\bpack\\s+${qtyWord}?${N}`, "i"), "Pack"],
-    [new RegExp(`\\bpacote\\s+${qtyWord}?${N}`, "i"), "Pacote"],
-    [new RegExp(`\\bpcte?\\s*${qtyWord}?${N}`, "i"), "Pacote"],
-    [new RegExp(`\\bsaco\\s+${qtyWord}?${N}`, "i"), "Saco"],
-    [new RegExp(`\\bpalet[e]?\\s+${qtyWord}?${N}`, "i"), "Palete"],
-    [new RegExp(`\\bengradado\\s+${qtyWord}?${N}`, "i"), "Engradado"],
-    [/([\d.,]+)\s*(?:un(?:id(?:ades?)?)?|pcs?|pecas?)\b/i, "_units_first"],
-  ];
-
-  for (const [re, type] of patterns) {
-    const m = lower.match(re);
-    if (m) {
-      const units = parsePackUnits(m[1]);
-      if (units > 0 && units <= 999999) {
-        if (type === "_units_first") return { type: "Caixa", units };
-        return { type, units };
-      }
+  // Melhor candidato = ocorrência mais à direita (sufixo de embalagem no final).
+  let best: { idx: number; type: string; units: number } | null = null;
+  const consider = (idx: number, packWord: string | null, rawNum: string) => {
+    const u = parsePackUnits(rawNum);
+    if (!(u > 1 && u <= 999999)) return;
+    if (!best || idx >= best.idx) {
+      best = { idx, type: packWord ? packWordToType(packWord) : "Caixa", units: u };
     }
+  };
+
+  // A) <PACK> [C/ | COM] <N>  — contagem explícita por embalagem.
+  const reA = new RegExp(`\\b(${PACK_ALT})\\b\\s*(?:c\\s*[\\/.]\\s*|com\\s+)\\s*([\\d.,]+)`, "gi");
+  for (const m of lower.matchAll(reA)) consider(m.index ?? 0, m[1], m[2]);
+
+  // B) <PACK> <N> <UNIT>  — contagem sem "C/", mas seguida de UN/UND/UNID.
+  const reB = new RegExp(`\\b(${PACK_ALT})\\b\\s*([\\d.,]+)\\s*${UNIT}\\b`, "gi");
+  for (const m of lower.matchAll(reB)) consider(m.index ?? 0, m[1], m[2]);
+
+  if (best) return { type: best.type, units: best.units };
+
+  // C) <N> <UNIT> ao final, sem palavra de embalagem ("... 980 UNID").
+  const mc = lower.match(new RegExp(`([\\d.,]+)\\s*${UNIT}\\s*$`, "i"));
+  if (mc) {
+    const u = parsePackUnits(mc[1]);
+    if (u > 1 && u <= 999999) return { type: "Caixa", units: u };
   }
 
-  if (/\bcaixa\b|\bcx\b/i.test(lower)) return { type: "Caixa", units: null };
-  if (/\bfardo\b|\bfd\b/i.test(lower)) return { type: "Fardo", units: null };
-  if (/\bpack\b/i.test(lower)) return { type: "Pack", units: null };
-  if (/\bsaco\b/i.test(lower)) return { type: "Saco", units: null };
-  if (/\bpalet[e]?\b/i.test(lower)) return { type: "Palete", units: null };
-  if (/\bengradado\b/i.test(lower)) return { type: "Engradado", units: null };
+  // Sem contagem: identifica só o TIPO quando a palavra de embalagem aparece
+  // isolada (para exibição), sem multiplicador.
+  const mType = lower.match(new RegExp(`\\b(${PACK_ALT})\\b`, "i"));
+  if (mType) return { type: packWordToType(mType[1]), units: null };
 
   return { type: null, units: null };
 }
@@ -196,16 +223,12 @@ export function resolvePackaging(
     return { type: fromName.type, units: fromName.units };
   }
 
-  const sapUnits =
-    salesQtyPerPack && salesQtyPerPack > 1
-      ? salesQtyPerPack
-      : salesItemsPerUnit && salesItemsPerUnit > 1
-        ? salesItemsPerUnit
-        : null;
-
   if (fromName.type) {
-    // Embalagem identificada no nome mas sem contagem explícita (ex.: "CAIXA").
-    return { type: fromName.type, units: sapUnits };
+    // Embalagem citada no nome sem contagem explícita (ex.: "CAIXA" solto):
+    // mantém o tipo para exibição, mas SEM multiplicador. Não usamos os campos
+    // de embalagem do master do SAP porque frequentemente estão errados
+    // (ex.: garrafa "- UND" gravada como Caixa/100), gerando volume inflado.
+    return { type: fromName.type, units: null };
   }
 
   // Nome sem palavra de embalagem (ex.: "- UND") → unidade individual.
@@ -214,6 +237,12 @@ export function resolvePackaging(
   }
 
   // Nome ausente — fallback raro ao master do SAP.
+  const sapUnits =
+    salesQtyPerPack && salesQtyPerPack > 1
+      ? salesQtyPerPack
+      : salesItemsPerUnit && salesItemsPerUnit > 1
+        ? salesItemsPerUnit
+        : null;
   const sapType = salesPackagingUnit || salesUnit || sapUOM || null;
   let resolvedType = "Unidade";
   if (sapType && sapType !== "UN" && UOM_PACKAGING_MAP[sapType.toUpperCase()]) {
@@ -789,15 +818,26 @@ export class B2BCatalogService {
   async updateStock(
     stockBySku: Map<string, number>,
   ): Promise<void> {
+    if (stockBySku.size === 0) return;
+    // UPDATE em lote via unnest: um único round-trip mesmo com milhares de SKUs
+    // (agora atualizamos todos os itens do sync, inclusive zerando os sem estoque).
+    const skus: string[] = [];
+    const totals: number[] = [];
     for (const [sku, total] of stockBySku) {
-      const inStock = total > 0;
-      await this.pool.query(
-        `UPDATE b2b_catalog_products
-         SET total_stock = $1, is_in_stock = $2, updated_at = NOW()
-         WHERE sap_item_code = $3`,
-        [total, inStock, sku],
-      );
+      skus.push(sku);
+      totals.push(total);
     }
+    await this.pool.query(
+      `UPDATE b2b_catalog_products AS p
+       SET total_stock = s.total,
+           is_in_stock = s.total > 0,
+           updated_at = NOW()
+       FROM (
+         SELECT UNNEST($1::text[]) AS sku, UNNEST($2::numeric[]) AS total
+       ) AS s
+       WHERE p.sap_item_code = s.sku`,
+      [skus, totals],
+    );
   }
 
   async deactivateByGroupCodes(groupCodes: number[]): Promise<number> {
@@ -1185,7 +1225,13 @@ export interface B2BPackagingVariant {
   unitsPerPack: number;
   unitOfMeasure: string;
   inStock: boolean;
+  /** Estoque disponível na unidade nativa da variante (ex.: nº de caixas). */
   stockQuantity: number;
+  /**
+   * Estoque disponível em UNIDADES (= stockQuantity × unitsPerPack). Espelha a
+   * coluna "ESTOQUE (UND)" da Gestão de Compras do painel.
+   */
+  stockUnits: number;
 }
 
 export interface B2BUnifiedProductDto {
@@ -1206,6 +1252,11 @@ export interface B2BUnifiedProductDto {
   ean: string | null;
   imageUrl: string | null;
   inStock: boolean;
+  /**
+   * Estoque disponível total do produto unificado em UNIDADES (soma das
+   * variantes). É a "ESTOQUE (UND)" exibida na Gestão de Compras do painel.
+   */
+  stockUnits: number;
   variants: B2BPackagingVariant[];
 }
 
@@ -1240,13 +1291,15 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
   const variants: B2BPackagingVariant[] = rows
     .map((r) => {
       const unitsPerPack = normUnitsPerPack(r.units_per_package);
+      const stockQuantity = Number(r.total_stock ?? 0);
       return {
         sku: r.sap_item_code,
         packagingType: resolveVariantPackagingType(r, unitsPerPack),
         unitsPerPack,
         unitOfMeasure: r.unit_of_measure ?? "UN",
         inStock: r.is_in_stock === true,
-        stockQuantity: Number(r.total_stock ?? 0),
+        stockQuantity,
+        stockUnits: Math.max(0, Math.round(stockQuantity * unitsPerPack)),
       } satisfies B2BPackagingVariant;
     })
     // Ordena por unidades por embalagem (menor primeiro: UND → CAIXA → FARDO).
@@ -1284,6 +1337,7 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
     ean,
     imageUrl,
     inStock: variants.some((v) => v.inStock),
+    stockUnits: variants.reduce((sum, v) => sum + v.stockUnits, 0),
     variants,
   };
 }

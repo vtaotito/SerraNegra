@@ -10,7 +10,10 @@ export interface PackagingVariant {
   unitsPerPack: number;
   unitOfMeasure: string;
   inStock: boolean;
+  /** Estoque disponível na unidade nativa da variante (ex.: nº de caixas). */
   stockQuantity: number;
+  /** Estoque disponível em UNIDADES (= stockQuantity × unitsPerPack). */
+  stockUnits: number;
 }
 
 export interface UnifiedProduct {
@@ -29,11 +32,18 @@ export interface UnifiedProduct {
   ean: string | null;
   imageUrl: string | null;
   inStock: boolean;
+  /** Estoque disponível total em UNIDADES (soma das variantes) — "ESTOQUE (UND)". */
+  stockUnits: number;
   variants: PackagingVariant[];
 }
 
 export interface UnifiedProductDetail extends UnifiedProduct {
   fullDescription: string | null;
+}
+
+/** Formata quantidade de unidades em estoque para exibição (pt-BR). */
+export function formatStockUnits(units: number): string {
+  return new Intl.NumberFormat("pt-BR").format(Math.max(0, Math.round(units)));
 }
 
 /** Nome amigável e curto do tipo de embalagem. */

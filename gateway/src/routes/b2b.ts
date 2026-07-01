@@ -3011,6 +3011,32 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     let withStock = 0;
     const stockBySku = new Map<string, number>();
 
+    // Estoque DISPONÍVEL por SKU (on_hand - committed), somado por depósito —
+    // exatamente a base usada pela Gestão de Compras/Estoque do painel
+    // (inventory_stock). Preferimos a SQLQuery enriquecida; caímos para o
+    // $expand por depósito e, por fim, para os campos agregados do próprio item.
+    const availBySku = new Map<string, number>();
+    try {
+      let invRows: { ItemCode: string; InStock: number; Committed: number }[] =
+        await entSvc.listInventoryEnriched(correlationId);
+      if (!invRows || invRows.length === 0) {
+        invRows = await entSvc.listInventory({ limit: 5000 }, correlationId);
+      }
+      for (const r of invRows) {
+        const avail = Math.max((r.InStock ?? 0) - (r.Committed ?? 0), 0);
+        availBySku.set(r.ItemCode, (availBySku.get(r.ItemCode) ?? 0) + avail);
+      }
+      app.log.info(
+        { correlationId, skusComEstoque: availBySku.size },
+        "Catalog sync: disponibilidade (on_hand - committed) carregada",
+      );
+    } catch (err: any) {
+      app.log.warn(
+        { correlationId, error: err?.message?.slice(0, 200) },
+        "Catalog sync: falha ao carregar disponibilidade; usando campos agregados do item",
+      );
+    }
+
     for (const item of sapItems) {
       const groupCode = item.ItemsGroupCode ?? null;
       const isExcludedGroup = groupCode != null && EXCLUDED_SAP_GROUPS.includes(groupCode);
@@ -3051,11 +3077,17 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         productName,
       );
 
-      const stock = item.QuantityOnStock ?? 0;
-      if (stock > 0) {
-        stockBySku.set(item.ItemCode, stock);
-        withStock++;
-      }
+      // Disponível na unidade nativa da variante (nº de caixas/fardos/und).
+      // Sempre registramos (inclusive 0) para que itens que zeraram o estoque
+      // deixem de aparecer como disponíveis no catálogo.
+      const stock = availBySku.has(item.ItemCode)
+        ? (availBySku.get(item.ItemCode) as number)
+        : Math.max(
+            (item.QuantityOnStock ?? 0) - (item.QuantityOrderedByCustomers ?? 0),
+            0,
+          );
+      stockBySku.set(item.ItemCode, stock);
+      if (stock > 0) withStock++;
 
       if (upserted < 3) {
         app.log.info({
@@ -3110,25 +3142,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       await catalogService.updateStock(stockBySku);
     }
 
-    let inventoryRows = stockBySku.size;
-    if (inventoryRows === 0) {
-      try {
-        const sapInv = await entSvc.listInventory({ limit: 5000 }, correlationId);
-        for (const row of sapInv) {
-          const current = stockBySku.get(row.ItemCode) ?? 0;
-          stockBySku.set(row.ItemCode, current + row.InStock);
-        }
-        if (stockBySku.size > 0) {
-          await catalogService.updateStock(stockBySku);
-          inventoryRows = stockBySku.size;
-        }
-      } catch (err: any) {
-        app.log.warn(
-          { correlationId, error: err?.message?.slice(0, 200) },
-          "Catalog sync: fallback listInventory tambem falhou",
-        );
-      }
-    }
+    const inventoryRows = withStock;
 
     let notified = 0;
     try {

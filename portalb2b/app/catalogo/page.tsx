@@ -40,8 +40,10 @@ import {
   type PackagingVariant,
   packagingLabel,
   packagingShort,
+  packagingTypeName,
   groupColor,
   categoryColor,
+  formatStockUnits,
 } from "@/lib/catalog";
 
 interface CategoryFacet {
@@ -761,7 +763,7 @@ function ProductCard({
         </div>
 
         {perPack > 1 && (
-          <div className="flex items-center gap-1.5 mb-3 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
+          <div className="flex items-center gap-1.5 mb-2 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
             <Box className="h-3.5 w-3.5 flex-shrink-0" />
             <span className="font-medium">
               {packagingLabel(variant.packagingType, variant.unitsPerPack)} ={" "}
@@ -769,6 +771,29 @@ function ProductCard({
             </span>
           </div>
         )}
+
+        {/* Disponibilidade (ESTOQUE em unidades, igual ao painel de compras) */}
+        <div className="mb-3 min-h-[1.25rem]">
+          {selectedInStock ? (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
+              <PackageCheck className="h-3 w-3 flex-shrink-0" />
+              <span className="tabular-nums">{formatStockUnits(variant.stockUnits)}</span> un
+              <span className="text-muted-foreground font-normal">em estoque</span>
+              {perPack > 1 && variant.stockQuantity >= 1 && (
+                <span className="text-muted-foreground font-normal">
+                  · {Math.floor(variant.stockQuantity)}{" "}
+                  {packagingTypeName(variant.packagingType).toLowerCase()}
+                  {Math.floor(variant.stockQuantity) !== 1 ? "s" : ""}
+                </span>
+              )}
+            </p>
+          ) : (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-red-500">
+              <PackageX className="h-3 w-3 flex-shrink-0" />
+              Sem estoque no momento
+            </p>
+          )}
+        </div>
 
         {/* Ações */}
         {selectedInStock ? (
