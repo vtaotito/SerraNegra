@@ -3067,14 +3067,17 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const rawCategory = groupCategory || match?.gsn.category_name;
       const categoryName = normalizeCategoryName(rawCategory);
 
-      const productName = match?.gsn.name || item.ItemName || item.ItemCode;
+      // A embalagem SEMPRE vem do NOME DO ITEM NO SAP: e o unico lugar que traz
+      // o sufixo "- PALETE C/ 4.693 UND" / "- CAIXA C/ 24 UND" / "- UND". O nome
+      // de marketing do GSN (match.gsn.name) nao tem esse sufixo, entao usa-lo
+      // aqui gravava "Unidade" e preservava um units_per_package antigo/errado.
       const packaging = resolvePackaging(
         item.InventoryUOM,
         item.SalesUnit,
         item.SalesPackagingUnit,
         item.SalesQtyPerPackUnit,
         item.SalesItemsPerUnit,
-        productName,
+        item.ItemName || item.ItemCode,
       );
 
       // Disponível na unidade nativa da variante (nº de caixas/fardos/und).

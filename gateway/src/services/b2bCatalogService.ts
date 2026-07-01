@@ -786,8 +786,12 @@ export class B2BCatalogService {
          description_short = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short) ELSE EXCLUDED.description_short END,
          ean = COALESCE(EXCLUDED.ean, b2b_catalog_products.ean),
          unit_of_measure = EXCLUDED.unit_of_measure,
-         packaging_type = COALESCE(EXCLUDED.packaging_type, b2b_catalog_products.packaging_type),
-         units_per_package = COALESCE(EXCLUDED.units_per_package, b2b_catalog_products.units_per_package),
+         -- A embalagem e derivada do NOME DO ITEM NO SAP (fonte autoritativa) a
+         -- cada sync, entao sobrescrevemos sempre. COALESCE preservava valores
+         -- antigos/errados (ex.: "Unidade" com units_per_package=4693) quando o
+         -- parser evoluia ou quando um item passava a ser individual.
+         packaging_type = EXCLUDED.packaging_type,
+         units_per_package = EXCLUDED.units_per_package,
          is_active = EXCLUDED.is_active,
          is_sales_item = EXCLUDED.is_sales_item,
          match_score = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.match_score ELSE EXCLUDED.match_score END,
