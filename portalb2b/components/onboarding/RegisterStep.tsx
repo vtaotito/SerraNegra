@@ -1,11 +1,10 @@
 "use client";
 
-import { Info, UserPlus } from "lucide-react";
+import { ArrowRight, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ESTADOS_BR, isValidEmail, type RegForm } from "./types";
-import { Spinner } from "./Spinner";
 
 export function RegisterStep({
   cnpj,
@@ -136,8 +135,8 @@ export function RegisterStep({
         className="w-full h-11 mt-2"
         disabled={loading || !canSubmit}
       >
-        {loading ? <Spinner /> : <UserPlus className="h-4 w-4" />}
-        {loading ? "Cadastrando..." : "Cadastrar"}
+        Continuar para entrega
+        <ArrowRight className="h-4 w-4" />
       </Button>
     </form>
   );

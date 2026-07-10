@@ -27,15 +27,17 @@ function resolveFlow(step: Step, pendingKind: PendingKind): FlowConfig | null {
     case "request-email":
       return { labels: ["CNPJ", "E-mail de acesso", "Análise GSN"], activeIndex: 1 };
 
-    // Cliente novo (não existe no SAP).
+    // Cliente novo (não existe no SAP): empresa → entrega → análise.
     case "register":
-      return { labels: ["CNPJ", "Dados da empresa", "Análise GSN"], activeIndex: 1 };
+      return { labels: ["CNPJ", "Dados da empresa", "Entrega", "Análise GSN"], activeIndex: 1 };
+    case "delivery":
+      return { labels: ["CNPJ", "Dados da empresa", "Entrega", "Análise GSN"], activeIndex: 2 };
 
     // Conclusão: depende da jornada que trouxe até aqui.
     case "pending-approval":
       return pendingKind === "email-access"
         ? { labels: ["CNPJ", "E-mail de acesso", "Análise GSN"], activeIndex: 2 }
-        : { labels: ["CNPJ", "Dados da empresa", "Análise GSN"], activeIndex: 2 };
+        : { labels: ["CNPJ", "Dados da empresa", "Entrega", "Análise GSN"], activeIndex: 3 };
 
     default:
       return null;

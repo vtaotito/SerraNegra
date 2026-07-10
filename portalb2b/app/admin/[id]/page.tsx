@@ -23,9 +23,17 @@ import {
   MapPin,
   FileText,
   Settings2,
+  Truck,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  EMPTY_DELIVERY_FORM,
+  ESTADOS_BR,
+  formatCep,
+  formatPhone,
+  type DeliveryForm,
+} from "@/components/onboarding/types";
 
 interface Registration {
   id: number;
@@ -54,6 +62,7 @@ interface Registration {
   sap_error: string | null;
   created_at: string;
   updated_at: string;
+  delivery: DeliveryForm | null;
 }
 
 interface UdfFieldMeta {
@@ -153,6 +162,8 @@ export default function RegistrationDetailPage() {
     phone: "",
     contactName: "",
   });
+  const [editDelivery, setEditDelivery] =
+    useState<DeliveryForm>(EMPTY_DELIVERY_FORM);
 
   useEffect(() => {
     if (!adminLoading && !isAuthenticated) {
@@ -184,6 +195,7 @@ export default function RegistrationDetailPage() {
         phone: regData.phone ?? "",
         contactName: regData.contact_name ?? "",
       });
+      setEditDelivery({ ...EMPTY_DELIVERY_FORM, ...(regData.delivery ?? {}) });
     } catch {
       toast.error("Erro ao carregar registro");
     } finally {
@@ -206,6 +218,7 @@ export default function RegistrationDetailPage() {
           sapConfig: editSapCfg,
           adminNotes: notes,
           ...editInfo,
+          delivery: editDelivery,
         },
       );
       setReg(updated);
@@ -443,6 +456,224 @@ export default function RegistrationDetailPage() {
                   className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
                 />
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Dados de Entrega */}
+        <Card className="border-slate-700 bg-slate-800/80">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-white text-base">
+              <Truck className="h-4 w-4 text-orange-400" />
+              Dados de Entrega
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={editDelivery.sameAsBilling}
+                disabled={readonly}
+                onChange={(e) =>
+                  setEditDelivery((s) => ({ ...s, sameAsBilling: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-slate-600 accent-emerald-500 disabled:opacity-50"
+              />
+              Entrega no mesmo endereço de cobrança
+            </label>
+
+            {!editDelivery.sameAsBilling && (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">CEP</label>
+                  <Input
+                    value={editDelivery.zipCode}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, zipCode: formatCep(e.target.value) }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className="mb-1 block text-xs text-slate-400">Logradouro</label>
+                  <Input
+                    value={editDelivery.street}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, street: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Número</label>
+                  <Input
+                    value={editDelivery.number}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, number: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Complemento</label>
+                  <Input
+                    value={editDelivery.complement}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, complement: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Bairro</label>
+                  <Input
+                    value={editDelivery.neighborhood}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, neighborhood: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Cidade</label>
+                  <Input
+                    value={editDelivery.city}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, city: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-400">Estado</label>
+                  <select
+                    value={editDelivery.state}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, state: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="w-full rounded-md border border-slate-600 bg-slate-700/50 px-3 py-2 text-sm text-white disabled:opacity-50"
+                  >
+                    <option value="">--</option>
+                    {ESTADOS_BR.map((uf) => (
+                      <option key={uf} value={uf}>{uf}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="lg:col-span-3">
+                  <label className="mb-1 block text-xs text-slate-400">Ponto de referência</label>
+                  <Input
+                    value={editDelivery.reference}
+                    onChange={(e) =>
+                      setEditDelivery((s) => ({ ...s, reference: e.target.value }))
+                    }
+                    disabled={readonly}
+                    className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Contato (recebimento)</label>
+                <Input
+                  value={editDelivery.contactName}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, contactName: e.target.value }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Telefone</label>
+                <Input
+                  value={editDelivery.contactPhone}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, contactPhone: formatPhone(e.target.value) }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">E-mail</label>
+                <Input
+                  value={editDelivery.contactEmail}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, contactEmail: e.target.value }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Dias para entrega</label>
+                <Input
+                  value={editDelivery.deliveryDays}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, deliveryDays: e.target.value }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Horários</label>
+                <Input
+                  value={editDelivery.deliveryHours}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, deliveryHours: e.target.value }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-400">Restrição de veículo</label>
+                <Input
+                  value={editDelivery.vehicleRestriction}
+                  onChange={(e) =>
+                    setEditDelivery((s) => ({ ...s, vehicleRestriction: e.target.value }))
+                  }
+                  disabled={readonly}
+                  className="border-slate-600 bg-slate-700/50 text-white disabled:opacity-50"
+                />
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={editDelivery.needsScheduling}
+                disabled={readonly}
+                onChange={(e) =>
+                  setEditDelivery((s) => ({ ...s, needsScheduling: e.target.checked }))
+                }
+                className="h-4 w-4 rounded border-slate-600 accent-emerald-500 disabled:opacity-50"
+              />
+              Entrega precisa de agendamento prévio
+            </label>
+
+            <div>
+              <label className="mb-1 block text-xs text-slate-400">Observações de entrega</label>
+              <textarea
+                value={editDelivery.notes}
+                onChange={(e) =>
+                  setEditDelivery((s) => ({ ...s, notes: e.target.value }))
+                }
+                disabled={readonly}
+                rows={3}
+                className="w-full rounded-md border border-slate-600 bg-slate-700/50 px-3 py-2 text-sm text-white placeholder:text-slate-500 disabled:opacity-50"
+                placeholder="Janelas, restrições e instruções para logística..."
+              />
             </div>
           </CardContent>
         </Card>

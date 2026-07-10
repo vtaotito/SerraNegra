@@ -17,8 +17,10 @@ import { AlertCircle, ArrowLeft, Building2, UserPlus } from "lucide-react";
 import { GSN_LOGO_URL } from "@/lib/product-images";
 
 import {
+  EMPTY_DELIVERY_FORM,
   EMPTY_REG_FORM,
   isValidEmail,
+  type DeliveryForm,
   type LookupResult,
   type PendingKind,
   type RegForm,
@@ -32,6 +34,7 @@ import { RequestEmailStep } from "@/components/onboarding/RequestEmailStep";
 import { OtpStep } from "@/components/onboarding/OtpStep";
 import { SetPasswordStep } from "@/components/onboarding/SetPasswordStep";
 import { RegisterStep } from "@/components/onboarding/RegisterStep";
+import { DeliveryStep } from "@/components/onboarding/DeliveryStep";
 import { PendingStep } from "@/components/onboarding/PendingStep";
 
 export default function LoginPage() {
@@ -59,6 +62,8 @@ export default function LoginPage() {
   const [pendingKind, setPendingKind] = useState<PendingKind>("register");
 
   const [regForm, setRegForm] = useState<RegForm>(EMPTY_REG_FORM);
+  const [deliveryForm, setDeliveryForm] =
+    useState<DeliveryForm>(EMPTY_DELIVERY_FORM);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -72,7 +77,7 @@ export default function LoginPage() {
 
   const isExistingCustomer =
     !!lookupResult && lookupResult.status !== "not_found";
-  const isNewCustomer = step === "register";
+  const isNewCustomer = step === "register" || step === "delivery";
 
   function handleCnpjChange(e: React.ChangeEvent<HTMLInputElement>) {
     setCnpj(formatCnpj(e.target.value));
@@ -268,10 +273,31 @@ export default function LoginPage() {
     }
   }
 
+  // Passo 1 do cadastro do novo cliente: valida os dados da empresa e avança
+  // para a etapa de entrega (o POST só acontece no fim, com empresa + entrega).
+  function handleRegisterContinue(e: React.FormEvent) {
+    e.preventDefault();
+    if (!regForm.razaoSocial || !isValidEmail(regForm.email)) {
+      setError("Razao social e um email valido sao obrigatorios");
+      return;
+    }
+    setError("");
+    // Pré-preenche o contato de entrega com o que já temos da empresa.
+    setDeliveryForm((prev) => ({
+      ...prev,
+      contactName: prev.contactName || regForm.contactName || "",
+      contactPhone: prev.contactPhone || regForm.phone || "",
+      contactEmail: prev.contactEmail || regForm.email || "",
+    }));
+    setStep("delivery");
+  }
+
+  // Passo 2 (final): envia empresa + dados de entrega ao gateway.
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     if (!regForm.razaoSocial || !isValidEmail(regForm.email)) {
       setError("Razao social e um email valido sao obrigatorios");
+      setStep("register");
       return;
     }
 
@@ -286,6 +312,7 @@ export default function LoginPage() {
       }>("/b2b/auth/register", {
         cnpj: cleanCnpj(cnpj),
         ...regForm,
+        delivery: deliveryForm,
       });
 
       setPendingKind("register");
@@ -304,6 +331,7 @@ export default function LoginPage() {
     setContactInput("");
     setLookupResult(null);
     setRegForm(EMPTY_REG_FORM);
+    setDeliveryForm(EMPTY_DELIVERY_FORM);
     setPassword("");
     setConfirmPassword("");
     setOtpInput("");
@@ -324,6 +352,8 @@ export default function LoginPage() {
     ) {
       setStep("cnpj");
       setLookupResult(null);
+    } else if (step === "delivery") {
+      setStep("register");
     } else if (step === "otp") {
       setStep("email");
     } else if (step === "set-password") {
@@ -339,6 +369,7 @@ export default function LoginPage() {
     otp: "Codigo de verificacao",
     "set-password": "Crie sua senha de acesso",
     register: "Cadastro de novo cliente",
+    delivery: "Dados de entrega",
     "pending-approval":
       pendingKind === "email-access"
         ? "Solicitacao recebida!"
@@ -482,6 +513,17 @@ export default function LoginPage() {
               regForm={regForm}
               loading={loading}
               onChange={(patch) => setRegForm((prev) => ({ ...prev, ...patch }))}
+              onSubmit={handleRegisterContinue}
+            />
+          )}
+
+          {step === "delivery" && (
+            <DeliveryStep
+              delivery={deliveryForm}
+              loading={loading}
+              onChange={(patch) =>
+                setDeliveryForm((prev) => ({ ...prev, ...patch }))
+              }
               onSubmit={handleRegister}
             />
           )}

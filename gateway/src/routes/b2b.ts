@@ -6,6 +6,12 @@ import { SapHttpError } from "../../../sap-connector/src/errors.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
 import { B2BAuthService } from "../services/b2bAuthService.js";
 import { B2BRegistrationService } from "../services/b2bRegistrationService.js";
+import {
+  B2BDeliveryService,
+  toDeliveryDto,
+  type DeliveryInput,
+} from "../services/b2bDeliveryService.js";
+import { captureB2BLead } from "../services/rdStationService.js";
 import { B2BEmailRequestService } from "../services/b2bEmailRequestService.js";
 import { B2BOrderFollowupService } from "../services/b2bOrderFollowupService.js";
 import {
@@ -190,6 +196,35 @@ async function b2bAdminAuth(req: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+// Whitelist dos campos do payload `delivery` (camelCase, contrato do frontend).
+function pickDeliveryInput(raw: unknown): DeliveryInput | null {
+  if (!raw || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  const bool = (v: unknown): boolean | undefined =>
+    typeof v === "boolean" ? v : undefined;
+  return {
+    sameAsBilling: bool(d.sameAsBilling),
+    zipCode: str(d.zipCode),
+    street: str(d.street),
+    number: str(d.number),
+    complement: str(d.complement),
+    neighborhood: str(d.neighborhood),
+    city: str(d.city),
+    state: str(d.state),
+    reference: str(d.reference),
+    contactName: str(d.contactName),
+    contactPhone: str(d.contactPhone),
+    contactEmail: str(d.contactEmail),
+    deliveryDays: str(d.deliveryDays),
+    deliveryHours: str(d.deliveryHours),
+    vehicleRestriction: str(d.vehicleRestriction),
+    needsScheduling: bool(d.needsScheduling),
+    notes: str(d.notes),
+  };
+}
+
 function buildBpLevelUdfs(udfBp: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(udfBp)) {
@@ -206,6 +241,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const registrationService = new B2BRegistrationService(B2B_DB_URL);
   await registrationService.init();
+
+  const deliveryService = new B2BDeliveryService(B2B_DB_URL);
+  await deliveryService.init();
 
   const emailRequestService = new B2BEmailRequestService(B2B_DB_URL);
   await emailRequestService.init();
@@ -898,6 +936,39 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         state: body.state,
         zipCode: body.zipCode,
         inscricaoEstadual: body.inscricaoEstadual,
+      });
+
+      // Persiste os dados de entrega (opcionais) vinculados ao mesmo cadastro.
+      const deliveryInput = pickDeliveryInput(body.delivery);
+      if (deliveryInput) {
+        await deliveryService
+          .upsertByCnpj(digits, deliveryInput, { registrationId: reg.id })
+          .catch((err) => {
+            req.log.warn(
+              { correlationId, error: err?.message },
+              "register B2B: falha ao gravar dados de entrega",
+            );
+          });
+      }
+
+      // Captura do lead no RDStation (conversão + tag de origem) — fire-and-forget:
+      // nunca bloqueia nem falha o cadastro; erros são apenas logados.
+      void captureB2BLead(
+        {
+          email: body.email,
+          name: body.contactName || body.razaoSocial,
+          companyName: body.razaoSocial,
+          cnpj: digits,
+          city: body.city,
+          state: body.state,
+          phone: body.phone,
+        },
+        req.log,
+      ).catch((err) => {
+        req.log.warn(
+          { correlationId, error: err?.message },
+          "register B2B: falha na captura de lead no RDStation",
+        );
       });
 
       // Confirmação ao cliente + aviso interno ao comercial (best-effort).
@@ -2045,7 +2116,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reply.code(404).send({ error: "Registro nao encontrado" });
           return;
         }
-        reply.code(200).send(reg);
+        const deliveryRow = await deliveryService
+          .findByCnpj(normalizeCnpj(reg.cnpj))
+          .catch(() => null);
+        reply.code(200).send({ ...reg, delivery: toDeliveryDto(deliveryRow) });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
@@ -2153,7 +2227,23 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           return;
         }
 
-        reply.code(200).send(updated);
+        // Edição opcional dos dados de entrega pelo admin.
+        const deliveryInput = pickDeliveryInput(body.delivery);
+        let deliveryRow = await deliveryService
+          .findByCnpj(normalizeCnpj(updated.cnpj))
+          .catch(() => null);
+        if (deliveryInput) {
+          deliveryRow = await deliveryService.upsertByCnpj(
+            normalizeCnpj(updated.cnpj),
+            deliveryInput,
+            {
+              cardCode: updated.sap_card_code ?? null,
+              registrationId: updated.id,
+            },
+          );
+        }
+
+        reply.code(200).send({ ...updated, delivery: toDeliveryDto(deliveryRow) });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
@@ -2249,6 +2339,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const existing = await findPartnerByCnpj(digits, correlationId);
         if (existing) {
           await registrationService.markPublished(Number(id), existing.CardCode);
+          await deliveryService
+            .attachCardCode(digits, existing.CardCode)
+            .catch(() => undefined);
           reply.code(200).send({
             ok: true,
             message: "BP ja existia no SAP",
@@ -2267,6 +2360,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const cfg = reg.sap_config ?? {};
         const udfBp = reg.udf_bp ?? {};
         const udfAddr = reg.udf_addr ?? {};
+
+        // Dados de entrega salvos (opcionais) — enriquecem ShipTo/ContactEmployees.
+        const delivery = await deliveryService
+          .findByCnpj(digits)
+          .catch(() => null);
 
         const sapBody: Record<string, unknown> = {
           CardCode: cardCode,
@@ -2320,10 +2418,63 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           U_TX_IndIEDest: (udfAddr.U_TX_IndIEDest as string) || "9",
         };
 
+        // Endereço de entrega (ENT / bo_ShipTo): usa os dados de entrega quando
+        // informados e distintos do faturamento; caso contrário replica o COB.
+        const hasDistinctDelivery =
+          delivery && delivery.same_as_billing === false;
+        const deliveryNotesParts = [
+          delivery?.delivery_days ? `Dias: ${delivery.delivery_days}` : null,
+          delivery?.delivery_hours ? `Horario: ${delivery.delivery_hours}` : null,
+          delivery?.vehicle_restriction
+            ? `Restricao veiculo: ${delivery.vehicle_restriction}`
+            : null,
+          delivery?.needs_scheduling ? "Requer agendamento" : null,
+          delivery?.reference ? `Ref: ${delivery.reference}` : null,
+          delivery?.notes ? delivery.notes : null,
+        ].filter(Boolean);
+        const shipToFields = hasDistinctDelivery
+          ? {
+              ...addrFields,
+              Street: delivery!.street || addrFields.Street,
+              StreetNo: delivery!.number || addrFields.StreetNo,
+              Block: delivery!.neighborhood || addrFields.Block,
+              City: delivery!.city || addrFields.City,
+              County: delivery!.city || addrFields.County,
+              State: delivery!.state || addrFields.State,
+              ZipCode: delivery!.zip_code
+                ? delivery!.zip_code.replace(/\D/g, "")
+                : addrFields.ZipCode,
+            }
+          : addrFields;
+
         sapBody.BPAddresses = [
           { AddressType: "bo_BillTo", AddressName: "COB", ...addrFields },
-          { AddressType: "bo_ShipTo", AddressName: "ENT", ...addrFields },
+          { AddressType: "bo_ShipTo", AddressName: "ENT", ...shipToFields },
         ];
+
+        // Contato de entrega vira ContactEmployee do BP (hoje não vai ao SAP).
+        const contactName = delivery?.contact_name || reg.contact_name;
+        if (contactName) {
+          sapBody.ContactEmployees = [
+            {
+              Name: contactName.slice(0, 90),
+              ...(delivery?.contact_phone
+                ? { Phone1: delivery.contact_phone }
+                : reg.phone
+                  ? { Phone1: reg.phone }
+                  : {}),
+              ...(delivery?.contact_email
+                ? { E_Mail: delivery.contact_email }
+                : reg.email
+                  ? { E_Mail: reg.email }
+                  : {}),
+              ...(deliveryNotesParts.length > 0
+                ? { Remarks: deliveryNotesParts.join(" | ").slice(0, 100) }
+                : {}),
+              Active: "tYES",
+            },
+          ];
+        }
 
         const ie = (udfAddr.U_TX_IE as string) || reg.inscricao_estadual || "Isento";
         sapBody.BPFiscalTaxIDCollection = [
@@ -2342,6 +2493,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const finalCardCode = created.CardCode ?? cardCode;
 
         await registrationService.markPublished(Number(id), finalCardCode);
+
+        // Vincula o CardCode aos dados de entrega (se existirem).
+        await deliveryService
+          .attachCardCode(digits, finalCardCode)
+          .catch(() => undefined);
 
         await authService.upsertCredential({
           cardCode: finalCardCode,
@@ -2396,6 +2552,52 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         email: customer.email,
       });
     }
+  );
+
+  // =============================================
+  // DADOS DE ENTREGA (cliente autenticado)
+  // =============================================
+  app.get(
+    "/b2b/delivery",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      try {
+        const cnpj = normalizeCnpj(customer.cnpj);
+        let row = await deliveryService.findByCnpj(cnpj);
+        // Fallback por CardCode (ex.: CNPJ do token divergente do salvo).
+        if (!row && customer.cardCode) {
+          row = await deliveryService.findByCardCode(customer.cardCode);
+        }
+        reply.code(200).send({ delivery: toDeliveryDto(row) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: "Erro ao buscar dados de entrega", message });
+      }
+    },
+  );
+
+  app.put(
+    "/b2b/delivery",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const input = pickDeliveryInput(req.body);
+      if (!input) {
+        reply.code(400).send({ error: "Corpo invalido: objeto de entrega esperado" });
+        return;
+      }
+      try {
+        const cnpj = normalizeCnpj(customer.cnpj);
+        const saved = await deliveryService.upsertByCnpj(cnpj, input, {
+          cardCode: customer.cardCode ?? null,
+        });
+        reply.code(200).send({ ok: true, delivery: toDeliveryDto(saved) });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: "Erro ao salvar dados de entrega", message });
+      }
+    },
   );
 
   // =============================================

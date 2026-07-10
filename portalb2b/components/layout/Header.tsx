@@ -13,6 +13,7 @@ import {
   ClipboardList,
   LayoutDashboard,
   LogOut,
+  Truck,
   User,
 } from "lucide-react";
 import { GSN_LOGO_URL } from "@/lib/product-images";
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Inicio", icon: LayoutDashboard },
   { href: "/catalogo", label: "Catalogo", icon: Package },
   { href: "/pedidos", label: "Meus Pedidos", icon: ClipboardList },
+  { href: "/entrega", label: "Entrega", icon: Truck },
 ];
 
 export function Header() {
@@ -69,10 +71,21 @@ export function Header() {
 
           <div className="flex items-center gap-1 sm:gap-3">
             {customer && (
-              <div className="hidden items-center gap-2 text-sm text-gsn-gray sm:flex">
+              <Link
+                href="/entrega"
+                title="Minha conta e dados de entrega"
+                className={cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+                  pathname.startsWith("/entrega")
+                    ? "text-gsn-brand"
+                    : "text-gsn-gray hover:text-gsn-brand",
+                )}
+              >
                 <User className="h-4 w-4" />
-                <span className="max-w-[150px] truncate">{customer.cardName}</span>
-              </div>
+                <span className="hidden max-w-[150px] truncate sm:inline">
+                  {customer.cardName}
+                </span>
+              </Link>
             )}
 
             <Link href="/carrinho" aria-label={`Carrinho${totalItems > 0 ? ` (${totalItems} itens)` : ""}`}>

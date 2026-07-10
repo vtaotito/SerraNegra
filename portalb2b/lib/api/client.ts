@@ -46,6 +46,11 @@ export async function post<T>(url: string, data?: unknown): Promise<T> {
   return res.data;
 }
 
+export async function put<T>(url: string, data?: unknown): Promise<T> {
+  const res = await apiClient.put<T>(url, data);
+  return res.data;
+}
+
 export async function patch<T>(url: string, data?: unknown): Promise<T> {
   const res = await apiClient.patch<T>(url, data);
   return res.data;

@@ -136,6 +136,15 @@ export default function AdminPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-emerald-400">
+            <Users className="h-4 w-4" />
+            Acessos B2B
+          </h2>
+          <p className="text-xs text-slate-400">
+            Cadastros de novos clientes e liberações de acesso por e-mail.
+          </p>
+        </div>
         <div className="mb-6 flex gap-2 border-b border-slate-700">
           <button
             onClick={() => setTab("registrations")}

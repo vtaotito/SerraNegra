@@ -52,3 +52,8 @@ mappings/src/**/*.js.map
 # IDE
 .vscode/settings.json
 .idea/
+
+# Next.js build artifacts (Portal B2B)
+portalb2b/.next/
+portalb2b/next-env.d.ts
+portalb2b/tsconfig.tsbuildinfo

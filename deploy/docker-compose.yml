@@ -83,6 +83,10 @@ services:
       EMAIL_COMMERCIAL: "${EMAIL_COMMERCIAL:-comercial@garrafariaserranegra.com.br}"
       B2B_PORTAL_URL: "${B2B_PORTAL_URL:-https://garrafariaserranegra.com.br/b2b}"
       PAINEL_URL: "${PAINEL_URL:-https://painel.garrafariaserranegra.com.br}"
+      # RD Station Marketing — captura de leads do Portal B2B (fire-and-forget)
+      RD_STATION_API_TOKEN: "${RD_STATION_API_TOKEN:-}"
+      RD_STATION_MARKETING_ACCESS_TOKEN: "${RD_STATION_MARKETING_ACCESS_TOKEN:-}"
+      RD_STATION_CONVERSION_IDENTIFIER: "${RD_STATION_CONVERSION_IDENTIFIER:-Cadastro Portal B2B}"
     depends_on:
       postgres:
         condition: service_healthy
