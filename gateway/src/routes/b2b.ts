@@ -3214,6 +3214,14 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     // demais embalagens/fechos herdam a foto de "Garrafa Burdeos 750 ml".
     const familyImageIndex = buildFamilyImageIndex(webProducts);
 
+    // Fontes dedicadas SÓ ao gsnonline (loja B2C oficial) para a IMAGEM: a foto
+    // do produto deve vir prioritariamente do gsnonline (TCDN), usando o Woo
+    // apenas quando o gsnonline nao tem a imagem. O match combinado acima costuma
+    // ser vencido pelo Woo por SCORE (produtos gsnonline muitas vezes tem ean=""),
+    // por isso resolvemos a imagem com estes indices proprios do gsnonline.
+    const gsnMatches = matchSapToGsn(sapItems, gsnProducts);
+    const gsnFamilyIndex = buildFamilyImageIndex(gsnProducts);
+
     const eanMatches = [...matches.values()].filter((m) => m.score === 100).length;
     const fuzzyMatches = [...matches.values()].filter((m) => m.score < 100).length;
     app.log.info(
@@ -3271,17 +3279,19 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         continue;
       }
 
-      const isSalesItem = item.SalesItem === "tYES";
-      const match = matches.get(item.ItemCode);
-      // Imagem: 1) do match direto (mesmo produto/volume no site); 2) fallback
-      // por FAMÍLIA, ignorando a litragem/embalagem/fecho (mesma linha de
-      // produto). Ex.: BURDEOS 500 ml herda a foto de "Garrafa Burdeos 750 ml".
-      let firstImage = match?.gsn.images[0];
-      if (!firstImage?.url) {
-        const famKey = familyKeyOfName(item.ItemName ?? "");
-        const famImg = famKey ? familyImageIndex.get(famKey) : undefined;
-        if (famImg) firstImage = famImg;
-      }
+    const isSalesItem = item.SalesItem === "tYES";
+    const match = matches.get(item.ItemCode);
+    // Imagem com prioridade gsnonline > woo. Pega a PRIMEIRA fonte com url:
+    //   a) match direto gsnonline (mesmo produto/volume na loja B2C oficial)
+    //   b) fallback por FAMÍLIA no gsnonline (ignora litragem/embalagem/fecho)
+    //   c) match direto combinado (pode ser Woo) — complemento
+    //   d) fallback por FAMÍLIA combinado (pode ser Woo) — complemento
+    const famKey = familyKeyOfName(item.ItemName ?? "");
+    const gsnMatch = gsnMatches.get(item.ItemCode);
+    let firstImage = gsnMatch?.gsn.images[0];
+    if (!firstImage?.url && famKey) firstImage = gsnFamilyIndex.get(famKey);
+    if (!firstImage?.url) firstImage = match?.gsn.images[0];
+    if (!firstImage?.url && famKey) firstImage = familyImageIndex.get(famKey);
 
       // Categoria sempre do grupo do SAP (fonte de verdade) — evita categorias
       // erradas vindas de um match fraco no site. So cai para a categoria do
