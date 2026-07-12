@@ -15,6 +15,7 @@ import { get, post } from "@/lib/api/client";
 import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FavoriteButton } from "@/components/catalog/FavoriteButton";
 import {
   Search,
   Plus,
@@ -699,10 +700,15 @@ function ProductCard({
   return (
     <Card
       className={cn(
-        "flex flex-col transition-all hover:shadow-lg group overflow-hidden",
+        "relative flex flex-col transition-all hover:shadow-lg group overflow-hidden",
         !product.inStock && "opacity-75 hover:opacity-100",
       )}
     >
+      <FavoriteButton
+        sku={variant?.sku ?? product.sku}
+        variant="overlay"
+        className="absolute right-2 top-2 z-20"
+      />
       <Link
         href={`/catalogo/${encodeURIComponent(variant?.sku ?? product.sku)}`}
         className="relative bg-white flex items-center justify-center h-48 overflow-hidden"
@@ -731,7 +737,7 @@ function ProductCard({
           </span>
         )}
         {inCart && (
-          <span className="absolute top-2 right-2 flex items-center gap-1 rounded-full bg-[var(--gsn-brand)]/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
+          <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-[var(--gsn-brand)]/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
             <Check className="h-2.5 w-2.5" />
             No carrinho
           </span>

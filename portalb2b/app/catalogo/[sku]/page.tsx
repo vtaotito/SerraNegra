@@ -25,6 +25,7 @@ import {
 } from "@/lib/catalog";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FavoriteButton } from "@/components/catalog/FavoriteButton";
 import {
   ArrowLeft,
   ShoppingCart,
@@ -186,9 +187,16 @@ export default function ProductDetailPage({
                 </div>
 
                 <div className="flex flex-col">
-                  <h1 className="text-2xl font-bold text-gsn-text">
-                    {product.name}
-                  </h1>
+                  <div className="flex items-start justify-between gap-2">
+                    <h1 className="text-2xl font-bold text-gsn-text">
+                      {product.name}
+                    </h1>
+                    <FavoriteButton
+                      sku={variant.sku}
+                      variant="inline"
+                      className="-mt-1 shrink-0"
+                    />
+                  </div>
                   <p className="text-sm text-muted-foreground font-mono mt-1">
                     SKU: {variant.sku}
                   </p>

@@ -55,3 +55,8 @@ export async function patch<T>(url: string, data?: unknown): Promise<T> {
   const res = await apiClient.patch<T>(url, data);
   return res.data;
 }
+
+export async function del<T>(url: string): Promise<T> {
+  const res = await apiClient.delete<T>(url);
+  return res.data;
+}

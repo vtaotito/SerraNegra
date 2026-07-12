@@ -20,6 +20,7 @@ import {
 } from "@/lib/orders";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FavoriteButton } from "@/components/catalog/FavoriteButton";
 import {
   ArrowLeft,
   Calendar,
@@ -175,7 +176,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
       <div className="print:hidden">
         <Header />
       </div>
-      <main className="mx-auto max-w-4xl px-4 pt-6 pb-24 sm:px-6 lg:px-8 md:pb-8 print:max-w-none print:py-2">
+      <main className="mx-auto max-w-4xl px-4 pt-6 pb-40 sm:px-6 lg:px-8 md:pb-8 print:max-w-none print:py-2">
         <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
             <div className="flex min-w-0 items-center gap-3">
@@ -222,8 +223,8 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
             <>
               {/* Status + Timeline */}
               <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-2">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
                       {cfg && <cfg.icon className="h-6 w-6 text-gsn-brand" />}
                       <Badge variant={cfg?.variant ?? "secondary"} className="text-sm px-3 py-1">
@@ -232,7 +233,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                     </div>
                     {order.docTotal != null && (
                       <div className="text-right">
-                        <p className="text-2xl font-bold">
+                        <p className="text-xl font-bold sm:text-2xl">
                           {formatCurrency(order.docTotal, order.currency ?? "BRL")}
                         </p>
                         <p className="text-xs text-muted-foreground">Valor total</p>
@@ -273,7 +274,13 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                             >
                               {isComplete ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
                             </div>
-                            <span className="mt-1.5 text-[10px] text-center text-muted-foreground leading-tight hidden sm:block">
+                            <span
+                              className={`mt-1.5 text-center text-[10px] leading-tight sm:block ${
+                                isCurrent
+                                  ? "font-semibold text-gsn-brand"
+                                  : "hidden text-muted-foreground"
+                              }`}
+                            >
                               {stepConf.label}
                             </span>
                           </div>
@@ -390,10 +397,10 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <p className="font-medium text-sm leading-snug">
+                                    <p className="font-medium text-sm leading-snug line-clamp-2">
                                       {item.description ?? item.sku}
                                     </p>
-                                    <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                                    <p className="text-xs text-muted-foreground font-mono mt-0.5 break-all">
                                       SKU: {item.sku}
                                       {item.warehouse && ` | Depósito: ${item.warehouse}`}
                                     </p>
@@ -402,8 +409,13 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                                     <Badge variant="outline" className="font-mono">
                                       {item.quantity}x
                                     </Badge>
+                                    {item.unitPrice != null && item.unitPrice > 0 && (
+                                      <p className="text-[11px] text-muted-foreground mt-1">
+                                        {formatCurrency(item.unitPrice, order.currency ?? "BRL")} / {item.unit ?? "UN"}
+                                      </p>
+                                    )}
                                     {item.lineTotal != null && item.lineTotal > 0 && (
-                                      <p className="text-sm font-semibold mt-1">
+                                      <p className="text-sm font-semibold mt-0.5">
                                         {formatCurrency(item.lineTotal, order.currency ?? "BRL")}
                                       </p>
                                     )}
@@ -433,22 +445,25 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                                 )}
 
                                 {/* Ações por item */}
-                                <div className="mt-2 flex items-center gap-3 print:hidden">
+                                <div className="mt-2 flex flex-wrap items-center gap-x-1 gap-y-1 print:hidden">
                                   {item.inCatalog && item.slug && (
                                     <Link
                                       href={`/catalogo/${item.sku}`}
-                                      className="inline-flex items-center gap-1 text-xs text-gsn-brand hover:underline"
+                                      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-gsn-brand hover:bg-gsn-brand/10"
                                     >
-                                      <ExternalLink className="h-3 w-3" /> Ver produto
+                                      <ExternalLink className="h-4 w-4" /> Ver produto
                                     </Link>
                                   )}
                                   {canInteract && (
                                     <button
                                       onClick={() => addOneToCart(item)}
-                                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-gsn-brand"
+                                      className="inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-gsn-brand"
                                     >
-                                      <Plus className="h-3 w-3" /> Adicionar ao carrinho
+                                      <Plus className="h-4 w-4" /> Adicionar ao carrinho
                                     </button>
+                                  )}
+                                  {item.inCatalog && (
+                                    <FavoriteButton sku={item.sku} variant="inline" showLabel />
                                   )}
                                 </div>
                               </div>
@@ -467,6 +482,14 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
           )}
         </div>
       </main>
+
+      {order && order.items.length > 0 && (
+        <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-40 border-t bg-white px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] md:hidden print:hidden">
+          <Button className="h-12 w-full text-base" onClick={addAllToCart}>
+            <RotateCcw className="h-4 w-4 mr-2" /> Comprar novamente
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -580,7 +603,7 @@ function MessagesThread({
                 <button
                   key={k}
                   onClick={() => setKind(k)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition ${
+                  className={`text-xs px-3 py-1.5 rounded-full border transition ${
                     kind === k
                       ? "bg-gsn-brand text-white border-transparent"
                       : "bg-white text-muted-foreground border-input hover:border-gsn-brand/40"

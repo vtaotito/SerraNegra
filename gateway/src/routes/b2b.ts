@@ -13,6 +13,7 @@ import {
 } from "../services/b2bDeliveryService.js";
 import { captureB2BLead } from "../services/rdStationService.js";
 import { B2BEmailRequestService } from "../services/b2bEmailRequestService.js";
+import { B2BFavoritesService } from "../services/b2bFavoritesService.js";
 import { B2BOrderFollowupService } from "../services/b2bOrderFollowupService.js";
 import {
   B2BOrderStatusService,
@@ -262,6 +263,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const orderItemNoteService = new B2BOrderItemNoteService(B2B_DB_URL);
   await orderItemNoteService.init();
+
+  const favoritesService = new B2BFavoritesService(B2B_DB_URL);
+  await favoritesService.init();
 
   // Rótulos legíveis dos estágios do funil e-commerce (para a timeline).
   const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
@@ -3582,6 +3586,82 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         }
 
         reply.send({ items });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // FAVORITOS DO CLIENTE
+  // =============================================
+  // Lista os produtos favoritos do cliente, enriquecidos pelo catálogo.
+  // Mesmo formato de item usado por /b2b/catalog/frequent.
+  app.get(
+    "/b2b/favorites",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      try {
+        const skus = await favoritesService.listSkus(customer.cardCode);
+        const items = [];
+        for (const sku of skus) {
+          const product = await catalogService.getProduct(sku);
+          items.push({
+            sku,
+            name: product?.sap_item_name ?? sku,
+            imageUrl: product?.image_url ?? null,
+            imageThumbUrl: product?.image_thumb_url ?? null,
+            inStock: product?.is_in_stock ?? false,
+            stockQuantity: Number(product?.total_stock ?? 0),
+            category: product?.category_name ?? null,
+            unitOfMeasure: product?.unit_of_measure ?? "UN",
+            price: 0,
+          });
+        }
+        reply.send({ items });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/favorites",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const body = (req.body ?? {}) as { sku?: unknown };
+      const sku = typeof body.sku === "string" ? body.sku.trim() : "";
+      if (!sku) {
+        reply.code(400).send({ error: "SKU obrigatório" });
+        return;
+      }
+      try {
+        await favoritesService.add(customer.cardCode, customer.cnpj ?? null, sku);
+        reply.send({ ok: true });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.delete(
+    "/b2b/favorites/:sku",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const { sku } = req.params as { sku: string };
+      if (!sku) {
+        reply.code(400).send({ error: "SKU obrigatório" });
+        return;
+      }
+      try {
+        await favoritesService.remove(customer.cardCode, sku);
+        reply.send({ ok: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
