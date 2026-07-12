@@ -3186,9 +3186,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       fetchAllWooProducts(),
     ]);
 
-    // Catalogo do proprio site WooCommerce primeiro: nomes batem melhor com o
-    // SAP e ja trazem descricoes ricas, entao tem prioridade em empates de score.
-    const webProducts = [...wooProducts, ...gsnProducts];
+    // gsnonline (loja B2C oficial) primeiro: as imagens do catalogo devem vir de
+    // gsnonline.com.br, entao ele tem prioridade em empates de match e no indice
+    // de imagem por familia. O WooCommerce entra como complemento (produtos que
+    // por acaso nao existam no gsnonline).
+    const webProducts = [...gsnProducts, ...wooProducts];
 
     app.log.info(
       {

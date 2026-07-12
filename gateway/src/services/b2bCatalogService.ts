@@ -397,7 +397,10 @@ export const RECENT_SALES_MONTHS = 12;
 
 // ─── GSN Online API fetcher ──────────────────────────────────────────
 
-const GSN_API_BASE = "https://garrafariaonline.commercesuite.com.br/web_api";
+// Loja B2C oficial GSN Online (gsnonline.com.br) — plataforma Tray, store 1123510.
+// E a vitrine voltada ao consumidor, com as fotos oficiais dos produtos; usamos
+// o domInio canonico da loja (mesmo store/web_api do antigo garrafariaonline).
+const GSN_API_BASE = "https://www.gsnonline.com.br/web_api";
 const TCDN_BASE = "https://images.tcdn.com.br/img/img_prod/1123510";
 
 // WooCommerce Store API (site institucional/catalogo da Garrafaria Serra Negra).
@@ -678,10 +681,11 @@ export function familyKeyOfName(name: string): string | null {
 }
 
 /**
- * Índice família → imagem, a partir dos produtos do site (WooCommerce da
- * Garrafaria + gsnonline). Como o WooCommerce vem primeiro na lista, ele tem
- * prioridade em caso de empate de família. Usado como fallback quando uma
- * variante do SAP não tem imagem própria (mesma linha, litragem diferente).
+ * Índice família → imagem, a partir dos produtos do site. A ordem da lista
+ * define a prioridade em empates de família: passamos o gsnonline (loja B2C
+ * oficial) primeiro, então suas fotos têm precedência; o WooCommerce entra
+ * como complemento. Usado como fallback quando uma variante do SAP não tem
+ * imagem própria (mesma linha, litragem diferente).
  */
 export function buildFamilyImageIndex(
   products: GsnProduct[],
