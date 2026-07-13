@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAdmin } from "@/lib/admin/context";
 import { adminGet } from "@/lib/admin/api";
@@ -15,8 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  ShieldCheck,
-  LogOut,
   Users,
   Clock,
   CheckCircle2,
@@ -25,6 +22,7 @@ import {
   RefreshCw,
   ChevronRight,
   Mail,
+  PackageSearch,
 } from "lucide-react";
 import { EmailRequestsPanel } from "@/components/admin/EmailRequestsPanel";
 
@@ -59,8 +57,7 @@ function formatCnpj(cnpj: string): string {
 }
 
 export default function AdminPage() {
-  const router = useRouter();
-  const { isAuthenticated, isLoading, user, logout } = useAdmin();
+  const { isAuthenticated } = useAdmin();
   const [tab, setTab] = useState<"registrations" | "email-requests">(
     "registrations",
   );
@@ -68,12 +65,6 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace("/admin/login");
-    }
-  }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
     if (!isAuthenticated || tab !== "registrations") return;
@@ -96,16 +87,6 @@ export default function AdminPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-900">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-400 border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) return null;
-
   const counts = registrations.reduce(
     (acc, r) => {
       acc[r.status] = (acc[r.status] ?? 0) + 1;
@@ -115,37 +96,37 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      <header className="sticky top-0 z-20 border-b border-slate-700 bg-slate-800/90 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+    <div className="text-white">
+      <div className="mb-6">
+        <Link
+          href="/admin/catalogo"
+          className="group flex items-center justify-between rounded-xl border border-slate-700 bg-gradient-to-r from-emerald-950/40 to-slate-800/40 p-4 transition-all hover:border-emerald-500/50"
+        >
           <div className="flex items-center gap-3">
-            <ShieldCheck className="h-6 w-6 text-emerald-400" />
-            <h1 className="text-lg font-bold">Painel Comercial</h1>
-            <span className="text-sm text-slate-400">({user})</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+              <PackageSearch className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-white">Gestão de Catálogo</p>
+              <p className="text-xs text-slate-400">
+                Controle visibilidade por categoria, edite produtos, imagens e SEO.
+              </p>
+            </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => { logout(); router.replace("/admin/login"); }}
-            className="text-slate-400 hover:text-white"
-          >
-            <LogOut className="mr-1 h-4 w-4" />
-            Sair
-          </Button>
-        </div>
-      </header>
+          <ChevronRight className="h-5 w-5 text-slate-500 transition-transform group-hover:translate-x-1 group-hover:text-emerald-400" />
+        </Link>
+      </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6">
-        <div className="mb-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-emerald-400">
-            <Users className="h-4 w-4" />
-            Acessos B2B
-          </h2>
-          <p className="text-xs text-slate-400">
-            Cadastros de novos clientes e liberações de acesso por e-mail.
-          </p>
-        </div>
-        <div className="mb-6 flex gap-2 border-b border-slate-700">
+      <div className="mb-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-emerald-400">
+          <Users className="h-4 w-4" />
+          Acessos B2B
+        </h2>
+        <p className="text-xs text-slate-400">
+          Cadastros de novos clientes e liberações de acesso por e-mail.
+        </p>
+      </div>
+      <div className="mb-6 flex gap-2 border-b border-slate-700">
           <button
             onClick={() => setTab("registrations")}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
@@ -276,7 +257,6 @@ export default function AdminPage() {
         </Card>
           </>
         )}
-      </main>
     </div>
   );
 }

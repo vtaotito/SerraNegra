@@ -2,11 +2,17 @@ import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import multipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
 import { request } from "undici";
 import { v4 as uuidv4 } from "uuid";
+import { mkdirSync } from "node:fs";
 import { registerSapRoutes } from "./routes/sap.js";
 import { registerB2BRoutes } from "./routes/b2b.js";
 import { startDailySyncScheduler } from "./scheduler/dailySync.js";
+
+// Diretório dos uploads (imagens de produto). Persistido em volume Docker.
+export const UPLOADS_DIR = process.env.UPLOADS_DIR ?? "/app/uploads";
 
 type GatewayEvent =
   | { type: "order.created"; orderId: string; status: string; occurredAt: string; correlationId: string }
@@ -46,6 +52,24 @@ await app.register(cors, {
     "X-Request-Id"
   ],
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+});
+
+// Upload de imagens de produto (admin B2B). Limite de 8MB; a validação de tipo
+// (jpg/png/webp) é feita no handler.
+await app.register(multipart, {
+  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+});
+
+// Servir os arquivos enviados publicamente em /uploads (o nginx expõe via /api/uploads).
+try {
+  mkdirSync(UPLOADS_DIR, { recursive: true });
+} catch {
+  // diretório pode já existir
+}
+await app.register(fastifyStatic, {
+  root: UPLOADS_DIR,
+  prefix: "/uploads/",
+  decorateReply: false,
 });
 
 // Conexões SSE + WS em memória (MVP). Em produção: Redis pubsub/stream.

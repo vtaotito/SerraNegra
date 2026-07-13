@@ -26,8 +26,27 @@ export interface CatalogProduct {
   match_confirmed: boolean;
   total_stock: number;
   is_in_stock: boolean;
+  // Campos de gestão do admin (editáveis fora do sync).
+  seo_title: string | null;
+  seo_description: string | null;
+  seo_slug: string | null;
+  og_image_url: string | null;
+  /** Trava contra o sync: quando true, descrição/imagem manuais são preservadas. */
+  content_locked: boolean;
+  /** Ocultação individual do produto no catálogo do cliente (o sync nunca toca). */
+  admin_hidden: boolean;
+  content_updated_by: string | null;
   last_sync_at: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+/** Configuração de visibilidade por categoria no catálogo do cliente. */
+export interface CategorySetting {
+  id: number;
+  category_name: string;
+  is_visible: boolean;
+  updated_by: string | null;
   updated_at: string;
 }
 
@@ -832,8 +851,49 @@ export function matchSapToGsn(
 export class B2BCatalogService {
   private pool: pg.Pool;
 
+  // Cache curto (em memória) das categorias ocultas — a config muda pouco e é
+  // consultada em todo request de catálogo. TTL evita bater no banco a cada leitura.
+  private hiddenCategoriesCache: { value: Set<string>; expiresAt: number } | null = null;
+  private static readonly HIDDEN_CATEGORIES_TTL_MS = 30_000;
+
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
+  }
+
+  /** Invalida o cache de categorias ocultas (após um PATCH de visibilidade). */
+  invalidateCategoryCache(): void {
+    this.hiddenCategoriesCache = null;
+  }
+
+  /**
+   * Conjunto (lowercase) das categorias ocultas do catálogo do cliente. Lê de
+   * b2b_catalog_category_settings com cache curto; em falha, cai para o Set
+   * hardcoded legado (nunca deixa vazar categoria interna por indisponibilidade).
+   */
+  async getHiddenCategories(): Promise<Set<string>> {
+    const now = Date.now();
+    if (this.hiddenCategoriesCache && this.hiddenCategoriesCache.expiresAt > now) {
+      return this.hiddenCategoriesCache.value;
+    }
+    try {
+      const { rows } = await this.pool.query(
+        "SELECT category_name FROM b2b_catalog_category_settings WHERE is_visible = FALSE",
+      );
+      const set = new Set(
+        rows.map((r: any) => String(r.category_name).trim().toLowerCase()),
+      );
+      this.hiddenCategoriesCache = {
+        value: set,
+        expiresAt: now + B2BCatalogService.HIDDEN_CATEGORIES_TTL_MS,
+      };
+      return set;
+    } catch {
+      return new Set([...EXCLUDED_B2B_CATEGORIES].map((c) => c.toLowerCase()));
+    }
+  }
+
+  private isHiddenCategory(hidden: Set<string>, category: string | null | undefined): boolean {
+    return !!category && hidden.has(category.trim().toLowerCase());
   }
 
   async init(): Promise<void> {
@@ -870,9 +930,42 @@ export class B2BCatalogService {
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(64)",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS units_per_package NUMERIC(12,2)",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS sap_group_code INTEGER",
+      // Gestão de catálogo no admin: SEO, trava contra sync e ocultação individual.
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_title VARCHAR(255)",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_description TEXT",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_slug VARCHAR(255)",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS og_image_url TEXT",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS content_locked BOOLEAN NOT NULL DEFAULT FALSE",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS admin_hidden BOOLEAN NOT NULL DEFAULT FALSE",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS content_updated_by VARCHAR(128)",
     ];
     for (const sql of migrations) {
       try { await this.pool.query(sql); } catch { /* column may already exist */ }
+    }
+
+    // Visibilidade por categoria (substitui o Set hardcoded EXCLUDED_B2B_CATEGORIES).
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS b2b_catalog_category_settings (
+        id SERIAL PRIMARY KEY,
+        category_name VARCHAR(255) UNIQUE NOT NULL,
+        is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+        updated_by VARCHAR(128),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+
+    // Seed inicial: as categorias antes ocultas por código ficam is_visible=false.
+    // ON CONFLICT DO NOTHING preserva qualquer decisão manual posterior do admin.
+    for (const raw of EXCLUDED_B2B_CATEGORIES) {
+      const name = normalizeCategoryName(raw) ?? raw;
+      try {
+        await this.pool.query(
+          `INSERT INTO b2b_catalog_category_settings (category_name, is_visible, updated_by)
+           VALUES ($1, FALSE, 'seed')
+           ON CONFLICT (category_name) DO NOTHING`,
+          [name],
+        );
+      } catch { /* ignore seed errors */ }
     }
 
     await this.pool.query(`
@@ -919,11 +1012,11 @@ export class B2BCatalogService {
          gsn_product_id = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_product_id ELSE EXCLUDED.gsn_product_id END,
          gsn_product_name = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_product_name ELSE EXCLUDED.gsn_product_name END,
          gsn_slug = CASE WHEN b2b_catalog_products.match_confirmed THEN b2b_catalog_products.gsn_slug ELSE EXCLUDED.gsn_slug END,
-         image_url = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_url, b2b_catalog_products.image_url) ELSE EXCLUDED.image_url END,
-         image_thumb_url = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url) ELSE EXCLUDED.image_thumb_url END,
+         image_url = CASE WHEN b2b_catalog_products.content_locked THEN b2b_catalog_products.image_url WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_url, b2b_catalog_products.image_url) ELSE EXCLUDED.image_url END,
+         image_thumb_url = CASE WHEN b2b_catalog_products.content_locked THEN b2b_catalog_products.image_thumb_url WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.image_thumb_url, b2b_catalog_products.image_thumb_url) ELSE EXCLUDED.image_thumb_url END,
          category_name = COALESCE(EXCLUDED.category_name, b2b_catalog_products.category_name),
          sap_group_code = COALESCE(EXCLUDED.sap_group_code, b2b_catalog_products.sap_group_code),
-         description_short = CASE WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short) ELSE EXCLUDED.description_short END,
+         description_short = CASE WHEN b2b_catalog_products.content_locked THEN b2b_catalog_products.description_short WHEN b2b_catalog_products.match_confirmed THEN COALESCE(EXCLUDED.description_short, b2b_catalog_products.description_short) ELSE EXCLUDED.description_short END,
          ean = COALESCE(EXCLUDED.ean, b2b_catalog_products.ean),
          unit_of_measure = EXCLUDED.unit_of_measure,
          -- A embalagem e derivada do NOME DO ITEM NO SAP (fonte autoritativa) a
@@ -1021,9 +1114,17 @@ export class B2BCatalogService {
   async listProducts(
     filters: CatalogFilters = {},
   ): Promise<{ items: CatalogProduct[]; total: number }> {
-    const conditions: string[] = ["is_active = TRUE"];
+    const conditions: string[] = ["is_active = TRUE", "admin_hidden = FALSE"];
     const params: unknown[] = [];
     let idx = 1;
+
+    // Remove categorias ocultas (config por categoria) do catálogo do cliente.
+    const hidden = await this.getHiddenCategories();
+    if (hidden.size > 0) {
+      conditions.push(`LOWER(COALESCE(category_name,'')) <> ALL($${idx}::text[])`);
+      params.push([...hidden]);
+      idx++;
+    }
 
     if (filters.search) {
       conditions.push(
@@ -1102,7 +1203,7 @@ export class B2BCatalogService {
     // Apenas is_active (mesmo critério do catálogo legado listProducts). O flag
     // is_sales_item nem sempre é populado pelo sync, então não filtramos por ele
     // aqui para não esvaziar o catálogo.
-    const conditions: string[] = ["is_active = TRUE"];
+    const conditions: string[] = ["is_active = TRUE", "admin_hidden = FALSE"];
     const params: unknown[] = [];
     let idx = 1;
 
@@ -1115,6 +1216,7 @@ export class B2BCatalogService {
     }
 
     const where = `WHERE ${conditions.join(" AND ")}`;
+    const hidden = await this.getHiddenCategories();
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_catalog_products ${where} ORDER BY sap_item_name ASC`,
       params,
@@ -1132,8 +1234,8 @@ export class B2BCatalogService {
 
     let unified = Array.from(groups.values()).map((g) => buildUnifiedProduct(g));
 
-    // Remove categorias não comercializáveis no Portal B2B (Embalagens, Moldura, Palete).
-    unified = unified.filter((u) => !isExcludedB2BCategory(u.category));
+    // Remove categorias ocultas (configuráveis em b2b_catalog_category_settings).
+    unified = unified.filter((u) => !this.isHiddenCategory(hidden, u.category));
 
     // Regra de negócio: só exibir produtos com pedido de venda nos últimos 12
     // meses. Mantém o produto se QUALQUER variação de embalagem vendeu (assim as
@@ -1184,6 +1286,7 @@ export class B2BCatalogService {
   ): Promise<B2BUnifiedProductDetailDto | null> {
     const target = await this.getProduct(sku);
     if (!target) return null;
+    if (target.admin_hidden) return null;
 
     const prefix = getProductPrefix(target.sap_item_code);
     const targetKey = getModelKey(target.sap_item_code, target.sap_item_name);
@@ -1195,6 +1298,7 @@ export class B2BCatalogService {
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_catalog_products
        WHERE is_active = TRUE
+         AND admin_hidden = FALSE
          AND UPPER(LEFT(sap_item_code, 2)) = $1
          AND UPPER(sap_item_name) LIKE $2`,
       [prefix, likeBase],
@@ -1205,8 +1309,9 @@ export class B2BCatalogService {
     );
 
     const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
-    // Não expõe produtos de categorias removidas do Portal B2B.
-    if (isExcludedB2BCategory(unified.category)) return null;
+    // Não expõe produtos de categorias ocultas no Portal B2B.
+    const hidden = await this.getHiddenCategories();
+    if (this.isHiddenCategory(hidden, unified.category)) return null;
 
     // Regra de negócio: só expõe produtos com pedido de venda nos últimos 12
     // meses (qualquer variação de embalagem). Conjunto vazio = não filtra.
@@ -1263,10 +1368,13 @@ export class B2BCatalogService {
   async getCategories(): Promise<string[]> {
     const { rows } = await this.pool.query(
       `SELECT DISTINCT category_name FROM b2b_catalog_products
-       WHERE category_name IS NOT NULL AND is_active = TRUE
+       WHERE category_name IS NOT NULL AND is_active = TRUE AND admin_hidden = FALSE
        ORDER BY category_name`,
     );
-    return rows.map((r: any) => r.category_name);
+    const hidden = await this.getHiddenCategories();
+    return rows
+      .map((r: any) => r.category_name as string)
+      .filter((c) => !this.isHiddenCategory(hidden, c));
   }
 
   /**
@@ -1372,6 +1480,242 @@ export class B2BCatalogService {
       );
     }
   }
+
+  // ─── Gestão de catálogo (admin) ────────────────────────────────────
+
+  /**
+   * Lista paginada para o admin com filtros ricos (busca, categoria,
+   * visibilidade, travados, sem imagem). Retorna as linhas completas (com os
+   * campos de SEO/trava) e o total para paginação.
+   */
+  async listAdminProducts(filters: {
+    search?: string;
+    category?: string;
+    visibility?: "visible" | "hidden";
+    locked?: boolean;
+    noImage?: boolean;
+    activeOnly?: boolean;
+    sort?: "name" | "category" | "updated";
+    order?: "asc" | "desc";
+    page?: number;
+    limit?: number;
+  } = {}): Promise<{ items: CatalogProduct[]; total: number }> {
+    const conditions: string[] = ["sap_item_code NOT LIKE 'GSN-%'"];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (filters.activeOnly !== false) conditions.push("is_active = TRUE");
+
+    if (filters.search) {
+      conditions.push(
+        `(LOWER(sap_item_name) LIKE $${idx} OR LOWER(sap_item_code) LIKE $${idx} OR LOWER(COALESCE(ean,'')) LIKE $${idx})`,
+      );
+      params.push(`%${filters.search.toLowerCase()}%`);
+      idx++;
+    }
+    if (filters.category) {
+      conditions.push(`category_name = $${idx}`);
+      params.push(filters.category);
+      idx++;
+    }
+    if (filters.visibility === "hidden") conditions.push("admin_hidden = TRUE");
+    else if (filters.visibility === "visible") conditions.push("admin_hidden = FALSE");
+    if (filters.locked === true) conditions.push("content_locked = TRUE");
+    else if (filters.locked === false) conditions.push("content_locked = FALSE");
+    if (filters.noImage === true) conditions.push("image_url IS NULL");
+    else if (filters.noImage === false) conditions.push("image_url IS NOT NULL");
+
+    const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const sortCol =
+      filters.sort === "category"
+        ? "category_name"
+        : filters.sort === "updated"
+          ? "updated_at"
+          : "sap_item_name";
+    const sortDir = filters.order === "desc" ? "DESC" : "ASC";
+
+    const page = Math.max(1, filters.page ?? 1);
+    const limit = Math.min(100, Math.max(1, filters.limit ?? 20));
+    const offset = (page - 1) * limit;
+
+    const countRes = await this.pool.query(
+      `SELECT COUNT(*) AS cnt FROM b2b_catalog_products ${where}`,
+      params,
+    );
+    const total = Number(countRes.rows[0]?.cnt ?? 0);
+
+    const dataRes = await this.pool.query(
+      `SELECT * FROM b2b_catalog_products ${where}
+       ORDER BY ${sortCol} ${sortDir} NULLS LAST, sap_item_code ASC
+       LIMIT $${idx} OFFSET $${idx + 1}`,
+      [...params, limit, offset],
+    );
+    return { items: dataRes.rows as CatalogProduct[], total };
+  }
+
+  /** KPIs da visão geral do catálogo (admin). */
+  async getAdminOverview(): Promise<{
+    totalActive: number;
+    noImage: number;
+    hidden: number;
+    locked: number;
+    hiddenCategories: number;
+    seoIncomplete: number;
+  }> {
+    const q = (sql: string) => this.pool.query(sql).then((r) => Number(r.rows[0]?.cnt ?? 0));
+    const base = "FROM b2b_catalog_products WHERE sap_item_code NOT LIKE 'GSN-%' AND is_active = TRUE";
+    const [totalActive, noImage, hidden, locked, seoIncomplete, hiddenCategories] =
+      await Promise.all([
+        q(`SELECT COUNT(*) AS cnt ${base}`),
+        q(`SELECT COUNT(*) AS cnt ${base} AND image_url IS NULL`),
+        q(`SELECT COUNT(*) AS cnt ${base} AND admin_hidden = TRUE`),
+        q(`SELECT COUNT(*) AS cnt ${base} AND content_locked = TRUE`),
+        q(`SELECT COUNT(*) AS cnt ${base} AND (seo_title IS NULL OR seo_title = '' OR seo_description IS NULL OR seo_description = '')`),
+        q("SELECT COUNT(*) AS cnt FROM b2b_catalog_category_settings WHERE is_visible = FALSE"),
+      ]);
+    return { totalActive, noImage, hidden, locked, hiddenCategories, seoIncomplete };
+  }
+
+  /**
+   * Atualiza os campos editáveis pelo admin. Ao mexer em descrição ou imagem,
+   * seta content_locked = true para o sync não reverter. SEO/admin_hidden não
+   * travam o produto (o sync nunca toca neles).
+   */
+  async updateAdminProduct(
+    sku: string,
+    patch: {
+      description_short?: string | null;
+      seo_title?: string | null;
+      seo_description?: string | null;
+      seo_slug?: string | null;
+      og_image_url?: string | null;
+      image_url?: string | null;
+      image_thumb_url?: string | null;
+      admin_hidden?: boolean;
+    },
+    updatedBy: string,
+  ): Promise<CatalogProduct | null> {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
+    let locksContent = false;
+
+    const add = (col: string, value: unknown) => {
+      sets.push(`${col} = $${idx}`);
+      params.push(value);
+      idx++;
+    };
+
+    if (patch.description_short !== undefined) {
+      add("description_short", patch.description_short);
+      locksContent = true;
+    }
+    if (patch.image_url !== undefined) {
+      add("image_url", patch.image_url);
+      add("image_thumb_url", patch.image_thumb_url ?? patch.image_url);
+      locksContent = true;
+    }
+    if (patch.seo_title !== undefined) add("seo_title", patch.seo_title);
+    if (patch.seo_description !== undefined) add("seo_description", patch.seo_description);
+    if (patch.seo_slug !== undefined) add("seo_slug", patch.seo_slug);
+    if (patch.og_image_url !== undefined) add("og_image_url", patch.og_image_url);
+    if (patch.admin_hidden !== undefined) add("admin_hidden", patch.admin_hidden);
+
+    if (sets.length === 0) return this.getProduct(sku);
+
+    if (locksContent) sets.push("content_locked = TRUE");
+    add("content_updated_by", updatedBy);
+    sets.push("updated_at = NOW()");
+
+    params.push(sku);
+    const { rows } = await this.pool.query(
+      `UPDATE b2b_catalog_products SET ${sets.join(", ")} WHERE sap_item_code = $${idx} RETURNING *`,
+      params,
+    );
+    return (rows[0] as CatalogProduct) ?? null;
+  }
+
+  /** Grava a imagem enviada pelo admin e trava o conteúdo contra o sync. */
+  async setProductImage(
+    sku: string,
+    imageUrl: string,
+    imageThumbUrl: string,
+    updatedBy: string,
+  ): Promise<CatalogProduct | null> {
+    const { rows } = await this.pool.query(
+      `UPDATE b2b_catalog_products
+       SET image_url = $1, image_thumb_url = $2, content_locked = TRUE,
+           content_updated_by = $3, updated_at = NOW()
+       WHERE sap_item_code = $4 RETURNING *`,
+      [imageUrl, imageThumbUrl, updatedBy, sku],
+    );
+    return (rows[0] as CatalogProduct) ?? null;
+  }
+
+  /** Destrava o produto — volta a seguir descrição/imagem do sync. */
+  async unlockProduct(sku: string, updatedBy: string): Promise<CatalogProduct | null> {
+    const { rows } = await this.pool.query(
+      `UPDATE b2b_catalog_products
+       SET content_locked = FALSE, content_updated_by = $1, updated_at = NOW()
+       WHERE sap_item_code = $2 RETURNING *`,
+      [updatedBy, sku],
+    );
+    return (rows[0] as CatalogProduct) ?? null;
+  }
+
+  /**
+   * Categorias existentes no catálogo (produtos ativos) com a visibilidade
+   * configurada e a contagem de produtos. Faz LEFT JOIN com a config para
+   * refletir tanto categorias sem registro (visíveis por padrão) quanto a
+   * decisão manual do admin.
+   */
+  async listCategorySettings(): Promise<
+    { category_name: string; is_visible: boolean; product_count: number; updated_by: string | null; updated_at: string | null }[]
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT p.category_name,
+              COUNT(*) AS product_count,
+              COALESCE(cs.is_visible, TRUE) AS is_visible,
+              cs.updated_by,
+              cs.updated_at
+         FROM b2b_catalog_products p
+         LEFT JOIN b2b_catalog_category_settings cs
+           ON LOWER(cs.category_name) = LOWER(p.category_name)
+        WHERE p.category_name IS NOT NULL
+          AND p.is_active = TRUE
+          AND p.sap_item_code NOT LIKE 'GSN-%'
+        GROUP BY p.category_name, cs.is_visible, cs.updated_by, cs.updated_at
+        ORDER BY p.category_name`,
+    );
+    return rows.map((r: any) => ({
+      category_name: r.category_name,
+      is_visible: r.is_visible === true || r.is_visible === "true",
+      product_count: Number(r.product_count),
+      updated_by: r.updated_by ?? null,
+      updated_at: r.updated_at ?? null,
+    }));
+  }
+
+  /** Upsert da visibilidade de uma categoria. Invalida o cache de leitura. */
+  async upsertCategorySetting(
+    categoryName: string,
+    isVisible: boolean,
+    updatedBy: string,
+  ): Promise<CategorySetting> {
+    const { rows } = await this.pool.query(
+      `INSERT INTO b2b_catalog_category_settings (category_name, is_visible, updated_by, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (category_name) DO UPDATE SET
+         is_visible = EXCLUDED.is_visible,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()
+       RETURNING *`,
+      [categoryName, isVisible, updatedBy],
+    );
+    this.invalidateCategoryCache();
+    return rows[0] as CategorySetting;
+  }
 }
 
 /** Formato esperado pelo portal B2B (painel) */
@@ -1415,6 +1759,59 @@ export function toB2BProductDetail(p: CatalogProduct): B2BProductDetailDto {
   return {
     ...toB2BCatalogItem(p),
     fullDescription: p.description_short ?? null,
+  };
+}
+
+/** DTO completo para a Gestão de Catálogo do admin (inclui SEO/trava/visibilidade). */
+export interface AdminCatalogProductDto {
+  sku: string;
+  name: string;
+  category: string | null;
+  groupCode: number | null;
+  ean: string | null;
+  imageUrl: string | null;
+  imageThumbUrl: string | null;
+  description: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  seoSlug: string | null;
+  ogImageUrl: string | null;
+  contentLocked: boolean;
+  adminHidden: boolean;
+  isActive: boolean;
+  isInStock: boolean;
+  stockQuantity: number;
+  unitOfMeasure: string;
+  matchConfirmed: boolean;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  lastSyncAt: string | null;
+}
+
+export function toAdminCatalogProduct(p: CatalogProduct): AdminCatalogProductDto {
+  return {
+    sku: p.sap_item_code,
+    name: p.sap_item_name,
+    category: p.category_name,
+    groupCode: p.sap_group_code,
+    ean: p.ean || null,
+    imageUrl: p.image_url,
+    imageThumbUrl: p.image_thumb_url ?? p.image_url,
+    description: p.description_short ?? null,
+    seoTitle: p.seo_title ?? null,
+    seoDescription: p.seo_description ?? null,
+    seoSlug: p.seo_slug ?? null,
+    ogImageUrl: p.og_image_url ?? null,
+    contentLocked: p.content_locked === true,
+    adminHidden: p.admin_hidden === true,
+    isActive: p.is_active === true,
+    isInStock: p.is_in_stock === true,
+    stockQuantity: Number(p.total_stock ?? 0),
+    unitOfMeasure: p.unit_of_measure ?? "UN",
+    matchConfirmed: p.match_confirmed === true,
+    updatedBy: p.content_updated_by ?? null,
+    updatedAt: p.updated_at ?? null,
+    lastSyncAt: p.last_sync_at ?? null,
   };
 }
 

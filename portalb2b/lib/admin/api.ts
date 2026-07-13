@@ -49,3 +49,36 @@ export async function adminPatch<T>(url: string, data?: unknown): Promise<T> {
   const res = await adminApi.patch<T>(url, data);
   return res.data;
 }
+
+export async function adminPut<T>(url: string, data?: unknown): Promise<T> {
+  const res = await adminApi.put<T>(url, data);
+  return res.data;
+}
+
+export async function adminDelete<T>(url: string): Promise<T> {
+  const res = await adminApi.delete<T>(url);
+  return res.data;
+}
+
+/**
+ * Upload multipart com o Bearer do admin, expondo o progresso (0–100) via
+ * callback. Usado no upload de imagem de produto (drag-and-drop com barra).
+ */
+export async function adminUpload<T>(
+  url: string,
+  file: File,
+  onProgress?: (percent: number) => void,
+  fieldName = "file",
+): Promise<T> {
+  const form = new FormData();
+  form.append(fieldName, file);
+  const res = await adminApi.post<T>(url, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (evt) => {
+      if (!onProgress) return;
+      const total = evt.total ?? file.size;
+      if (total > 0) onProgress(Math.min(100, Math.round((evt.loaded / total) * 100)));
+    },
+  });
+  return res.data;
+}

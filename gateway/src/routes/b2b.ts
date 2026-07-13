@@ -48,7 +48,11 @@ import {
   resolvePackaging,
   toB2BCatalogItem,
   toB2BProductDetail,
+  toAdminCatalogProduct,
 } from "../services/b2bCatalogService.js";
+import { writeFile, mkdir } from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   sendOtpEmail,
   isEmailConfigured,
@@ -79,6 +83,31 @@ const B2B_DB_URL =
 
 const B2B_ADMIN_USER = process.env.B2B_ADMIN_USER ?? "admin";
 const B2B_ADMIN_PASS = process.env.B2B_ADMIN_PASSWORD ?? "gsn@comercial2026";
+
+// Diretório físico dos uploads (mesmo do @fastify/static no index.ts).
+const UPLOADS_DIR = process.env.UPLOADS_DIR ?? "/app/uploads";
+const B2B_PORTAL_URL_RAW =
+  process.env.B2B_PORTAL_URL ?? "https://garrafariaserranegra.com.br/b2b";
+
+// Base pública das imagens enviadas. Prioriza B2B_PUBLIC_UPLOADS_BASE; senão
+// deriva a ORIGEM pública de B2B_PORTAL_URL e serve via nginx em /api/uploads.
+function deriveUploadsBase(): string {
+  const explicit = process.env.B2B_PUBLIC_UPLOADS_BASE;
+  if (explicit && explicit.trim()) return explicit.trim().replace(/\/+$/, "");
+  try {
+    const u = new URL(B2B_PORTAL_URL_RAW);
+    return `${u.origin}/api/uploads/products`;
+  } catch {
+    return "/api/uploads/products";
+  }
+}
+const B2B_PUBLIC_UPLOADS_BASE = deriveUploadsBase();
+const ALLOWED_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+const IMAGE_EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 
 // Caixa interna que recebe avisos de novas solicitações de acesso/cadastro.
 const EMAIL_COMMERCIAL =
@@ -3763,6 +3792,228 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         body.image_thumb_url,
       );
       reply.send({ ok: true });
+    },
+  );
+
+  // =============================================
+  // ADMIN — GESTÃO DE CATÁLOGO (produtos, imagem, SEO, categorias)
+  // =============================================
+
+  // Visão geral (KPIs).
+  app.get(
+    "/b2b/admin/catalog/overview",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      try {
+        const data = await catalogService.getAdminOverview();
+        reply.send({ ok: true, data });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao carregar visão geral" });
+      }
+    },
+  );
+
+  // Lista paginada de produtos com filtros.
+  app.get(
+    "/b2b/admin/catalog/products",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const q = req.query as Record<string, string>;
+      const page = Math.max(1, Number(q.page) || 1);
+      const limit = Math.min(100, Math.max(1, Number(q.limit) || 20));
+      try {
+        const { items, total } = await catalogService.listAdminProducts({
+          search: q.search?.trim() || undefined,
+          category: q.category?.trim() || undefined,
+          visibility:
+            q.visibility === "hidden" ? "hidden" : q.visibility === "visible" ? "visible" : undefined,
+          locked: q.locked === "true" ? true : q.locked === "false" ? false : undefined,
+          noImage: q.noImage === "true" ? true : q.noImage === "false" ? false : undefined,
+          sort:
+            q.sort === "category" ? "category" : q.sort === "updated" ? "updated" : "name",
+          order: q.order === "desc" ? "desc" : "asc",
+          page,
+          limit,
+        });
+        reply.send({
+          ok: true,
+          data: items.map(toAdminCatalogProduct),
+          total,
+          page,
+          pages: Math.max(1, Math.ceil(total / limit)),
+        });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao listar produtos" });
+      }
+    },
+  );
+
+  // Detalhe de um produto.
+  app.get(
+    "/b2b/admin/catalog/products/:sku",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+      reply.send({ ok: true, data: toAdminCatalogProduct(product) });
+    },
+  );
+
+  // Edição de conteúdo/SEO/visibilidade.
+  app.patch(
+    "/b2b/admin/catalog/products/:sku",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+
+      const patch: Parameters<typeof catalogService.updateAdminProduct>[1] = {};
+      const asStr = (v: unknown): string | null =>
+        v === null ? null : typeof v === "string" ? v : String(v);
+
+      if ("description_short" in body) patch.description_short = asStr(body.description_short);
+      if ("seo_title" in body) patch.seo_title = asStr(body.seo_title);
+      if ("seo_description" in body) patch.seo_description = asStr(body.seo_description);
+      if ("seo_slug" in body) patch.seo_slug = asStr(body.seo_slug);
+      if ("og_image_url" in body) patch.og_image_url = asStr(body.og_image_url);
+      if ("image_url" in body) patch.image_url = asStr(body.image_url);
+      if ("admin_hidden" in body) patch.admin_hidden = body.admin_hidden === true || body.admin_hidden === "true";
+
+      if (Object.keys(patch).length === 0) {
+        reply.code(400).send({ ok: false, error: "Nenhum campo para atualizar" });
+        return;
+      }
+
+      try {
+        const updated = await catalogService.updateAdminProduct(sku, patch, admin.user);
+        if (!updated) {
+          reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+          return;
+        }
+        reply.send({ ok: true, data: toAdminCatalogProduct(updated) });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao atualizar produto" });
+      }
+    },
+  );
+
+  // Upload de imagem (multipart). Salva em UPLOADS_DIR/products e trava o conteúdo.
+  app.post(
+    "/b2b/admin/catalog/products/:sku/image",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+
+      let file;
+      try {
+        file = await (req as any).file();
+      } catch (err: any) {
+        reply.code(400).send({ ok: false, error: "Falha ao ler o arquivo enviado" });
+        return;
+      }
+      if (!file) {
+        reply.code(400).send({ ok: false, error: "Nenhum arquivo enviado (campo 'file')" });
+        return;
+      }
+      if (!ALLOWED_IMAGE_MIME.has(file.mimetype)) {
+        reply.code(415).send({ ok: false, error: "Tipo inválido. Use JPG, PNG ou WEBP." });
+        return;
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = await file.toBuffer();
+      } catch (err: any) {
+        // @fastify/multipart lança quando excede o limite de 8MB.
+        reply.code(413).send({ ok: false, error: "Arquivo muito grande (máx. 8MB)" });
+        return;
+      }
+
+      const ext = IMAGE_EXT_BY_MIME[file.mimetype] ?? "jpg";
+      const safeSku = sku.replace(/[^a-zA-Z0-9_-]/g, "");
+      const filename = `${safeSku}-${randomUUID()}.${ext}`;
+      const destDir = path.join(UPLOADS_DIR, "products");
+
+      try {
+        await mkdir(destDir, { recursive: true });
+        await writeFile(path.join(destDir, filename), buffer);
+      } catch (err: any) {
+        req.log.error({ error: err?.message }, "Falha ao salvar upload de imagem");
+        reply.code(500).send({ ok: false, error: "Falha ao salvar a imagem" });
+        return;
+      }
+
+      const publicUrl = `${B2B_PUBLIC_UPLOADS_BASE}/${filename}`;
+      const updated = await catalogService.setProductImage(sku, publicUrl, publicUrl, admin.user);
+      reply.send({
+        ok: true,
+        data: updated ? toAdminCatalogProduct(updated) : null,
+        imageUrl: publicUrl,
+      });
+    },
+  );
+
+  // Destravar produto (volta a seguir o sync).
+  app.post(
+    "/b2b/admin/catalog/products/:sku/unlock",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const updated = await catalogService.unlockProduct(sku, admin.user);
+      if (!updated) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+      reply.send({ ok: true, data: toAdminCatalogProduct(updated) });
+    },
+  );
+
+  // Categorias com visibilidade + contagem.
+  app.get(
+    "/b2b/admin/catalog/categories",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      try {
+        const categories = await catalogService.listCategorySettings();
+        reply.send({ ok: true, data: categories });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao listar categorias" });
+      }
+    },
+  );
+
+  // Upsert de visibilidade de categoria.
+  app.patch(
+    "/b2b/admin/catalog/categories",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const body = (req.body ?? {}) as { category_name?: unknown; is_visible?: unknown };
+      const name = typeof body.category_name === "string" ? body.category_name.trim() : "";
+      if (!name) {
+        reply.code(400).send({ ok: false, error: "category_name é obrigatório" });
+        return;
+      }
+      const isVisible = body.is_visible === true || body.is_visible === "true";
+      try {
+        const setting = await catalogService.upsertCategorySetting(name, isVisible, admin.user);
+        reply.send({ ok: true, data: setting });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao atualizar categoria" });
+      }
     },
   );
 

@@ -22,6 +22,12 @@ const nextConfig: NextConfig = {
         hostname: "garrafariaserranegra.com.br",
         pathname: "/wp-content/**",
       },
+      {
+        // Imagens de produto enviadas pelo admin, servidas pelo gateway via nginx.
+        protocol: "https",
+        hostname: "garrafariaserranegra.com.br",
+        pathname: "/api/uploads/**",
+      },
     ],
   },
   async rewrites() {
