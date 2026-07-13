@@ -16,9 +16,21 @@ export interface PackagingVariant {
   stockUnits: number;
 }
 
+/**
+ * Variante concreta de um modelo (um SKU SAP): embalagem + atributos de cor e
+ * fechamento. Espelha B2BAttributeVariant do gateway. Para garrafas há uma
+ * entrada por combinação real; para os demais produtos color/closure são null.
+ */
+export interface AttributeVariant extends PackagingVariant {
+  color: string | null;
+  closure: string | null;
+  /** Imagem específica da variante (troca de foto por cor), quando houver. */
+  imageUrl?: string | null;
+}
+
 export interface UnifiedProduct {
   id: string;
-  /** SKU da variante padrão (menor embalagem disponível). */
+  /** SKU representativo (menor embalagem em estoque) — usado no link do card. */
   sku: string;
   name: string;
   description: string;
@@ -27,18 +39,80 @@ export interface UnifiedProduct {
   /** Sigla do grupo (2 chars). */
   groupCode: string;
   capacity: string | null;
+  /** Cor única do modelo (quando só há uma); null caso contrário. */
   color: string | null;
+  /** Fechamento único do modelo (quando só há um); null caso contrário. */
   closure: string | null;
+  /** Cores distintas disponíveis no modelo. */
+  colors: string[];
+  /** Fechamentos distintos disponíveis no modelo. */
+  closures: string[];
   ean: string | null;
   imageUrl: string | null;
   inStock: boolean;
   /** Estoque disponível total em UNIDADES (soma das variantes) — "ESTOQUE (UND)". */
   stockUnits: number;
-  variants: PackagingVariant[];
+  variants: AttributeVariant[];
 }
 
 export interface UnifiedProductDetail extends UnifiedProduct {
   fullDescription: string | null;
+}
+
+/** Cores disponíveis (opcionalmente restritas a um fechamento). */
+export function availableColors(
+  variants: AttributeVariant[],
+  closure?: string | null,
+): string[] {
+  const src = closure ? variants.filter((v) => v.closure === closure) : variants;
+  return [...new Set(src.map((v) => v.color).filter((c): c is string => !!c))].sort(
+    (a, b) => a.localeCompare(b, "pt-BR"),
+  );
+}
+
+/** Fechamentos disponíveis (opcionalmente restritos a uma cor). */
+export function availableClosures(
+  variants: AttributeVariant[],
+  color?: string | null,
+): string[] {
+  const src = color ? variants.filter((v) => v.color === color) : variants;
+  return [...new Set(src.map((v) => v.closure).filter((c): c is string => !!c))].sort(
+    (a, b) => a.localeCompare(b, "pt-BR"),
+  );
+}
+
+/** Variantes de embalagem para uma combinação de cor + fechamento. */
+export function availablePackagings(
+  variants: AttributeVariant[],
+  color: string | null,
+  closure: string | null,
+): AttributeVariant[] {
+  return variants
+    .filter(
+      (v) =>
+        (color == null || v.color === color) &&
+        (closure == null || v.closure === closure),
+    )
+    .sort((a, b) => a.unitsPerPack - b.unitsPerPack || a.sku.localeCompare(b.sku));
+}
+
+/**
+ * Resolve o SKU final a partir da combinação escolhida. Retorna null enquanto a
+ * combinação não corresponde a uma variante real (ex.: falta cor/fechamento ou
+ * a embalagem não existe para a combinação selecionada).
+ */
+export function resolveSku(
+  variants: AttributeVariant[],
+  color: string | null,
+  closure: string | null,
+  packagingSku: string | null,
+): string | null {
+  if (!packagingSku) return null;
+  const v = variants.find((x) => x.sku === packagingSku);
+  if (!v) return null;
+  if (color != null && v.color !== color) return null;
+  if (closure != null && v.closure !== closure) return null;
+  return v.sku;
 }
 
 /** Formata quantidade de unidades em estoque para exibição (pt-BR). */

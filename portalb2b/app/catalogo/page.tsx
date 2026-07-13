@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import {
   type UnifiedProduct,
-  type PackagingVariant,
+  type AttributeVariant,
   packagingLabel,
   packagingShort,
   packagingTypeName,
@@ -81,8 +81,7 @@ export default function CatalogoPage() {
   const [page, setPage] = useState(1);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  // Por produto unificado: SKU da embalagem selecionada e quantidade.
-  const [selectedSku, setSelectedSku] = useState<Record<string, string>>({});
+  // Quantidade (em embalagens) do add rápido por produto de combinação única.
   const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   const { addItem, getItem } = useCart();
@@ -116,16 +115,11 @@ export default function CatalogoPage() {
   const categories = data?.categories ?? [];
   const totalCatalogCount = categories.reduce((s, c) => s + c.count, 0);
 
+  // Variante representativa (menor embalagem em estoque) — usada no add rápido.
   const getSelectedVariant = useCallback(
-    (product: UnifiedProduct): PackagingVariant => {
-      const sku = selectedSku[product.id];
-      return (
-        product.variants.find((v) => v.sku === sku) ??
-        product.variants.find((v) => v.sku === product.sku) ??
-        product.variants[0]
-      );
-    },
-    [selectedSku],
+    (product: UnifiedProduct): AttributeVariant =>
+      product.variants.find((v) => v.sku === product.sku) ?? product.variants[0],
+    [],
   );
 
   const handleQuantityChange = useCallback((id: string, delta: number, maxPacks: number) => {
@@ -137,7 +131,7 @@ export default function CatalogoPage() {
     });
   }, []);
 
-  function handleAddToCart(product: UnifiedProduct, variant: PackagingVariant) {
+  function handleAddToCart(product: UnifiedProduct, variant: AttributeVariant) {
     const perPack = packStep(variant.unitsPerPack);
     const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
     const displayName =
@@ -190,7 +184,7 @@ export default function CatalogoPage() {
     }
   }
 
-  async function handleNotify(variant: PackagingVariant, productName: string) {
+  async function handleNotify(variant: AttributeVariant, productName: string) {
     try {
       await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
@@ -513,9 +507,6 @@ export default function CatalogoPage() {
                       qty={quantities[product.id] ?? 1}
                       cartUnits={cartUnits}
                       inCart={cartUnits > 0}
-                      onSelectVariant={(sku) =>
-                        setSelectedSku((prev) => ({ ...prev, [product.id]: sku }))
-                      }
                       onQtyChange={(delta, maxPacks) =>
                         handleQuantityChange(product.id, delta, maxPacks)
                       }
@@ -664,31 +655,42 @@ function ProductCard({
   qty,
   cartUnits,
   inCart,
-  onSelectVariant,
   onQtyChange,
   onAdd,
   onNotify,
   onCategoryClick,
 }: {
   product: UnifiedProduct;
-  variant: PackagingVariant;
+  variant: AttributeVariant;
   qty: number;
   cartUnits: number;
   inCart: boolean;
-  onSelectVariant: (sku: string) => void;
   onQtyChange: (delta: number, maxPacks: number) => void;
-  onAdd: (variant: PackagingVariant) => void;
-  onNotify: (variant: PackagingVariant) => void;
+  onAdd: (variant: AttributeVariant) => void;
+  onNotify: (variant: AttributeVariant) => void;
   onCategoryClick: (category: string) => void;
 }) {
   const imgSrc = product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name);
-  const hasMultipleVariants = product.variants.length > 1;
+  const gColor = groupColor(product.groupCode);
+  const detailHref = `/catalogo/${encodeURIComponent(product.sku)}`;
+
+  // Combinação única = uma só variante (1 cor × 1 fechamento × 1 embalagem):
+  // permite o "add rápido" direto do card. Caso contrário leva ao detalhe.
+  const singleCombo = product.variants.length === 1;
+
+  // Contadores de opções (cor/fechamento/embalagem) para o indicador compacto.
+  const distinctPackagings = new Set(
+    product.variants.map((v) => `${packagingTypeName(v.packagingType)}|${v.unitsPerPack}`),
+  ).size;
+  const optionBits: string[] = [];
+  if (product.colors.length > 1) optionBits.push(`${product.colors.length} cores`);
+  if (product.closures.length > 1) optionBits.push(`${product.closures.length} fechamentos`);
+  if (distinctPackagings > 1) optionBits.push(`${distinctPackagings} embalagens`);
+
   const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
   const selectedInStock = variant?.inStock ?? false;
-  const gColor = groupColor(product.groupCode);
 
-  // Limite de pedido: estoque disponível (em embalagens inteiras) menos o que
-  // já está no carrinho desta variante.
+  // Limite de pedido (add rápido): estoque em embalagens inteiras menos carrinho.
   const maxUnits = variant ? maxOrderableUnits(variant) : 0;
   const remainingUnits = Math.max(0, maxUnits - cartUnits);
   const remainingPacks = Math.floor(remainingUnits / perPack);
@@ -705,12 +707,12 @@ function ProductCard({
       )}
     >
       <FavoriteButton
-        sku={variant?.sku ?? product.sku}
+        sku={product.sku}
         variant="overlay"
         className="absolute right-2 top-2 z-20"
       />
       <Link
-        href={`/catalogo/${encodeURIComponent(variant?.sku ?? product.sku)}`}
+        href={detailHref}
         className="relative bg-white flex items-center justify-center h-48 overflow-hidden"
       >
         {imgSrc ? (
@@ -745,16 +747,13 @@ function ProductCard({
       </Link>
 
       <CardContent className="flex flex-col flex-1 p-4">
-        <div className="mb-2 min-h-[3rem]">
-          <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-[var(--gsn-text)]">
+        <Link href={detailHref} className="mb-2 min-h-[2.5rem] block group/title">
+          <h3 className="font-semibold text-sm leading-tight line-clamp-2 text-[var(--gsn-text)] group-hover/title:text-[var(--gsn-brand)] transition-colors">
             {product.name}
           </h3>
-          <p className="text-[11px] text-muted-foreground mt-1 font-mono tracking-wide">
-            {variant?.sku ?? product.sku}
-          </p>
-        </div>
+        </Link>
 
-        {/* Atributos + categoria */}
+        {/* Categoria + capacidade + cor/fechamento únicos */}
         <div className="flex flex-wrap gap-1 mb-2">
           {product.category && (
             <button
@@ -786,67 +785,21 @@ function ProductCard({
           )}
         </div>
 
-        {/* Seletor de embalagem */}
-        <div className="mb-3">
-          <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
-            <Box className="h-3 w-3" />
-            {hasMultipleVariants ? "Escolha a embalagem" : "Embalagem"}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {product.variants.map((v) => {
-              const isSelected = v.sku === variant?.sku;
-              return (
-                <button
-                  key={v.sku}
-                  onClick={() => onSelectVariant(v.sku)}
-                  disabled={!hasMultipleVariants}
-                  title={`${packagingLabel(v.packagingType, v.unitsPerPack)}${v.inStock ? "" : " · sem estoque"}`}
-                  className={cn(
-                    "relative inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all",
-                    isSelected
-                      ? "border-[var(--gsn-brand)] bg-[var(--gsn-brand)]/10 text-[var(--gsn-brand)]"
-                      : "border-border bg-white text-muted-foreground hover:border-foreground/30",
-                    !v.inStock && "opacity-60",
-                    !hasMultipleVariants && "cursor-default",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "h-1.5 w-1.5 rounded-full",
-                      v.inStock ? "bg-emerald-500" : "bg-red-400",
-                    )}
-                  />
-                  {packagingShort(v.packagingType, v.unitsPerPack)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {perPack > 1 && (
-          <div className="flex items-center gap-1.5 mb-2 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
-            <Box className="h-3.5 w-3.5 flex-shrink-0" />
-            <span className="font-medium">
-              {packagingLabel(variant.packagingType, variant.unitsPerPack)} ={" "}
-              {perPack} {variant.unitOfMeasure}
-            </span>
+        {/* Indicador de opções (só quando há mais de uma combinação) */}
+        {optionBits.length > 0 && (
+          <div className="mb-3 flex items-center gap-1 text-[11px] font-medium text-[var(--gsn-brand)]">
+            <Layers className="h-3 w-3 flex-shrink-0" />
+            <span>{optionBits.join(" · ")}</span>
           </div>
         )}
 
-        {/* Disponibilidade (ESTOQUE em unidades, igual ao painel de compras) */}
+        {/* Disponibilidade total do modelo (em unidades) */}
         <div className="mb-3 min-h-[1.25rem]">
-          {selectedInStock ? (
+          {product.inStock ? (
             <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
               <PackageCheck className="h-3 w-3 flex-shrink-0" />
-              <span className="tabular-nums">{formatStockUnits(variant.stockUnits)}</span> un
+              <span className="tabular-nums">{formatStockUnits(product.stockUnits)}</span> un
               <span className="text-muted-foreground font-normal">em estoque</span>
-              {perPack > 1 && variant.stockQuantity >= 1 && (
-                <span className="text-muted-foreground font-normal">
-                  · {Math.floor(variant.stockQuantity)}{" "}
-                  {packagingTypeName(variant.packagingType).toLowerCase()}
-                  {Math.floor(variant.stockQuantity) !== 1 ? "s" : ""}
-                </span>
-              )}
             </p>
           ) : (
             <p className="flex items-center gap-1 text-[11px] font-medium text-red-500">
@@ -856,9 +809,18 @@ function ProductCard({
           )}
         </div>
 
-        {/* Ações */}
-        {selectedInStock ? (
+        {/* Ações: add rápido (combinação única) ou "Escolher opções" → detalhe */}
+        {singleCombo && selectedInStock ? (
           <div className="mt-auto space-y-2">
+            {perPack > 1 && (
+              <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
+                <Box className="h-3.5 w-3.5 flex-shrink-0" />
+                <span className="font-medium">
+                  {packagingLabel(variant.packagingType, variant.unitsPerPack)} = {perPack}{" "}
+                  {variant.unitOfMeasure}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <div className="flex items-center rounded-lg border bg-muted/30">
                 <Button
@@ -899,11 +861,6 @@ function ProductCard({
                 </span>
               </p>
             )}
-            {atMax && canAdd && (
-              <p className="text-[11px] text-amber-600">
-                Máximo disponível{cartUnits > 0 ? " (considerando o carrinho)" : ""}
-              </p>
-            )}
             <Button
               size="sm"
               className="w-full bg-[var(--gsn-brand)] hover:bg-[var(--gsn-brand-dark)] text-white shadow-sm"
@@ -914,17 +871,29 @@ function ProductCard({
               {canAdd ? "Adicionar ao Carrinho" : "Máximo no carrinho"}
             </Button>
           </div>
-        ) : (
+        ) : singleCombo && !selectedInStock ? (
           <div className="mt-auto">
             <Button
               size="sm"
               variant="outline"
               className="w-full border-amber-400/60 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
-              onClick={() => onNotify(variant)}
+              onClick={() => variant && onNotify(variant)}
             >
               <Bell className="h-3.5 w-3.5 mr-1.5" />
               Avise-me quando disponivel
             </Button>
+          </div>
+        ) : (
+          <div className="mt-auto">
+            <Link href={detailHref}>
+              <Button
+                size="sm"
+                className="w-full bg-[var(--gsn-brand)] hover:bg-[var(--gsn-brand-dark)] text-white shadow-sm"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 mr-1.5" />
+                Escolher opções
+              </Button>
+            </Link>
           </div>
         )}
       </CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
@@ -14,7 +14,7 @@ import { get, post } from "@/lib/api/client";
 import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import {
   type UnifiedProductDetail,
-  type PackagingVariant,
+  type AttributeVariant,
   packagingLabel,
   packagingShort,
   packagingTypeName,
@@ -22,7 +22,12 @@ import {
   formatStockUnits,
   packStep,
   maxOrderableUnits,
+  availableColors,
+  availableClosures,
+  availablePackagings,
+  resolveSku,
 } from "@/lib/catalog";
+import { AttributeSelector, type AttributeOption } from "@/components/catalog/AttributeSelector";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "@/components/catalog/FavoriteButton";
@@ -35,6 +40,8 @@ import {
   Bell,
   Check,
   Box,
+  Palette,
+  Lock,
 } from "lucide-react";
 
 export default function ProductDetailPage({
@@ -44,7 +51,9 @@ export default function ProductDetailPage({
 }) {
   const { sku } = use(params);
   const [qty, setQty] = useState(1);
-  const [selectedSku, setSelectedSku] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [selectedClosure, setSelectedClosure] = useState<string | null>(null);
+  const [selectedPackagingSku, setSelectedPackagingSku] = useState<string | null>(null);
   const { addItem, getItem } = useCart();
 
   const { data: product, isLoading } = useQuery<UnifiedProductDetail>({
@@ -52,25 +61,85 @@ export default function ProductDetailPage({
     queryFn: () => get(`/b2b/catalog/unified/${encodeURIComponent(sku)}`),
   });
 
-  // A variante inicialmente selecionada é a do SKU da URL (ou a padrão).
+  const variants = useMemo(() => product?.variants ?? [], [product]);
+
+  // Dimensões da cascata: cor → fechamento → embalagem.
+  const colorOptionValues = useMemo(() => availableColors(variants), [variants]);
+  const closureOptionValues = useMemo(
+    () => availableClosures(variants, selectedColor),
+    [variants, selectedColor],
+  );
+  const hasColorDim = colorOptionValues.length > 0;
+  const hasClosureDim = (product?.closures?.length ?? 0) > 0;
+
+  const colorReady = !hasColorDim || !!selectedColor;
+  const closureReady = !hasClosureDim || !!selectedClosure;
+
+  const packagingVariants = useMemo(
+    () => (colorReady && closureReady ? availablePackagings(variants, selectedColor, selectedClosure) : []),
+    [variants, selectedColor, selectedClosure, colorReady, closureReady],
+  );
+
+  const resolvedSku = useMemo(
+    () =>
+      colorReady && closureReady
+        ? resolveSku(variants, selectedColor, selectedClosure, selectedPackagingSku)
+        : null,
+    [variants, selectedColor, selectedClosure, selectedPackagingSku, colorReady, closureReady],
+  );
+
+  const variant: AttributeVariant | undefined = useMemo(
+    () => (resolvedSku ? variants.find((v) => v.sku === resolvedSku) : undefined),
+    [variants, resolvedSku],
+  );
+
+  // Semeia a seleção inicial a partir do SKU da URL (ou de dimensões únicas).
   useEffect(() => {
     if (!product) return;
-    const exists = product.variants.find((v) => v.sku === sku);
-    setSelectedSku(exists?.sku ?? product.sku);
+    const urlVariant = product.variants.find((v) => v.sku === sku);
+    const colors = availableColors(product.variants);
+    const initColor = urlVariant?.color ?? (colors.length === 1 ? colors[0] : null);
+    const closures = availableClosures(product.variants, initColor);
+    const initClosure = urlVariant?.closure ?? (closures.length === 1 ? closures[0] : null);
+    const packs = availablePackagings(product.variants, initColor, initClosure);
+    const initPack =
+      urlVariant?.sku ?? (packs.length === 1 ? packs[0].sku : null);
+    setSelectedColor(initColor);
+    setSelectedClosure(initClosure);
+    setSelectedPackagingSku(initPack);
+    setQty(1);
   }, [product, sku]);
 
-  const variant: PackagingVariant | undefined =
-    product?.variants.find((v) => v.sku === selectedSku) ??
-    product?.variants.find((v) => v.sku === product?.sku) ??
-    product?.variants[0];
+  // Auto-seleciona o fechamento quando só há uma opção para a cor escolhida.
+  useEffect(() => {
+    if (!colorReady || selectedClosure) return;
+    if (closureOptionValues.length === 1) setSelectedClosure(closureOptionValues[0]);
+  }, [colorReady, selectedClosure, closureOptionValues]);
+
+  // Auto-seleciona a embalagem quando só há uma para a combinação escolhida.
+  useEffect(() => {
+    if (!colorReady || !closureReady || selectedPackagingSku) return;
+    if (packagingVariants.length === 1) setSelectedPackagingSku(packagingVariants[0].sku);
+  }, [colorReady, closureReady, selectedPackagingSku, packagingVariants]);
 
   const perPack = variant ? packStep(variant.unitsPerPack) : 1;
   const inCart = variant ? getItem(variant.sku) : undefined;
-  const imgSrc = product ? product.imageUrl ?? getProductImageBySku(product.sku) ?? getProductImageUrl(product.name) : null;
   const gColor = product ? groupColor(product.groupCode) : "#A81C2C";
 
-  // Limite de pedido: estoque disponível (em embalagens inteiras) menos o que
-  // já está no carrinho desta variante.
+  // Imagem: prioriza a foto da variante da cor selecionada, senão a do modelo.
+  const imgSrc = useMemo(() => {
+    if (!product) return null;
+    const colorImg = selectedColor
+      ? product.variants.find((v) => v.color === selectedColor && v.imageUrl)?.imageUrl
+      : null;
+    return (
+      colorImg ??
+      product.imageUrl ??
+      getProductImageBySku(product.sku) ??
+      getProductImageUrl(product.name)
+    );
+  }, [product, selectedColor]);
+
   const maxUnits = variant ? maxOrderableUnits(variant) : 0;
   const inCartUnits = inCart?.quantity ?? 0;
   const remainingUnits = Math.max(0, maxUnits - inCartUnits);
@@ -78,10 +147,54 @@ export default function ProductDetailPage({
   const effQty = Math.min(qty, Math.max(1, remainingPacks));
   const totalUnits = effQty * perPack;
   const atMax = effQty >= remainingPacks;
-  const canAdd = remainingPacks >= 1;
+  const canAdd = !!variant && variant.inStock && remainingPacks >= 1;
+
+  // Opções para os seletores (cascata + estado de estoque/disponibilidade).
+  const colorOptions: AttributeOption[] = colorOptionValues.map((c) => ({
+    value: c,
+    label: c,
+    available: true,
+    inStock: variants.some((v) => v.color === c && v.inStock),
+  }));
+  const closureOptions: AttributeOption[] = closureOptionValues.map((cl) => ({
+    value: cl,
+    label: cl,
+    available: true,
+    inStock: variants.some(
+      (v) => v.closure === cl && (!selectedColor || v.color === selectedColor) && v.inStock,
+    ),
+  }));
+  const packagingOptions: AttributeOption[] = packagingVariants.map((v) => ({
+    value: v.sku,
+    label: packagingLabel(v.packagingType, v.unitsPerPack),
+    available: true,
+    inStock: v.inStock,
+  }));
+
+  function selectColor(c: string) {
+    setSelectedColor(c);
+    setSelectedClosure(null);
+    setSelectedPackagingSku(null);
+    setQty(1);
+  }
+  function selectClosure(cl: string) {
+    setSelectedClosure(cl);
+    setSelectedPackagingSku(null);
+    setQty(1);
+  }
+  function selectPackaging(s: string) {
+    setSelectedPackagingSku(s);
+    setQty(1);
+  }
+
+  // Mensagem do que ainda falta escolher (para o CTA desabilitado).
+  const pending: string[] = [];
+  if (hasColorDim && !selectedColor) pending.push("cor");
+  if (hasClosureDim && (!colorReady || !selectedClosure)) pending.push("fechamento");
+  if (colorReady && closureReady && !selectedPackagingSku) pending.push("embalagem");
 
   function handleAddToCart() {
-    if (!product || !variant) return;
+    if (!product || !variant || !resolvedSku) return;
     if (remainingPacks < 1) {
       toast.info("Estoque máximo já no carrinho", {
         description: `Você já tem ${formatStockUnits(inCartUnits)} ${variant.unitOfMeasure} — todo o estoque disponível.`,
@@ -89,8 +202,11 @@ export default function ProductDetailPage({
       return;
     }
     const label = packagingLabel(variant.packagingType, variant.unitsPerPack);
+    const attrSuffix = [variant.color, variant.closure].filter(Boolean).join(" · ");
     const displayName =
-      variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
+      variant.unitsPerPack > 1
+        ? `${product.name}${attrSuffix ? ` (${attrSuffix})` : ""} — ${label}`
+        : `${product.name}${attrSuffix ? ` (${attrSuffix})` : ""}`;
     const addPacks = Math.min(effQty, remainingPacks);
     const addUnits = addPacks * perPack;
     addItem(
@@ -115,8 +231,7 @@ export default function ProductDetailPage({
     try {
       await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description:
-          "Voce sera notificado quando este produto estiver disponivel.",
+        description: "Voce sera notificado quando este produto estiver disponivel.",
       });
     } catch {
       toast.error("Erro ao cadastrar notificacao");
@@ -126,7 +241,7 @@ export default function ProductDetailPage({
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
-      <main className="mx-auto max-w-5xl px-4 pt-6 pb-28 sm:px-6 lg:px-8 md:pb-8">
+      <main className="mx-auto max-w-5xl px-4 pt-6 pb-44 sm:px-6 lg:px-8 md:pb-8">
         <Link
           href="/catalogo"
           className="inline-flex items-center text-sm text-muted-foreground hover:text-gsn-brand mb-6"
@@ -149,7 +264,7 @@ export default function ProductDetailPage({
               </div>
             </CardContent>
           </Card>
-        ) : !product || !variant ? (
+        ) : !product ? (
           <Card>
             <CardContent className="flex flex-col items-center py-16 text-center">
               <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
@@ -179,7 +294,7 @@ export default function ProductDetailPage({
                   ) : (
                     <Package className="h-24 w-24 text-muted-foreground/20" />
                   )}
-                  {!variant.inStock && (
+                  {!product.inStock && (
                     <Badge className="absolute top-4 left-4 bg-red-600 text-white border-0 shadow-md text-sm px-3 py-1">
                       Sem estoque
                     </Badge>
@@ -188,17 +303,20 @@ export default function ProductDetailPage({
 
                 <div className="flex flex-col">
                   <div className="flex items-start justify-between gap-2">
-                    <h1 className="text-2xl font-bold text-gsn-text">
-                      {product.name}
-                    </h1>
+                    <h1 className="text-2xl font-bold text-gsn-text">{product.name}</h1>
                     <FavoriteButton
-                      sku={variant.sku}
+                      sku={variant?.sku ?? product.sku}
                       variant="inline"
                       className="-mt-1 shrink-0"
                     />
                   </div>
+                  {/* O código do SKU só aparece após a combinação estar resolvida. */}
                   <p className="text-sm text-muted-foreground font-mono mt-1">
-                    SKU: {variant.sku}
+                    {resolvedSku ? (
+                      <>SKU: {resolvedSku}</>
+                    ) : (
+                      <span className="italic">Selecione as opções para ver o código</span>
+                    )}
                   </p>
 
                   <div className="flex flex-wrap gap-2 mt-4">
@@ -215,68 +333,62 @@ export default function ProductDetailPage({
                         {product.capacity}
                       </Badge>
                     )}
-                    {product.color && (
-                      <Badge variant="outline">{product.color}</Badge>
-                    )}
-                    {product.closure && (
+                    {selectedColor && <Badge variant="outline">{selectedColor}</Badge>}
+                    {selectedClosure && (
                       <Badge variant="outline" className="text-violet-700 border-violet-200">
-                        {product.closure}
+                        {selectedClosure}
                       </Badge>
                     )}
-                    {product.ean && (
+                    {product.ean && resolvedSku && (
                       <Badge variant="outline" className="font-mono">
                         EAN: {product.ean}
                       </Badge>
                     )}
-                    {variant.inStock ? (
-                      <Badge className="bg-green-600 text-white border-0">
-                        Em estoque · {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
-                      </Badge>
+                    {variant ? (
+                      variant.inStock ? (
+                        <Badge className="bg-green-600 text-white border-0">
+                          Em estoque · {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-red-600 text-white border-0">Indisponivel</Badge>
+                      )
+                    ) : product.inStock ? (
+                      <Badge className="bg-green-600 text-white border-0">Disponível</Badge>
                     ) : (
-                      <Badge className="bg-red-600 text-white border-0">
-                        Indisponivel
-                      </Badge>
+                      <Badge className="bg-red-600 text-white border-0">Indisponivel</Badge>
                     )}
                   </div>
 
-                  {/* Seletor de embalagem */}
-                  <div className="mt-5">
-                    <h3 className="text-sm font-semibold text-gsn-text mb-2 flex items-center gap-1.5">
-                      <Box className="h-4 w-4 text-amber-700" />
-                      {product.variants.length > 1
-                        ? "Escolha a embalagem"
-                        : "Embalagem"}
-                    </h3>
-                    <div className="flex flex-wrap gap-2">
-                      {product.variants.map((v) => {
-                        const isSelected = v.sku === variant.sku;
-                        return (
-                          <button
-                            key={v.sku}
-                            onClick={() => { setSelectedSku(v.sku); setQty(1); }}
-                            className={cn(
-                              "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-all",
-                              isSelected
-                                ? "border-gsn-brand bg-gsn-brand/10 text-gsn-brand"
-                                : "border-border bg-white text-muted-foreground hover:border-foreground/30",
-                              !v.inStock && "opacity-60",
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "h-2 w-2 rounded-full",
-                                v.inStock ? "bg-emerald-500" : "bg-red-400",
-                              )}
-                            />
-                            {packagingLabel(v.packagingType, v.unitsPerPack)}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* Seletores em cascata: cor → fechamento → embalagem */}
+                  <div className="mt-5 space-y-4">
+                    {hasColorDim && (
+                      <AttributeSelector
+                        label="Cor"
+                        options={colorOptions}
+                        selected={selectedColor}
+                        onSelect={selectColor}
+                      />
+                    )}
+                    {hasClosureDim && colorReady && (
+                      <AttributeSelector
+                        label="Fechamento"
+                        options={closureOptions}
+                        selected={selectedClosure}
+                        onSelect={selectClosure}
+                      />
+                    )}
+                    {colorReady && closureReady && packagingOptions.length > 0 && (
+                      <AttributeSelector
+                        label={packagingOptions.length > 1 ? "Escolha a embalagem" : "Embalagem"}
+                        options={packagingOptions}
+                        selected={selectedPackagingSku}
+                        onSelect={selectPackaging}
+                      />
+                    )}
                   </div>
 
                   {/* Detalhe da embalagem selecionada */}
-                  {perPack > 1 && (
+                  {variant && perPack > 1 && (
                     <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
@@ -312,9 +424,7 @@ export default function ProductDetailPage({
 
                   {(product.fullDescription || product.description) && (
                     <div className="mt-5">
-                      <h3 className="text-sm font-semibold text-gsn-text mb-1">
-                        Descricao
-                      </h3>
+                      <h3 className="text-sm font-semibold text-gsn-text mb-1">Descricao</h3>
                       <div
                         className="text-sm text-muted-foreground leading-relaxed prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{
@@ -324,16 +434,23 @@ export default function ProductDetailPage({
                     </div>
                   )}
 
-                  {inCart && (
+                  {inCart && variant && (
                     <div className="flex items-center gap-2 mt-4 text-sm text-gsn-brand">
                       <Check className="h-4 w-4" />
-                      Ja esta no carrinho ({inCart.quantity}{" "}
-                      {variant.unitOfMeasure})
+                      Ja esta no carrinho ({inCart.quantity} {variant.unitOfMeasure})
                     </div>
                   )}
 
-                  <div className="mt-auto pt-6">
-                    {variant.inStock ? (
+                  {/* Ações (desktop). No mobile, a barra sticky abaixo assume. */}
+                  <div className="mt-auto pt-6 hidden md:block">
+                    {!resolvedSku ? (
+                      <Button className="w-full h-10" disabled>
+                        <Lock className="h-4 w-4 mr-2" />
+                        {pending.length > 0
+                          ? `Selecione: ${pending.join(", ")}`
+                          : "Selecione as opções"}
+                      </Button>
+                    ) : variant?.inStock ? (
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <div className="flex items-center rounded-md border">
@@ -354,9 +471,7 @@ export default function ProductDetailPage({
                               size="icon"
                               className="h-10 w-10 rounded-l-none"
                               disabled={!canAdd || atMax}
-                              onClick={() =>
-                                setQty((q) => Math.min(remainingPacks, q + 1))
-                              }
+                              onClick={() => setQty((q) => Math.min(remainingPacks, q + 1))}
                             >
                               <Plus className="h-4 w-4" />
                             </Button>
@@ -413,6 +528,67 @@ export default function ProductDetailPage({
           </Card>
         )}
       </main>
+
+      {/* ─── Barra CTA sticky (mobile) — acima do MobileNav ─── */}
+      {product && (
+        <div className="fixed inset-x-0 bottom-14 z-40 border-t bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 md:hidden pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto max-w-md px-4 py-2.5">
+            {!resolvedSku ? (
+              <Button className="w-full h-11" disabled>
+                <Palette className="h-4 w-4 mr-2" />
+                {pending.length > 0 ? `Selecione: ${pending.join(", ")}` : "Selecione as opções"}
+              </Button>
+            ) : variant?.inStock ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center rounded-md border bg-white">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-10 rounded-r-none"
+                    disabled={!canAdd || effQty <= 1}
+                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="w-9 text-center text-sm font-semibold tabular-nums">
+                    {canAdd ? effQty : 0}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-10 rounded-l-none"
+                    disabled={!canAdd || atMax}
+                    onClick={() => setQty((q) => Math.min(remainingPacks, q + 1))}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <Button
+                  className="flex-1 h-11 bg-gsn-brand hover:bg-gsn-brand-dark text-white"
+                  disabled={!canAdd}
+                  onClick={handleAddToCart}
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  {canAdd
+                    ? perPack > 1
+                      ? `Adicionar · ${totalUnits} ${variant.unitOfMeasure}`
+                      : "Adicionar ao carrinho"
+                    : "Máximo no carrinho"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="w-full h-11 border-amber-500 text-amber-600 hover:bg-amber-50"
+                onClick={handleNotify}
+              >
+                <Bell className="h-4 w-4 mr-2" />
+                Avise-me quando disponivel
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

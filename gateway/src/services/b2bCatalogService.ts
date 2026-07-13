@@ -338,9 +338,42 @@ export function getUnifiedKey(itemCode: string | null | undefined, name: string 
 
 const COLOR_MAP: Record<string, string> = {
   TRA: "Transparente", TRANSPARENTE: "Transparente", AMB: "Âmbar", AMBAR: "Âmbar",
-  BRANCA: "Branca", PRETA: "Preta", DOURADA: "Dourada", PRATA: "Prata",
-  CREME: "Creme", MARROM: "Marrom", VERMELHA: "Vermelha", VERDE: "Verde", AZUL: "Azul",
+  BRANCA: "Branca", BRANCO: "Branca", PRETA: "Preta", PRETO: "Preta",
+  DOURADA: "Dourada", PRATA: "Prata", CREME: "Creme", MARROM: "Marrom",
+  VERMELHA: "Vermelha", VERDE: "Verde", AZUL: "Azul", FUME: "Fumê", FUMÊ: "Fumê",
 };
+
+/** Tokens de cor reconhecidos no nome (chaves do COLOR_MAP). */
+const COLOR_TOKENS = Object.keys(COLOR_MAP);
+const COLOR_RE = new RegExp(`\\b(${COLOR_TOKENS.join("|")})\\b`, "i");
+
+/**
+ * Padrões de fechamento, dos mais específicos (compostos) para os mais simples.
+ * A ordem importa: `ROLHA.CORTIÇA` deve casar antes de `ROLHA`/`CORTIÇA` e
+ * `COROA-PRY-OFF`/`COROA-TWIST-OFF` antes de `COROA`. Aceita separadores por
+ * ponto, hífen ou espaço (o SAP mistura `ROLHA.CORTIÇA`, `TWIST-OFF`, etc.) e a
+ * cedilha opcional (`CORTICA`/`CORTIÇA`).
+ */
+const CLOSURE_PATTERNS: { re: RegExp; label: string }[] = [
+  { re: /ROLHA[.\-\s]?CORTI[ÇC]A/i, label: "Rolha/Cortiça" },
+  { re: /COROA[.\-\s]?PRY[.\-\s]?OFF/i, label: "Coroa Pry-Off" },
+  { re: /COROA[.\-\s]?TWIST[.\-\s]?OFF/i, label: "Coroa Twist-Off" },
+  { re: /TWIST[.\-\s]?OFF/i, label: "Twist-Off" },
+  { re: /FLIP[.\-\s]?TOP/i, label: "Flip-Top" },
+  { re: /CONTA[.\-\s]?GOTAS/i, label: "Conta-Gotas" },
+  { re: /CORTI[ÇC]A/i, label: "Cortiça" },
+  { re: /\bROLHA\b/i, label: "Rolha" },
+  { re: /\bROSCA\b/i, label: "Rosca" },
+  { re: /\bCOROA\b/i, label: "Coroa" },
+];
+
+/** Diâmetro de gargalo/rosca (ex.: "31MM", "00MM") — não é atributo selecionável. */
+const DIAMETER_RE = /\b\d{1,3}\s*MM\b/gi;
+
+/** True quando o nome é de uma GARRAFA (prefixo exato, sem pegar GARRAFÃO). */
+export function isBottleName(name: string | null | undefined): boolean {
+  return /^\s*GARRAFA(?:\s|$)/i.test(name ?? "");
+}
 
 /** Extrai atributos (capacidade/cor/fechamento) do nome-base. */
 export function parseProductAttributes(baseName: string): {
@@ -351,13 +384,49 @@ export function parseProductAttributes(baseName: string): {
   const capM = baseName.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
   const capacity = capM ? `${capM[1]} ${capM[2].toUpperCase()}` : null;
 
-  const corM = baseName.match(/\b(TRA|AMB|AMBAR|BRANCA|PRETA|DOURADA|PRATA|CREME|MARROM|VERMELHA|VERDE|AZUL|TRANSPARENTE)\b/i);
+  const corM = baseName.match(COLOR_RE);
   const color = corM ? COLOR_MAP[corM[1].toUpperCase()] ?? corM[1] : null;
 
-  const fM = baseName.match(/\b(ROLHA|ROSCA|TWIST[.-]?OFF|FLIP[.-]?TOP|CONTA[.-]?GOTAS|COROA[.-]?PRY[.-]?OFF|COROA[.-]?TWIST[.-]?OFF)\b/i);
-  const closure = fM ? fM[1].replace(/\./g, "-").toUpperCase() : null;
+  let closure: string | null = null;
+  for (const { re, label } of CLOSURE_PATTERNS) {
+    if (re.test(baseName)) {
+      closure = label;
+      break;
+    }
+  }
 
   return { capacity, color, closure };
+}
+
+/**
+ * Nome do MODELO do produto (chave de agrupamento das variações de cor/
+ * fechamento). Parte do nome-base (sem embalagem) e, apenas para garrafas,
+ * remove também os tokens de cor, fechamento e diâmetro, preservando a
+ * identidade `linha + volume`. Ex.: `GARRAFA ALFA 750 ML TRA ROLHA` →
+ * `GARRAFA ALFA 750 ML`. Para não-garrafas, é igual a getBaseProductName (sem
+ * regressão na unificação por embalagem).
+ */
+export function getModelBaseName(name: string | null | undefined): string {
+  const base = getBaseProductName(name);
+  if (!isBottleName(base)) return base;
+
+  let s = base;
+  s = s.replace(DIAMETER_RE, " ");
+  for (const { re } of CLOSURE_PATTERNS) {
+    s = s.replace(new RegExp(re.source, "gi"), " ");
+  }
+  s = s.replace(new RegExp(`\\b(${COLOR_TOKENS.join("|")})\\b`, "gi"), " ");
+  return s.replace(/\s{2,}/g, " ").trim();
+}
+
+/**
+ * Chave de agrupamento por modelo: "<prefixo>::<nome_do_modelo>". Aceita tanto
+ * o código SAP completo quanto o prefixo de 2 chars (getProductPrefix trata os
+ * dois). Para não-garrafas equivale a getUnifiedKey (agrupamento por embalagem).
+ */
+export function getModelKey(itemCode: string | null | undefined, name: string | null | undefined): string {
+  const model = getModelBaseName(name) || getBaseProductName(name) || (itemCode ?? "—");
+  return `${getProductPrefix(itemCode)}::${model}`;
 }
 
 export interface StockNotification {
@@ -1047,10 +1116,11 @@ export class B2BCatalogService {
       params,
     );
 
-    // Agrupa por chave de unificação.
+    // Agrupa por modelo: garrafas colapsam cor/fechamento; demais categorias
+    // seguem agrupando por embalagem (getModelKey == getUnifiedKey para elas).
     const groups = new Map<string, CatalogProduct[]>();
     for (const r of rows as CatalogProduct[]) {
-      const key = getUnifiedKey(r.sap_item_code, r.sap_item_name);
+      const key = getModelKey(r.sap_item_code, r.sap_item_name);
       const arr = groups.get(key) ?? [];
       arr.push(r);
       groups.set(key, arr);
@@ -1112,8 +1182,11 @@ export class B2BCatalogService {
     if (!target) return null;
 
     const prefix = getProductPrefix(target.sap_item_code);
-    const base = getBaseProductName(target.sap_item_name);
-    const likeBase = `${base.replace(/[%_]/g, " ")}%`;
+    const targetKey = getModelKey(target.sap_item_code, target.sap_item_name);
+    // O nome do modelo é sempre um prefixo do nome completo (linha+volume vêm
+    // antes de cor/fechamento/embalagem), então serve de filtro grosseiro no SQL.
+    const modelBase = getModelBaseName(target.sap_item_name) || getBaseProductName(target.sap_item_name);
+    const likeBase = `${modelBase.replace(/[%_]/g, " ")}%`;
 
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_catalog_products
@@ -1124,9 +1197,7 @@ export class B2BCatalogService {
     );
 
     const variants = (rows as CatalogProduct[]).filter(
-      (r) =>
-        getProductPrefix(r.sap_item_code) === prefix &&
-        getBaseProductName(r.sap_item_name) === base,
+      (r) => getModelKey(r.sap_item_code, r.sap_item_name) === targetKey,
     );
 
     const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
@@ -1345,9 +1416,19 @@ export function toB2BProductDetail(p: CatalogProduct): B2BProductDetailDto {
 
 // ─── DTOs do catálogo unificado ──────────────────────────────────────
 
-/** Uma embalagem disponível de um produto unificado (cada uma é um SKU SAP). */
-export interface B2BPackagingVariant {
+/**
+ * Uma variante concreta do modelo (um SKU SAP), com seus atributos de cor,
+ * fechamento e embalagem. Para garrafas há uma entrada por combinação real de
+ * (cor × fechamento × embalagem); o front deriva as opções disponíveis e
+ * resolve o SKU a partir da seleção. Para os demais produtos, a cor/fechamento
+ * costumam ser nulos e a variante representa só a embalagem (como antes).
+ */
+export interface B2BAttributeVariant {
   sku: string;
+  /** Cor normalizada (ex.: "Transparente", "Âmbar") ou null. */
+  color: string | null;
+  /** Fechamento normalizado (ex.: "Rolha", "Rosca", "Coroa") ou null. */
+  closure: string | null;
   /** Tipo de embalagem resolvido ("Unidade" | "Caixa" | "Fardo" | ...). */
   packagingType: string;
   /** Unidades por embalagem (>= 1). */
@@ -1361,14 +1442,16 @@ export interface B2BPackagingVariant {
    * coluna "ESTOQUE (UND)" da Gestão de Compras do painel.
    */
   stockUnits: number;
+  /** Imagem específica da variante (troca de foto por cor), quando houver. */
+  imageUrl?: string | null;
 }
 
 export interface B2BUnifiedProductDto {
-  /** Chave de unificação ("<prefixo>::<nome_base>"). */
+  /** Chave de agrupamento por modelo ("<prefixo>::<nome_do_modelo>"). */
   id: string;
-  /** SKU da variante padrão (menor embalagem disponível). */
+  /** SKU representativo (menor embalagem em estoque) — usado no link do card. */
   sku: string;
-  /** Nome-base do produto (sem sufixo de embalagem). */
+  /** Nome do modelo (sem cor/fechamento/embalagem para garrafas). */
   name: string;
   description: string;
   /** Categoria comercial (grupo do produto) — ex.: "Garrafa Nacional". */
@@ -1376,8 +1459,14 @@ export interface B2BUnifiedProductDto {
   /** Sigla do grupo (2 chars) — ex.: "GN". */
   groupCode: string;
   capacity: string | null;
+  /** Cor única do modelo (quando só há uma); null quando há várias ou nenhuma. */
   color: string | null;
+  /** Fechamento único do modelo (quando só há um); null caso contrário. */
   closure: string | null;
+  /** Cores distintas disponíveis no modelo (ordenadas). */
+  colors: string[];
+  /** Fechamentos distintos disponíveis no modelo (ordenados). */
+  closures: string[];
   ean: string | null;
   imageUrl: string | null;
   inStock: boolean;
@@ -1386,7 +1475,8 @@ export interface B2BUnifiedProductDto {
    * variantes). É a "ESTOQUE (UND)" exibida na Gestão de Compras do painel.
    */
   stockUnits: number;
-  variants: B2BPackagingVariant[];
+  /** Todas as variantes concretas (uma por SKU) do modelo. */
+  variants: B2BAttributeVariant[];
 }
 
 export interface B2BUnifiedProductDetailDto extends B2BUnifiedProductDto {
@@ -1413,37 +1503,52 @@ function resolveVariantPackagingType(p: CatalogProduct, unitsPerPack: number): s
  * compartilham a mesma chave de unificação).
  */
 export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDetailDto {
-  const baseName = getBaseProductName(rows[0]?.sap_item_name);
-  const groupCode = getProductPrefix(rows[0]?.sap_item_code);
-  const attrs = parseProductAttributes(baseName || rows[0]?.sap_item_name || "");
+  const first = rows[0];
+  const groupCode = getProductPrefix(first?.sap_item_code);
+  const modelName = getModelBaseName(first?.sap_item_name);
+  // Capacidade sai do nome do modelo (linha + volume); comum a todas as variantes.
+  const attrs = parseProductAttributes(
+    modelName || getBaseProductName(first?.sap_item_name) || first?.sap_item_name || "",
+  );
 
-  const variants: B2BPackagingVariant[] = rows
+  const variants: B2BAttributeVariant[] = rows
     .map((r) => {
       const unitsPerPack = normUnitsPerPack(r.units_per_package);
       const stockQuantity = Number(r.total_stock ?? 0);
+      // Cor/fechamento saem do nome-base da PRÓPRIA variante (cada SKU tem os seus).
+      const vAttrs = parseProductAttributes(getBaseProductName(r.sap_item_name));
       return {
         sku: r.sap_item_code,
+        color: vAttrs.color,
+        closure: vAttrs.closure,
         packagingType: resolveVariantPackagingType(r, unitsPerPack),
         unitsPerPack,
         unitOfMeasure: r.unit_of_measure ?? "UN",
         inStock: r.is_in_stock === true,
         stockQuantity,
         stockUnits: Math.max(0, Math.round(stockQuantity * unitsPerPack)),
-      } satisfies B2BPackagingVariant;
+        imageUrl: r.image_url ?? null,
+      } satisfies B2BAttributeVariant;
     })
     // Ordena por unidades por embalagem (menor primeiro: UND → CAIXA → FARDO).
     .sort((a, b) => a.unitsPerPack - b.unitsPerPack || a.sku.localeCompare(b.sku));
 
-  // Variante padrão: menor embalagem em estoque; senão a menor embalagem.
+  // Dimensões distintas disponíveis (para os seletores em cascata do front).
+  const colors = [...new Set(variants.map((v) => v.color).filter((c): c is string => !!c))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const closures = [...new Set(variants.map((v) => v.closure).filter((c): c is string => !!c))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  // Variante representativa: menor embalagem em estoque; senão a menor embalagem.
   const primaryVariant = variants.find((v) => v.inStock) ?? variants[0];
   const primaryRow =
-    rows.find((r) => r.sap_item_code === primaryVariant?.sku) ?? rows[0];
+    rows.find((r) => r.sap_item_code === primaryVariant?.sku) ?? first;
 
   const imageUrl =
     primaryRow?.image_url ?? rows.find((r) => r.image_url)?.image_url ?? null;
   const ean = primaryRow?.ean || rows.find((r) => r.ean)?.ean || null;
   const category =
-    getProductGroupName(rows[0]?.sap_item_code) ??
+    getProductGroupName(first?.sap_item_code) ??
     primaryRow?.category_name ??
     rows.find((r) => r.category_name)?.category_name ??
     null;
@@ -1453,16 +1558,18 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
     "";
 
   return {
-    id: getUnifiedKey(rows[0]?.sap_item_code, rows[0]?.sap_item_name),
-    sku: primaryVariant?.sku ?? rows[0]?.sap_item_code,
-    name: baseName || rows[0]?.sap_item_name || rows[0]?.sap_item_code,
+    id: getModelKey(first?.sap_item_code, first?.sap_item_name),
+    sku: primaryVariant?.sku ?? first?.sap_item_code,
+    name: modelName || getBaseProductName(first?.sap_item_name) || first?.sap_item_name || first?.sap_item_code,
     description: descriptionShort,
     fullDescription: descriptionShort || null,
     category,
     groupCode,
     capacity: attrs.capacity,
-    color: attrs.color,
-    closure: attrs.closure,
+    color: colors.length === 1 ? colors[0] : null,
+    closure: closures.length === 1 ? closures[0] : null,
+    colors,
+    closures,
     ean,
     imageUrl,
     inStock: variants.some((v) => v.inStock),
