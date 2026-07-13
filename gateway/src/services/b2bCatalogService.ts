@@ -367,8 +367,11 @@ const CLOSURE_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /\bCOROA\b/i, label: "Coroa" },
 ];
 
-/** Diâmetro de gargalo/rosca (ex.: "31MM", "00MM") — não é atributo selecionável. */
-const DIAMETER_RE = /\b\d{1,3}\s*MM\b/gi;
+/**
+ * Diâmetro de gargalo/rosca (ex.: "31MM", "00MM", "19,28MM", "22,5MM") — não é
+ * atributo selecionável. Cobre parte decimal com "," ou ".".
+ */
+const DIAMETER_RE = /\b\d{1,3}(?:[.,]\d{1,3})?\s*MM\b/gi;
 
 /** True quando o nome é de uma GARRAFA (prefixo exato, sem pegar GARRAFÃO). */
 export function isBottleName(name: string | null | undefined): boolean {
@@ -416,7 +419,8 @@ export function getModelBaseName(name: string | null | undefined): string {
     s = s.replace(new RegExp(re.source, "gi"), " ");
   }
   s = s.replace(new RegExp(`\\b(${COLOR_TOKENS.join("|")})\\b`, "gi"), " ");
-  return s.replace(/\s{2,}/g, " ").trim();
+  // Remove pontuação residual solta no fim (ex.: vírgula de diâmetro decimal já removido).
+  return s.replace(/\s{2,}/g, " ").replace(/[\s,;.\-]+$/, "").trim();
 }
 
 /**
