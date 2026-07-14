@@ -61,6 +61,8 @@ import {
   SeoAiNotConfiguredError,
   SeoAiGenerationError,
 } from "../services/seoAiService.js";
+import { SeoBulkGenerator } from "../services/seoBulkGenerator.js";
+import { z } from "zod";
 import {
   SearchConsoleService,
   GscNotConfiguredError,
@@ -4215,6 +4217,76 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           windowDays: SEO_METRICS_WINDOW_DAYS,
         },
       });
+    },
+  );
+
+  // Gerador de SEO em massa (job em memória, singleton por processo).
+  const seoBulkGenerator = new SeoBulkGenerator(
+    catalogService,
+    seoAiService,
+    buildProductSeoInput,
+    "ia-bulk",
+    app.log,
+  );
+
+  const bulkGenerateSchema = z.object({
+    scope: z.enum(["visible", "all"]).optional(),
+    onlyMissing: z.boolean().optional(),
+    force: z.boolean().optional(),
+  });
+
+  // Dispara a geração de SEO em massa. Retorna imediatamente com o snapshot.
+  app.post(
+    "/b2b/admin/catalog/seo/bulk-generate",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const parsed = bulkGenerateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        reply.code(400).send({ ok: false, error: "Parâmetros inválidos", issues: parsed.error.issues });
+        return;
+      }
+      if (seoBulkGenerator.isRunning()) {
+        reply.code(409).send({
+          ok: false,
+          error: "Já existe uma geração de SEO em andamento.",
+          code: "JOB_RUNNING",
+          data: seoBulkGenerator.getStatus(),
+        });
+        return;
+      }
+      try {
+        const snapshot = await seoBulkGenerator.start(parsed.data);
+        reply.send({ ok: true, data: snapshot });
+      } catch (err: any) {
+        if (err instanceof SeoAiNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "AI_NOT_CONFIGURED" });
+          return;
+        }
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao iniciar a geração em massa" });
+      }
+    },
+  );
+
+  // Status/progresso do job de geração em massa.
+  app.get(
+    "/b2b/admin/catalog/seo/bulk-generate/status",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      reply.send({ ok: true, data: seoBulkGenerator.getStatus() });
+    },
+  );
+
+  // Cancelamento cooperativo do job em andamento.
+  app.post(
+    "/b2b/admin/catalog/seo/bulk-generate/cancel",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      const cancelled = seoBulkGenerator.requestCancel();
+      if (!cancelled) {
+        reply.code(409).send({ ok: false, error: "Nenhuma geração em andamento para cancelar." });
+        return;
+      }
+      reply.send({ ok: true, data: seoBulkGenerator.getStatus() });
     },
   );
 

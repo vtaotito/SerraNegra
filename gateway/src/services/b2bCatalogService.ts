@@ -1850,6 +1850,38 @@ export class B2BCatalogService {
     return rows as CatalogProduct[];
   }
 
+  /**
+   * Produtos-alvo da geração de SEO em massa. Com scope "visible" aplica os
+   * MESMOS filtros de visibilidade do catálogo público do portal: respeita
+   * admin_hidden e a visibilidade por categoria (b2b_catalog_category_settings).
+   * Com scope "all" retorna todos os ativos (fora os sintéticos GSN-*).
+   */
+  async listProductsForBulkSeo(
+    scope: "visible" | "all" = "visible",
+  ): Promise<CatalogProduct[]> {
+    const conditions: string[] = ["is_active = TRUE", "sap_item_code NOT LIKE 'GSN-%'"];
+    const params: unknown[] = [];
+    let idx = 1;
+
+    if (scope === "visible") {
+      conditions.push("admin_hidden = FALSE");
+      const hidden = await this.getHiddenCategories();
+      if (hidden.size > 0) {
+        conditions.push(`LOWER(COALESCE(category_name,'')) <> ALL($${idx}::text[])`);
+        params.push([...hidden]);
+        idx++;
+      }
+    }
+
+    const { rows } = await this.pool.query(
+      `SELECT * FROM b2b_catalog_products
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY sap_item_name ASC`,
+      params,
+    );
+    return rows as CatalogProduct[];
+  }
+
   /** Upsert da visibilidade de uma categoria. Invalida o cache de leitura. */
   async upsertCategorySetting(
     categoryName: string,

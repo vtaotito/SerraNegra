@@ -166,6 +166,59 @@ export function refreshSeoMetrics(): Promise<{ ok: boolean; data: { periodStart:
   );
 }
 
+// ─── Geração em massa ────────────────────────────────────────────────
+
+export type SeoBulkStatus = "idle" | "running" | "done" | "error" | "cancelled";
+
+export interface SeoBulkError {
+  sku: string;
+  message: string;
+}
+
+export interface SeoBulkJob {
+  jobId: string | null;
+  status: SeoBulkStatus;
+  scope: "visible" | "all";
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  currentSku: string | null;
+  errors: SeoBulkError[];
+  lastUpdatedAt: string | null;
+  error: string | null;
+}
+
+export interface SeoBulkOptions {
+  scope?: "visible" | "all";
+  onlyMissing?: boolean;
+  force?: boolean;
+}
+
+export function startSeoBulkGenerate(
+  opts: SeoBulkOptions = {},
+): Promise<{ ok: boolean; data: SeoBulkJob; error?: string; code?: string }> {
+  return adminPost<{ ok: boolean; data: SeoBulkJob; error?: string; code?: string }>(
+    "/b2b/admin/catalog/seo/bulk-generate",
+    opts,
+  );
+}
+
+export function fetchSeoBulkStatus(): Promise<{ ok: boolean; data: SeoBulkJob }> {
+  return adminGet<{ ok: boolean; data: SeoBulkJob }>(
+    "/b2b/admin/catalog/seo/bulk-generate/status",
+  );
+}
+
+export function cancelSeoBulkGenerate(): Promise<{ ok: boolean; data: SeoBulkJob }> {
+  return adminPost<{ ok: boolean; data: SeoBulkJob }>(
+    "/b2b/admin/catalog/seo/bulk-generate/cancel",
+  );
+}
+
 // ─── Formatação / cores ──────────────────────────────────────────────
 
 // ─── Score determinístico (espelho do backend, para preview ao vivo) ──

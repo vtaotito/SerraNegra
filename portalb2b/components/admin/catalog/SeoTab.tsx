@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import { categoryColor } from "@/lib/catalog";
 import { ProductDrawer, type ProductPatch } from "./ProductDrawer";
 import { SeoProductDrawer } from "./SeoProductDrawer";
+import { SeoBulkGenerateCard } from "./SeoBulkGenerateCard";
 
 type SortField = "score" | "position" | "clicks" | "impressions";
 
@@ -210,6 +211,9 @@ export function SeoTab() {
           )}
         </div>
       )}
+
+      {/* Geração de SEO em massa */}
+      <SeoBulkGenerateCard aiConfigured={dash.config.openaiConfigured} />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
