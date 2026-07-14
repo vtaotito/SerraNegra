@@ -19,15 +19,18 @@
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.7",
     "fastify": "^5.3.2",
+    "googleapis": "^173.0.0",
     "jsonwebtoken": "^9.0.2",
     "node-cache": "^5.1.2",
     "node-cron": "^4.2.1",
     "nodemailer": "^6.9.16",
+    "openai": "^6.46.0",
     "pg": "^8.13.1",
     "pino": "^9.9.0",
     "undici": "^7.4.0",
     "uuid": "^11.1.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

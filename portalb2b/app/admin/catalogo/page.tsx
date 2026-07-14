@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutDashboard, Package, FolderTree, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Package, FolderTree, RefreshCw, Search } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,9 +10,10 @@ import { adminPost } from "@/lib/admin/api";
 import { OverviewTab } from "@/components/admin/catalog/OverviewTab";
 import { ProductsTab } from "@/components/admin/catalog/ProductsTab";
 import { CategoriesTab } from "@/components/admin/catalog/CategoriesTab";
+import { SeoTab } from "@/components/admin/catalog/SeoTab";
 import type { ProductFilterPreset } from "@/components/admin/catalog/types";
 
-type TabValue = "overview" | "products" | "categories";
+type TabValue = "overview" | "products" | "categories" | "seo";
 
 export default function CatalogAdminPage() {
   const qc = useQueryClient();
@@ -70,6 +71,9 @@ export default function CatalogAdminPage() {
           <TabsTrigger value="categories">
             <FolderTree className="h-4 w-4" /> Categorias
           </TabsTrigger>
+          <TabsTrigger value="seo">
+            <Search className="h-4 w-4" /> SEO
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -80,6 +84,9 @@ export default function CatalogAdminPage() {
         </TabsContent>
         <TabsContent value="categories">
           <CategoriesTab />
+        </TabsContent>
+        <TabsContent value="seo">
+          <SeoTab />
         </TabsContent>
       </Tabs>
     </div>

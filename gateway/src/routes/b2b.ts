@@ -49,7 +49,25 @@ import {
   toB2BCatalogItem,
   toB2BProductDetail,
   toAdminCatalogProduct,
+  deriveCanonicalUrl,
+  parseKeywords,
+  getModelBaseName,
+  getBaseProductName,
+  parseProductAttributes,
+  type CatalogProduct,
 } from "../services/b2bCatalogService.js";
+import {
+  SeoAiService,
+  SeoAiNotConfiguredError,
+  SeoAiGenerationError,
+} from "../services/seoAiService.js";
+import {
+  SearchConsoleService,
+  GscNotConfiguredError,
+  isoDaysAgo,
+  type GscPageRow,
+} from "../services/searchConsoleService.js";
+import { computeSeoScore, type SeoScoreResult } from "../services/seoQuality.js";
 import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -368,6 +386,12 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const catalogService = new B2BCatalogService(B2B_DB_URL);
   await catalogService.init();
+
+  // IA de SEO (OpenAI) e Search Console (GSC) — ambos degradam graciosamente
+  // sem credenciais (isConfigured() = false).
+  const seoAiService = new SeoAiService();
+  const searchConsoleService = new SearchConsoleService(B2B_DB_URL);
+  await searchConsoleService.init();
 
   // Seed test credential
   try {
@@ -3880,6 +3904,19 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       if ("seo_title" in body) patch.seo_title = asStr(body.seo_title);
       if ("seo_description" in body) patch.seo_description = asStr(body.seo_description);
       if ("seo_slug" in body) patch.seo_slug = asStr(body.seo_slug);
+      // Keywords: aceita array (aplicado da IA) ou string "a, b, c".
+      if ("seo_keywords" in body) {
+        const kw = body.seo_keywords;
+        patch.seo_keywords = Array.isArray(kw)
+          ? kw.map((k) => String(k).trim()).filter(Boolean).join(", ")
+          : asStr(kw);
+      }
+      // Atributos: aceita array de {name,value} (serializado em JSON) ou string.
+      if ("seo_attributes" in body) {
+        const at = body.seo_attributes;
+        patch.seo_attributes =
+          at == null ? null : typeof at === "string" ? at : JSON.stringify(at);
+      }
       if ("og_image_url" in body) patch.og_image_url = asStr(body.og_image_url);
       if ("image_url" in body) patch.image_url = asStr(body.image_url);
       if ("admin_hidden" in body) patch.admin_hidden = body.admin_hidden === true || body.admin_hidden === "true";
@@ -4001,18 +4038,455 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     { preHandler: b2bAdminAuth },
     async (req, reply) => {
       const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
-      const body = (req.body ?? {}) as { category_name?: unknown; is_visible?: unknown };
+      const body = (req.body ?? {}) as Record<string, unknown>;
       const name = typeof body.category_name === "string" ? body.category_name.trim() : "";
       if (!name) {
         reply.code(400).send({ ok: false, error: "category_name é obrigatório" });
         return;
       }
-      const isVisible = body.is_visible === true || body.is_visible === "true";
+      const asStr = (v: unknown): string | null =>
+        v === null ? null : typeof v === "string" ? v : String(v);
       try {
-        const setting = await catalogService.upsertCategorySetting(name, isVisible, admin.user);
-        reply.send({ ok: true, data: setting });
+        // Campos de SEO (opcionais) — upsert independente da visibilidade.
+        const seoPatch: Parameters<typeof catalogService.updateCategorySeo>[1] = {};
+        if ("seo_title" in body) seoPatch.seo_title = asStr(body.seo_title);
+        if ("seo_description" in body) seoPatch.seo_description = asStr(body.seo_description);
+        if ("intro_text" in body) seoPatch.intro_text = asStr(body.intro_text);
+        if ("seo_keywords" in body) {
+          const kw = body.seo_keywords;
+          seoPatch.seo_keywords = Array.isArray(kw)
+            ? kw.map((k) => String(k).trim()).filter(Boolean).join(", ")
+            : asStr(kw);
+        }
+        if (Object.keys(seoPatch).length > 0) {
+          await catalogService.updateCategorySeo(name, seoPatch, admin.user);
+        }
+
+        // Visibilidade (opcional; só altera quando is_visible foi enviado).
+        if ("is_visible" in body) {
+          const isVisible = body.is_visible === true || body.is_visible === "true";
+          await catalogService.upsertCategorySetting(name, isVisible, admin.user);
+        }
+
+        reply.send({ ok: true });
       } catch (err: any) {
         reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao atualizar categoria" });
+      }
+    },
+  );
+
+  // =============================================
+  // SEO — IA (OpenAI) + Ranqueamento (Google Search Console)
+  // =============================================
+
+  const SEO_METRICS_WINDOW_DAYS = Number(process.env.GSC_WINDOW_DAYS ?? "28");
+
+  // Entrada da IA a partir do produto (usa os atributos derivados do nome).
+  function buildProductSeoInput(p: CatalogProduct) {
+    const attrs = parseProductAttributes(
+      getModelBaseName(p.sap_item_name) || getBaseProductName(p.sap_item_name),
+    );
+    return {
+      name: getBaseProductName(p.sap_item_name) || p.sap_item_name,
+      category: p.category_name,
+      color: attrs.color,
+      closure: attrs.closure,
+      capacity: attrs.capacity,
+      currentDescription: p.description_short,
+      ean: p.ean,
+      packagingType: p.packaging_type,
+      unitsPerPack: p.units_per_package,
+    };
+  }
+
+  // Entrada do score determinístico a partir do produto.
+  function buildScoreInput(p: CatalogProduct) {
+    return {
+      name: p.sap_item_name,
+      seoTitle: p.seo_title,
+      seoDescription: p.seo_description,
+      seoSlug: p.seo_slug,
+      description: p.description_short,
+      imageUrl: p.image_url,
+      ogImageUrl: p.og_image_url,
+      keywords: parseKeywords(p.seo_keywords),
+    };
+  }
+
+  // Agrega várias linhas de página do GSC em uma métrica única (posição média
+  // ponderada por impressões).
+  function aggregatePages(rows: GscPageRow[]): {
+    position: number | null;
+    clicks: number;
+    impressions: number;
+    ctr: number;
+  } {
+    if (rows.length === 0) return { position: null, clicks: 0, impressions: 0, ctr: 0 };
+    let clicks = 0;
+    let impressions = 0;
+    let weightedPos = 0;
+    for (const r of rows) {
+      clicks += r.clicks;
+      impressions += r.impressions;
+      weightedPos += r.position * (r.impressions || 1);
+    }
+    const totalWeight = rows.reduce((s, r) => s + (r.impressions || 1), 0);
+    const ctr = impressions > 0 ? clicks / impressions : 0;
+    const position = totalWeight > 0 ? weightedPos / totalWeight : null;
+    return { position, clicks, impressions, ctr };
+  }
+
+  // Páginas do GSC que correspondem ao slug de origem do produto.
+  function matchPagesForSlug(pageRows: GscPageRow[], slug: string | null): GscPageRow[] {
+    if (!slug) return [];
+    const clean = slug.trim().replace(/^\/+|\/+$/g, "").toLowerCase();
+    if (!clean) return [];
+    const last = clean.split("/").pop() as string;
+    let matches = pageRows.filter((r) => r.page.toLowerCase().includes(`/${clean}`));
+    if (matches.length === 0 && last !== clean) {
+      matches = pageRows.filter((r) => r.page.toLowerCase().includes(`/${last}`));
+    }
+    return matches;
+  }
+
+  // Busca no GSC e persiste as métricas de todos os produtos e categorias.
+  async function refreshSeoMetrics(): Promise<{ periodStart: string; periodEnd: string }> {
+    const periodStart = isoDaysAgo(SEO_METRICS_WINDOW_DAYS);
+    const periodEnd = isoDaysAgo(1);
+    const pageRows = await searchConsoleService.queryPages(periodStart, periodEnd);
+    const products = await catalogService.listAllActiveProducts();
+
+    // Métricas por produto.
+    const byCategory = new Map<string, GscPageRow[]>();
+    for (const p of products) {
+      const matched = matchPagesForSlug(pageRows, p.gsn_slug);
+      const agg = aggregatePages(matched);
+      const canonical = deriveCanonicalUrl(p.gsn_product_id, p.gsn_slug);
+      await searchConsoleService.saveMetric({
+        scope: "product",
+        ref_key: p.sap_item_code,
+        url: canonical,
+        period_start: periodStart,
+        period_end: periodEnd,
+        position: agg.position,
+        clicks: agg.clicks,
+        impressions: agg.impressions,
+        ctr: agg.ctr,
+      });
+      if (p.category_name && matched.length > 0) {
+        const arr = byCategory.get(p.category_name) ?? [];
+        arr.push(...matched);
+        byCategory.set(p.category_name, arr);
+      }
+    }
+
+    // Métricas agregadas por categoria (dedup de páginas).
+    for (const [category, rows] of byCategory) {
+      const uniq = Array.from(new Map(rows.map((r) => [r.page, r])).values());
+      const agg = aggregatePages(uniq);
+      await searchConsoleService.saveMetric({
+        scope: "category",
+        ref_key: category,
+        url: null,
+        period_start: periodStart,
+        period_end: periodEnd,
+        position: agg.position,
+        clicks: agg.clicks,
+        impressions: agg.impressions,
+        ctr: agg.ctr,
+      });
+    }
+
+    return { periodStart, periodEnd };
+  }
+
+  // Status de configuração (para a UI mostrar estados "não configurado").
+  app.get(
+    "/b2b/admin/catalog/seo/config",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      reply.send({
+        ok: true,
+        data: {
+          openaiConfigured: seoAiService.isConfigured(),
+          openaiModel: seoAiService.getModel(),
+          gscConfigured: searchConsoleService.isConfigured(),
+          gscSiteUrl: searchConsoleService.getSiteUrl(),
+          windowDays: SEO_METRICS_WINDOW_DAYS,
+        },
+      });
+    },
+  );
+
+  // Sugestão de SEO por IA — PRODUTO (não salva; a UI revisa e aplica).
+  app.post(
+    "/b2b/admin/catalog/products/:sku/seo/suggest",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+      try {
+        const suggestion = await seoAiService.suggestProductSeo(buildProductSeoInput(product));
+        reply.send({ ok: true, data: suggestion });
+      } catch (err: any) {
+        if (err instanceof SeoAiNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "AI_NOT_CONFIGURED" });
+          return;
+        }
+        if (err instanceof SeoAiGenerationError) {
+          reply.code(502).send({ ok: false, error: err.message });
+          return;
+        }
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao gerar sugestão" });
+      }
+    },
+  );
+
+  // Sugestão de SEO por IA — CATEGORIA.
+  app.post(
+    "/b2b/admin/catalog/categories/:name/seo/suggest",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { name } = req.params as { name: string };
+      const categoryName = decodeURIComponent(name);
+      try {
+        const [samples, categories] = await Promise.all([
+          catalogService.getCategorySampleProducts(categoryName),
+          catalogService.listCategorySettings(),
+        ]);
+        const cat = categories.find((c) => c.category_name === categoryName);
+        const suggestion = await seoAiService.suggestCategorySeo({
+          name: categoryName,
+          sampleProducts: samples,
+          productCount: cat?.product_count ?? samples.length,
+        });
+        reply.send({ ok: true, data: suggestion });
+      } catch (err: any) {
+        if (err instanceof SeoAiNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "AI_NOT_CONFIGURED" });
+          return;
+        }
+        if (err instanceof SeoAiGenerationError) {
+          reply.code(502).send({ ok: false, error: err.message });
+          return;
+        }
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao gerar sugestão" });
+      }
+    },
+  );
+
+  // Score de qualidade de SEO de um produto (determinístico).
+  app.get(
+    "/b2b/admin/catalog/products/:sku/seo/score",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+      reply.send({ ok: true, data: computeSeoScore(buildScoreInput(product)) });
+    },
+  );
+
+  // Métricas GSC de um produto (do cache; ?refresh=1 força fetch).
+  app.get(
+    "/b2b/admin/catalog/products/:sku/seo/metrics",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { sku } = req.params as { sku: string };
+      const q = req.query as Record<string, string>;
+      const product = await catalogService.getProduct(sku);
+      if (!product) {
+        reply.code(404).send({ ok: false, error: "Produto não encontrado" });
+        return;
+      }
+      const canonical = deriveCanonicalUrl(product.gsn_product_id, product.gsn_slug);
+      if (!searchConsoleService.isConfigured()) {
+        reply.code(503).send({
+          ok: false,
+          error: "Google Search Console não configurado.",
+          code: "GSC_NOT_CONFIGURED",
+          data: { canonicalUrl: canonical, hasPublicUrl: !!canonical },
+        });
+        return;
+      }
+      try {
+        if (q.refresh === "1") await refreshSeoMetrics();
+        const metric = await searchConsoleService.getLatestMetric("product", sku);
+        const history = await searchConsoleService.getMetricHistory("product", sku);
+        let queries: Awaited<ReturnType<typeof searchConsoleService.queryQueriesForPage>> = [];
+        if (canonical) {
+          try {
+            queries = await searchConsoleService.queryQueriesForPage(
+              canonical,
+              isoDaysAgo(SEO_METRICS_WINDOW_DAYS),
+              isoDaysAgo(1),
+            );
+          } catch {
+            /* queries são opcionais */
+          }
+        }
+        reply.send({
+          ok: true,
+          data: { canonicalUrl: canonical, hasPublicUrl: !!canonical, metric, history, queries },
+        });
+      } catch (err: any) {
+        if (err instanceof GscNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "GSC_NOT_CONFIGURED" });
+          return;
+        }
+        reply.code(502).send({ ok: false, error: err?.message ?? "Erro ao consultar o GSC" });
+      }
+    },
+  );
+
+  // Métricas GSC de uma categoria (do cache; ?refresh=1 força fetch).
+  app.get(
+    "/b2b/admin/catalog/categories/:name/seo/metrics",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { name } = req.params as { name: string };
+      const categoryName = decodeURIComponent(name);
+      const q = req.query as Record<string, string>;
+      if (!searchConsoleService.isConfigured()) {
+        reply.code(503).send({
+          ok: false,
+          error: "Google Search Console não configurado.",
+          code: "GSC_NOT_CONFIGURED",
+        });
+        return;
+      }
+      try {
+        if (q.refresh === "1") await refreshSeoMetrics();
+        const metric = await searchConsoleService.getLatestMetric("category", categoryName);
+        const history = await searchConsoleService.getMetricHistory("category", categoryName);
+        reply.send({ ok: true, data: { metric, history } });
+      } catch (err: any) {
+        if (err instanceof GscNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "GSC_NOT_CONFIGURED" });
+          return;
+        }
+        reply.code(502).send({ ok: false, error: err?.message ?? "Erro ao consultar o GSC" });
+      }
+    },
+  );
+
+  // Refresh manual das métricas GSC (persiste snapshot).
+  app.post(
+    "/b2b/admin/catalog/seo/metrics/refresh",
+    { preHandler: b2bAdminAuth },
+    async (_req, reply) => {
+      if (!searchConsoleService.isConfigured()) {
+        reply.code(503).send({
+          ok: false,
+          error: "Google Search Console não configurado.",
+          code: "GSC_NOT_CONFIGURED",
+        });
+        return;
+      }
+      try {
+        const period = await refreshSeoMetrics();
+        reply.send({ ok: true, data: period });
+      } catch (err: any) {
+        if (err instanceof GscNotConfiguredError) {
+          reply.code(503).send({ ok: false, error: err.message, code: "GSC_NOT_CONFIGURED" });
+          return;
+        }
+        reply.code(502).send({ ok: false, error: err?.message ?? "Erro ao atualizar métricas" });
+      }
+    },
+  );
+
+  // Dashboard agregado de SEO: produtos com score + métricas resumidas.
+  app.get(
+    "/b2b/admin/catalog/seo/dashboard",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const q = req.query as Record<string, string>;
+      try {
+        const products = await catalogService.listAllActiveProducts();
+        const gscConfigured = searchConsoleService.isConfigured();
+        const metricsMap = gscConfigured
+          ? await searchConsoleService.getLatestMetrics("product")
+          : new Map();
+
+        const gradeDist: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, E: 0 };
+        let scoreSum = 0;
+        let withPublicUrl = 0;
+        let posSum = 0;
+        let posCount = 0;
+        let clicksSum = 0;
+        let impressionsSum = 0;
+        let fetchedAt: string | null = null;
+
+        const rows = products.map((p) => {
+          const score: SeoScoreResult = computeSeoScore(buildScoreInput(p));
+          scoreSum += score.score;
+          gradeDist[score.grade] = (gradeDist[score.grade] ?? 0) + 1;
+          const canonical = deriveCanonicalUrl(p.gsn_product_id, p.gsn_slug);
+          if (canonical) withPublicUrl++;
+          const metric = metricsMap.get(p.sap_item_code) ?? null;
+          if (metric) {
+            if (metric.position != null && metric.impressions > 0) {
+              posSum += metric.position;
+              posCount++;
+            }
+            clicksSum += metric.clicks;
+            impressionsSum += metric.impressions;
+            if (metric.fetched_at && (!fetchedAt || metric.fetched_at > fetchedAt)) {
+              fetchedAt = metric.fetched_at;
+            }
+          }
+          return {
+            sku: p.sap_item_code,
+            name: p.sap_item_name,
+            category: p.category_name,
+            imageUrl: p.image_url,
+            canonicalUrl: canonical,
+            hasPublicUrl: !!canonical,
+            score: score.score,
+            grade: score.grade,
+            position: metric?.position ?? null,
+            clicks: metric?.clicks ?? 0,
+            impressions: metric?.impressions ?? 0,
+            ctr: metric?.ctr ?? 0,
+          };
+        });
+
+        // Filtro opcional por categoria (para a tabela).
+        const filtered = q.category ? rows.filter((r) => r.category === q.category) : rows;
+
+        reply.send({
+          ok: true,
+          data: {
+            config: {
+              openaiConfigured: seoAiService.isConfigured(),
+              gscConfigured,
+              gscSiteUrl: searchConsoleService.getSiteUrl(),
+            },
+            summary: {
+              totalProducts: products.length,
+              withPublicUrl,
+              withoutPublicUrl: products.length - withPublicUrl,
+              avgScore: products.length ? Math.round(scoreSum / products.length) : 0,
+              gradeDistribution: gradeDist,
+              avgPosition: posCount ? Number((posSum / posCount).toFixed(1)) : null,
+              totalClicks: clicksSum,
+              totalImpressions: impressionsSum,
+              avgCtr: impressionsSum > 0 ? clicksSum / impressionsSum : null,
+              metricsFetchedAt: fetchedAt,
+            },
+            products: filtered,
+          },
+        });
+      } catch (err: any) {
+        reply.code(500).send({ ok: false, error: err?.message ?? "Erro ao montar o dashboard de SEO" });
       }
     },
   );

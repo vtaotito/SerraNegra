@@ -2,6 +2,43 @@ import pg from "pg";
 
 const { Pool } = pg;
 
+// ─── URL pública do produto (para casar com o Google Search Console) ──
+//
+// O catálogo B2B é privado; o ranqueamento é medido sobre o site PÚBLICO. Cada
+// produto é mapeado para sua URL pública a partir do slug de origem: produtos
+// vindos do gsnonline (Tray) usam a base GSN; os vindos do WooCommerce usam a
+// base Woo (detectados pelo prefixo "woo-" no gsn_product_id). Bases
+// configuráveis por env; sem slug de origem → sem página pública (null).
+
+const PUBLIC_STORE_GSN_BASE = (
+  process.env.PUBLIC_STORE_GSN_BASE ?? "https://www.gsnonline.com.br"
+).replace(/\/+$/, "");
+const PUBLIC_STORE_WOO_BASE = (
+  process.env.PUBLIC_STORE_WOO_BASE ?? "https://garrafariaserranegra.com.br"
+).replace(/\/+$/, "");
+// Prefixo do permalink de produto do WooCommerce (pt-BR normalmente "produto").
+const PUBLIC_STORE_WOO_PRODUCT_PATH = (
+  process.env.PUBLIC_STORE_WOO_PRODUCT_PATH ?? "produto"
+).replace(/^\/+|\/+$/g, "");
+
+/**
+ * URL pública canônica do produto a partir do slug de origem. Retorna null
+ * quando o produto não tem página pública (sem slug de origem).
+ */
+export function deriveCanonicalUrl(
+  gsnProductId: string | null | undefined,
+  gsnSlug: string | null | undefined,
+): string | null {
+  const slug = (gsnSlug ?? "").trim().replace(/^\/+|\/+$/g, "");
+  if (!slug) return null;
+  const isWoo = (gsnProductId ?? "").startsWith("woo-");
+  if (isWoo) {
+    const path = PUBLIC_STORE_WOO_PRODUCT_PATH ? `${PUBLIC_STORE_WOO_PRODUCT_PATH}/` : "";
+    return `${PUBLIC_STORE_WOO_BASE}/${path}${slug}`;
+  }
+  return `${PUBLIC_STORE_GSN_BASE}/${slug}`;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface CatalogProduct {
@@ -30,6 +67,10 @@ export interface CatalogProduct {
   seo_title: string | null;
   seo_description: string | null;
   seo_slug: string | null;
+  /** Palavras-chave de SEO (armazenadas separadas por vírgula). */
+  seo_keywords: string | null;
+  /** Atributos sugeridos pela IA (JSON string de {name,value}[]). */
+  seo_attributes: string | null;
   og_image_url: string | null;
   /** Trava contra o sync: quando true, descrição/imagem manuais são preservadas. */
   content_locked: boolean;
@@ -935,6 +976,8 @@ export class B2BCatalogService {
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_description TEXT",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_slug VARCHAR(255)",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS og_image_url TEXT",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_keywords TEXT",
+      "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS seo_attributes TEXT",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS content_locked BOOLEAN NOT NULL DEFAULT FALSE",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS admin_hidden BOOLEAN NOT NULL DEFAULT FALSE",
       "ALTER TABLE b2b_catalog_products ADD COLUMN IF NOT EXISTS content_updated_by VARCHAR(128)",
@@ -953,6 +996,17 @@ export class B2BCatalogService {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+
+    // SEO por categoria (gerado/revisado no admin, armazenado para uso futuro na vitrine).
+    const categoryMigrations = [
+      "ALTER TABLE b2b_catalog_category_settings ADD COLUMN IF NOT EXISTS seo_title VARCHAR(255)",
+      "ALTER TABLE b2b_catalog_category_settings ADD COLUMN IF NOT EXISTS seo_description TEXT",
+      "ALTER TABLE b2b_catalog_category_settings ADD COLUMN IF NOT EXISTS intro_text TEXT",
+      "ALTER TABLE b2b_catalog_category_settings ADD COLUMN IF NOT EXISTS seo_keywords TEXT",
+    ];
+    for (const sql of categoryMigrations) {
+      try { await this.pool.query(sql); } catch { /* column may already exist */ }
+    }
 
     // Seed inicial: as categorias antes ocultas por código ficam is_visible=false.
     // ON CONFLICT DO NOTHING preserva qualquer decisão manual posterior do admin.
@@ -1589,6 +1643,8 @@ export class B2BCatalogService {
       seo_title?: string | null;
       seo_description?: string | null;
       seo_slug?: string | null;
+      seo_keywords?: string | null;
+      seo_attributes?: string | null;
       og_image_url?: string | null;
       image_url?: string | null;
       image_thumb_url?: string | null;
@@ -1619,6 +1675,8 @@ export class B2BCatalogService {
     if (patch.seo_title !== undefined) add("seo_title", patch.seo_title);
     if (patch.seo_description !== undefined) add("seo_description", patch.seo_description);
     if (patch.seo_slug !== undefined) add("seo_slug", patch.seo_slug);
+    if (patch.seo_keywords !== undefined) add("seo_keywords", patch.seo_keywords);
+    if (patch.seo_attributes !== undefined) add("seo_attributes", patch.seo_attributes);
     if (patch.og_image_url !== undefined) add("og_image_url", patch.og_image_url);
     if (patch.admin_hidden !== undefined) add("admin_hidden", patch.admin_hidden);
 
@@ -1671,12 +1729,26 @@ export class B2BCatalogService {
    * decisão manual do admin.
    */
   async listCategorySettings(): Promise<
-    { category_name: string; is_visible: boolean; product_count: number; updated_by: string | null; updated_at: string | null }[]
+    {
+      category_name: string;
+      is_visible: boolean;
+      product_count: number;
+      seo_title: string | null;
+      seo_description: string | null;
+      intro_text: string | null;
+      seo_keywords: string | null;
+      updated_by: string | null;
+      updated_at: string | null;
+    }[]
   > {
     const { rows } = await this.pool.query(
       `SELECT p.category_name,
               COUNT(*) AS product_count,
               COALESCE(cs.is_visible, TRUE) AS is_visible,
+              cs.seo_title,
+              cs.seo_description,
+              cs.intro_text,
+              cs.seo_keywords,
               cs.updated_by,
               cs.updated_at
          FROM b2b_catalog_products p
@@ -1685,16 +1757,97 @@ export class B2BCatalogService {
         WHERE p.category_name IS NOT NULL
           AND p.is_active = TRUE
           AND p.sap_item_code NOT LIKE 'GSN-%'
-        GROUP BY p.category_name, cs.is_visible, cs.updated_by, cs.updated_at
+        GROUP BY p.category_name, cs.is_visible, cs.seo_title, cs.seo_description,
+                 cs.intro_text, cs.seo_keywords, cs.updated_by, cs.updated_at
         ORDER BY p.category_name`,
     );
     return rows.map((r: any) => ({
       category_name: r.category_name,
       is_visible: r.is_visible === true || r.is_visible === "true",
       product_count: Number(r.product_count),
+      seo_title: r.seo_title ?? null,
+      seo_description: r.seo_description ?? null,
+      intro_text: r.intro_text ?? null,
+      seo_keywords: r.seo_keywords ?? null,
       updated_by: r.updated_by ?? null,
       updated_at: r.updated_at ?? null,
     }));
+  }
+
+  /**
+   * Atualiza os campos de SEO de uma categoria (upsert). Preserva a
+   * visibilidade existente quando o registro já existe.
+   */
+  async updateCategorySeo(
+    categoryName: string,
+    patch: {
+      seo_title?: string | null;
+      seo_description?: string | null;
+      intro_text?: string | null;
+      seo_keywords?: string | null;
+    },
+    updatedBy: string,
+  ): Promise<void> {
+    const cols: string[] = [];
+    const insertVals: string[] = [];
+    const updateSets: string[] = [];
+    const params: unknown[] = [categoryName];
+    let idx = 2;
+    const add = (col: string, value: unknown) => {
+      cols.push(col);
+      insertVals.push(`$${idx}`);
+      updateSets.push(`${col} = EXCLUDED.${col}`);
+      params.push(value);
+      idx++;
+    };
+    if (patch.seo_title !== undefined) add("seo_title", patch.seo_title);
+    if (patch.seo_description !== undefined) add("seo_description", patch.seo_description);
+    if (patch.intro_text !== undefined) add("intro_text", patch.intro_text);
+    if (patch.seo_keywords !== undefined) add("seo_keywords", patch.seo_keywords);
+    if (cols.length === 0) return;
+
+    params.push(updatedBy);
+    const updatedByPlaceholder = `$${idx}`;
+
+    await this.pool.query(
+      `INSERT INTO b2b_catalog_category_settings
+         (category_name, ${cols.join(", ")}, updated_by, updated_at)
+       VALUES ($1, ${insertVals.join(", ")}, ${updatedByPlaceholder}, NOW())
+       ON CONFLICT (category_name) DO UPDATE SET
+         ${updateSets.join(", ")},
+         updated_by = EXCLUDED.updated_by,
+         updated_at = NOW()`,
+      params,
+    );
+    this.invalidateCategoryCache();
+  }
+
+  /**
+   * Amostra de nomes de produtos de uma categoria — insumo para a IA de SEO
+   * gerar o texto da categoria.
+   */
+  async getCategorySampleProducts(categoryName: string, limit = 12): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `SELECT sap_item_name FROM b2b_catalog_products
+        WHERE category_name = $1 AND is_active = TRUE AND sap_item_code NOT LIKE 'GSN-%'
+        ORDER BY is_in_stock DESC, sap_item_name ASC
+        LIMIT $2`,
+      [categoryName, limit],
+    );
+    return rows.map((r: any) => getBaseProductName(r.sap_item_name) || r.sap_item_name);
+  }
+
+  /**
+   * Todos os produtos ativos (fora os sintéticos GSN-*) para o dashboard de SEO:
+   * cálculo de score e casamento com o Search Console. Não paginado.
+   */
+  async listAllActiveProducts(): Promise<CatalogProduct[]> {
+    const { rows } = await this.pool.query(
+      `SELECT * FROM b2b_catalog_products
+        WHERE is_active = TRUE AND sap_item_code NOT LIKE 'GSN-%'
+        ORDER BY sap_item_name ASC`,
+    );
+    return rows as CatalogProduct[];
   }
 
   /** Upsert da visibilidade de uma categoria. Invalida o cache de leitura. */
@@ -1775,7 +1928,13 @@ export interface AdminCatalogProductDto {
   seoTitle: string | null;
   seoDescription: string | null;
   seoSlug: string | null;
+  seoKeywords: string[];
+  seoAttributes: { name: string; value: string }[];
   ogImageUrl: string | null;
+  /** URL pública canônica (site público) ou null se não houver página pública. */
+  canonicalUrl: string | null;
+  /** Slug de origem (gsnonline/woo) usado para casar com o Search Console. */
+  sourceSlug: string | null;
   contentLocked: boolean;
   adminHidden: boolean;
   isActive: boolean;
@@ -1786,6 +1945,31 @@ export interface AdminCatalogProductDto {
   updatedBy: string | null;
   updatedAt: string | null;
   lastSyncAt: string | null;
+}
+
+/** Converte a string "a, b, c" em array limpo de keywords. */
+export function parseKeywords(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+}
+
+/** Faz o parse defensivo dos atributos SEO (JSON) armazenados. */
+export function parseSeoAttributes(
+  raw: string | null | undefined,
+): { name: string; value: string }[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((a) => a && typeof a.name === "string" && typeof a.value === "string")
+      .map((a) => ({ name: String(a.name), value: String(a.value) }));
+  } catch {
+    return [];
+  }
 }
 
 export function toAdminCatalogProduct(p: CatalogProduct): AdminCatalogProductDto {
@@ -1801,7 +1985,11 @@ export function toAdminCatalogProduct(p: CatalogProduct): AdminCatalogProductDto
     seoTitle: p.seo_title ?? null,
     seoDescription: p.seo_description ?? null,
     seoSlug: p.seo_slug ?? null,
+    seoKeywords: parseKeywords(p.seo_keywords),
+    seoAttributes: parseSeoAttributes(p.seo_attributes),
     ogImageUrl: p.og_image_url ?? null,
+    canonicalUrl: deriveCanonicalUrl(p.gsn_product_id, p.gsn_slug),
+    sourceSlug: p.gsn_slug ?? null,
     contentLocked: p.content_locked === true,
     adminHidden: p.admin_hidden === true,
     isActive: p.is_active === true,

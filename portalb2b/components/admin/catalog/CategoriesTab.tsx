@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, FolderTree, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Search, FolderTree, AlertTriangle, Eye, EyeOff, Sparkles, Check } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -13,10 +13,16 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { adminPatch } from "@/lib/admin/api";
 import { fetchCategories, type AdminCategory } from "@/lib/admin/catalog";
 import { categoryColor } from "@/lib/catalog";
+import { CategoryDrawer, type CategorySeoPatch } from "./CategoryDrawer";
+
+function categorySeoComplete(c: AdminCategory): boolean {
+  return !!(c.seo_title && c.seo_title.trim() && c.seo_description && c.seo_description.trim());
+}
 
 export function CategoriesTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin-catalog-categories"],
@@ -64,6 +70,16 @@ export function CategoriesTab() {
     },
   });
 
+  const seoMutation = useMutation({
+    mutationFn: (patch: CategorySeoPatch) => adminPatch("/b2b/admin/catalog/categories", patch),
+    onSuccess: () => {
+      toast.success("SEO da categoria salvo.");
+      setOpenCategory(null);
+      qc.invalidateQueries({ queryKey: ["admin-catalog-categories"] });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Erro ao salvar SEO"),
+  });
+
   const categories = data?.data ?? [];
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -72,6 +88,10 @@ export function CategoriesTab() {
   }, [categories, search]);
 
   const hiddenCount = categories.filter((c) => !c.is_visible).length;
+  const selectedCategory = useMemo(
+    () => categories.find((c) => c.category_name === openCategory) ?? null,
+    [categories, openCategory],
+  );
 
   if (isLoading) {
     return (
@@ -140,7 +160,24 @@ export function CategoriesTab() {
                   </p>
                 </div>
               </div>
-              <div className="flex flex-shrink-0 items-center gap-3">
+              <div className="flex flex-shrink-0 items-center gap-2 sm:gap-3">
+                {categorySeoComplete(cat) ? (
+                  <Badge variant="success" className="hidden gap-1 sm:inline-flex">
+                    <Check className="h-3 w-3" /> SEO
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="hidden border-slate-600 text-slate-400 sm:inline-flex">
+                    SEO pendente
+                  </Badge>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setOpenCategory(cat.category_name)}
+                  className="h-8 gap-1 text-violet-300 hover:bg-violet-500/10 hover:text-violet-200"
+                >
+                  <Sparkles className="h-3.5 w-3.5" /> SEO
+                </Button>
                 <Badge variant={cat.is_visible ? "success" : "destructive"} className="gap-1">
                   {cat.is_visible ? (
                     <>
@@ -164,6 +201,18 @@ export function CategoriesTab() {
             </div>
           ))}
         </div>
+      )}
+
+      {selectedCategory && (
+        <CategoryDrawer
+          category={selectedCategory}
+          open={!!openCategory}
+          saving={seoMutation.isPending}
+          onClose={() => setOpenCategory(null)}
+          onSave={async (patch) => {
+            await seoMutation.mutateAsync(patch);
+          }}
+        />
       )}
     </div>
   );

@@ -15,7 +15,11 @@ export interface AdminProduct {
   seoTitle: string | null;
   seoDescription: string | null;
   seoSlug: string | null;
+  seoKeywords: string[];
+  seoAttributes: { name: string; value: string }[];
   ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  sourceSlug: string | null;
   contentLocked: boolean;
   adminHidden: boolean;
   isActive: boolean;
@@ -41,6 +45,10 @@ export interface AdminCategory {
   category_name: string;
   is_visible: boolean;
   product_count: number;
+  seo_title: string | null;
+  seo_description: string | null;
+  intro_text: string | null;
+  seo_keywords: string | null;
   updated_by: string | null;
   updated_at: string | null;
 }
