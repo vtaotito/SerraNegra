@@ -69,8 +69,12 @@ export default function ProductDetailPage({
     () => availableClosures(variants, selectedColor),
     [variants, selectedColor],
   );
-  const hasColorDim = colorOptionValues.length > 0;
-  const hasClosureDim = (product?.closures?.length ?? 0) > 0;
+  // Cada card agora tem uma única cor e um único fechamento (a unificação é só
+  // por embalagem), então só exibimos o seletor quando houver MAIS de uma opção
+  // — na prática, nunca para garrafas. A cor/fechamento único é semeado abaixo e
+  // aparece como badge.
+  const hasColorDim = colorOptionValues.length > 1;
+  const hasClosureDim = closureOptionValues.length > 1;
 
   const colorReady = !hasColorDim || !!selectedColor;
   const closureReady = !hasClosureDim || !!selectedClosure;
@@ -333,10 +337,17 @@ export default function ProductDetailPage({
                         {product.capacity}
                       </Badge>
                     )}
-                    {selectedColor && <Badge variant="outline">{selectedColor}</Badge>}
-                    {selectedClosure && (
+                    {(selectedColor ?? product.color) && (
+                      <Badge variant="outline">{selectedColor ?? product.color}</Badge>
+                    )}
+                    {(selectedClosure ?? product.closure) && (
                       <Badge variant="outline" className="text-violet-700 border-violet-200">
-                        {selectedClosure}
+                        {selectedClosure ?? product.closure}
+                      </Badge>
+                    )}
+                    {product.diameter && (
+                      <Badge variant="outline" className="text-amber-700 border-amber-200">
+                        Boca {product.diameter}
                       </Badge>
                     )}
                     {product.ean && resolvedSku && (
@@ -367,6 +378,7 @@ export default function ProductDetailPage({
                         options={colorOptions}
                         selected={selectedColor}
                         onSelect={selectColor}
+                        hideWhenSingle
                       />
                     )}
                     {hasClosureDim && colorReady && (
@@ -375,6 +387,7 @@ export default function ProductDetailPage({
                         options={closureOptions}
                         selected={selectedClosure}
                         onSelect={selectClosure}
+                        hideWhenSingle
                       />
                     )}
                     {colorReady && closureReady && packagingOptions.length > 0 && (

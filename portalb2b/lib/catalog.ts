@@ -39,13 +39,15 @@ export interface UnifiedProduct {
   /** Sigla do grupo (2 chars). */
   groupCode: string;
   capacity: string | null;
-  /** Cor única do modelo (quando só há uma); null caso contrário. */
+  /** Cor única do card (derivada do nome-base); null caso contrário. */
   color: string | null;
-  /** Fechamento único do modelo (quando só há um); null caso contrário. */
+  /** Fechamento único do card (derivado do nome-base); null caso contrário. */
   closure: string | null;
-  /** Cores distintas disponíveis no modelo. */
+  /** Diâmetro de boca/gargalo do card (ex.: "31MM"); null quando não há. */
+  diameter: string | null;
+  /** Cores distintas disponíveis no card (≤ 1 item; mantido p/ compatibilidade). */
   colors: string[];
-  /** Fechamentos distintos disponíveis no modelo. */
+  /** Fechamentos distintos disponíveis no card (≤ 1 item). */
   closures: string[];
   ean: string | null;
   imageUrl: string | null;

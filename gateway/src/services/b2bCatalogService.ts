@@ -388,6 +388,10 @@ export function getBaseProductName(name: string | null | undefined): string {
     new RegExp(`\\s+${PACK_WORD}\\s*(?:C\\s*/\\s*)?[\\d.,]+\\s*(?:UND|UNID)?\\s*$`, "i"),
     "",
   );
+  // Sufixo de unidade "solto" no final, sem hífen nem palavra de embalagem
+  // (ex.: "...22.5MM UND", "...ROSCA 33MM UN"). Sem isso, a variante avulsa não
+  // agruparia com as embalagens do mesmo produto.
+  s = s.replace(/\s+(?:UND|UNID|UN)\s*$/i, "");
   return s.replace(/\s{2,}/g, " ").trim().toUpperCase();
 }
 
@@ -459,6 +463,48 @@ export function parseProductAttributes(baseName: string): {
   }
 
   return { capacity, color, closure };
+}
+
+/**
+ * Diâmetro de boca/gargalo do nome-base (ex.: "31MM", "19,29MM"), normalizado
+ * para exibição (sempre com "MM" maiúsculo e sem espaço). Como o diâmetro agora
+ * distingue cards de garrafa, é exposto como atributo do produto unificado.
+ * Retorna null quando o nome não traz diâmetro.
+ */
+export function extractDiameter(name: string | null | undefined): string | null {
+  const m = (name ?? "").match(/\b(\d{1,3}(?:[.,]\d{1,3})?)\s*MM\b/i);
+  return m ? `${m[1]}MM` : null;
+}
+
+/**
+ * Nome amigável do card a partir do nome-base (que já contém cor/fechamento/
+ * diâmetro). Faz capitalização por palavra preservando unidades/medidas em
+ * maiúsculas (ML, L, MM) — ex.: "GARRAFA CACHAÇA 500 ML ROSCA 31MM" →
+ * "Garrafa Cachaça 500 ML Rosca 31MM". É determinístico, então nomes-base
+ * distintos geram nomes distintos (cards não colidem).
+ */
+export function prettifyProductName(baseName: string | null | undefined): string {
+  const s = (baseName ?? "").trim();
+  if (!s) return s;
+  return s
+    .split(/\s+/)
+    .map((word) => {
+      // Medida colada à unidade: "500ml", "31mm", "1,5l" → mantém a unidade em
+      // maiúsculas e o número intacto.
+      const m = word.match(/^([\d.,]+)(ml|l|mm)$/i);
+      if (m) return `${m[1]}${m[2].toUpperCase()}`;
+      // Unidade isolada.
+      if (/^(ml|l|mm)$/i.test(word)) return word.toUpperCase();
+      // Código de cor do SAP (TRA/AMB/…) → nome legível ("Transparente").
+      const colorFull = COLOR_MAP[word.toUpperCase()];
+      if (colorFull) return colorFull;
+      // Palavra comum: capitaliza a inicial e as letras após ".", "-" ou "/"
+      // (ex.: "litro.magnum" → "Litro.Magnum", "cachaça.imp" → "Cachaça.Imp").
+      return word
+        .toLowerCase()
+        .replace(/(^|[.\-/])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+    })
+    .join(" ");
 }
 
 /**
@@ -1276,11 +1322,12 @@ export class B2BCatalogService {
       params,
     );
 
-    // Agrupa por modelo: garrafas colapsam cor/fechamento; demais categorias
-    // seguem agrupando por embalagem (getModelKey == getUnifiedKey para elas).
+    // Agrupa por nome-base (unificação só por EMBALAGEM): cada combinação
+    // distinta de cor/fechamento/diâmetro vira um card separado. Para
+    // não-garrafas, getUnifiedKey já era equivalente ao antigo getModelKey.
     const groups = new Map<string, CatalogProduct[]>();
     for (const r of rows as CatalogProduct[]) {
-      const key = getModelKey(r.sap_item_code, r.sap_item_name);
+      const key = getUnifiedKey(r.sap_item_code, r.sap_item_name);
       const arr = groups.get(key) ?? [];
       arr.push(r);
       groups.set(key, arr);
@@ -1343,11 +1390,11 @@ export class B2BCatalogService {
     if (target.admin_hidden) return null;
 
     const prefix = getProductPrefix(target.sap_item_code);
-    const targetKey = getModelKey(target.sap_item_code, target.sap_item_name);
-    // O nome do modelo é sempre um prefixo do nome completo (linha+volume vêm
-    // antes de cor/fechamento/embalagem), então serve de filtro grosseiro no SQL.
-    const modelBase = getModelBaseName(target.sap_item_name) || getBaseProductName(target.sap_item_name);
-    const likeBase = `${modelBase.replace(/[%_]/g, " ")}%`;
+    const targetKey = getUnifiedKey(target.sap_item_code, target.sap_item_name);
+    // O nome-base (sem sufixo de embalagem) é sempre um prefixo do nome completo,
+    // então serve de filtro grosseiro no SQL; o agrupamento exato é feito abaixo.
+    const base = getBaseProductName(target.sap_item_name);
+    const likeBase = `${base.replace(/[%_]/g, " ")}%`;
 
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_catalog_products
@@ -1359,7 +1406,7 @@ export class B2BCatalogService {
     );
 
     const variants = (rows as CatalogProduct[]).filter(
-      (r) => getModelKey(r.sap_item_code, r.sap_item_name) === targetKey,
+      (r) => getUnifiedKey(r.sap_item_code, r.sap_item_name) === targetKey,
     );
 
     const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
@@ -2068,11 +2115,11 @@ export interface B2BAttributeVariant {
 }
 
 export interface B2BUnifiedProductDto {
-  /** Chave de agrupamento por modelo ("<prefixo>::<nome_do_modelo>"). */
+  /** Chave de unificação por embalagem ("<prefixo>::<nome_base>"). */
   id: string;
   /** SKU representativo (menor embalagem em estoque) — usado no link do card. */
   sku: string;
-  /** Nome do modelo (sem cor/fechamento/embalagem para garrafas). */
+  /** Nome exibido do card (nome-base com cor/fechamento/diâmetro, capitalizado). */
   name: string;
   description: string;
   /** Categoria comercial (grupo do produto) — ex.: "Garrafa Nacional". */
@@ -2080,11 +2127,13 @@ export interface B2BUnifiedProductDto {
   /** Sigla do grupo (2 chars) — ex.: "GN". */
   groupCode: string;
   capacity: string | null;
-  /** Cor única do modelo (quando só há uma); null quando há várias ou nenhuma. */
+  /** Cor única do card (derivada do nome-base); null quando não há. */
   color: string | null;
-  /** Fechamento único do modelo (quando só há um); null caso contrário. */
+  /** Fechamento único do card (derivado do nome-base); null caso contrário. */
   closure: string | null;
-  /** Cores distintas disponíveis no modelo (ordenadas). */
+  /** Diâmetro de boca/gargalo do card (ex.: "31MM"); null quando não há. */
+  diameter: string | null;
+  /** Cores distintas disponíveis no card (≤ 1 item; mantido p/ compatibilidade). */
   colors: string[];
   /** Fechamentos distintos disponíveis no modelo (ordenados). */
   closures: string[];
@@ -2126,11 +2175,15 @@ function resolveVariantPackagingType(p: CatalogProduct, unitsPerPack: number): s
 export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDetailDto {
   const first = rows[0];
   const groupCode = getProductPrefix(first?.sap_item_code);
-  const modelName = getModelBaseName(first?.sap_item_name);
-  // Capacidade sai do nome do modelo (linha + volume); comum a todas as variantes.
-  const attrs = parseProductAttributes(
-    modelName || getBaseProductName(first?.sap_item_name) || first?.sap_item_name || "",
-  );
+  // Nome-base do card (sem embalagem, mas COM cor/fechamento/diâmetro). Todas as
+  // variantes do card compartilham esse nome-base — a unificação agora é só por
+  // embalagem, então cor/fechamento/diâmetro são atributos fixos do card.
+  const baseName = getBaseProductName(first?.sap_item_name);
+  const displayName = prettifyProductName(baseName) || first?.sap_item_name || first?.sap_item_code;
+  // Capacidade/cor/fechamento/diâmetro saem do nome-base do card; comuns a todas
+  // as variantes (que diferem apenas pela embalagem).
+  const attrs = parseProductAttributes(baseName || first?.sap_item_name || "");
+  const diameter = extractDiameter(baseName || first?.sap_item_name);
 
   const variants: B2BAttributeVariant[] = rows
     .map((r) => {
@@ -2179,16 +2232,18 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
     "";
 
   return {
-    id: getModelKey(first?.sap_item_code, first?.sap_item_name),
+    id: getUnifiedKey(first?.sap_item_code, first?.sap_item_name),
     sku: primaryVariant?.sku ?? first?.sap_item_code,
-    name: modelName || getBaseProductName(first?.sap_item_name) || first?.sap_item_name || first?.sap_item_code,
+    name: displayName,
     description: descriptionShort,
     fullDescription: descriptionShort || null,
     category,
     groupCode,
     capacity: attrs.capacity,
-    color: colors.length === 1 ? colors[0] : null,
-    closure: closures.length === 1 ? closures[0] : null,
+    // Cor/fechamento/diâmetro são únicos por card (não geram seletor no front).
+    color: attrs.color ?? (colors.length === 1 ? colors[0] : null),
+    closure: attrs.closure ?? (closures.length === 1 ? closures[0] : null),
+    diameter,
     colors,
     closures,
     ean,

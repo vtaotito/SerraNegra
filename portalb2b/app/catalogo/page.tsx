@@ -678,13 +678,12 @@ function ProductCard({
   // permite o "add rápido" direto do card. Caso contrário leva ao detalhe.
   const singleCombo = product.variants.length === 1;
 
-  // Contadores de opções (cor/fechamento/embalagem) para o indicador compacto.
+  // Cada card representa um produto específico (cor/fechamento/diâmetro fixos); a
+  // única variação interna é a EMBALAGEM. Indicamos só quantas embalagens há.
   const distinctPackagings = new Set(
     product.variants.map((v) => `${packagingTypeName(v.packagingType)}|${v.unitsPerPack}`),
   ).size;
   const optionBits: string[] = [];
-  if (product.colors.length > 1) optionBits.push(`${product.colors.length} cores`);
-  if (product.closures.length > 1) optionBits.push(`${product.closures.length} fechamentos`);
   if (distinctPackagings > 1) optionBits.push(`${distinctPackagings} embalagens`);
 
   const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
@@ -781,6 +780,11 @@ function ProductCard({
           {product.closure && (
             <span className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700">
               {product.closure}
+            </span>
+          )}
+          {product.diameter && (
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+              Boca {product.diameter}
             </span>
           )}
         </div>

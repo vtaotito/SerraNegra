@@ -17,6 +17,12 @@ interface AttributeSelectorProps {
   selected: string | null;
   onSelect: (value: string) => void;
   className?: string;
+  /**
+   * Não renderiza o seletor quando há ≤ 1 opção. Usado para cor/fechamento:
+   * como cada card agora tem uma única cor e um único fechamento, não faz
+   * sentido exibir um seletor de uma opção só.
+   */
+  hideWhenSingle?: boolean;
 }
 
 /**
@@ -31,8 +37,10 @@ export function AttributeSelector({
   selected,
   onSelect,
   className,
+  hideWhenSingle = false,
 }: AttributeSelectorProps) {
   if (options.length === 0) return null;
+  if (hideWhenSingle && options.length <= 1) return null;
 
   return (
     <div className={className}>
