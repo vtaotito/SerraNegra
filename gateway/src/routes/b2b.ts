@@ -51,9 +51,9 @@ import {
   toAdminCatalogProduct,
   deriveCanonicalUrl,
   parseKeywords,
-  getModelBaseName,
   getBaseProductName,
   parseProductAttributes,
+  extractDiameter,
   type CatalogProduct,
 } from "../services/b2bCatalogService.js";
 import {
@@ -4083,17 +4083,21 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
   const SEO_METRICS_WINDOW_DAYS = Number(process.env.GSC_WINDOW_DAYS ?? "28");
 
-  // Entrada da IA a partir do produto (usa os atributos derivados do nome).
+  // Entrada da IA a partir do produto. Os atributos (cor/fechamento/capacidade)
+  // vêm do NOME-BASE do card — que preserva cor, fechamento e diâmetro — e não do
+  // nome-de-modelo (que os removeria, mandando campos nulos para a IA). O diâmetro
+  // é extraído do mesmo nome-base para que o SEO diferencie boca/gargalo.
   function buildProductSeoInput(p: CatalogProduct) {
-    const attrs = parseProductAttributes(
-      getModelBaseName(p.sap_item_name) || getBaseProductName(p.sap_item_name),
-    );
+    const baseName = getBaseProductName(p.sap_item_name) || p.sap_item_name;
+    const attrs = parseProductAttributes(baseName);
+    const diameter = extractDiameter(baseName);
     return {
-      name: getBaseProductName(p.sap_item_name) || p.sap_item_name,
+      name: baseName,
       category: p.category_name,
       color: attrs.color,
       closure: attrs.closure,
       capacity: attrs.capacity,
+      diameter,
       currentDescription: p.description_short,
       ean: p.ean,
       packagingType: p.packaging_type,

@@ -61,6 +61,8 @@ export interface ProductSeoInput {
   color?: string | null;
   closure?: string | null;
   capacity?: string | null;
+  /** Diâmetro de boca/gargalo (ex.: "31MM", "22.5MM"). Só o que vier do nome. */
+  diameter?: string | null;
   currentDescription?: string | null;
   ean?: string | null;
   packagingType?: string | null;
@@ -164,6 +166,11 @@ export class SeoAiService {
     if (input.capacity) facts.push(`Capacidade/volume: ${input.capacity}`);
     if (input.color) facts.push(`Cor: ${input.color}`);
     if (input.closure) facts.push(`Fechamento: ${input.closure}`);
+    if (input.diameter && input.diameter.trim()) {
+      // Normaliza "31MM"/"22.5MM"/"22,5MM" → "31 mm" / "22,5 mm" para leitura.
+      const dia = input.diameter.trim().replace(/\s*MM\s*$/i, "").replace(/\./g, ",");
+      facts.push(`Diâmetro da boca/gargalo: ${dia} mm`);
+    }
     if (input.packagingType) {
       facts.push(
         `Embalagem: ${input.packagingType}${input.unitsPerPack ? ` com ${input.unitsPerPack} unidades` : ""}`,
@@ -179,6 +186,11 @@ export class SeoAiService {
       "",
       "Dados do produto:",
       facts.map((f) => `- ${f}`).join("\n"),
+      "",
+      "Quando o tipo de fechamento e/ou o diâmetro da boca/gargalo forem informados,",
+      "reflita-os de forma natural no título, na descrição e nos atributos (ex.: \"boca/gargalo",
+      "31 mm, fechamento rosca\"), pois distinguem esta variante de outras do mesmo modelo.",
+      "NÃO invente medidas nem converta unidades: use somente os valores fornecidos acima.",
       "",
       "Retorne um JSON com EXATAMENTE estas chaves:",
       '- "seo_title": título de SEO atraente, até 60 caracteres.',
