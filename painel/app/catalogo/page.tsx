@@ -44,6 +44,12 @@ import {
 import { useFetch } from "@/hooks/useFetch";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
 import { classifyCompras, getComprasGroup, type CurvaABCD } from "@/lib/compras-engine";
+import {
+  getBaseProductName,
+  getEmbalaQty,
+  getEmbalaLabel,
+  getUnifiedProductKey,
+} from "@/lib/item-parser";
 import { isMarkupCatalogItem } from "@/lib/markup-engine";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
@@ -101,6 +107,8 @@ function frequencyLabel(avgIntervalDays: number | null): string {
 
 interface ParsedItem {
   cod: string;
+  /** Chave de unificação central ("<prefixo>::<nome_base>") — mesma do Compras/Portal. */
+  key: string;
   subNome: string;
   embala: string;
   embalaQty: number;
@@ -110,56 +118,35 @@ interface ParsedItem {
   fechamento: string;
 }
 
+/**
+ * Deriva os campos de exibição de um item. O nome-base, a quantidade por
+ * embalagem, o rótulo de embalagem e a CHAVE de unificação vêm dos helpers
+ * centrais de `lib/item-parser.ts` (idênticos ao Compras BI e ao Portal B2B).
+ * A extração de atributos (capacidade/cor/fechamento) para os badges é
+ * específica da UI do catálogo e permanece via regex local sobre o nome-base.
+ */
 function parseItemInfo(itemCode?: string | null, desc?: string | null): ParsedItem {
   const cod = getProductGroup(itemCode);
-  const d = (desc ?? "").trim();
-  const empty: ParsedItem = { cod, subNome: "—", embala: "—", embalaQty: 1, unit: "UND", capacidade: "—", cor: "—", fechamento: "—" };
-  if (!d) return empty;
-
-  let subNome = d;
-  let embala = "—";
-  let embalaQty = 1;
+  const key = getUnifiedProductKey(itemCode, desc);
+  // Nome-base central (MAIÚSCULO, sem embalagem, com cor/fechamento/diâmetro).
+  const base = getBaseProductName(desc);
+  const subNome = base || "—";
+  const embalaQty = getEmbalaQty(desc);
+  const embala = desc ? getEmbalaLabel(desc) : "—";
   const unit = "UND";
 
-  const U = "(?:UND|UNID)";
-
-  const dashIdx = d.lastIndexOf(" - ");
-  if (dashIdx > 0) {
-    subNome = d.slice(0, dashIdx).trim();
-    const packPart = d.slice(dashIdx + 3).trim();
-    const rxCSlash = new RegExp(`^(CAIXA|FARDO|PALETE)\\s+C\\s*/\\s*([\\d.,]+)\\s*${U}?\\s*$`, "i");
-    const rxPlain  = new RegExp(`^(CAIXA|FARDO|PALETE)\\s+(\\d+)\\s*${U}\\s*$`, "i");
-    const m = packPart.match(rxCSlash) ?? packPart.match(rxPlain);
-    if (m) { embalaQty = parseInt(m[2].replace(/\./g, "").replace(",", "."), 10) || 1; embala = `${m[1].toUpperCase()} C/${embalaQty}`; }
-    else if (new RegExp(`^${U}$`, "i").test(packPart.replace(/-/g, "").trim())) { embala = "UND"; embalaQty = 1; }
-    else embala = packPart || "—";
-  } else if (new RegExp(`[-–]\\s*${U}\\s*$`, "i").test(d)) {
-    subNome = d.slice(0, d.search(new RegExp(`[-–]\\s*${U}\\s*$`, "i"))).trim();
-    embala = "UND"; embalaQty = 1;
-  } else {
-    const rxCSlash = new RegExp(`\\s+(CAIXA|FARDO|PALETE)\\s+C\\s*/\\s*([\\d.,]+)\\s*${U}?\\s*$`, "i");
-    const rxPlain  = new RegExp(`\\s+(CAIXA|FARDO|PALETE)\\s+(\\d+)\\s*${U}\\s*$`, "i");
-    const m2 = d.match(rxCSlash) ?? d.match(rxPlain);
-    if (m2) { subNome = d.slice(0, m2.index!).trim(); embalaQty = parseInt(m2[2].replace(/\./g, "").replace(",", "."), 10) || 1; embala = `${m2[1].toUpperCase()} C/${embalaQty}`; }
-    else if (new RegExp(`\\b${U}\\s*$`, "i").test(d)) {
-      const ui = d.search(new RegExp(`\\s+${U}\\s*$`, "i"));
-      if (ui > 0) { subNome = d.slice(0, ui).trim(); embala = "UND"; embalaQty = 1; }
-    }
-  }
-
-  subNome = subNome.replace(/\s{2,}/g, " ").trim();
-
-  const capM = subNome.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
+  // ── Atributos para os badges do catálogo (UI-específico) ──
+  const capM = base.match(/\b(\d[\d.,]*)\s*(ML|L)\b/i);
   const capacidade = capM ? `${capM[1]} ${capM[2].toUpperCase()}` : "—";
 
   const COR_MAP: Record<string, string> = { TRA: "Transparente", AMB: "Âmbar", BRANCA: "Branca", PRETA: "Preta", DOURADA: "Dourada", PRATA: "Prata", CREME: "Creme", MARROM: "Marrom", VERMELHA: "Vermelha" };
-  const corM = subNome.match(/\b(TRA|AMB|BRANCA|PRETA|DOURADA|PRATA|CREME|MARROM|VERMELHA|TRANSPARENTE)\b/i);
+  const corM = base.match(/\b(TRA|AMB|BRANCA|PRETA|DOURADA|PRATA|CREME|MARROM|VERMELHA|TRANSPARENTE)\b/i);
   const cor = corM ? (COR_MAP[corM[1].toUpperCase()] ?? corM[1]) : "—";
 
-  const fM = subNome.match(/\b(ROLHA|ROSCA|TWIST[.-]OFF|FLIP[.-]TOP|CONTA[.-]GOTAS|COROA[.-]PRY[.-]OFF|COROA[.-]TWIST[.-]OFF)\b/i);
+  const fM = base.match(/\b(ROLHA|ROSCA|TWIST[.-]OFF|FLIP[.-]TOP|CONTA[.-]GOTAS|COROA[.-]PRY[.-]OFF|COROA[.-]TWIST[.-]OFF)\b/i);
   const fechamento = fM ? fM[1].replace(/\./g, "-").toUpperCase() : "—";
 
-  return { cod, subNome, embala, embalaQty, unit, capacidade, cor, fechamento };
+  return { cod, key, subNome, embala, embalaQty, unit, capacidade, cor, fechamento };
 }
 
 /* ═══════════════════ Data types ═══════════════════ */
@@ -178,6 +165,8 @@ interface ProductRow {
   itemCode: string;
   cod: string;
   codName: string;
+  /** Chave de unificação central ("<prefixo>::<nome_base>"). */
+  key: string;
   subNome: string;
   capacidade: string;
   cor: string;
@@ -214,6 +203,8 @@ interface UnifiedProductRow {
   itemCode: string;
   cod: string;
   codName: string;
+  /** Chave de unificação central ("<prefixo>::<nome_base>"). */
+  key: string;
   subNome: string;
   capacidade: string;
   cor: string;
@@ -267,6 +258,7 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
         itemCode: r.item_code,
         cod: info.cod,
         codName: COD_NAMES[info.cod] ?? info.cod,
+        key: info.key,
         subNome: info.subNome,
         capacidade: info.capacidade,
         cor: info.cor,
@@ -314,13 +306,12 @@ function buildFromAnalytics(rows: ProductAnalyticsRow[]): {
 function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number>): UnifiedProductRow[] {
   const groups = new Map<string, ProductRow[]>();
   for (const p of products) {
-    const key = `${p.cod}::${p.subNome}`;
-    const arr = groups.get(key) ?? [];
+    const arr = groups.get(p.key) ?? [];
     arr.push(p);
-    groups.set(key, arr);
+    groups.set(p.key, arr);
   }
 
-  return Array.from(groups.entries()).map(([, variants]) => {
+  return Array.from(groups.entries()).map(([key, variants]) => {
     const undVariant = variants.find((v) => v.embala === "UND");
     const primary = undVariant ?? variants.reduce((best, v) => (v.faturamento > best.faturamento ? v : best));
 
@@ -348,6 +339,7 @@ function unifyProducts(products: ProductRow[], clientsByItem: Map<string, number
       itemCode: primary.itemCode,
       cod: primary.cod,
       codName: primary.codName,
+      key,
       subNome: primary.subNome,
       capacidade: primary.capacidade,
       cor: primary.cor,
@@ -1010,7 +1002,7 @@ function ProdutosContent() {
     const inputs = unifiedProducts.flatMap((p) => {
       const group = getComprasGroup(p.itemCode);
       if (!group) return [];
-      return [{ key: `${p.cod}::${p.subNome}`, group, revenue12m: p.faturamento, volume12m: p.qtdUnd }];
+      return [{ key: p.key, group, revenue12m: p.faturamento, volume12m: p.qtdUnd }];
     });
     return classifyCompras(inputs);
   }, [unifiedProducts]);
@@ -1870,7 +1862,7 @@ function ProdutosContent() {
                 const pctFat = totalFat > 0 ? (p.faturamento / totalFat * 100) : 0;
                 const hasMulti = p.variants.length > 1;
                 return (
-                  <tr key={`${p.cod}-${p.subNome}`} onClick={() => setModalProduct(p)}
+                  <tr key={p.key} onClick={() => setModalProduct(p)}
                     className={`border-b border-cockpit-border/10 hover:bg-cockpit-accent/[0.04] motion-safe:transition-colors cursor-pointer group ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
                     <td className="py-2 px-2 align-top">
                       <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: (COD_COLORS[p.cod] ?? "#A81C2C") + "18", color: COD_COLORS[p.cod] ?? "#A81C2C" }}>
@@ -1901,7 +1893,7 @@ function ProdutosContent() {
                     </td>
                     <td className="py-2 px-2 text-center align-top">
                       {(() => {
-                        const cls = comprasClasses.get(`${p.cod}::${p.subNome}`);
+                        const cls = comprasClasses.get(p.key);
                         if (!cls) return <span className="text-[9px] text-gray-300">—</span>;
                         const abcd = cls.classeGrupo.charAt(0) as CurvaABCD;
                         const colors: Record<CurvaABCD, string> = {
