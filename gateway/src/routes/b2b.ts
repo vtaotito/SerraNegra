@@ -3116,7 +3116,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     // é propagado como 409 para dar um feedback claro ao usuário.
     try {
       const client = getSapClient();
-      await client.post<any>(`/Orders(${docEntry})/Cancel`, null, {
+      // A ação Cancel do Service Layer não recebe corpo. Enviar `null` faria o
+      // cliente serializar a string "null" e o SAP rejeita (400 "Bad request
+      // content."). Por isso passamos `undefined` (sem corpo/content-type).
+      await client.post<any>(`/Orders(${docEntry})/Cancel`, undefined, {
         correlationId,
       });
     } catch (error) {
