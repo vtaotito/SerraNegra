@@ -89,6 +89,7 @@ import {
   sendOrderInteractionEmail,
   sendOrderApprovedEmail,
   sendOrderRejectedEmail,
+  sendOrderCancelledEmail,
 } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
@@ -331,12 +332,37 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   // o status gerido pela equipe de vendas tem prioridade; sem ele, deriva-se do
   // SAP (cancelado / fechado=faturado / aberto=novo).
   function deriveFunnelStatus(
-    row: { doc_status?: string; cancelled?: unknown },
+    row: { doc_status?: string | null; cancelled?: unknown },
     funnel?: OrderStatus | null,
   ): OrderStatus {
     if (row.cancelled === "Y" || row.cancelled === true) return "cancelado";
     if (funnel) return funnel;
     return row.doc_status === "C" ? "faturado" : "novo";
+  }
+
+  // Etapas do funil em que o pedido já foi (ou está sendo) faturado e, portanto,
+  // não pode mais ser cancelado.
+  const NON_CANCELLABLE_FUNNEL: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
+    "faturado",
+    "enviado",
+    "entregue",
+    "cancelado",
+  ]);
+
+  /**
+   * Regra de negócio do cancelamento de um pedido já existente no SAP: só é
+   * permitido enquanto NÃO foi faturado. Bloqueia se o funil e-commerce estiver
+   * em faturado/enviado/entregue, se o documento SAP estiver fechado
+   * (doc_status = 'C', normalmente copiado para NF) ou se já estiver cancelado.
+   */
+  function isSapOrderCancellable(
+    row: { doc_status?: string | null; cancelled?: unknown },
+    funnel?: OrderStatus | null,
+  ): boolean {
+    if (row.cancelled === "Y" || row.cancelled === true) return false;
+    if (row.doc_status === "C") return false;
+    const effective = deriveFunnelStatus(row, funnel);
+    return !NON_CANCELLABLE_FUNNEL.has(effective);
   }
 
   // DTO camelCase consumido pelo Portal B2B (lista/dashboard de pedidos).
@@ -357,6 +383,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       totalQuantity: Number(row.total_quantity ?? 0),
       comments: row.comments ?? null,
       pending: false,
+      // O portal usa isso para exibir/ocultar o botão "Cancelar pedido".
+      canCancel: isSapOrderCancellable(row, funnel),
     };
   }
 
@@ -364,7 +392,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   // SAP). Reaproveita o mesmo formato do mapCustomerOrder para a lista/dashboard
   // do portal, marcando `pending: true` e status sintético "aguardando".
   function mapPendingOrder(row: PendingOrderRow) {
-    const rejected = row.status === "rejeitado";
+    // `rejeitado` (recusa da equipe) e `cancelado` (cancelamento do cliente)
+    // ambos aparecem para o cliente como estado terminal "cancelado".
+    const terminated = row.status === "rejeitado" || row.status === "cancelado";
     return {
       docEntry: -Number(row.id), // sintético (negativo) — não há doc no SAP
       docNum: Number(row.id),
@@ -375,14 +405,16 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       docTotal: null,
       currency: "BRL",
       sapStatus: null,
-      cancelled: rejected,
-      status: rejected ? "cancelado" : "aguardando",
+      cancelled: terminated,
+      status: terminated ? "cancelado" : "aguardando",
       itemCount: Array.isArray(row.items) ? row.items.length : 0,
       totalQuantity: Number(row.total_quantity ?? 0),
       comments: row.notes ?? null,
       pending: true,
       pendingId: Number(row.id),
       rejectReason: row.reject_reason ?? null,
+      // Permite ao portal habilitar o botão "Cancelar" apenas enquanto pendente.
+      canCancel: row.status === "pendente",
     };
   }
 
@@ -1588,6 +1620,63 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Vendedor cancela um pedido já no SAP (enquanto não faturado). Cancela no ERP,
+  // move o funil para "cancelado" e notifica o cliente.
+  app.post(
+    "/b2b/admin/orders/:docEntry/cancel",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const admin = (req as any).b2bAdmin as { user?: string } | undefined;
+      const correlationId = (req as any).correlationId as string;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { reason?: string };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry inválido" });
+        return;
+      }
+      try {
+        const reason = body.reason?.trim() || null;
+        const seller = admin?.user ?? "Equipe de vendas";
+        const result = await cancelSapOrderDoc({
+          docEntry,
+          reason,
+          by: seller,
+          actor: "seller",
+          correlationId,
+        });
+        if (!result.ok) {
+          reply.code(result.code).send({ error: result.error });
+          return;
+        }
+
+        // Notifica o cliente sobre o cancelamento (se houver e-mail cadastrado).
+        try {
+          const cred = result.cardCode
+            ? await authService.findByCardCode(result.cardCode)
+            : null;
+          if (cred?.email) {
+            await sendOrderCancelledEmail({
+              to: cred.email,
+              cardName: result.cardName ?? cred.card_name ?? result.cardCode,
+              docNum: result.docNum ?? docEntry,
+              reason,
+              byCustomer: false,
+            }).catch(() => undefined);
+          }
+        } catch {
+          /* notificação é best-effort */
+        }
+
+        reply.code(200).send({ ok: true, docEntry, docNum: result.docNum });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao cancelar pedido";
+        req.log.error({ error, correlationId, docEntry }, "Erro ao cancelar pedido (painel)");
+        reply.code(500).send({ error: "Erro ao cancelar pedido", message });
       }
     },
   );
@@ -2974,6 +3063,116 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     );
   }
 
+  type CancelOrderResult =
+    | { ok: true; docNum: number | null; cardName: string | null; cardCode: string }
+    | { ok: false; code: 404 | 409 | 500; error: string };
+
+  /**
+   * Cancela um pedido de venda já existente no SAP (Service Layer
+   * `POST /Orders(DocEntry)/Cancel`), aplicando a regra de "faturado não cancela"
+   * e refletindo o cancelamento no estado local (funil e-commerce + flag no
+   * espelho `sap_sales_orders`) e na timeline. Reutilizado pelo portal (cliente)
+   * e pelo painel (vendedor).
+   */
+  async function cancelSapOrderDoc(params: {
+    docEntry: number;
+    reason?: string | null;
+    by: string | null;
+    actor: "customer" | "seller";
+    correlationId: string;
+    /** Quando informado, exige que o pedido pertença a este cliente. */
+    requireCardCode?: string | null;
+  }): Promise<CancelOrderResult> {
+    const { docEntry, reason, by, actor, correlationId } = params;
+
+    const orderRes = await ordersPool.query(
+      `SELECT doc_entry, doc_num, card_code, card_name, doc_status, cancelled
+       FROM sap_sales_orders WHERE doc_entry = $1`,
+      [docEntry],
+    );
+    const row = orderRes.rows[0];
+    if (!row) return { ok: false, code: 404, error: "Pedido não encontrado" };
+
+    if (
+      params.requireCardCode &&
+      row.card_code?.toLowerCase() !== params.requireCardCode.toLowerCase()
+    ) {
+      return { ok: false, code: 404, error: "Pedido não encontrado" };
+    }
+
+    const funnelRow = await orderStatusService.get(docEntry).catch(() => null);
+    if (row.cancelled === "Y") {
+      return { ok: false, code: 409, error: "Pedido já está cancelado" };
+    }
+    if (!isSapOrderCancellable(row, funnelRow?.status ?? null)) {
+      return {
+        ok: false,
+        code: 409,
+        error: "Pedido já faturado não pode ser cancelado",
+      };
+    }
+
+    // Cancela no SAP. Se o SAP recusar (ex.: já copiado para NF/entrega), o erro
+    // é propagado como 409 para dar um feedback claro ao usuário.
+    try {
+      const client = getSapClient();
+      await client.post<any>(`/Orders(${docEntry})/Cancel`, null, {
+        correlationId,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Falha ao cancelar no SAP";
+      app.log.error(
+        { error, correlationId, docEntry },
+        "Falha ao cancelar pedido no SAP",
+      );
+      return {
+        ok: false,
+        code: 409,
+        error: `Não foi possível cancelar o pedido no SAP: ${message}`,
+      };
+    }
+
+    // Reflete o cancelamento no espelho local (a sincronização diária confirma).
+    await ordersPool
+      .query(
+        "UPDATE sap_sales_orders SET cancelled = 'Y' WHERE doc_entry = $1",
+        [docEntry],
+      )
+      .catch(() => undefined);
+
+    await orderStatusService
+      .set({
+        docEntry,
+        status: "cancelado",
+        cardCode: row.card_code ?? null,
+        updatedBy: by,
+      })
+      .catch((err) =>
+        app.log.warn({ err, docEntry }, "Falha ao mover funil para cancelado"),
+      );
+
+    const who =
+      actor === "customer" ? "pelo cliente (portal)" : "pela equipe de vendas";
+    await orderFollowupService
+      .create({
+        docEntry,
+        cardCode: row.card_code ?? null,
+        statusTag: "Cancelado",
+        note:
+          `Pedido cancelado ${who}.` + (reason ? ` Motivo: ${reason}` : ""),
+        createdBy: by,
+      })
+      .catch(() => undefined);
+
+    return {
+      ok: true,
+      docNum: row.doc_num != null ? Number(row.doc_num) : null,
+      cardName: row.card_name ?? null,
+      cardCode: row.card_code,
+    };
+  }
+
   function mapMessage(m: any) {
     return {
       id: m.id,
@@ -3059,6 +3258,124 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Cliente cancela um pedido já no SAP (enquanto não faturado). Cancela de fato
+  // no ERP e avisa a equipe de vendas.
+  app.post(
+    "/b2b/orders/:docEntry/cancel",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const correlationId = (req as any).correlationId as string;
+      const docEntry = Number((req.params as any).docEntry);
+      const body = (req.body ?? {}) as { reason?: string };
+      if (!Number.isFinite(docEntry)) {
+        reply.code(400).send({ error: "docEntry inválido" });
+        return;
+      }
+      try {
+        const reason = body.reason?.trim() || null;
+        const result = await cancelSapOrderDoc({
+          docEntry,
+          reason,
+          by: customer.cardName ?? customer.cardCode,
+          actor: "customer",
+          correlationId,
+          requireCardCode: customer.cardCode,
+        });
+        if (!result.ok) {
+          reply.code(result.code).send({ error: result.error });
+          return;
+        }
+
+        // Confirma ao cliente e avisa a equipe de vendas.
+        if (customer.email) {
+          await sendOrderCancelledEmail({
+            to: customer.email,
+            cardName: result.cardName ?? customer.cardName ?? customer.cardCode,
+            docNum: result.docNum ?? docEntry,
+            reason,
+            byCustomer: true,
+          }).catch(() => undefined);
+        }
+        await sendOrderInteractionEmail({
+          to: EMAIL_COMMERCIAL,
+          cardName: result.cardName ?? customer.cardName ?? customer.cardCode,
+          docNum: result.docNum ?? docEntry,
+          kind: "cancel_request",
+          body: `Pedido cancelado pelo cliente no portal.${reason ? ` Motivo: ${reason}` : ""}`,
+          orderUrl: `${PAINEL_URL}/pedidos?docEntry=${docEntry}`,
+        }).catch(() => undefined);
+
+        reply.code(200).send({ ok: true, docEntry, docNum: result.docNum });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao cancelar pedido";
+        req.log.error({ error, correlationId, docEntry }, "Erro ao cancelar pedido B2B");
+        reply.code(500).send({ error: "Erro ao cancelar pedido", message });
+      }
+    },
+  );
+
+  // Cliente cancela um pedido do portal que ainda aguarda confirmação (pendente,
+  // não existe no SAP). Não há nada a cancelar no ERP.
+  app.post(
+    "/b2b/pending-orders/:id/cancel",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      const id = Number((req.params as any).id);
+      const body = (req.body ?? {}) as { reason?: string };
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id inválido" });
+        return;
+      }
+      try {
+        const pending = await pendingOrderService.get(id);
+        if (
+          !pending ||
+          pending.card_code?.toLowerCase() !== customer.cardCode.toLowerCase()
+        ) {
+          reply.code(404).send({ error: "Pedido não encontrado" });
+          return;
+        }
+        if (pending.status !== "pendente") {
+          reply.code(409).send({
+            error:
+              pending.status === "confirmado"
+                ? "Pedido já confirmado — solicite o cancelamento pelo pedido."
+                : "Pedido não está mais pendente",
+          });
+          return;
+        }
+
+        const row = await pendingOrderService.markCancelled(id, {
+          reason: body.reason?.trim() || null,
+          cancelledBy: customer.cardName ?? customer.cardCode,
+        });
+        if (!row) {
+          reply.code(409).send({ error: "Pedido não está mais pendente" });
+          return;
+        }
+
+        // Avisa a equipe de vendas que o cliente desistiu da solicitação.
+        await sendOrderInteractionEmail({
+          to: EMAIL_COMMERCIAL,
+          cardName: customer.cardName ?? customer.cardCode,
+          docNum: `S${id}`,
+          kind: "cancel_request",
+          body: `Solicitação de pedido cancelada pelo cliente antes da confirmação.${body.reason?.trim() ? ` Motivo: ${body.reason.trim()}` : ""}`,
+          orderUrl: `${PAINEL_URL}/pedidos`,
+        }).catch(() => undefined);
+
+        reply.code(200).send({ ok: true, pending: row });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao cancelar pedido";
+        reply.code(500).send({ error: "Erro ao cancelar pedido", message });
       }
     },
   );

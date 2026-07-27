@@ -14,6 +14,9 @@ export const PENDING_ORDER_STATUSES = [
   "pendente",
   "confirmado",
   "rejeitado",
+  // Cancelado pelo próprio cliente no portal, antes de o vendedor confirmar.
+  // Distinto de `rejeitado` (recusa feita pela equipe de vendas).
+  "cancelado",
 ] as const;
 
 export type PendingOrderStatus = (typeof PENDING_ORDER_STATUSES)[number];
@@ -155,7 +158,7 @@ export class B2BPendingOrderService {
   async listPendingForCustomer(cardCode: string): Promise<PendingOrderRow[]> {
     const { rows } = await this.pool.query(
       `SELECT * FROM b2b_pending_orders
-       WHERE card_code = $1 AND status IN ('pendente', 'rejeitado')
+       WHERE card_code = $1 AND status IN ('pendente', 'rejeitado', 'cancelado')
        ORDER BY created_at DESC, id DESC
        LIMIT 50`,
       [cardCode],
@@ -207,5 +210,27 @@ export class B2BPendingOrderService {
       [id, data.reason ?? null, data.reviewedBy ?? null],
     );
     return rows[0];
+  }
+
+  /**
+   * Cancelamento feito pelo próprio cliente (portal), enquanto o pedido ainda
+   * está `pendente` (não foi confirmado no SAP). Só afeta linhas pendentes.
+   */
+  async markCancelled(
+    id: number,
+    data: { reason?: string | null; cancelledBy?: string | null },
+  ): Promise<PendingOrderRow | null> {
+    const { rows } = await this.pool.query(
+      `UPDATE b2b_pending_orders
+       SET status = 'cancelado',
+           reject_reason = $2,
+           reviewed_by = $3,
+           reviewed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1 AND status = 'pendente'
+       RETURNING *`,
+      [id, data.reason ?? null, data.cancelledBy ?? null],
+    );
+    return rows[0] ?? null;
   }
 }

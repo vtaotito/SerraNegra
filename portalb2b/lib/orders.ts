@@ -147,4 +147,6 @@ export interface OrderSummary {
   pending?: boolean;
   pendingId?: number;
   rejectReason?: string | null;
+  /** true quando o pedido ainda pode ser cancelado (não faturado / pendente). */
+  canCancel?: boolean;
 }

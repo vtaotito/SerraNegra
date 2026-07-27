@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FavoriteButton } from "@/components/catalog/FavoriteButton";
+import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
 import {
   ArrowLeft,
   Calendar,
@@ -41,6 +42,7 @@ import {
   Replace,
   Info,
   Clock,
+  Ban,
 } from "lucide-react";
 
 interface ItemFlag {
@@ -72,6 +74,7 @@ interface OrderDetail {
   docNum: number;
   status: OrderStatus;
   cancelled: boolean;
+  canCancel?: boolean;
   customerId: string;
   cardName?: string | null;
   shipToAddress?: string | null;
@@ -126,10 +129,24 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
   const { docEntry } = use(params);
   const router = useRouter();
   const { addItem } = useCart();
+  const qc = useQueryClient();
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   const { data: order, isLoading } = useQuery<OrderDetail>({
     queryKey: ["b2b-order", docEntry],
     queryFn: () => get(`/b2b/orders/${docEntry}`),
+  });
+
+  const cancelOrder = useMutation({
+    mutationFn: (reason: string) =>
+      post(`/b2b/orders/${docEntry}/cancel`, { reason: reason.trim() || null }),
+    onSuccess: () => {
+      toast.success("Pedido cancelado.");
+      setCancelOpen(false);
+      qc.invalidateQueries({ queryKey: ["b2b-order", docEntry] });
+      qc.invalidateQueries({ queryKey: ["b2b-orders"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao cancelar pedido"),
   });
 
   const cfg = order ? getOrderStatusConfig(order.status) : null;
@@ -196,6 +213,16 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
             </div>
             {order && (
               <div className="flex flex-1 items-center gap-2 sm:flex-none">
+                {order.canCancel && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive sm:flex-none"
+                    onClick={() => setCancelOpen(true)}
+                  >
+                    <Ban className="h-4 w-4 mr-1.5" /> Cancelar
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" className="flex-1 sm:flex-none" onClick={() => window.print()}>
                   <Printer className="h-4 w-4 mr-1.5" /> Imprimir
                 </Button>
@@ -489,6 +516,19 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
             <RotateCcw className="h-4 w-4 mr-2" /> Comprar novamente
           </Button>
         </div>
+      )}
+
+      {cancelOpen && order && (
+        <CancelOrderDialog
+          title={`Cancelar pedido #${order.docNum}`}
+          description="O pedido será cancelado no SAP. Esta ação não pode ser desfeita. Pedidos já faturados não podem ser cancelados."
+          confirmLabel="Cancelar pedido"
+          busy={cancelOrder.isPending}
+          onConfirm={(reason) => cancelOrder.mutate(reason)}
+          onClose={() => {
+            if (!cancelOrder.isPending) setCancelOpen(false);
+          }}
+        />
       )}
     </div>
   );

@@ -6,8 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQuery } from "@tanstack/react-query";
-import { get } from "@/lib/api/client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { get, post } from "@/lib/api/client";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
   ORDER_STATUS_FILTERS,
@@ -23,8 +23,11 @@ import {
   Calendar,
   Package,
   Filter,
+  Ban,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
 
 interface OrdersResponse {
   items: OrderSummary[];
@@ -34,10 +37,25 @@ interface OrdersResponse {
 export default function PedidosPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
   const [search, setSearch] = useState("");
+  const [cancelTarget, setCancelTarget] = useState<OrderSummary | null>(null);
+  const qc = useQueryClient();
 
   const { data, isLoading } = useQuery<OrdersResponse>({
     queryKey: ["b2b-orders"],
     queryFn: () => get("/b2b/orders"),
+  });
+
+  const cancelPending = useMutation({
+    mutationFn: (vars: { pendingId: number; reason: string }) =>
+      post(`/b2b/pending-orders/${vars.pendingId}/cancel`, {
+        reason: vars.reason.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.success("Solicitação cancelada.");
+      setCancelTarget(null);
+      qc.invalidateQueries({ queryKey: ["b2b-orders"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao cancelar"),
   });
 
   const allOrders = data?.items ?? [];
@@ -177,6 +195,19 @@ export default function PedidosPage() {
                   return (
                     <Card key={order.docEntry} className="border-amber-200 bg-amber-50/30">
                       {cardBody}
+                      {order.canCancel && (
+                        <div className="flex justify-end border-t border-amber-100 px-4 py-2 sm:px-5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setCancelTarget(order)}
+                          >
+                            <Ban className="h-4 w-4" />
+                            Cancelar solicitação
+                          </Button>
+                        </div>
+                      )}
                     </Card>
                   );
                 }
@@ -193,6 +224,21 @@ export default function PedidosPage() {
           )}
         </div>
       </main>
+
+      {cancelTarget && (
+        <CancelOrderDialog
+          title={`Cancelar solicitação #${cancelTarget.docNum}`}
+          description="Sua solicitação ainda não foi confirmada pela equipe de vendas. Ao cancelar, ela não será enviada ao SAP."
+          confirmLabel="Cancelar solicitação"
+          busy={cancelPending.isPending}
+          onConfirm={(reason) =>
+            cancelPending.mutate({ pendingId: cancelTarget.pendingId!, reason })
+          }
+          onClose={() => {
+            if (!cancelPending.isPending) setCancelTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }

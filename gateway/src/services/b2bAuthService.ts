@@ -37,6 +37,14 @@ export class B2BAuthService {
     return rows[0] ?? null;
   }
 
+  async findByCardCode(cardCode: string) {
+    const { rows } = await this.pool.query(
+      "SELECT * FROM b2b_credentials WHERE card_code = $1",
+      [cardCode]
+    );
+    return rows[0] ?? null;
+  }
+
   async upsertCredential(data: {
     cardCode: string;
     cnpj: string;

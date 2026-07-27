@@ -364,6 +364,40 @@ export async function sendOrderRejectedEmail(params: {
   return sendEmail({ to, subject: `Atualização sobre o seu pedido — ${BRAND.name}`, html, text });
 }
 
+/**
+ * Confirma ao cliente que o pedido foi cancelado. Serve tanto para o cancelamento
+ * feito pelo próprio cliente no portal quanto pela equipe de vendas no painel.
+ */
+export async function sendOrderCancelledEmail(params: {
+  to: string;
+  cardName: string;
+  docNum: number | string;
+  reason?: string | null;
+  byCustomer?: boolean;
+}): Promise<boolean> {
+  const { to, cardName, docNum, reason, byCustomer } = params;
+  const title = "Pedido cancelado";
+  const intro = byCustomer
+    ? `Seu pedido <strong>#${escapeHtml(String(docNum))}</strong> foi <strong>cancelado</strong> conforme solicitado.`
+    : `Seu pedido <strong>#${escapeHtml(String(docNum))}</strong> foi <strong>cancelado</strong>.`;
+  const html = renderLayout({
+    title,
+    preheader: `Pedido #${docNum} cancelado.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(intro)}
+      ${reason ? p(`<strong>Motivo:</strong> ${escapeHtml(reason)}`) : ""}
+      ${p("Se precisar, você pode fazer um novo pedido a qualquer momento.")}
+      ${renderButton({ label: "Fazer um novo pedido", url: `${BRAND.portalUrl}/catalogo` })}
+    `,
+  });
+  const text =
+    `Olá, ${cardName}! Seu pedido #${docNum} foi cancelado.` +
+    (reason ? ` Motivo: ${reason}.` : "") +
+    ` Faça um novo pedido em ${BRAND.portalUrl}/catalogo.`;
+  return sendEmail({ to, subject: `Pedido #${docNum} cancelado — ${BRAND.name}`, html, text });
+}
+
 /* ─────────────────────── Catálogo ─────────────────────── */
 
 export async function sendBackInStockEmail(params: {

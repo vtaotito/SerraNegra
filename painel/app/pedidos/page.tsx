@@ -176,6 +176,8 @@ function PedidosContent() {
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
   const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
   const [confirmedMap, setConfirmedMap] = useState<Record<string, boolean>>({});
+  // Pedidos cancelados na sessão (override otimista até a próxima sincronização).
+  const [cancelledMap, setCancelledMap] = useState<Record<string, boolean>>({});
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [msgSummary, setMsgSummary] = useState<Record<string, B2BOrderMessageSummary>>({});
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
@@ -208,6 +210,19 @@ function PedidosContent() {
     (o: SalesOrderRow): boolean => confirmedMap[String(o.doc_entry)] === true,
     [confirmedMap],
   );
+
+  // Status SAP considerando o cancelamento otimista feito nesta sessão.
+  const sapStatusOf = useCallback(
+    (o: SalesOrderRow): StatusKey =>
+      cancelledMap[String(o.doc_entry)] ? "cancelado" : deriveStatus(o),
+    [cancelledMap],
+  );
+
+  // Registra o cancelamento na UI sem recarregar tudo.
+  const markCancelled = useCallback((docEntry: number) => {
+    setCancelledMap((m) => ({ ...m, [String(docEntry)]: true }));
+    setStatusMap((m) => ({ ...m, [String(docEntry)]: "cancelado" }));
+  }, []);
 
   // Pedidos filtrados por busca + status SAP (sem origem) — base para as abas.
   const scoped = useMemo(() => {
@@ -575,7 +590,7 @@ function PedidosContent() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={deriveStatus(o)} />
+                        <StatusBadge status={sapStatusOf(o)} />
                       </td>
                       <td className="px-4 py-3 text-right">
                         {(() => {
@@ -637,8 +652,10 @@ function PedidosContent() {
           stage={effStatus(selected)}
           confirmed={isConfirmed(selected)}
           confirming={confirmingId === selected.doc_entry}
+          sapStatus={sapStatusOf(selected)}
           onConfirm={() => confirmOrder(selected)}
           onClose={() => setSelected(null)}
+          onCancelled={markCancelled}
           onFollowupChange={(docEntry, count) =>
             setFollowCounts((prev) => ({ ...prev, [String(docEntry)]: count }))
           }
@@ -1179,6 +1196,15 @@ interface Followup {
   created_at: string;
 }
 
+// Etapas do funil em que o pedido já foi (ou está sendo) faturado — não pode
+// mais ser cancelado.
+const NON_CANCELLABLE_STAGES: PipelineStatus[] = [
+  "faturado",
+  "enviado",
+  "entregue",
+  "cancelado",
+];
+
 function OrderDrawer({
   order,
   sellerName,
@@ -1186,8 +1212,10 @@ function OrderDrawer({
   stage,
   confirmed,
   confirming,
+  sapStatus,
   onConfirm,
   onClose,
+  onCancelled,
   onFollowupChange,
   onStageChange,
 }: {
@@ -1197,8 +1225,10 @@ function OrderDrawer({
   stage: PipelineStatus | null;
   confirmed: boolean;
   confirming: boolean;
+  sapStatus: StatusKey;
   onConfirm: () => void;
   onClose: () => void;
+  onCancelled: (docEntry: number) => void;
   onFollowupChange: (docEntry: number, count: number) => void;
   onStageChange: (docEntry: number, status: PipelineStatus) => void;
 }) {
@@ -1216,6 +1246,14 @@ function OrderDrawer({
   const [reply, setReply] = useState("");
   const [replySaving, setReplySaving] = useState(false);
   const [resolvingId, setResolvingId] = useState<number | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Só é possível cancelar enquanto não faturado: SAP aberto (não fechado/
+  // cancelado) e etapa do funil fora de faturado/enviado/entregue.
+  const cancellable =
+    sapStatus === "aberto" &&
+    !(currentStage != null && NON_CANCELLABLE_STAGES.includes(currentStage));
 
   useEffect(() => {
     setCurrentStage(stage);
@@ -1419,6 +1457,31 @@ function OrderDrawer({
     }
   };
 
+  // Cancela o pedido no SAP (Service Layer). O gateway aplica a regra de
+  // "faturado não cancela" e devolve 409 quando não permitido.
+  const cancelOrder = async (reason: string) => {
+    setCancelling(true);
+    try {
+      const res = await fetch(`/api/b2b-admin/orders/${order.doc_entry}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() || null }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error || "Erro ao cancelar pedido");
+      setCurrentStage("cancelado");
+      onCancelled(order.doc_entry);
+      loadFollowups();
+      toast.success("Pedido cancelado no SAP. O cliente foi notificado.");
+      setCancelOpen(false);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao cancelar pedido");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[90] flex justify-end">
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
@@ -1428,7 +1491,7 @@ function OrderDrawer({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-mono text-gray-500">#{order.doc_num}</span>
-              <StatusBadge status={deriveStatus(order)} />
+              <StatusBadge status={sapStatus} />
               {isPortalOrder(order) && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
                   <Store className="w-3 h-3" /> Portal
@@ -1439,6 +1502,15 @@ function OrderDrawer({
             <p className="text-xs text-gray-400">{order.card_code}</p>
           </div>
           <div className="flex items-center gap-1">
+            {cancellable && (
+              <button
+                onClick={() => setCancelOpen(true)}
+                title="Cancelar pedido no SAP"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200"
+              >
+                <Ban className="w-3.5 h-3.5" /> Cancelar
+              </button>
+            )}
             <button
               onClick={duplicateOrder}
               title="Duplicar pedido (venda assistida)"
@@ -1761,6 +1833,93 @@ function OrderDrawer({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {cancelOpen && (
+        <CancelOrderModal
+          docNum={order.doc_num}
+          cardName={order.card_name}
+          busy={cancelling}
+          onCancelOrder={cancelOrder}
+          onClose={() => {
+            if (!cancelling) setCancelOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal de confirmação do cancelamento de um pedido no SAP (com motivo opcional
+// enviado ao cliente por e-mail).
+function CancelOrderModal({
+  docNum,
+  cardName,
+  busy,
+  onCancelOrder,
+  onClose,
+}: {
+  docNum: number;
+  cardName: string | null;
+  busy: boolean;
+  onCancelOrder: (reason: string) => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Ban className="w-4 h-4 text-red-600" /> Cancelar pedido #{docNum}
+          </h3>
+          <p className="text-sm text-gray-500 mt-0.5 truncate">{cardName ?? ""}</p>
+        </div>
+        <div className="p-5 space-y-2">
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 p-3 text-xs text-red-800">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              O pedido será <strong>cancelado no SAP B1</strong>. Esta ação não pode
+              ser desfeita. Pedidos já faturados não podem ser cancelados.
+            </span>
+          </div>
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Motivo do cancelamento (opcional)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Ex.: solicitação do cliente, pedido duplicado, erro de digitação…"
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/30 resize-none"
+          />
+          <p className="text-xs text-gray-400">
+            O cliente será notificado por e-mail sobre o cancelamento.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="px-3.5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+          >
+            Voltar
+          </button>
+          <button
+            onClick={() => onCancelOrder(reason)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Ban className="w-4 h-4" />
+            )}
+            Cancelar pedido
+          </button>
         </div>
       </div>
     </div>

@@ -22,5 +22,6 @@ export {
   sendOrderInteractionEmail,
   sendOrderApprovedEmail,
   sendOrderRejectedEmail,
+  sendOrderCancelledEmail,
   sendBackInStockEmail,
 } from "./email/index.js";

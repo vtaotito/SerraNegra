@@ -330,9 +330,24 @@ export function setB2BOrderStatus(
   );
 }
 
+/**
+ * Cancela um pedido já no SAP (Service Layer). Só permitido enquanto não
+ * faturado — o gateway devolve 409 caso contrário.
+ */
+export function cancelB2BOrder(docEntry: number, reason?: string) {
+  return b2bAdminFetch<{ ok: boolean; docEntry: number; docNum: number | null }>(
+    `/b2b/admin/orders/${docEntry}/cancel`,
+    { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
+  );
+}
+
 // ─── Pedidos pendentes (confirmação manual do vendedor) ──
 
-export type B2BPendingOrderStatus = "pendente" | "confirmado" | "rejeitado";
+export type B2BPendingOrderStatus =
+  | "pendente"
+  | "confirmado"
+  | "rejeitado"
+  | "cancelado";
 
 export interface B2BPendingOrderItem {
   sku: string;
