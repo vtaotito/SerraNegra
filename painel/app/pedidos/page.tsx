@@ -775,6 +775,8 @@ interface PendingOrderItem {
   sku: string;
   name: string | null;
   quantity: number;
+  stockAvailable?: number | null;
+  exceedsStock?: boolean;
 }
 
 interface PendingOrder {
@@ -784,6 +786,7 @@ interface PendingOrder {
   items: PendingOrderItem[];
   notes: string | null;
   total_quantity: number;
+  has_stock_alert?: boolean;
   created_by: string | null;
   created_at: string;
 }
@@ -867,6 +870,14 @@ function PendingOrdersSection({
                     {o.card_name ?? o.card_code}
                   </span>
                   <span className="text-xs text-gray-400">{o.card_code}</span>
+                  {o.has_stock_alert && (
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700"
+                      title="Um ou mais itens foram pedidos acima do estoque disponível"
+                    >
+                      <AlertTriangle className="w-3 h-3" /> Acima do estoque
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">
                   {fmtDateShort(o.created_at)} · {o.items?.length ?? 0} item(ns) ·{" "}
@@ -997,18 +1008,48 @@ function PendingReviewModal({
             </p>
             <div className="rounded-lg border border-gray-200 divide-y divide-gray-50">
               {(order.items ?? []).map((it, i) => (
-                <div key={i} className="flex items-center justify-between px-3 py-2">
+                <div
+                  key={i}
+                  className={cn(
+                    "flex items-center justify-between px-3 py-2",
+                    it.exceedsStock && "bg-red-50/70",
+                  )}
+                >
                   <div className="min-w-0">
                     <p className="text-sm text-gray-800 truncate">{it.name ?? it.sku}</p>
                     <p className="text-xs text-gray-400 font-mono">{it.sku}</p>
+                    {it.exceedsStock && (
+                      <p className="text-[11px] text-red-600 mt-0.5 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 shrink-0" />
+                        Acima do estoque
+                        {typeof it.stockAvailable === "number"
+                          ? ` · disponível: ${fmtNum(it.stockAvailable)} un`
+                          : ""}
+                      </p>
+                    )}
                   </div>
-                  <span className="text-sm font-medium text-gray-900 whitespace-nowrap ml-3">
+                  <span
+                    className={cn(
+                      "text-sm font-medium whitespace-nowrap ml-3",
+                      it.exceedsStock ? "text-red-700" : "text-gray-900",
+                    )}
+                  >
                     {fmtNum(it.quantity)} un
                   </span>
                 </div>
               ))}
             </div>
           </div>
+
+          {order.has_stock_alert && (
+            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50/60 p-3 text-xs text-red-800">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>
+                Este pedido contém itens <strong>acima do estoque disponível</strong>. Alinhe
+                com o cliente (prazo/parcial) antes de confirmar no SAP.
+              </span>
+            </div>
+          )}
 
           {order.notes && (
             <div>

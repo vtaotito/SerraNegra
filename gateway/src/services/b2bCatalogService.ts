@@ -1335,6 +1335,10 @@ export class B2BCatalogService {
 
     let unified = Array.from(groups.values()).map((g) => buildUnifiedProduct(g));
 
+    // Só vendemos por embalagem: oculta produtos que ficaram sem nenhuma variante
+    // de embalagem (isto é, produtos que só existiam como unidade avulsa).
+    unified = unified.filter((u) => u.variants.length > 0);
+
     // Remove categorias ocultas (configuráveis em b2b_catalog_category_settings).
     unified = unified.filter((u) => !this.isHiddenCategory(hidden, u.category));
 
@@ -1410,6 +1414,8 @@ export class B2BCatalogService {
     );
 
     const unified = buildUnifiedProduct(variants.length > 0 ? variants : [target]);
+    // Só vendemos por embalagem: produtos sem variante de embalagem são ocultados.
+    if (unified.variants.length === 0) return null;
     // Não expõe produtos de categorias ocultas no Portal B2B.
     const hidden = await this.getHiddenCategories();
     if (this.isHiddenCategory(hidden, unified.category)) return null;
@@ -1428,6 +1434,31 @@ export class B2BCatalogService {
    * linhas de um pedido. Usado no detalhe do pedido do Portal B2B para mostrar
    * miniatura, link para o catálogo e disponibilidade de cada item.
    */
+  /**
+   * Estoque disponível (em UNIDADES) por SKU. Usado para marcar linhas de pedido
+   * que excedem o estoque (interação com o vendedor no Portal B2B).
+   * `stockUnits = total_stock × units_per_package` (unidades por embalagem).
+   */
+  async getStockUnitsBySkus(
+    skus: string[],
+  ): Promise<Record<string, number>> {
+    if (skus.length === 0) return {};
+    const { rows } = await this.pool.query(
+      `SELECT sap_item_code, total_stock, units_per_package
+       FROM b2b_catalog_products
+       WHERE sap_item_code = ANY($1::text[])`,
+      [skus],
+    );
+    const out: Record<string, number> = {};
+    for (const r of rows) {
+      const perPack = Number(r.units_per_package);
+      const step = Number.isFinite(perPack) && perPack > 0 ? perPack : 1;
+      const stock = Number(r.total_stock) || 0;
+      out[r.sap_item_code] = Math.max(0, Math.round(stock * step));
+    }
+    return out;
+  }
+
   async getManyBySkus(skus: string[]): Promise<
     Record<
       string,
@@ -2204,7 +2235,11 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
         imageUrl: r.image_url ?? null,
       } satisfies B2BAttributeVariant;
     })
-    // Ordena por unidades por embalagem (menor primeiro: UND → CAIXA → FARDO).
+    // Regra de negócio: o Portal B2B vende SOMENTE por embalagem. Descartamos as
+    // variantes avulsas (unidade, unitsPerPack <= 1). Produtos que ficam sem
+    // nenhuma variante de embalagem são ocultados pelos chamadores (list/detail).
+    .filter((v) => v.unitsPerPack > 1)
+    // Ordena por unidades por embalagem (menor primeiro: CAIXA → FARDO).
     .sort((a, b) => a.unitsPerPack - b.unitsPerPack || a.sku.localeCompare(b.sku));
 
   // Dimensões distintas disponíveis (para os seletores em cascata do front).

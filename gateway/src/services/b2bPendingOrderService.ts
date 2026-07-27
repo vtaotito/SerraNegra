@@ -26,6 +26,10 @@ export interface PendingOrderItem {
   name: string | null;
   quantity: number;
   warehouse?: string | null;
+  /** Estoque disponível (em unidades) no momento do pedido. */
+  stockAvailable?: number | null;
+  /** true quando a quantidade pedida excede o estoque disponível. */
+  exceedsStock?: boolean;
 }
 
 export interface PendingOrderRow {
@@ -39,6 +43,8 @@ export interface PendingOrderRow {
   origin: string;
   created_by: string | null;
   total_quantity: number;
+  /** true quando ao menos um item foi pedido acima do estoque disponível. */
+  has_stock_alert: boolean;
   sap_doc_entry: number | null;
   sap_doc_num: number | null;
   reject_reason: string | null;
@@ -77,6 +83,9 @@ export class B2BPendingOrderService {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    await this.pool.query(
+      "ALTER TABLE b2b_pending_orders ADD COLUMN IF NOT EXISTS has_stock_alert BOOLEAN NOT NULL DEFAULT FALSE",
+    );
     await this.pool.query(`
       CREATE INDEX IF NOT EXISTS b2b_pending_orders_status_idx
       ON b2b_pending_orders (status)
@@ -100,10 +109,11 @@ export class B2BPendingOrderService {
       (sum, it) => sum + (Number(it.quantity) || 0),
       0,
     );
+    const hasStockAlert = data.items.some((it) => it.exceedsStock === true);
     const { rows } = await this.pool.query(
       `INSERT INTO b2b_pending_orders
-         (card_code, card_name, items, notes, due_date, origin, created_by, total_quantity)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8)
+         (card_code, card_name, items, notes, due_date, origin, created_by, total_quantity, has_stock_alert)
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         data.cardCode,
@@ -114,6 +124,7 @@ export class B2BPendingOrderService {
         data.origin ?? "portal",
         data.createdBy ?? null,
         totalQuantity,
+        hasStockAlert,
       ],
     );
     return rows[0];

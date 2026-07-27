@@ -11,6 +11,7 @@ import { useCart } from "@/lib/cart/context";
 import { packStep, formatStockUnits } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/api/client";
+import { useSalesperson, whatsappHref } from "@/lib/salesperson";
 import { toast } from "sonner";
 import Link from "next/link";
 import {
@@ -22,6 +23,10 @@ import {
   Send,
   Package,
   AlertCircle,
+  UserRound,
+  MessageCircle,
+  Phone,
+  Mail,
 } from "lucide-react";
 
 export default function CarrinhoPage() {
@@ -30,6 +35,17 @@ export default function CarrinhoPage() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
+  const { salesperson } = useSalesperson();
+
+  // Itens pedidos acima do estoque disponível → orientar o cliente a falar com
+  // o vendedor (a equipe também vê o alerta no painel ao revisar o pedido).
+  const exceedingItems = items.filter(
+    (i) => i.maxUnits > 0 && i.quantity > i.maxUnits,
+  );
+  const hasExceeding = exceedingItems.length > 0;
+  const waMessage =
+    "Olá! Fiz um pedido no portal com itens acima do estoque disponível e gostaria de confirmar prazo/disponibilidade.";
+  const waHref = whatsappHref(salesperson?.whatsapp ?? null, waMessage);
 
   async function handleSubmitOrder() {
     if (items.length === 0) return;
@@ -105,8 +121,8 @@ export default function CarrinhoPage() {
             <div className="lg:col-span-2 space-y-3">
               {items.map((item) => {
                 const step = packStep(item.unitsPerPack);
-                const hasLimit = item.maxUnits > 0;
-                const atMax = hasLimit && item.quantity >= item.maxUnits;
+                const hasStock = item.maxUnits > 0;
+                const exceedsStock = hasStock && item.quantity > item.maxUnits;
                 const packs = step > 1 ? Math.round(item.quantity / step) : null;
                 return (
                   <Card key={item.sku}>
@@ -121,15 +137,16 @@ export default function CarrinhoPage() {
                             {item.name}
                           </h3>
                           <p className="font-mono text-xs text-muted-foreground">{item.sku}</p>
-                          {hasLimit && (
+                          {hasStock && (
                             <p
                               className={cn(
                                 "mt-0.5 text-[11px]",
-                                atMax ? "font-medium text-amber-600" : "text-muted-foreground",
+                                exceedsStock ? "font-medium text-amber-600" : "text-muted-foreground",
                               )}
                             >
-                              {atMax ? "Máximo em estoque · " : "Estoque: "}
+                              {exceedsStock ? "Acima do estoque · " : "Estoque: "}
                               {formatStockUnits(item.maxUnits)} {item.unit}
+                              {exceedsStock ? " — o vendedor confirmará" : ""}
                             </p>
                           )}
                         </div>
@@ -161,13 +178,11 @@ export default function CarrinhoPage() {
                             inputMode="numeric"
                             min={1}
                             step={step}
-                            max={hasLimit ? item.maxUnits : undefined}
                             value={item.quantity}
                             aria-label="Quantidade"
                             onChange={(e) => {
                               const parsed = Math.max(1, parseInt(e.target.value) || 1);
-                              const capped = hasLimit ? Math.min(parsed, item.maxUnits) : parsed;
-                              updateQuantity(item.sku, capped);
+                              updateQuantity(item.sku, parsed);
                             }}
                             className="h-10 w-16 border-0 text-center text-base [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           />
@@ -176,15 +191,7 @@ export default function CarrinhoPage() {
                             size="icon"
                             className="h-10 w-10 rounded-l-none"
                             aria-label="Aumentar quantidade"
-                            disabled={atMax}
-                            onClick={() =>
-                              updateQuantity(
-                                item.sku,
-                                hasLimit
-                                  ? Math.min(item.maxUnits, item.quantity + step)
-                                  : item.quantity + step,
-                              )
-                            }
+                            onClick={() => updateQuantity(item.sku, item.quantity + step)}
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
@@ -205,7 +212,104 @@ export default function CarrinhoPage() {
             </div>
 
             {/* Resumo */}
-            <div>
+            <div className="space-y-4">
+              {/* Aviso: itens acima do estoque → contato com o vendedor */}
+              {hasExceeding && (
+                <Card className="border-amber-300 bg-amber-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600" />
+                      <div className="text-xs text-amber-900">
+                        <p className="font-semibold mb-0.5">
+                          {exceedingItems.length} item(ns) acima do estoque
+                        </p>
+                        <p>
+                          Você pode enviar o pedido normalmente — seu vendedor vai confirmar
+                          prazo e disponibilidade.
+                          {salesperson?.name ? ` Fale com ${salesperson.name}:` : ""}
+                        </p>
+                        {(waHref || salesperson?.phone) && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {waHref && (
+                              <a
+                                href={waHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 font-medium text-white hover:bg-emerald-700 transition"
+                              >
+                                <MessageCircle className="h-3.5 w-3.5" />
+                                WhatsApp
+                              </a>
+                            )}
+                            {salesperson?.phone && (
+                              <a
+                                href={`tel:${salesperson.phone.replace(/\D/g, "")}`}
+                                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 font-medium text-amber-800 hover:bg-amber-100 transition"
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                                {salesperson.phone}
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Seu vendedor */}
+              {salesperson && (salesperson.name || salesperson.whatsapp || salesperson.phone || salesperson.email) && (
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gsn-brand/10">
+                        <UserRound className="h-4 w-4 text-gsn-brand" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                          Seu vendedor
+                        </p>
+                        <p className="text-sm font-semibold text-gsn-text truncate">
+                          {salesperson.name ?? `Vendedor ${salesperson.code}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {whatsappHref(salesperson.whatsapp) && (
+                        <a
+                          href={whatsappHref(salesperson.whatsapp)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 transition"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          WhatsApp
+                        </a>
+                      )}
+                      {salesperson.phone && (
+                        <a
+                          href={`tel:${salesperson.phone.replace(/\D/g, "")}`}
+                          className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-gsn-text hover:bg-muted transition"
+                        >
+                          <Phone className="h-3.5 w-3.5" />
+                          {salesperson.phone}
+                        </a>
+                      )}
+                      {salesperson.email && (
+                        <a
+                          href={`mailto:${salesperson.email}`}
+                          className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium text-gsn-text hover:bg-muted transition"
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          E-mail
+                        </a>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card className="sticky top-24">
                 <CardHeader>
                   <CardTitle className="text-base">Resumo do Pedido</CardTitle>

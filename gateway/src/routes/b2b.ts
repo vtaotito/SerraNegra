@@ -25,6 +25,7 @@ import {
   type PendingOrderItem,
   type PendingOrderRow,
 } from "../services/b2bPendingOrderService.js";
+import { B2BSalespersonService } from "../services/b2bSalespersonService.js";
 import {
   B2BOrderMessageService,
   isMessageKind,
@@ -308,6 +309,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   const pendingOrderService = new B2BPendingOrderService(B2B_DB_URL);
   await pendingOrderService.init();
 
+  const salespersonService = new B2BSalespersonService(B2B_DB_URL);
+  await salespersonService.init();
+
   const orderMessageService = new B2BOrderMessageService(B2B_DB_URL);
   await orderMessageService.init();
 
@@ -504,8 +508,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
 
     const expandUrls = [
-      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,Phone1,EmailAddress,Valid,Frozen,BPFiscalTaxIDCollection&$top=5000`,
-      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,BPFiscalTaxIDCollection&$top=5000`,
+      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,Phone1,EmailAddress,Valid,Frozen,SalesPersonCode,BPFiscalTaxIDCollection&$top=5000`,
+      `/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardName,CardType,SalesPersonCode,BPFiscalTaxIDCollection&$top=5000`,
       `/BusinessPartners?$filter=CardType eq 'cCustomer'&$top=500`,
     ];
 
@@ -676,11 +680,14 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         }
 
         const email = partner.EmailAddress ?? "";
+        // SAP usa -1 quando não há vendedor definido; só herdamos códigos válidos.
+        const spCode = Number(partner.SalesPersonCode);
         await authService.upsertCredential({
           cardCode: partner.CardCode,
           cnpj: digits,
           cardName: partner.CardName ?? partner.CardCode,
           email,
+          salesPersonCode: Number.isFinite(spCode) && spCode >= 0 ? spCode : null,
         });
 
         const hasPass = await authService.hasPassword(digits);
@@ -1322,6 +1329,182 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             ? "E-mail atualizado. A verificação foi reiniciada e o cliente confirmará no próximo acesso."
             : "E-mail removido da credencial.",
         });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - VENDEDORES (associação vendedor↔cliente + contatos)
+  // =============================================
+
+  /**
+   * Grava o SalesPersonCode no Business Partner do SAP. O Service Layer responde
+   * 204 (sem corpo) em PATCH bem-sucedido; o wrapper `.patch` espera JSON, então
+   * tratamos "resposta não-JSON" com status 2xx como sucesso.
+   */
+  async function updateBpSalesPersonInSap(
+    cardCode: string,
+    salesPersonCode: number,
+    correlationId: string,
+  ): Promise<void> {
+    const client = getSapClient();
+    try {
+      await client.patch(
+        `/BusinessPartners('${cardCode}')`,
+        { SalesPersonCode: salesPersonCode },
+        { correlationId },
+      );
+    } catch (err) {
+      if (err instanceof SapHttpError && err.status >= 200 && err.status < 300) {
+        return; // 204 No Content → sucesso
+      }
+      throw err;
+    }
+  }
+
+  // Lista de vendedores do SAP, enriquecida com os contatos cadastrados localmente.
+  app.get(
+    "/b2b/admin/salespersons",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      try {
+        const contacts = await salespersonService.list();
+        const contactByCode = new Map(contacts.map((c) => [c.code, c]));
+        let sapPersons: { SalesEmployeeCode: number; SalesEmployeeName?: string }[] = [];
+        try {
+          sapPersons = await getEntitiesService().listSalesPersons(correlationId);
+        } catch (sapErr) {
+          req.log.warn(
+            { error: sapErr, correlationId },
+            "Falha ao listar vendedores do SAP; retornando apenas contatos locais",
+          );
+        }
+        const byCode = new Map<
+          number,
+          { code: number; name: string | null; phone: string | null; whatsapp: string | null; email: string | null }
+        >();
+        for (const p of sapPersons) {
+          const code = Number(p.SalesEmployeeCode);
+          if (!Number.isFinite(code) || code < 0) continue;
+          const c = contactByCode.get(code);
+          byCode.set(code, {
+            code,
+            name: c?.name ?? p.SalesEmployeeName ?? `Vendedor ${code}`,
+            phone: c?.phone ?? null,
+            whatsapp: c?.whatsapp ?? null,
+            email: c?.email ?? null,
+          });
+        }
+        // Inclui contatos locais de códigos que o SAP não retornou.
+        for (const c of contacts) {
+          if (!byCode.has(c.code)) {
+            byCode.set(c.code, {
+              code: c.code,
+              name: c.name ?? `Vendedor ${c.code}`,
+              phone: c.phone,
+              whatsapp: c.whatsapp,
+              email: c.email,
+            });
+          }
+        }
+        const items = Array.from(byCode.values()).sort((a, b) => a.code - b.code);
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Cria/atualiza o contato (telefone/whatsapp/e-mail/nome) de um vendedor.
+  app.put(
+    "/b2b/admin/salespersons/:code/contact",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const code = Number((req.params as any).code);
+      if (!Number.isFinite(code) || code < 0) {
+        reply.code(400).send({ error: "Código de vendedor inválido" });
+        return;
+      }
+      const body = (req.body ?? {}) as {
+        name?: string | null;
+        phone?: string | null;
+        whatsapp?: string | null;
+        email?: string | null;
+      };
+      const clean = (v: unknown): string | null => {
+        const s = typeof v === "string" ? v.trim() : "";
+        return s.length > 0 ? s : null;
+      };
+      try {
+        const row = await salespersonService.upsert({
+          code,
+          name: clean(body.name),
+          phone: clean(body.phone),
+          whatsapp: clean(body.whatsapp),
+          email: clean(body.email),
+        });
+        reply.code(200).send({ ok: true, contact: row });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // Associa (ou remove) o vendedor de um cliente: grava localmente e no SAP.
+  app.patch(
+    "/b2b/admin/credentials/:cnpj/salesperson",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const cnpj = normalizeCnpj((req.params as any).cnpj ?? "");
+      const correlationId = (req as any).correlationId as string;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const body = (req.body ?? {}) as { salesPersonCode?: number | null };
+      const raw = body.salesPersonCode;
+      const code =
+        raw === null || raw === undefined || raw === ("" as unknown)
+          ? null
+          : Number(raw);
+      if (code !== null && (!Number.isFinite(code) || code < 0)) {
+        reply.code(400).send({ error: "Código de vendedor inválido" });
+        return;
+      }
+      try {
+        const cred = await authService.findByCnpj(cnpj);
+        if (!cred) {
+          reply.code(404).send({ error: "Credencial nao encontrada" });
+          return;
+        }
+        // Grava no SAP primeiro (fonte da verdade). Se o código for null, o SAP
+        // não aceita "sem vendedor" via PATCH; nesse caso só limpamos localmente.
+        let sapUpdated = false;
+        if (code !== null) {
+          try {
+            await updateBpSalesPersonInSap(cred.card_code, code, correlationId);
+            sapUpdated = true;
+          } catch (sapErr) {
+            req.log.error(
+              { error: sapErr, correlationId, cardCode: cred.card_code },
+              "Falha ao gravar vendedor no BP do SAP",
+            );
+            reply.code(502).send({
+              error:
+                "Não foi possível gravar o vendedor no SAP. Verifique a conexão e tente novamente.",
+            });
+            return;
+          }
+        }
+        await authService.setSalesPerson(cred.card_code, code);
+        req.log.info(
+          { cnpj, cardCode: cred.card_code, salesPersonCode: code, admin: admin?.user, sapUpdated },
+          "B2B admin: vendedor do cliente atualizado",
+        );
+        reply.code(200).send({ ok: true, salesPersonCode: code, sapUpdated });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         reply.code(500).send({ error: message });
@@ -2702,6 +2885,38 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     }
   );
 
+  // Vendedor associado ao cliente logado (para o portal exibir "seu vendedor" e
+  // orientar o cliente quando o pedido excede o estoque). Resolve o código a
+  // partir da credencial e cruza com os contatos cadastrados no painel.
+  app.get(
+    "/b2b/salesperson",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      try {
+        const cred = await authService.findByCardCode(customer.cardCode);
+        const code = cred?.sales_person_code;
+        if (code === null || code === undefined) {
+          reply.code(200).send({ salesperson: null });
+          return;
+        }
+        const contact = await salespersonService.get(Number(code));
+        reply.code(200).send({
+          salesperson: {
+            code: Number(code),
+            name: contact?.name ?? null,
+            phone: contact?.phone ?? null,
+            whatsapp: contact?.whatsapp ?? null,
+            email: contact?.email ?? null,
+          },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: "Erro ao buscar vendedor", message });
+      }
+    },
+  );
+
   // =============================================
   // DADOS DE ENTREGA (cliente autenticado)
   // =============================================
@@ -3420,6 +3635,25 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             error: "Inclua ao menos um item com quantidade válida",
           });
           return;
+        }
+
+        // Marca linhas cuja quantidade excede o estoque disponível (em unidades).
+        // Não bloqueia o pedido: apenas sinaliza para o vendedor tratar no painel
+        // e para o cliente ser orientado a falar com o vendedor no portal.
+        try {
+          const stockBySku = await catalogService.getStockUnitsBySkus(
+            items.map((i) => i.sku),
+          );
+          for (const it of items) {
+            const stock = stockBySku[it.sku] ?? 0;
+            it.stockAvailable = stock;
+            it.exceedsStock = it.quantity > stock;
+          }
+        } catch (stockErr) {
+          req.log.warn(
+            { error: stockErr, correlationId },
+            "Não foi possível avaliar estoque das linhas do pedido pendente",
+          );
         }
 
         const pending = await pendingOrderService.create({

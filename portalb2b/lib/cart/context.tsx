@@ -17,7 +17,11 @@ export interface CartItem {
   quantity: number;
   /** Unidades por embalagem (passo de compra; 1 = unidade avulsa). */
   unitsPerPack: number;
-  /** Estoque máximo pedível em UNIDADES (0 = sem limite conhecido). */
+  /**
+   * Estoque disponível em UNIDADES (informativo, 0 = desconhecido).
+   * NÃO limita a quantidade pedível — o cliente pode pedir acima do estoque; o
+   * excedente é sinalizado ao vendedor. Mantido apenas para exibir avisos.
+   */
   maxUnits: number;
 }
 
@@ -28,10 +32,12 @@ interface CartState {
 
 const STORAGE_KEY = "b2b_cart";
 
-/** Ajusta a quantidade a >= 0 e ao teto de estoque (quando conhecido). */
-function clampQty(quantity: number, maxUnits: number): number {
-  const q = Math.max(0, Math.round(quantity));
-  return maxUnits && maxUnits > 0 ? Math.min(q, maxUnits) : q;
+/**
+ * Normaliza a quantidade para inteiro >= 0. NÃO aplica teto de estoque: o cliente
+ * pode pedir acima do disponível (o excedente vira interação com o vendedor).
+ */
+function clampQty(quantity: number): number {
+  return Math.max(0, Math.round(quantity));
 }
 
 function loadInitialState(): CartState {
@@ -80,14 +86,14 @@ function cartReducer(state: CartState, action: CartAction): CartState {
                 ...action.item,
                 unitsPerPack,
                 maxUnits,
-                quantity: clampQty(i.quantity + action.quantity, maxUnits),
+                quantity: clampQty(i.quantity + action.quantity),
               }
             : i,
         );
       } else {
         items = [
           ...state.items,
-          { ...action.item, unitsPerPack, maxUnits, quantity: clampQty(action.quantity, maxUnits) },
+          { ...action.item, unitsPerPack, maxUnits, quantity: clampQty(action.quantity) },
         ];
       }
       return { items, totalItems: items.reduce((s, i) => s + i.quantity, 0) };
@@ -96,7 +102,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       const items = action.quantity <= 0
         ? state.items.filter((i) => i.sku !== action.sku)
         : state.items.map((i) =>
-            i.sku === action.sku ? { ...i, quantity: clampQty(action.quantity, i.maxUnits) } : i,
+            i.sku === action.sku ? { ...i, quantity: clampQty(action.quantity) } : i,
           );
       return { items, totalItems: items.reduce((s, i) => s + i.quantity, 0) };
     }

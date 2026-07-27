@@ -26,6 +26,9 @@ import {
   CheckCircle2,
   Ban,
   Clock,
+  UserRound,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,8 +40,17 @@ interface B2BCredential {
   email: string | null;
   has_password: boolean;
   email_verified: boolean;
+  sales_person_code: number | null;
   created_at: string;
   updated_at: string;
+}
+
+interface Salesperson {
+  code: number;
+  name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
 }
 
 interface B2BEmailRequest {
@@ -132,6 +144,13 @@ export default function B2BAcessosPage() {
   const [emailValue, setEmailValue] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
 
+  // Vendedores (associação vendedor↔cliente + contatos)
+  const [salespersons, setSalespersons] = useState<Salesperson[]>([]);
+  const [vendorTarget, setVendorTarget] = useState<B2BCredential | null>(null);
+  const [vendorCode, setVendorCode] = useState<string>("");
+  const [vendorLoading, setVendorLoading] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
+
   // Solicitações de acesso por e-mail (clientes SAP sem e-mail)
   const [requests, setRequests] = useState<B2BEmailRequest[]>([]);
   const [requestsLoading, setRequestsLoading] = useState(true);
@@ -172,10 +191,39 @@ export default function B2BAcessosPage() {
     }
   }, []);
 
+  const fetchSalespersons = useCallback(async () => {
+    try {
+      const res = await fetch("/api/b2b-admin/salespersons");
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao carregar vendedores");
+      }
+      setSalespersons(json.data.items);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar vendedores");
+    }
+  }, []);
+
   useEffect(() => {
     fetchCreds();
     fetchRequests();
-  }, [fetchCreds, fetchRequests]);
+    fetchSalespersons();
+  }, [fetchCreds, fetchRequests, fetchSalespersons]);
+
+  const salespersonByCode = useMemo(() => {
+    const m = new Map<number, Salesperson>();
+    for (const s of salespersons) m.set(s.code, s);
+    return m;
+  }, [salespersons]);
+
+  const vendorName = useCallback(
+    (code: number | null): string => {
+      if (code === null || code === undefined) return "—";
+      const s = salespersonByCode.get(code);
+      return s?.name ?? `Vendedor ${code}`;
+    },
+    [salespersonByCode],
+  );
 
   const pendingRequests = useMemo(
     () => requests.filter((r) => r.status === "pending"),
@@ -324,6 +372,40 @@ export default function B2BAcessosPage() {
     }
   };
 
+  const openVendorModal = (c: B2BCredential) => {
+    setVendorTarget(c);
+    setVendorCode(c.sales_person_code != null ? String(c.sales_person_code) : "");
+  };
+
+  const handleAssignVendor = async () => {
+    if (!vendorTarget) return;
+    const salesPersonCode = vendorCode === "" ? null : Number(vendorCode);
+    setVendorLoading(true);
+    try {
+      const res = await fetch(
+        `/api/b2b-admin/credentials/${vendorTarget.cnpj}/salesperson`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ salesPersonCode }),
+        },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Erro ao associar vendedor");
+      toast.success(
+        salesPersonCode === null
+          ? "Vendedor removido do cliente."
+          : `Vendedor associado${json.data?.sapUpdated ? " e gravado no SAP" : ""}.`,
+      );
+      setVendorTarget(null);
+      fetchCreds(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao associar vendedor");
+    } finally {
+      setVendorLoading(false);
+    }
+  };
+
   const openReview = (req: B2BEmailRequest, action: "approve" | "reject") => {
     setReviewTarget(req);
     setReviewAction(action);
@@ -375,14 +457,25 @@ export default function B2BAcessosPage() {
               Empresas com credencial no Portal do Cliente — resete senhas ou defina uma temporária
             </p>
           </div>
-          <button
-            onClick={() => { fetchCreds(true); fetchRequests(); }}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition disabled:opacity-50"
-          >
-            <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
-            Atualizar
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <button
+                onClick={() => setContactsOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition"
+              >
+                <UserRound className="w-4 h-4" />
+                Contatos de vendedores
+              </button>
+            )}
+            <button
+              onClick={() => { fetchCreds(true); fetchRequests(); fetchSalespersons(); }}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition disabled:opacity-50"
+            >
+              <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} />
+              Atualizar
+            </button>
+          </div>
         </div>
 
         {/* Solicitações de acesso por e-mail (clientes SAP sem e-mail) */}
@@ -540,6 +633,7 @@ export default function B2BAcessosPage() {
                     <Th>CNPJ (login)</Th>
                     <Th>E-mail</Th>
                     <Th>Senha</Th>
+                    <Th>Vendedor</Th>
                     <Th>Atualizado em</Th>
                     {isAdmin && <Th right>Ações</Th>}
                   </tr>
@@ -579,12 +673,29 @@ export default function B2BAcessosPage() {
                           </span>
                         )}
                       </td>
+                      <td className="px-6 py-4">
+                        {c.sales_person_code != null ? (
+                          <span className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+                            <UserRound className="w-3.5 h-3.5 text-gsn-400 shrink-0" />
+                            {vendorName(c.sales_person_code)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">Sem vendedor</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-xs text-gray-500 whitespace-nowrap">
                         {fmtDateTime(c.updated_at)}
                       </td>
                       {isAdmin && (
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openVendorModal(c)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gsn-700 hover:bg-gsn-50 transition"
+                              title="Associar vendedor"
+                            >
+                              <UserRound className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => openEmailModal(c)}
                               className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
@@ -919,7 +1030,221 @@ export default function B2BAcessosPage() {
           </div>
         </Modal>
       )}
+
+      {/* ── Modal: associar vendedor ao cliente ── */}
+      {vendorTarget && (
+        <Modal onClose={() => !vendorLoading && setVendorTarget(null)}>
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-gsn-50 flex items-center justify-center shrink-0">
+                <UserRound className="w-5 h-5 text-gsn-700" />
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Vendedor do cliente</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  <strong className="text-gray-800">
+                    {vendorTarget.card_name ?? vendorTarget.card_code}
+                  </strong>{" "}
+                  · {fmtCNPJ(vendorTarget.cnpj)}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => !vendorLoading && setVendorTarget(null)}
+              className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Vendedor</label>
+          <select
+            value={vendorCode}
+            onChange={(e) => setVendorCode(e.target.value)}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none mb-2 bg-white"
+          >
+            <option value="">Sem vendedor</option>
+            {salespersons.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name ?? `Vendedor ${s.code}`} (#{s.code})
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500 mb-4 flex items-start gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+            O vendedor é gravado também no Business Partner do SAP (SalesPersonCode). Para exibir
+            telefone/WhatsApp ao cliente no portal, cadastre o contato em “Contatos de vendedores”.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setVendorTarget(null)}
+              disabled={vendorLoading}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleAssignVendor}
+              disabled={vendorLoading || vendorCode === (vendorTarget.sales_person_code != null ? String(vendorTarget.sales_person_code) : "")}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50"
+            >
+              {vendorLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Salvar
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal: contatos de vendedores ── */}
+      {contactsOpen && (
+        <SalespersonContactsModal
+          salespersons={salespersons}
+          onClose={() => setContactsOpen(false)}
+          onSaved={fetchSalespersons}
+        />
+      )}
     </ProtectedLayout>
+  );
+}
+
+function SalespersonContactsModal({
+  salespersons,
+  onClose,
+  onSaved,
+}: {
+  salespersons: Salesperson[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [rows, setRows] = useState<Salesperson[]>(salespersons);
+  const [savingCode, setSavingCode] = useState<number | null>(null);
+
+  const update = (code: number, field: keyof Salesperson, value: string) => {
+    setRows((prev) =>
+      prev.map((r) => (r.code === code ? { ...r, [field]: value } : r)),
+    );
+  };
+
+  const save = async (row: Salesperson) => {
+    setSavingCode(row.code);
+    try {
+      const res = await fetch(`/api/b2b-admin/salespersons/${row.code}/contact`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: row.name,
+          phone: row.phone,
+          whatsapp: row.whatsapp,
+          email: row.email,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) throw new Error(json.error || "Erro ao salvar contato");
+      toast.success(`Contato de ${row.name ?? `Vendedor ${row.code}`} salvo.`);
+      onSaved();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar contato");
+    } finally {
+      setSavingCode(null);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl max-h-[85vh] flex flex-col bg-white rounded-xl shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-lg bg-gsn-50 flex items-center justify-center">
+              <UserRound className="w-5 h-5 text-gsn-700" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Contatos de vendedores</h2>
+              <p className="text-xs text-gray-500">
+                Telefone/WhatsApp/e-mail exibidos ao cliente no Portal B2B
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-gray-400 hover:bg-gray-100 transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto p-4">
+          {rows.length === 0 ? (
+            <div className="flex items-center justify-center h-24 text-sm text-gray-500">
+              Nenhum vendedor encontrado.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {rows.map((row) => (
+                <div
+                  key={row.code}
+                  className="rounded-lg border border-gray-200 p-3 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center"
+                >
+                  <div className="sm:col-span-3 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {row.name ?? `Vendedor ${row.code}`}
+                    </p>
+                    <p className="text-xs text-gray-500">#{row.code}</p>
+                  </div>
+                  <div className="sm:col-span-3 relative">
+                    <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                    <input
+                      value={row.phone ?? ""}
+                      onChange={(e) => update(row.code, "phone", e.target.value)}
+                      placeholder="Telefone"
+                      className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-3 relative">
+                    <MessageCircle className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-emerald-500" />
+                    <input
+                      value={row.whatsapp ?? ""}
+                      onChange={(e) => update(row.code, "whatsapp", e.target.value)}
+                      placeholder="WhatsApp"
+                      className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-3 flex items-center gap-1.5">
+                    <div className="relative flex-1">
+                      <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        value={row.email ?? ""}
+                        onChange={(e) => update(row.code, "email", e.target.value)}
+                        placeholder="E-mail"
+                        className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={() => save(row)}
+                      disabled={savingCode === row.code}
+                      className="p-2 rounded-lg text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50 shrink-0"
+                      title="Salvar contato"
+                    >
+                      {savingCode === row.code ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

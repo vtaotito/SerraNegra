@@ -27,6 +27,10 @@ export class B2BAuthService {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Vendedor (SalesPersonCode do Business Partner no SAP) associado ao cliente.
+    await this.pool.query(
+      "ALTER TABLE b2b_credentials ADD COLUMN IF NOT EXISTS sales_person_code INTEGER",
+    );
   }
 
   async findByCnpj(cnpj: string) {
@@ -50,16 +54,34 @@ export class B2BAuthService {
     cnpj: string;
     cardName: string;
     email: string;
+    /** Vendedor vindo do SAP (BP.SalesPersonCode). Preenche só se ainda vazio. */
+    salesPersonCode?: number | null;
   }) {
     await this.pool.query(
-      `INSERT INTO b2b_credentials (card_code, cnpj, card_name, email)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO b2b_credentials (card_code, cnpj, card_name, email, sales_person_code)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (cnpj) DO UPDATE SET
          card_code = EXCLUDED.card_code,
          card_name = EXCLUDED.card_name,
          email = EXCLUDED.email,
+         -- Preserva um vendedor já ajustado no painel; só herda do SAP quando ainda vazio.
+         sales_person_code = COALESCE(b2b_credentials.sales_person_code, EXCLUDED.sales_person_code),
          updated_at = NOW()`,
-      [data.cardCode, data.cnpj, data.cardName, data.email]
+      [
+        data.cardCode,
+        data.cnpj,
+        data.cardName,
+        data.email,
+        data.salesPersonCode ?? null,
+      ]
+    );
+  }
+
+  /** Define/atualiza o vendedor (SalesPersonCode) associado ao cliente. */
+  async setSalesPerson(cardCode: string, salesPersonCode: number | null) {
+    await this.pool.query(
+      "UPDATE b2b_credentials SET sales_person_code = $1, updated_at = NOW() WHERE card_code = $2",
+      [salesPersonCode, cardCode],
     );
   }
 
@@ -135,6 +157,7 @@ export class B2BAuthService {
       email: string | null;
       has_password: boolean;
       email_verified: boolean;
+      sales_person_code: number | null;
       created_at: string;
       updated_at: string;
     }[]
@@ -143,6 +166,7 @@ export class B2BAuthService {
       SELECT id, card_code, cnpj, card_name, email,
              (password_hash IS NOT NULL) AS has_password,
              COALESCE(email_verified, FALSE) AS email_verified,
+             sales_person_code,
              created_at, updated_at
       FROM b2b_credentials
       ORDER BY card_name NULLS LAST, cnpj

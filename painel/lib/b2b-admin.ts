@@ -74,6 +74,7 @@ export interface B2BCredentialRow {
   email: string | null;
   has_password: boolean;
   email_verified: boolean;
+  sales_person_code: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +82,43 @@ export interface B2BCredentialRow {
 export function listB2BCredentials() {
   return b2bAdminFetch<{ items: B2BCredentialRow[]; total: number }>(
     "/b2b/admin/credentials",
+  );
+}
+
+// ─── Vendedores (associação vendedor↔cliente + contatos) ──
+
+export interface B2BSalespersonRow {
+  code: number;
+  name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+}
+
+export function listB2BSalespersons() {
+  return b2bAdminFetch<{ items: B2BSalespersonRow[]; total: number }>(
+    "/b2b/admin/salespersons",
+  );
+}
+
+export function upsertB2BSalespersonContact(
+  code: number,
+  data: { name?: string | null; phone?: string | null; whatsapp?: string | null; email?: string | null },
+) {
+  return b2bAdminFetch<{ ok: boolean; contact: B2BSalespersonRow }>(
+    `/b2b/admin/salespersons/${code}/contact`,
+    { method: "PUT", body: JSON.stringify(data) },
+  );
+}
+
+/** Associa (ou remove, com null) o vendedor de um cliente — grava local + SAP. */
+export function setB2BCredentialSalesperson(
+  cnpj: string,
+  salesPersonCode: number | null,
+) {
+  return b2bAdminFetch<{ ok: boolean; salesPersonCode: number | null; sapUpdated: boolean }>(
+    `/b2b/admin/credentials/${encodeURIComponent(cnpj)}/salesperson`,
+    { method: "PATCH", body: JSON.stringify({ salesPersonCode }) },
   );
 }
 
@@ -354,6 +392,8 @@ export interface B2BPendingOrderItem {
   name: string | null;
   quantity: number;
   warehouse?: string | null;
+  stockAvailable?: number | null;
+  exceedsStock?: boolean;
 }
 
 export interface B2BPendingOrderRow {
@@ -367,6 +407,7 @@ export interface B2BPendingOrderRow {
   origin: string;
   created_by: string | null;
   total_quantity: number;
+  has_stock_alert: boolean;
   sap_doc_entry: number | null;
   sap_doc_num: number | null;
   reject_reason: string | null;

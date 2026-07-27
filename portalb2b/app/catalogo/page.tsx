@@ -122,11 +122,10 @@ export default function CatalogoPage() {
     [],
   );
 
-  const handleQuantityChange = useCallback((id: string, delta: number, maxPacks: number) => {
+  const handleQuantityChange = useCallback((id: string, delta: number) => {
     setQuantities((prev) => {
       const cur = prev[id] ?? 1;
-      let next = Math.max(1, cur + delta);
-      if (maxPacks > 0) next = Math.min(next, maxPacks);
+      const next = Math.max(1, cur + delta);
       return { ...prev, [id]: next };
     });
   }, []);
@@ -137,24 +136,15 @@ export default function CatalogoPage() {
     const displayName =
       variant.unitsPerPack > 1 ? `${product.name} — ${label}` : product.name;
 
-    // Limite: nunca exceder o estoque disponível (em embalagens inteiras),
-    // considerando o que já está no carrinho para esta variante.
-    const maxUnits = maxOrderableUnits(variant);
+    // Estoque disponível (informativo). Não limita o pedido: o cliente pode pedir
+    // acima do estoque; o excedente vira interação com o vendedor.
+    const availableUnits = maxOrderableUnits(variant);
     const inCartUnits = getItem(variant.sku)?.quantity ?? 0;
-    const remainingUnits = Math.max(0, maxUnits - inCartUnits);
-    const remainingPacks = Math.floor(remainingUnits / perPack);
-
-    if (remainingPacks < 1) {
-      toast.info("Estoque máximo já no carrinho", {
-        description: `Você já tem ${formatStockUnits(inCartUnits)} ${variant.unitOfMeasure} — todo o estoque disponível.`,
-      });
-      return;
-    }
 
     const qty = quantities[product.id] ?? 1;
-    const addPacks = Math.min(qty, remainingPacks);
+    const addPacks = qty;
     const addUnits = addPacks * perPack;
-    const clamped = addPacks < qty;
+    const exceedsStock = inCartUnits + addUnits > availableUnits;
 
     addItem(
       {
@@ -162,24 +152,22 @@ export default function CatalogoPage() {
         name: displayName,
         unit: variant.unitOfMeasure,
         unitsPerPack: perPack,
-        maxUnits,
+        maxUnits: availableUnits,
       },
       addUnits,
     );
 
-    if (clamped) {
-      toast.warning("Quantidade ajustada ao estoque", {
-        description:
-          perPack > 1
-            ? `Adicionado ${addPacks} ${label} (${addUnits} ${variant.unitOfMeasure}) — limite de estoque.`
-            : `Adicionado ${addUnits} ${variant.unitOfMeasure} — limite de estoque.`,
+    const baseDesc =
+      perPack > 1
+        ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
+        : `${addUnits} ${variant.unitOfMeasure}`;
+    if (exceedsStock) {
+      toast.success(`${product.name} adicionado ao carrinho`, {
+        description: `${baseDesc} · acima do estoque — seu vendedor confirmará prazo/disponibilidade.`,
       });
     } else {
       toast.success(`${product.name} adicionado ao carrinho`, {
-        description:
-          perPack > 1
-            ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
-            : `${addUnits} ${variant.unitOfMeasure}`,
+        description: baseDesc,
       });
     }
   }
@@ -507,8 +495,8 @@ export default function CatalogoPage() {
                       qty={quantities[product.id] ?? 1}
                       cartUnits={cartUnits}
                       inCart={cartUnits > 0}
-                      onQtyChange={(delta, maxPacks) =>
-                        handleQuantityChange(product.id, delta, maxPacks)
+                      onQtyChange={(delta) =>
+                        handleQuantityChange(product.id, delta)
                       }
                       onAdd={(v) => handleAddToCart(product, v)}
                       onNotify={(v) => handleNotify(v, product.name)}
@@ -665,7 +653,7 @@ function ProductCard({
   qty: number;
   cartUnits: number;
   inCart: boolean;
-  onQtyChange: (delta: number, maxPacks: number) => void;
+  onQtyChange: (delta: number) => void;
   onAdd: (variant: AttributeVariant) => void;
   onNotify: (variant: AttributeVariant) => void;
   onCategoryClick: (category: string) => void;
@@ -689,14 +677,13 @@ function ProductCard({
   const perPack = variant?.unitsPerPack > 1 ? variant.unitsPerPack : 1;
   const selectedInStock = variant?.inStock ?? false;
 
-  // Limite de pedido (add rápido): estoque em embalagens inteiras menos carrinho.
-  const maxUnits = variant ? maxOrderableUnits(variant) : 0;
-  const remainingUnits = Math.max(0, maxUnits - cartUnits);
-  const remainingPacks = Math.floor(remainingUnits / perPack);
-  const effQty = Math.min(qty, Math.max(1, remainingPacks));
+  // Estoque disponível (informativo). Sem limite de pedido: o cliente pode pedir
+  // acima do estoque — o excedente vira interação com o vendedor.
+  const availableUnits = variant ? maxOrderableUnits(variant) : 0;
+  const effQty = Math.max(1, qty);
   const totalUnits = effQty * perPack;
-  const atMax = effQty >= remainingPacks;
-  const canAdd = remainingPacks >= 1;
+  const canAdd = !!variant;
+  const exceedsStock = !!variant && cartUnits + totalUnits > availableUnits;
 
   return (
     <Card
@@ -814,7 +801,7 @@ function ProductCard({
         </div>
 
         {/* Ações: add rápido (combinação única) ou "Escolher opções" → detalhe */}
-        {singleCombo && selectedInStock ? (
+        {singleCombo ? (
           <div className="mt-auto space-y-2">
             {perPack > 1 && (
               <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200/60 px-2.5 py-1.5 text-xs text-amber-800">
@@ -832,21 +819,20 @@ function ProductCard({
                   size="icon"
                   className="h-9 w-9 rounded-r-none hover:bg-muted"
                   aria-label="Diminuir quantidade"
-                  disabled={!canAdd || effQty <= 1}
-                  onClick={() => onQtyChange(-1, remainingPacks)}
+                  disabled={effQty <= 1}
+                  onClick={() => onQtyChange(-1)}
                 >
                   <Minus className="h-3.5 w-3.5" />
                 </Button>
                 <span className="w-10 text-center text-sm font-semibold tabular-nums">
-                  {canAdd ? effQty : 0}
+                  {effQty}
                 </span>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-9 w-9 rounded-l-none hover:bg-muted"
                   aria-label="Aumentar quantidade"
-                  disabled={!canAdd || atMax}
-                  onClick={() => onQtyChange(1, remainingPacks)}
+                  onClick={() => onQtyChange(1)}
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </Button>
@@ -857,12 +843,18 @@ function ProductCard({
                   : variant.unitOfMeasure}
               </span>
             </div>
-            {perPack > 1 && canAdd && (
+            {perPack > 1 && (
               <p className="text-xs text-muted-foreground">
                 Total:{" "}
                 <span className="font-semibold text-[var(--gsn-text)]">
                   {totalUnits} {variant.unitOfMeasure}
                 </span>
+              </p>
+            )}
+            {exceedsStock && (
+              <p className="text-[11px] text-amber-600 flex items-start gap-1">
+                <Bell className="h-3 w-3 shrink-0 mt-0.5" />
+                Acima do estoque — seu vendedor confirmará prazo/disponibilidade.
               </p>
             )}
             <Button
@@ -872,20 +864,17 @@ function ProductCard({
               onClick={() => onAdd(variant)}
             >
               <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
-              {canAdd ? "Adicionar ao Carrinho" : "Máximo no carrinho"}
+              Adicionar ao Carrinho
             </Button>
-          </div>
-        ) : singleCombo && !selectedInStock ? (
-          <div className="mt-auto">
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full border-amber-400/60 text-amber-700 hover:bg-amber-50 hover:border-amber-500"
-              onClick={() => variant && onNotify(variant)}
-            >
-              <Bell className="h-3.5 w-3.5 mr-1.5" />
-              Avise-me quando disponivel
-            </Button>
+            {!selectedInStock && (
+              <button
+                type="button"
+                onClick={() => variant && onNotify(variant)}
+                className="w-full text-[11px] text-amber-600 hover:underline"
+              >
+                Avise-me quando voltar ao estoque
+              </button>
+            )}
           </div>
         ) : (
           <div className="mt-auto">
