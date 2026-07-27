@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { fmtDate } from "@/lib/format";
 import { DateRangePicker } from "@/components/cockpit/DateRangePicker";
+import { PracaFilter } from "./PracaFilter";
 
 export function BITopbar() {
   const [syncing, setSyncing] = useState(false);
@@ -90,7 +91,10 @@ export function BITopbar() {
         </div>
       </div>
 
-      <DateRangePicker idPrefix="bi-date-picker" />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <DateRangePicker idPrefix="bi-date-picker" />
+        <PracaFilter />
+      </div>
     </header>
   );
 }

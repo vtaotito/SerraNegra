@@ -43,6 +43,39 @@ export function getProductGroup(itemCode: string | undefined | null): string {
 }
 
 /**
+ * Praça (localização física) derivada do código do depósito SAP.
+ * Regra do negócio: depósitos que começam com "04" (04.01, 04.02) são de
+ * São Paulo; todos os demais (01.*, 02.*, 03.*) são de Belo Horizonte.
+ */
+export type Praca = "todas" | "sp" | "bh";
+export type PracaRegion = "sp" | "bh";
+
+export const PRACA_LABELS: Record<Praca, string> = {
+  todas: "Todas",
+  sp: "São Paulo",
+  bh: "Belo Horizonte",
+};
+
+export const PRACA_SHORT: Record<Praca, string> = {
+  todas: "Todas",
+  sp: "SP",
+  bh: "BH",
+};
+
+/** Retorna a praça (SP/BH) de um código de depósito. Sem código → BH (matriz). */
+export function getWarehouseRegion(code: string | null | undefined): PracaRegion {
+  return (code ?? "").trim().startsWith("04") ? "sp" : "bh";
+}
+
+/** true quando o depósito pertence à praça selecionada ("todas" aceita tudo). */
+export function matchesPraca(
+  code: string | null | undefined,
+  praca: Praca,
+): boolean {
+  return praca === "todas" || getWarehouseRegion(code) === praca;
+}
+
+/**
  * Catálogo de grupos de produto comerciais.
  * Single source of truth — altere aqui para refletir em toda a aplicação.
  */

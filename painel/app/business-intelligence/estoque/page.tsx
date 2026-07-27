@@ -13,7 +13,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell, PieChart, Pie, LineChart, Line,
 } from "recharts";
-import { fmtNum, fmtBRL, exportCSV, getProductGroup } from "@/lib/format";
+import { fmtNum, fmtBRL, exportCSV, getProductGroup, getWarehouseRegion } from "@/lib/format";
 import {
   fetchCatalog, fetchInventory, fetchProductAnalytics,
   fetchInventorySyncHistory, syncInventory, syncInventoryMovements,
@@ -23,6 +23,7 @@ import {
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
+import { usePracaFilter } from "@/contexts/PracaFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip, CockpitTooltipFrame } from "@/components/cockpit/ChartTooltip";
 import { CHART_GRID, chartAxisTick } from "@/lib/chart-theme";
@@ -285,6 +286,17 @@ export default function EstoquePage() {
   const { data: invData, loading: l2, error: e2, refetch: r2 } =
     useFetch(() => fetchInventory({ limit: 5000 }), []);
   const { salesPersonCode } = useSalesPersonFilter();
+  const { praca } = usePracaFilter();
+  // Dimensão Praça (SP/BH): filtra as posições de estoque pelos depósitos da
+  // praça selecionada. Estoque/valor/depósitos passam a refletir só a praça;
+  // métricas de venda (giro/cobertura) seguem globais por produto.
+  const invRows = useMemo(
+    () =>
+      (invData?.data ?? []).filter(
+        (inv) => praca === "todas" || getWarehouseRegion(inv.warehouse_id) === praca,
+      ),
+    [invData, praca],
+  );
   // Agregação server-side (substitui o fetch de ~50k pedidos): retorna ~centenas de linhas por item.
   const { data: analyticsData, loading: l3, error: e3, refetch: r3 } =
     useFetch(() => fetchProductAnalytics({ dateFrom, dateTo, date3mCutoff, salesPerson: salesPersonCode }), [dateFrom, dateTo, salesPersonCode]);
@@ -320,7 +332,7 @@ export default function EstoquePage() {
       warehouses: Map<string, WarehouseBreakdown>;
     };
     const invMap = new Map<string, InvAgg>();
-    for (const inv of invData.data) {
+    for (const inv of invRows) {
       if (EXCLUDED_PREFIXES.has(getSkuPrefix(inv.product_id))) continue;
       const cur = invMap.get(inv.product_id) ?? {
         avail: 0, free: 0, reserved: 0, onOrder: 0, minStock: 0, maxStock: 0,
@@ -481,7 +493,7 @@ export default function EstoquePage() {
       item.giro = classifyGiro(item.mediaDiaria, maxMedia);
     }
     return mergedItems;
-  }, [catalogData, invData, analyticsData, totalDays]);
+  }, [catalogData, invData, invRows, analyticsData, totalDays]);
 
   /* ── Category distribution (for filter badges) ── */
   const categoryDistrib = useMemo(() => {
@@ -571,11 +583,11 @@ export default function EstoquePage() {
   /* ── Lista de depósitos (do snapshot de estoque) ── */
   const warehouseList = useMemo(() => {
     const set = new Set<string>();
-    for (const inv of invData?.data ?? []) {
+    for (const inv of invRows) {
       if (inv.warehouse_id) set.add(inv.warehouse_id);
     }
     return [...set].sort();
-  }, [invData]);
+  }, [invRows]);
 
   /* ── Persistência dos filtros na URL ── */
   useEffect(() => {

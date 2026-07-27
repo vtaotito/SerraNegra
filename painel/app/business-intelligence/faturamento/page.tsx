@@ -43,6 +43,7 @@ import {
   fmtBRL,
   fmtNum,
   getProductGroup,
+  getWarehouseRegion,
   STATE_TO_REGION,
   exportCSV,
   PRODUCT_GROUP_NAMES,
@@ -61,6 +62,7 @@ import { excludeFreight, isFreightOrder, sumFreightValue } from "@/lib/orders";
 import { useFetch } from "@/hooks/useFetch";
 import { useDateRange } from "@/contexts/DateRangeContext";
 import { useSalesPersonFilter } from "@/contexts/SalesPersonFilterContext";
+import { usePracaFilter } from "@/contexts/PracaFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { BiChartTooltip } from "@/components/cockpit/ChartTooltip";
 import {
@@ -214,6 +216,7 @@ function FaturamentoUnifiedInner() {
 
   const { label: periodoLabel, range } = useDateRange();
   const { salesPersonCode } = useSalesPersonFilter();
+  const { praca } = usePracaFilter();
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
@@ -273,10 +276,41 @@ function FaturamentoUnifiedInner() {
   const allOrdersRaw = useMemo(() => ordersData?.items ?? [], [ordersData]);
   // Faturamento exclui pedidos de frete (num_lines = 0) — ver /business-intelligence/fretes
   const allOrders = useMemo(() => excludeFreight(allOrdersRaw), [allOrdersRaw]);
-  const orders = useMemo(
+  const ordersActive = useMemo(
     () => allOrders.filter((o) => o.cancelled !== "Y"),
     [allOrders],
   );
+  // Dimensão Praça (SP/BH): quando ativa, mantém apenas as linhas do depósito
+  // da praça e recalcula doc_total/quantidade a partir dessas linhas. Isso
+  // re-fatia todos os KPIs/gráficos derivados de `orders`.
+  const orders = useMemo(() => {
+    if (praca === "todas") return ordersActive;
+    const out: SalesOrderRow[] = [];
+    for (const o of ordersActive) {
+      const lines = (o.lines ?? []).filter(
+        (l) => getWarehouseRegion(l.WarehouseCode) === praca,
+      );
+      if (lines.length === 0) continue;
+      const doc_total = lines.reduce((s, l) => s + (Number(l.LineTotal) || 0), 0);
+      const total_quantity = lines.reduce(
+        (s, l) => s + (Number(l.Quantity) || 0),
+        0,
+      );
+      out.push({ ...o, lines, doc_total, total_quantity });
+    }
+    return out;
+  }, [ordersActive, praca]);
+  // Contagem de cancelados coerente com a praça selecionada.
+  const totalCancelados = useMemo(() => {
+    if (praca === "todas") return allOrders.length - ordersActive.length;
+    return allOrders.filter(
+      (o) =>
+        o.cancelled === "Y" &&
+        (o.lines ?? []).some(
+          (l) => getWarehouseRegion(l.WarehouseCode) === praca,
+        ),
+    ).length;
+  }, [allOrders, ordersActive, praca]);
   const freightStats = useMemo(() => {
     const active = allOrdersRaw.filter((o) => o.cancelled !== "Y" && isFreightOrder(o));
     return { total: active.length, valor: sumFreightValue(allOrdersRaw) };
@@ -658,7 +692,7 @@ function FaturamentoUnifiedInner() {
             Período: <span className="text-gray-600">{periodoLabel}</span>
           </span>
           <span className="text-cockpit-border">·</span>
-          <span>{fmtNum(totalPed)} pedidos · {fmtNum(allOrders.length - totalPed)} cancelados</span>
+          <span>{fmtNum(totalPed)} pedidos · {fmtNum(totalCancelados)} cancelados</span>
           <span className="text-cockpit-border">·</span>
           <span>SAP B1</span>
         </p>
@@ -1468,7 +1502,7 @@ function FaturamentoUnifiedInner() {
             {
               ind: "Pedidos Cancelados",
               cat: "vendas",
-              val: fmtNum(allOrders.length - totalPed),
+              val: fmtNum(totalCancelados),
             },
             {
               ind: "Quantidade Vendida",
