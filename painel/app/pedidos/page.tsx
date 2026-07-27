@@ -768,6 +768,8 @@ function PendingOrdersSection({
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<number | null>(null);
+  const [review, setReview] = useState<PendingOrder | null>(null);
+  const [reject, setReject] = useState<PendingOrder | null>(null);
 
   const confirmOrder = async (id: number) => {
     setBusy(id);
@@ -780,6 +782,7 @@ function PendingOrdersSection({
       toast.success(
         `Pedido confirmado e enviado ao SAP (#${j.data.docNum ?? j.data.docEntry}). Aparecerá na lista após a sincronização.`,
       );
+      setReview(null);
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao confirmar pedido");
@@ -788,18 +791,18 @@ function PendingOrdersSection({
     }
   };
 
-  const rejectOrder = async (id: number) => {
-    const reason = window.prompt("Motivo da recusa (opcional):") ?? undefined;
+  const rejectOrder = async (id: number, reason: string) => {
     setBusy(id);
     try {
       const res = await fetch(`/api/b2b-admin/pending-orders/${id}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ reason: reason.trim() || null }),
       });
       const j = await res.json();
       if (!res.ok || !j.success) throw new Error(j.error || "Erro ao recusar");
       toast.success("Pedido recusado. O cliente foi notificado.");
+      setReject(null);
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao recusar pedido");
@@ -811,66 +814,284 @@ function PendingOrdersSection({
   if (orders.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Hourglass className="w-4 h-4 text-amber-600" />
-        <h2 className="text-sm font-semibold text-amber-800">
-          Aguardando confirmação ({orders.length})
-        </h2>
-        <span className="text-xs text-amber-700/80">
-          Pedidos feitos no Portal B2B só vão ao SAP após sua confirmação.
-        </span>
-      </div>
-      <div className="space-y-2">
-        {orders.map((o) => (
-          <div
-            key={o.id}
-            className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg bg-white border border-amber-100 p-3"
-          >
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-mono text-gray-500">#{o.id}</span>
-                <span className="text-sm font-medium text-gray-900 truncate">
-                  {o.card_name ?? o.card_code}
-                </span>
-                <span className="text-xs text-gray-400">{o.card_code}</span>
-              </div>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {fmtDateShort(o.created_at)} · {o.items?.length ?? 0} item(ns) ·{" "}
-                {fmtNum(o.total_quantity)} un
-              </p>
-              <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                {(o.items ?? [])
-                  .map((it) => `${it.quantity}× ${it.name ?? it.sku}`)
-                  .join(", ")}
-              </p>
-              {o.notes && (
-                <p className="text-xs text-gray-500 mt-1 italic">Obs: {o.notes}</p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => rejectOrder(o.id)}
-                disabled={busy === o.id}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition disabled:opacity-50"
-              >
-                <Ban className="w-3.5 h-3.5" /> Recusar
-              </button>
-              <button
-                onClick={() => confirmOrder(o.id)}
-                disabled={busy === o.id}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
-              >
-                {busy === o.id ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Check className="w-3.5 h-3.5" />
+    <>
+      <div className="rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Hourglass className="w-4 h-4 text-amber-600" />
+          <h2 className="text-sm font-semibold text-amber-800">
+            Aguardando confirmação ({orders.length})
+          </h2>
+          <span className="hidden sm:inline text-xs text-amber-700/80">
+            Pedidos feitos no Portal B2B só vão ao SAP após sua confirmação.
+          </span>
+        </div>
+        <div className="space-y-2">
+          {orders.map((o) => (
+            <div
+              key={o.id}
+              onClick={() => setReview(o)}
+              className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg bg-white border border-amber-100 p-3 cursor-pointer hover:border-amber-300 hover:shadow-sm transition"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-mono text-gray-500">#{o.id}</span>
+                  <span className="text-sm font-medium text-gray-900 truncate">
+                    {o.card_name ?? o.card_code}
+                  </span>
+                  <span className="text-xs text-gray-400">{o.card_code}</span>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {fmtDateShort(o.created_at)} · {o.items?.length ?? 0} item(ns) ·{" "}
+                  {fmtNum(o.total_quantity)} un
+                </p>
+                <p className="text-xs text-gray-600 mt-1 line-clamp-2">
+                  {(o.items ?? [])
+                    .map((it) => `${it.quantity}× ${it.name ?? it.sku}`)
+                    .join(", ")}
+                </p>
+                {o.notes && (
+                  <p className="text-xs text-gray-500 mt-1 italic">Obs: {o.notes}</p>
                 )}
-                Confirmar e enviar ao SAP
-              </button>
+              </div>
+              <div
+                className="flex items-center gap-2 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setReject(o)}
+                  disabled={busy === o.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition disabled:opacity-50"
+                >
+                  <Ban className="w-3.5 h-3.5" /> Recusar
+                </button>
+                <button
+                  onClick={() => setReview(o)}
+                  disabled={busy === o.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 transition disabled:opacity-50"
+                >
+                  {busy === o.id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5" />
+                  )}
+                  Revisar e enviar ao SAP
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {review && (
+        <PendingReviewModal
+          order={review}
+          busy={busy === review.id}
+          onConfirm={() => confirmOrder(review.id)}
+          onClose={() => {
+            if (busy == null) setReview(null);
+          }}
+        />
+      )}
+      {reject && (
+        <RejectReasonModal
+          order={reject}
+          busy={busy === reject.id}
+          onReject={(reason) => rejectOrder(reject.id, reason)}
+          onClose={() => {
+            if (busy == null) setReject(null);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// Modal de revisão do pedido pendente antes de oficializar no SAP B1. Dá ao
+// comercial a chance de conferir itens/quantidades/observação do cliente e
+// deixa explícito que a confirmação cria o documento no ERP (com os preços da
+// tabela do cliente).
+function PendingReviewModal({
+  order,
+  busy,
+  onConfirm,
+  onClose,
+}: {
+  order: PendingOrder;
+  busy: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const totalUnits =
+    order.items?.reduce((s, it) => s + (Number(it.quantity) || 0), 0) ?? 0;
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                <Store className="w-3 h-3" /> Portal B2B
+              </span>
+              <span className="text-sm font-mono text-gray-500">#{order.id}</span>
+            </div>
+            <h3 className="text-base font-semibold text-gray-900 mt-1 truncate">
+              {order.card_name ?? order.card_code}
+            </h3>
+            <p className="text-xs text-gray-400">{order.card_code}</p>
+          </div>
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-50 shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-xs text-gray-400">Data da solicitação</p>
+              <p className="text-gray-800">{fmtDateShort(order.created_at)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Itens / unidades</p>
+              <p className="text-gray-800">
+                {order.items?.length ?? 0} item(ns) · {fmtNum(totalUnits)} un
+              </p>
             </div>
           </div>
-        ))}
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Itens do pedido
+            </p>
+            <div className="rounded-lg border border-gray-200 divide-y divide-gray-50">
+              {(order.items ?? []).map((it, i) => (
+                <div key={i} className="flex items-center justify-between px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-800 truncate">{it.name ?? it.sku}</p>
+                    <p className="text-xs text-gray-400 font-mono">{it.sku}</p>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 whitespace-nowrap ml-3">
+                    {fmtNum(it.quantity)} un
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {order.notes && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                Observação do cliente
+              </p>
+              <p className="text-sm text-gray-600 italic rounded-lg bg-gray-50 border border-gray-100 p-2.5">
+                {order.notes}
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50/60 p-3 text-xs text-sky-800">
+            <DollarSign className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              Ao confirmar, o pedido é criado no <strong>SAP B1</strong> com os preços
+              da tabela do cliente e entra no funil de atendimento. Esta ação é
+              registrada no ERP e notifica o cliente.
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="px-3.5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Check className="w-4 h-4" />
+            )}
+            Confirmar e criar no SAP
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal de recusa com motivo (substitui o window.prompt). O motivo é enviado
+// ao cliente por e-mail.
+function RejectReasonModal({
+  order,
+  busy,
+  onReject,
+  onClose,
+}: {
+  order: PendingOrder;
+  busy: boolean;
+  onReject: (reason: string) => void;
+  onClose: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+            <Ban className="w-4 h-4 text-red-600" /> Recusar solicitação #{order.id}
+          </h3>
+          <p className="text-sm text-gray-500 mt-0.5 truncate">
+            {order.card_name ?? order.card_code}
+          </p>
+        </div>
+        <div className="p-5 space-y-2">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Motivo da recusa (opcional)
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={3}
+            autoFocus
+            placeholder="Ex.: item sem estoque, quantidade indisponível, cliente com pendência…"
+            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/30 resize-none"
+          />
+          <p className="text-xs text-gray-400">
+            O cliente será notificado por e-mail com o motivo informado.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-100 bg-gray-50/50">
+          <button
+            onClick={onClose}
+            disabled={busy}
+            className="px-3.5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onReject(reason)}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Ban className="w-4 h-4" />
+            )}
+            Recusar pedido
+          </button>
+        </div>
       </div>
     </div>
   );

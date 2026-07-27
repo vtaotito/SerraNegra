@@ -28,6 +28,7 @@ export default function CarrinhoPage() {
   const { items, totalItems, updateQuantity, removeItem, clearCart } = useCart();
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const router = useRouter();
 
   async function handleSubmitOrder() {
@@ -49,6 +50,7 @@ export default function CarrinhoPage() {
       toast.error("Erro ao enviar pedido", {
         description: error instanceof Error ? error.message : "Tente novamente",
       });
+      setConfirmOpen(false);
     } finally {
       setSubmitting(false);
     }
@@ -254,15 +256,11 @@ export default function CarrinhoPage() {
                   <Button
                     className="w-full bg-gsn-brand hover:bg-gsn-brand-dark text-white"
                     size="lg"
-                    onClick={handleSubmitOrder}
+                    onClick={() => setConfirmOpen(true)}
                     disabled={submitting}
                   >
-                    {submitting ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                    {submitting ? "Enviando..." : "Enviar Pedido"}
+                    <Send className="h-4 w-4" />
+                    Enviar Pedido
                   </Button>
                   <Button
                     variant="ghost"
@@ -278,6 +276,80 @@ export default function CarrinhoPage() {
           </div>
         </div>
       </main>
+
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => !submitting && setConfirmOpen(false)}
+          />
+          <div className="relative flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-background shadow-2xl">
+            <div className="flex items-center gap-2 border-b px-5 py-4">
+              <ShoppingCart className="h-5 w-5 text-gsn-brand" />
+              <h2 className="text-base font-semibold text-gsn-text">Revisar e enviar pedido</h2>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto px-5 py-4">
+              <div className="space-y-2 text-sm">
+                {items.map((item) => (
+                  <div key={item.sku} className="flex justify-between gap-3">
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      {item.name}
+                    </span>
+                    <span className="whitespace-nowrap font-medium">
+                      {item.quantity} {item.unit}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <Separator />
+              <div className="flex justify-between text-sm font-medium">
+                <span>{items.length} produto(s)</span>
+                <span>{totalItems} unidades</span>
+              </div>
+              {notes && (
+                <p className="rounded-lg bg-muted/60 p-2.5 text-xs italic text-muted-foreground">
+                  Obs: {notes}
+                </p>
+              )}
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>
+                  Este pedido será enviado para <strong>confirmação e precificação</strong>{" "}
+                  da equipe de vendas. Você será avisado assim que ele for aprovado e
+                  registrado.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-4">
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmOpen(false)}
+                disabled={submitting}
+              >
+                Voltar
+              </Button>
+              <Button
+                className="bg-gsn-brand hover:bg-gsn-brand-dark text-white"
+                onClick={handleSubmitOrder}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                {submitting ? "Enviando..." : "Confirmar envio"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
