@@ -44,7 +44,6 @@ import {
   packagingTypeName,
   groupColor,
   categoryColor,
-  formatStockUnits,
   packStep,
   maxOrderableUnits,
 } from "@/lib/catalog";
@@ -784,13 +783,12 @@ function ProductCard({
           </div>
         )}
 
-        {/* Disponibilidade total do modelo (em unidades) */}
+        {/* Disponibilidade do modelo (sem expor a quantidade em estoque) */}
         <div className="mb-3 min-h-[1.25rem]">
           {product.inStock ? (
             <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-700">
               <PackageCheck className="h-3 w-3 flex-shrink-0" />
-              <span className="tabular-nums">{formatStockUnits(product.stockUnits)}</span> un
-              <span className="text-muted-foreground font-normal">em estoque</span>
+              Em estoque
             </p>
           ) : (
             <p className="flex items-center gap-1 text-[11px] font-medium text-red-500">

@@ -17,9 +17,7 @@ import {
   type AttributeVariant,
   packagingLabel,
   packagingShort,
-  packagingTypeName,
   groupColor,
-  formatStockUnits,
   packStep,
   maxOrderableUnits,
   availableColors,
@@ -358,7 +356,7 @@ export default function ProductDetailPage({
                     {variant ? (
                       variant.inStock ? (
                         <Badge className="bg-green-600 text-white border-0">
-                          Em estoque · {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
+                          Em estoque
                         </Badge>
                       ) : (
                         <Badge className="bg-red-600 text-white border-0">Indisponivel</Badge>
@@ -416,21 +414,6 @@ export default function ProductDetailPage({
                             {perPack} {variant.unitOfMeasure}
                           </p>
                         </div>
-                        {variant.inStock && (
-                          <div className="col-span-2 border-t border-amber-200 pt-3">
-                            <p className="text-amber-700">Disponível</p>
-                            <p className="font-semibold text-amber-900">
-                              {formatStockUnits(variant.stockUnits)} {variant.unitOfMeasure}
-                              {variant.stockQuantity >= 1 && (
-                                <span className="font-normal text-amber-700">
-                                  {" "}· {Math.floor(variant.stockQuantity)}{" "}
-                                  {packagingTypeName(variant.packagingType).toLowerCase()}
-                                  {Math.floor(variant.stockQuantity) !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   )}
@@ -510,11 +493,8 @@ export default function ProductDetailPage({
                         {exceedsStock && (
                           <p className="text-xs text-amber-600 flex items-start gap-1">
                             <Bell className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                            Quantidade acima do estoque disponível
-                            {availableUnits > 0
-                              ? ` (${formatStockUnits(availableUnits)} ${variant.unitOfMeasure})`
-                              : ""}
-                            . Seu vendedor confirmará prazo e disponibilidade.
+                            Quantidade acima do estoque disponível. Seu vendedor
+                            confirmará prazo e disponibilidade.
                           </p>
                         )}
 

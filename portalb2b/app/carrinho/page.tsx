@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { useCart } from "@/lib/cart/context";
-import { packStep, formatStockUnits } from "@/lib/catalog";
+import { packStep } from "@/lib/catalog";
 import { cn } from "@/lib/utils";
 import { post } from "@/lib/api/client";
 import { useSalesperson, whatsappHref } from "@/lib/salesperson";
@@ -137,16 +137,9 @@ export default function CarrinhoPage() {
                             {item.name}
                           </h3>
                           <p className="font-mono text-xs text-muted-foreground">{item.sku}</p>
-                          {hasStock && (
-                            <p
-                              className={cn(
-                                "mt-0.5 text-[11px]",
-                                exceedsStock ? "font-medium text-amber-600" : "text-muted-foreground",
-                              )}
-                            >
-                              {exceedsStock ? "Acima do estoque · " : "Estoque: "}
-                              {formatStockUnits(item.maxUnits)} {item.unit}
-                              {exceedsStock ? " — o vendedor confirmará" : ""}
+                          {exceedsStock && (
+                            <p className="mt-0.5 text-[11px] font-medium text-amber-600">
+                              Acima do estoque — o vendedor confirmará
                             </p>
                           )}
                         </div>
