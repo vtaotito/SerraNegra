@@ -84,6 +84,9 @@ const PIPELINE: { key: PipelineStatus; label: string; cls: string; dot: string }
   { key: "cancelado", label: "Cancelado", cls: "bg-red-50 text-red-600", dot: "bg-red-500" },
 ];
 
+// Etapas em que o pedido já foi faturado — base do KPI "Valor faturado".
+const INVOICED_STAGES: PipelineStatus[] = ["faturado", "enviado", "entregue"];
+
 const PIPELINE_LABEL = Object.fromEntries(
   PIPELINE.map((p) => [p.key, p.label]),
 ) as Record<PipelineStatus, string>;
@@ -287,11 +290,19 @@ function PedidosContent() {
   // KPIs
   const kpis = useMemo(() => {
     const abertos = filtered.filter((o) => deriveStatus(o) === "aberto");
-    const total = filtered.reduce((s, o) => s + (Number(o.doc_total) || 0), 0);
+    // "Valor faturado": soma apenas pedidos já faturados (Faturado/Enviado/
+    // Entregue), ignorando cancelados.
+    const faturado = filtered.reduce(
+      (s, o) =>
+        sapStatusOf(o) !== "cancelado" && INVOICED_STAGES.includes(effStatus(o))
+          ? s + (Number(o.doc_total) || 0)
+          : s,
+      0,
+    );
     const aConfirmar = filtered.reduce((n, o) => (isConfirmed(o) ? n : n + 1), 0);
     const lastDate = filtered.reduce<string>((acc, o) => (o.doc_date > acc ? o.doc_date : acc), "");
-    return { abertos: abertos.length, total, aConfirmar, lastDate };
-  }, [filtered, isConfirmed]);
+    return { abertos: abertos.length, faturado, aConfirmar, lastDate };
+  }, [filtered, isConfirmed, effStatus, sapStatusOf]);
 
   // Carrega anotações + status do funil para os pedidos da origem ativa
   // (independe do filtro de etapa, para manter contadores estáveis).
@@ -429,7 +440,7 @@ function PedidosContent() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard icon={Package} label="Pedidos abertos" value={fmtNum(kpis.abertos)} tone="emerald" />
-        <KpiCard icon={DollarSign} label="Valor total" value={fmtBRL(kpis.total)} tone="gsn" />
+        <KpiCard icon={DollarSign} label="Valor faturado" value={fmtBRL(kpis.faturado)} tone="gsn" />
         <KpiCard icon={Hourglass} label="A confirmar" value={fmtNum(kpis.aConfirmar)} tone="amber" />
         <KpiCard
           icon={CalendarDays}
