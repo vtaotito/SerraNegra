@@ -10,6 +10,7 @@
  * ═══════════════════════════════════════════════════════════════ */
 
 import { Fragment, useMemo, useState } from "react";
+import Link from "next/link";
 import { format, subMonths, startOfMonth } from "date-fns";
 import {
   ShoppingCart,
@@ -24,6 +25,7 @@ import {
   CheckCircle2,
   PackageX,
   Archive,
+  ExternalLink,
 } from "lucide-react";
 import { useFetch } from "@/hooks/useFetch";
 import {
@@ -51,7 +53,8 @@ import {
   type Semaforo,
   type CurvaABCD,
 } from "@/lib/compras-engine";
-import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
+import { fmtBRL, fmtNum, exportCSV, getWarehouseRegion } from "@/lib/format";
+import { usePracaFilter } from "@/contexts/PracaFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 
 /* ═══════════════════ Tipos ═══════════════════ */
@@ -148,12 +151,26 @@ export default function ComprasPage() {
     [],
   );
 
+  const { praca } = usePracaFilter();
+  // Dimensão Praça (SP/BH): restringe as posições de estoque aos depósitos da
+  // praça. Estoque/cobertura/semáforo passam a refletir a praça; o consumo/
+  // faturamento (analytics) permanece global por produto.
+  const invRows = useMemo(
+    () =>
+      (invData?.data ?? []).filter(
+        (inv) => praca === "todas" || getWarehouseRegion(inv.warehouse_id) === praca,
+      ),
+    [invData, praca],
+  );
+
   const loading = l1 || l2;
   const error = e1 || e2;
 
   /* ── Filtros / estado de UI ── */
   const [search, setSearch] = useState("");
-  const [groupFilter, setGroupFilter] = useState<string | null>(null);
+  const [groupFilters, setGroupFilters] = useState<string[]>([]);
+  const toggleGroup = (g: string) =>
+    setGroupFilters((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   const [semFilter, setSemFilter] = useState<Semaforo | null>(null);
   const [classeFilter, setClasseFilter] = useState<string | null>(null);
   const [nivel, setNivel] = useState<Nivel>("grupo");
@@ -199,7 +216,7 @@ export default function ComprasPage() {
     }
 
     // Estoque (por SKU/depósito → unidades → produto unificado)
-    for (const inv of invData.data as InventoryRow[]) {
+    for (const inv of invRows as InventoryRow[]) {
       const group = getComprasGroup(inv.product_id);
       if (!group) continue;
       const desc = inv.item_name ?? "";
@@ -267,7 +284,7 @@ export default function ComprasPage() {
         estMax: maximo,
       } satisfies CompraRow;
     });
-  }, [analyticsData, invData]);
+  }, [analyticsData, invData, invRows]);
 
   /* ── KPIs por semáforo (sobre todas as linhas) ── */
   const semCounts = useMemo(() => {
@@ -290,7 +307,7 @@ export default function ComprasPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toUpperCase();
     let list = rows;
-    if (groupFilter) list = list.filter((r) => r.group === groupFilter);
+    if (groupFilters.length) list = list.filter((r) => groupFilters.includes(r.group));
     if (semFilter) list = list.filter((r) => r.semaforo === semFilter);
     if (classeFilter)
       list = list.filter((r) => (nivel === "grupo" ? r.cls.classeGrupo : r.cls.classeGeral) === classeFilter);
@@ -320,7 +337,7 @@ export default function ComprasPage() {
         default: return 0;
       }
     });
-  }, [rows, search, groupFilter, semFilter, classeFilter, nivel, sortField, sortDir]);
+  }, [rows, search, groupFilters, semFilter, classeFilter, nivel, sortField, sortDir]);
 
   const visible = showAll ? filtered : filtered.slice(0, 100);
 
@@ -462,9 +479,9 @@ export default function ComprasPage() {
       {/* ── Chips de grupo ── */}
       <div className="flex flex-wrap gap-1.5">
         <button
-          onClick={() => setGroupFilter(null)}
+          onClick={() => setGroupFilters([])}
           className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${
-            groupFilter === null
+            groupFilters.length === 0
               ? "bg-cockpit-accent text-white border-cockpit-accent"
               : "bg-white text-gray-600 border-cockpit-border hover:bg-gray-50"
           }`}
@@ -474,9 +491,9 @@ export default function ComprasPage() {
         {gruposPresentes.map((g) => (
           <button
             key={g}
-            onClick={() => setGroupFilter(groupFilter === g ? null : g)}
+            onClick={() => toggleGroup(g)}
             className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${
-              groupFilter === g
+              groupFilters.includes(g)
                 ? "bg-cockpit-accent text-white border-cockpit-accent"
                 : "bg-white text-gray-600 border-cockpit-border hover:bg-gray-50"
             }`}
@@ -528,8 +545,20 @@ export default function ComprasPage() {
                     <td className="px-3 py-2.5">
                       <div className="flex items-start gap-1.5">
                         <ChevronRight className={`w-3.5 h-3.5 mt-0.5 shrink-0 text-gray-400 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-                        <div>
-                          <p className="font-medium text-gray-900 leading-snug">{r.nome}</p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="font-medium text-gray-900 leading-snug">{r.nome}</p>
+                            <Link
+                              href={`/catalogo?produto=${encodeURIComponent(r.key)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Abrir detalhe do produto no catálogo"
+                              className="shrink-0 text-cockpit-muted hover:text-cockpit-accent motion-safe:transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
                           <p className="text-[11px] text-cockpit-muted">
                             {r.group} · {r.groupName}{r.skus > 1 ? ` · ${r.skus} SKUs` : ""}
                           </p>

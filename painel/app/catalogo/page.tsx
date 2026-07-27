@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useCallback, Suspense } from "react";
+import { useState, useMemo, useCallback, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Tag, Search, X, Download, Package, DollarSign,
   TrendingUp, TrendingDown, Minus, Hash, BarChart3, Layers,
@@ -38,7 +39,7 @@ import {
   PRODUCT_GROUP_HIDDEN,
 } from "@/lib/format";
 import {
-  fetchProductAnalytics, fetchProductOrders, fetchSalesPersons,
+  fetchProductAnalytics, fetchProductOrders, fetchSalesPersons, fetchInventory,
   type ProductAnalyticsRow, type ProductOrderLine, type SapSalesPerson,
 } from "@/lib/cockpit-api";
 import { useFetch } from "@/hooks/useFetch";
@@ -386,11 +387,13 @@ type SortDir = "asc" | "desc";
 /* ═══════════════════ Lazy-loaded Product Detail Modal ═══════════════════ */
 
 function UnifiedProductModal({
-  product, totalFat, onClose,
+  product, totalFat, stockByItem, onClose,
 }: {
   product: UnifiedProductRow;
   /** Soma do faturamento do range global — usado apenas para o badge "% do total" (referência). */
   totalFat: number;
+  /** Estoque disponível (em embalagens) por SKU, somado entre depósitos. */
+  stockByItem: Map<string, number>;
   onClose: () => void;
 }) {
   const itemCodes = useMemo(() => product.variants.map((v) => v.itemCode), [product.variants]);
@@ -636,14 +639,16 @@ function UnifiedProductModal({
             <h4 className="text-xs font-semibold text-cockpit-muted uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Boxes className="w-3.5 h-3.5" /> Visão por Embalagem
             </h4>
-            <div className="rounded-lg border border-cockpit-border overflow-hidden">
+            <div className="rounded-lg border border-cockpit-border overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-cockpit-bg text-cockpit-muted uppercase text-[10px] border-b border-cockpit-border">
                     <th className="py-2 px-3 bg-cockpit-bg">Embalagem</th>
                     <th className="py-2 px-3 bg-cockpit-bg font-mono">SKU</th>
-                    <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd Emb</th>
-                    <th className="py-2 px-3 text-right bg-cockpit-bg">Qtd UND</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg text-emerald-700" title="Quantidade em estoque (embalagens), somada entre depósitos">Estoque Emb</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg text-emerald-700" title="Quantidade em estoque em unidades (embalagens × qtd por embalagem)">Estoque UND</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg" title="Quantidade vendida (embalagens) nos últimos 12 meses">Vend. Emb</th>
+                    <th className="py-2 px-3 text-right bg-cockpit-bg" title="Quantidade vendida em unidades nos últimos 12 meses">Vend. UND</th>
                     <th className="py-2 px-3 text-right bg-cockpit-bg">R$/UND</th>
                     <th className="py-2 px-3 text-right bg-cockpit-bg">Faturamento</th>
                     <th className="py-2 px-3 text-right bg-cockpit-bg">%</th>
@@ -664,6 +669,8 @@ function UnifiedProductModal({
                       const calc = byVariant.get(v.itemCode) ?? { qtdEmb: 0, qtdUnd: 0, fat: 0 };
                       const pctVar = productKpis.fat > 0 ? (calc.fat / productKpis.fat * 100) : 0;
                       const precoUndMedio = calc.qtdUnd > 0 ? calc.fat / calc.qtdUnd : 0;
+                      const stockEmb = stockByItem.get(v.itemCode) ?? 0;
+                      const stockUnd = stockEmb * v.embalaQty;
                       return (
                       <tr key={`${v.itemCode}-${v.embala}-${vi}`} className="hover:bg-cockpit-accent/[0.03] motion-safe:transition-colors">
                         <td className="py-1.5 px-3">
@@ -673,6 +680,8 @@ function UnifiedProductModal({
                           {v.embalaQty > 1 && <span className="ml-1 text-[9px] text-gray-400">×{v.embalaQty}</span>}
                         </td>
                         <td className="py-1.5 px-3 font-mono text-blue-600 text-[10px]">{v.itemCode}</td>
+                        <td className={`py-1.5 px-3 text-right tabular-nums font-medium ${stockEmb > 0 ? "text-emerald-700" : "text-gray-300"}`}>{fmtNum(stockEmb)}</td>
+                        <td className={`py-1.5 px-3 text-right tabular-nums ${stockUnd > 0 ? "text-emerald-700" : "text-gray-300"}`}>{fmtNum(stockUnd)}</td>
                         <td className="py-1.5 px-3 text-right tabular-nums text-gray-600">{fmtNum(calc.qtdEmb)}</td>
                         <td className="py-1.5 px-3 text-right tabular-nums font-medium text-gray-900">{fmtNum(calc.qtdUnd)}</td>
                         <td className="py-1.5 px-3 text-right tabular-nums text-teal-700">{precoUndMedio > 0 ? fmtBRL(precoUndMedio, 2) : "—"}</td>
@@ -687,6 +696,12 @@ function UnifiedProductModal({
                   <tfoot>
                     <tr className="bg-cockpit-bg/70 border-t border-cockpit-border font-semibold">
                       <td className="py-2 px-3 text-gray-700" colSpan={2}>Total Consolidado</td>
+                      <td className="py-2 px-3 text-right tabular-nums text-emerald-700">
+                        {fmtNum(product.variants.reduce((s, v) => s + (stockByItem.get(v.itemCode) ?? 0), 0))}
+                      </td>
+                      <td className="py-2 px-3 text-right tabular-nums text-emerald-700">
+                        {fmtNum(product.variants.reduce((s, v) => s + (stockByItem.get(v.itemCode) ?? 0) * v.embalaQty, 0))}
+                      </td>
                       <td className="py-2 px-3 text-right tabular-nums text-gray-600">
                         {fmtNum(productKpis.qtdEmb)}
                       </td>
@@ -977,6 +992,23 @@ function ProdutosContent() {
 
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);
 
+  // Estoque por SKU (embalagens disponíveis, somado entre depósitos) — alimenta
+  // a coluna "Estoque" da Visão por Embalagem no modal do produto.
+  const { data: invData } = useFetch(() => fetchInventory({ limit: 5000 }), []);
+  const stockByItem = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const inv of invData?.data ?? []) {
+      m.set(
+        inv.product_id,
+        (m.get(inv.product_id) ?? 0) + (Number(inv.quantity_available) || 0),
+      );
+    }
+    return m;
+  }, [invData]);
+
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const spMap = useMemo(() => {
     const map = new Map<number, string>();
     for (const p of spData?.items ?? []) map.set(p.SalesEmployeeCode, p.SalesEmployeeName);
@@ -1048,13 +1080,35 @@ function ProdutosContent() {
   const codMedianAll = useMemo(() => median(codGroups.map((g) => g.faturamento)), [codGroups]);
 
   const [search, setSearch] = useState("");
-  const [codFilter, setCodFilter] = useState("");
+  const [codFilters, setCodFilters] = useState<string[]>([]);
+  const toggleCod = useCallback((c: string) => {
+    setCodFilters((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  }, []);
   const [embalaFilter, setEmbalaFilter] = useState("");
   const [capFilter, setCapFilter] = useState("");
   const [fechFilter, setFechFilter] = useState("");
   const [sortField, setSortField] = useState<SortField>("faturamento");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [modalProduct, setModalProduct] = useState<UnifiedProductRow | null>(null);
+
+  // Deep-link: /catalogo?produto=<key> abre direto o modal do produto (usado
+  // pelo atalho na Gestão de Compras). A chave é a mesma unificação central.
+  const openParam = searchParams?.get("produto") ?? "";
+  useEffect(() => {
+    if (!openParam) return;
+    const found = unifiedProducts.find((p) => p.key === openParam);
+    if (found) setModalProduct(found);
+  }, [openParam, unifiedProducts]);
+
+  const closeModal = useCallback(() => {
+    setModalProduct(null);
+    if (searchParams?.get("produto")) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("produto");
+      const qs = params.toString();
+      router.replace(qs ? `/catalogo?${qs}` : "/catalogo", { scroll: false });
+    }
+  }, [router, searchParams]);
 
   const codList = useMemo(() => Array.from(new Set(unifiedProducts.map((p) => p.cod))).sort(), [unifiedProducts]);
   const embalaTypes = useMemo(() => {
@@ -1067,7 +1121,7 @@ function ProdutosContent() {
 
   const filtered = useMemo(() => {
     let res = unifiedProducts;
-    if (codFilter) res = res.filter((p) => p.cod === codFilter);
+    if (codFilters.length) res = res.filter((p) => codFilters.includes(p.cod));
     if (embalaFilter) res = res.filter((p) => p.variants.some((v) => (v.embalaQty > 1 ? v.embala.split(" ")[0] : "UND") === embalaFilter));
     if (capFilter) res = res.filter((p) => p.capacidade === capFilter);
     if (fechFilter) res = res.filter((p) => p.fechamento === fechFilter);
@@ -1097,12 +1151,12 @@ function ProdutosContent() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return res;
-  }, [unifiedProducts, codFilter, embalaFilter, capFilter, fechFilter, search, sortField, sortDir]);
+  }, [unifiedProducts, codFilters, embalaFilter, capFilter, fechFilter, search, sortField, sortDir]);
 
-  const hasActiveFilters = codFilter || embalaFilter || capFilter || fechFilter || search || estadoFilter || vendedorFilter;
+  const hasActiveFilters = codFilters.length > 0 || embalaFilter || capFilter || fechFilter || search || estadoFilter || vendedorFilter;
 
   const clearAllFilters = () => {
-    setCodFilter(""); setEmbalaFilter(""); setCapFilter(""); setFechFilter("");
+    setCodFilters([]); setEmbalaFilter(""); setCapFilter(""); setFechFilter("");
     setSearch(""); setEstadoFilter(""); setVendedorFilter("");
   };
 
@@ -1735,14 +1789,6 @@ function ProdutosContent() {
             </div>
             )}
           </div>
-          <div className="sm:col-span-3">
-            <select value={codFilter} onChange={(e) => setCodFilter(e.target.value)}
-              className="w-full py-2 px-3 text-sm rounded-lg border border-cockpit-border bg-cockpit-bg text-gray-700 focus:ring-2 focus:ring-cockpit-accent/20 focus:border-cockpit-accent">
-              <option value="">Todos grupos</option>
-              {codList.map((c) => <option key={c} value={c}>{c} — {COD_NAMES[c] ?? c}</option>)}
-            </select>
-          </div>
-
           {/* Row 2: Embalagem + Capacidade + Fechamento */}
           <div className="sm:col-span-4">
             <select value={embalaFilter} onChange={(e) => setEmbalaFilter(e.target.value)}
@@ -1767,6 +1813,40 @@ function ProdutosContent() {
           </div>
         </div>
 
+        {/* Navegação por categoria (grupo) — multi-seleção */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] text-cockpit-muted uppercase font-semibold mr-0.5">Grupos:</span>
+          <button
+            type="button"
+            onClick={() => setCodFilters([])}
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border motion-safe:transition-colors ${
+              codFilters.length === 0
+                ? "bg-cockpit-accent text-white border-cockpit-accent"
+                : "bg-white text-gray-600 border-cockpit-border hover:bg-gray-50"
+            }`}
+          >
+            Todos
+          </button>
+          {codList.map((c) => {
+            const active = codFilters.includes(c);
+            return (
+              <button
+                key={c}
+                type="button"
+                onClick={() => toggleCod(c)}
+                title={COD_NAMES[c] ?? c}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border motion-safe:transition-colors ${
+                  active
+                    ? "bg-cockpit-accent text-white border-cockpit-accent"
+                    : "bg-white text-gray-600 border-cockpit-border hover:bg-gray-50"
+                }`}
+              >
+                {c} · {COD_NAMES[c] ?? c}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Active filter chips */}
         {hasActiveFilters && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -1781,11 +1861,11 @@ function ProdutosContent() {
                 <Briefcase className="w-2.5 h-2.5" /> {spMap.get(Number(vendedorFilter)) ?? vendedorFilter} <X className="w-2.5 h-2.5" />
               </button>
             )}
-            {codFilter && (
-              <button onClick={() => setCodFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cockpit-accent/10 text-cockpit-accent hover:bg-cockpit-accent/20 motion-safe:transition-colors">
-                {codFilter} <X className="w-2.5 h-2.5" />
+            {codFilters.map((c) => (
+              <button key={c} onClick={() => toggleCod(c)} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-cockpit-accent/10 text-cockpit-accent hover:bg-cockpit-accent/20 motion-safe:transition-colors">
+                {c} <X className="w-2.5 h-2.5" />
               </button>
-            )}
+            ))}
             {embalaFilter && (
               <button onClick={() => setEmbalaFilter("")} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 motion-safe:transition-colors">
                 {embalaFilter} <X className="w-2.5 h-2.5" />
@@ -2011,7 +2091,8 @@ function ProdutosContent() {
         <UnifiedProductModal
           product={modalProduct}
           totalFat={totalFat}
-          onClose={() => setModalProduct(null)}
+          stockByItem={stockByItem}
+          onClose={closeModal}
         />
       )}
     </div>
