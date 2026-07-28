@@ -3,7 +3,9 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/layout/Header";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +27,14 @@ import {
   availablePackagings,
   resolveSku,
 } from "@/lib/catalog";
+import { getRememberedCatalogUrl } from "@/lib/catalog-url";
 import { AttributeSelector, type AttributeOption } from "@/components/catalog/AttributeSelector";
 import { toast } from "sonner";
+import { toastAddedToCart } from "@/lib/toast-cart";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "@/components/catalog/FavoriteButton";
+import { ClientEmptyState } from "@/components/ui/client-empty-state";
 import {
-  ArrowLeft,
   ShoppingCart,
   Plus,
   Minus,
@@ -48,11 +52,17 @@ export default function ProductDetailPage({
   params: Promise<{ sku: string }>;
 }) {
   const { sku } = use(params);
+  const router = useRouter();
   const [qty, setQty] = useState(1);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [selectedClosure, setSelectedClosure] = useState<string | null>(null);
   const [selectedPackagingSku, setSelectedPackagingSku] = useState<string | null>(null);
+  const [catalogHref, setCatalogHref] = useState("/catalogo");
   const { addItem, getItem } = useCart();
+
+  useEffect(() => {
+    setCatalogHref(getRememberedCatalogUrl());
+  }, []);
 
   const { data: product, isLoading } = useQuery<UnifiedProductDetail>({
     queryKey: ["b2b-catalog-unified-product", sku],
@@ -221,10 +231,11 @@ export default function ProductDetailPage({
       perPack > 1
         ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
         : `${addUnits} ${variant.unitOfMeasure}`;
-    toast.success(`${product.name} adicionado ao carrinho`, {
+    toastAddedToCart(product.name, {
       description: exceedsStock
         ? `${desc} · acima do estoque — seu vendedor vai confirmar prazo/disponibilidade.`
         : desc,
+      onViewCart: () => router.push("/carrinho"),
     });
   }
 
@@ -233,10 +244,10 @@ export default function ProductDetailPage({
     try {
       await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description: "Voce sera notificado quando este produto estiver disponivel.",
+        description: "Você será notificado quando este produto estiver disponível.",
       });
     } catch {
-      toast.error("Erro ao cadastrar notificacao");
+      toast.error("Erro ao cadastrar notificação");
     }
   }
 
@@ -244,13 +255,13 @@ export default function ProductDetailPage({
     <div className="min-h-screen bg-muted/30">
       <Header />
       <main className="mx-auto max-w-5xl px-4 pt-6 pb-44 sm:px-6 lg:px-8 md:pb-8">
-        <Link
-          href="/catalogo"
-          className="inline-flex items-center text-sm text-muted-foreground hover:text-gsn-brand mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Voltar ao catalogo
-        </Link>
+        <Breadcrumb
+          items={[
+            { label: "Início", href: "/" },
+            { label: "Catálogo", href: catalogHref },
+            { label: product?.name ?? sku },
+          ]}
+        />
 
         {isLoading ? (
           <Card>
@@ -268,15 +279,17 @@ export default function ProductDetailPage({
           </Card>
         ) : !product ? (
           <Card>
-            <CardContent className="flex flex-col items-center py-16 text-center">
-              <Package className="h-16 w-16 text-muted-foreground/30 mb-4" />
-              <h2 className="text-xl font-semibold">Produto nao encontrado</h2>
-              <p className="text-muted-foreground mt-1">SKU: {sku}</p>
-              <Link href="/catalogo">
-                <Button variant="outline" className="mt-4">
-                  Voltar ao catalogo
-                </Button>
-              </Link>
+            <CardContent className="p-0">
+              <ClientEmptyState
+                icon={Package}
+                title="Produto não encontrado"
+                description={`SKU: ${sku}`}
+                action={
+                  <Link href="/catalogo">
+                    <Button variant="outline">Voltar ao catálogo</Button>
+                  </Link>
+                }
+              />
             </CardContent>
           </Card>
         ) : (
@@ -359,12 +372,12 @@ export default function ProductDetailPage({
                           Em estoque
                         </Badge>
                       ) : (
-                        <Badge className="bg-red-600 text-white border-0">Indisponivel</Badge>
+                        <Badge className="bg-red-600 text-white border-0">Indisponível</Badge>
                       )
                     ) : product.inStock ? (
                       <Badge className="bg-green-600 text-white border-0">Disponível</Badge>
                     ) : (
-                      <Badge className="bg-red-600 text-white border-0">Indisponivel</Badge>
+                      <Badge className="bg-red-600 text-white border-0">Indisponível</Badge>
                     )}
                   </div>
 
@@ -420,7 +433,7 @@ export default function ProductDetailPage({
 
                   {(product.fullDescription || product.description) && (
                     <div className="mt-5">
-                      <h3 className="text-sm font-semibold text-gsn-text mb-1">Descricao</h3>
+                      <h3 className="text-sm font-semibold text-gsn-text mb-1">Descrição</h3>
                       <div
                         className="text-sm text-muted-foreground leading-relaxed prose prose-sm max-w-none"
                         dangerouslySetInnerHTML={{
@@ -433,7 +446,7 @@ export default function ProductDetailPage({
                   {inCart && variant && (
                     <div className="flex items-center gap-2 mt-4 text-sm text-gsn-brand">
                       <Check className="h-4 w-4" />
-                      Ja esta no carrinho ({inCart.quantity} {variant.unitOfMeasure})
+                      Já está no carrinho ({inCart.quantity} {variant.unitOfMeasure})
                     </div>
                   )}
 

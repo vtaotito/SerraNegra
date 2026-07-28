@@ -122,6 +122,18 @@ export function setB2BCredentialSalesperson(
   );
 }
 
+/** Preenche vendedores faltantes a partir do SalesPersonCode do BP no SAP. */
+export function syncB2BCredentialSalespersons() {
+  return b2bAdminFetch<{
+    ok: boolean;
+    updated: number;
+    alreadySet: number;
+    missingInSap: number;
+    total: number;
+    sapPairs: number;
+  }>("/b2b/admin/credentials/sync-salespersons", { method: "POST" });
+}
+
 export function resetB2BCredential(cnpj: string) {
   return b2bAdminFetch<{ ok: boolean; message: string }>(
     `/b2b/admin/credentials/${encodeURIComponent(cnpj)}/reset`,

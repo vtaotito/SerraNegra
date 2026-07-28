@@ -15,6 +15,7 @@ import { getOrderStatusConfig, type OrderSummary } from "@/lib/orders";
 import { useFavorites } from "@/lib/favorites/useFavorites";
 import { FeaturedProductCard, type FeaturedProduct } from "@/components/catalog/FeaturedProductCard";
 import Link from "next/link";
+import { SalespersonCard } from "@/components/salesperson/SalespersonCard";
 import {
   ClipboardList,
   Package,
@@ -25,6 +26,7 @@ import {
   ArrowRight,
   Heart,
   Repeat,
+  ListOrdered,
 } from "lucide-react";
 
 interface DashboardData {
@@ -82,10 +84,10 @@ export default function DashboardPage() {
         <div className="space-y-6">
           <div>
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-gsn-text">
-              Ola, {customer?.cardName?.split(" ")[0] ?? "Cliente"}
+              Olá, {customer?.cardName?.split(" ")[0] ?? "Cliente"}
             </h1>
             <p className="text-muted-foreground">
-              Acompanhe seus pedidos e faca novas compras
+              Acompanhe seus pedidos e faça novas compras
             </p>
           </div>
 
@@ -121,7 +123,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Link href="/catalogo">
               <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
                 <CardContent className="flex items-center gap-4 p-6">
@@ -129,7 +131,7 @@ export default function DashboardPage() {
                     <Package className="h-6 w-6" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gsn-text">Ver Catalogo</h3>
+                    <h3 className="font-semibold text-gsn-text">Ver Catálogo</h3>
                     <p className="text-sm text-muted-foreground">Explore nossos produtos</p>
                   </div>
                   <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-brand transition-colors" />
@@ -152,7 +154,7 @@ export default function DashboardPage() {
               </Card>
             </Link>
 
-            <Link href="/carrinho">
+            <Link href={totalItems > 0 ? "/carrinho" : "/catalogo"}>
               <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
                 <CardContent className="flex items-center gap-4 p-6">
                   <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-700 group-hover:bg-blue-600 group-hover:text-white transition-colors">
@@ -160,13 +162,32 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-gsn-text">Novo Pedido</h3>
-                    <p className="text-sm text-muted-foreground">Monte seu pedido</p>
+                    <p className="text-sm text-muted-foreground">
+                      {totalItems > 0 ? "Continuar no carrinho" : "Monte seu pedido"}
+                    </p>
                   </div>
                   <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-blue-600 transition-colors" />
                 </CardContent>
               </Card>
             </Link>
+
+            <Link href="/listas">
+              <Card className="group cursor-pointer transition-all hover:shadow-md hover:border-gsn-brand/30">
+                <CardContent className="flex items-center gap-4 p-6">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gsn-brand/10 text-gsn-brand group-hover:bg-gsn-brand group-hover:text-white transition-colors">
+                    <ListOrdered className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gsn-text">Listas de compra</h3>
+                    <p className="text-sm text-muted-foreground">Modelos para repor rápido</p>
+                  </div>
+                  <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-gsn-brand transition-colors" />
+                </CardContent>
+              </Card>
+            </Link>
           </div>
+
+          <SalespersonCard />
 
           {/* Produtos em Destaque: Favoritos + Mais comprados (fallback catálogo) */}
           <FeaturedSection />
@@ -340,29 +361,33 @@ function FeaturedSection() {
   return (
     <Card>
       <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle className="text-base text-gsn-text">Produtos em Destaque</CardTitle>
-        {showTabs ? (
-          <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
-            <TabButton
-              active={tab === "favoritos"}
-              onClick={() => setTabOverride("favoritos")}
-              icon={Heart}
-              label="Favoritos"
-            />
-            <TabButton
-              active={tab === "frequentes"}
-              onClick={() => setTabOverride("frequentes")}
-              icon={Repeat}
-              label="Mais comprados"
-            />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base text-gsn-text">Produtos em Destaque</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            {showTabs && (
+              <div className="flex items-center gap-1 rounded-lg bg-muted p-1">
+                <TabButton
+                  active={tab === "favoritos"}
+                  onClick={() => setTabOverride("favoritos")}
+                  icon={Heart}
+                  label="Favoritos"
+                />
+                <TabButton
+                  active={tab === "frequentes"}
+                  onClick={() => setTabOverride("frequentes")}
+                  icon={Repeat}
+                  label="Mais comprados"
+                />
+              </div>
+            )}
+            <Link href={tab === "favoritos" && hasFavorites ? "/favoritos" : "/catalogo"}>
+              <Button variant="ghost" size="sm" className="text-gsn-brand hover:text-gsn-brand-dark">
+                {tab === "favoritos" && hasFavorites ? "Ver todos" : "Ver catálogo"}{" "}
+                <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
           </div>
-        ) : (
-          <Link href="/catalogo">
-            <Button variant="ghost" size="sm" className="text-gsn-brand hover:text-gsn-brand-dark">
-              Ver catalogo <ArrowRight className="h-3 w-3" />
-            </Button>
-          </Link>
-        )}
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (
@@ -385,15 +410,27 @@ function FeaturedSection() {
             </>
           ) : (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Nenhum produto disponivel no momento.
+              Nenhum produto disponível no momento.
             </p>
           )
         ) : products.length ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {products.map((p) => (
-              <FeaturedProductCard key={p.sku} product={p} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              {products.slice(0, 6).map((p) => (
+                <FeaturedProductCard key={p.sku} product={p} />
+              ))}
+            </div>
+            {tab === "favoritos" && favorites.length > 6 && (
+              <div className="mt-4 flex justify-center">
+                <Link href="/favoritos">
+                  <Button variant="outline" size="sm" className="border-gsn-brand text-gsn-brand-dark hover:bg-gsn-brand/10">
+                    Ver todos os {favorites.length} favoritos
+                    <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </>
         ) : (
           <div className="flex flex-col items-center py-8 text-center">
             {tab === "favoritos" ? (

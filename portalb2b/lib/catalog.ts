@@ -128,6 +128,17 @@ export function packStep(unitsPerPack: number): number {
 }
 
 /**
+ * Arredonda a quantidade para o múltiplo mais próximo do passo de embalagem.
+ * Retorna 0 se quantity <= 0; caso contrário, no mínimo um passo completo.
+ */
+export function snapToPackStep(quantity: number, step: number): number {
+  const s = Math.max(1, Math.round(step));
+  if (quantity <= 0) return 0;
+  if (s <= 1) return Math.max(1, Math.round(quantity));
+  return Math.max(s, Math.round(quantity / s) * s);
+}
+
+/**
  * Máximo de UNIDADES que podem ser pedidas de uma variante, respeitando
  * embalagens inteiras (não se vende meia caixa). Ex.: 84 un disponíveis de uma
  * "Caixa c/24" → 72 un (3 caixas). Para unidade avulsa, é o próprio estoque.

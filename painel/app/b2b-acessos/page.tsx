@@ -69,6 +69,8 @@ interface B2BEmailRequest {
 }
 
 type PwFilter = "todos" | "com_senha" | "sem_senha";
+/** "" = todos; "none" = sem vendedor; número = código do vendedor */
+type VendorFilter = "" | "none" | string;
 
 function fmtCNPJ(raw: string): string {
   const d = raw.replace(/\D/g, "").slice(0, 14);
@@ -126,6 +128,8 @@ export default function B2BAcessosPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [pwFilter, setPwFilter] = useState<PwFilter>("todos");
+  const [vendorFilter, setVendorFilter] = useState<VendorFilter>("");
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // Modal de reset (limpar senha)
   const [resetTarget, setResetTarget] = useState<B2BCredential | null>(null);
@@ -232,29 +236,38 @@ export default function B2BAcessosPage() {
 
   const stats = useMemo(() => {
     const comSenha = creds.filter((c) => c.has_password).length;
+    const comVendedor = creds.filter((c) => c.sales_person_code != null).length;
     return {
       total: creds.length,
       comSenha,
       semSenha: creds.length - comSenha,
       verificados: creds.filter((c) => c.email_verified).length,
+      comVendedor,
+      semVendedor: creds.length - comVendedor,
     };
   }, [creds]);
 
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const qDigits = q.replace(/\D/g, "");
+    const vendorCode =
+      vendorFilter !== "" && vendorFilter !== "none" ? Number(vendorFilter) : null;
     return creds.filter((c) => {
       if (pwFilter === "com_senha" && !c.has_password) return false;
       if (pwFilter === "sem_senha" && c.has_password) return false;
+      if (vendorFilter === "none" && c.sales_person_code != null) return false;
+      if (vendorCode != null && c.sales_person_code !== vendorCode) return false;
       if (!q) return true;
+      const vName = vendorName(c.sales_person_code).toLowerCase();
       return (
         (c.card_name ?? "").toLowerCase().includes(q) ||
         c.card_code.toLowerCase().includes(q) ||
         (c.email ?? "").toLowerCase().includes(q) ||
+        vName.includes(q) ||
         (qDigits.length > 0 && c.cnpj.includes(qDigits))
       );
     });
-  }, [creds, searchQuery, pwFilter]);
+  }, [creds, searchQuery, pwFilter, vendorFilter, vendorName]);
 
   if (!user || !["admin", "supervisor"].includes(user.role)) {
     return (
@@ -372,6 +385,34 @@ export default function B2BAcessosPage() {
     }
   };
 
+  const handleSyncSalespersons = async () => {
+    setSyncLoading(true);
+    try {
+      const res = await fetch("/api/b2b-admin/credentials/sync-salespersons", {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao sincronizar vendedores");
+      }
+      const d = json.data as {
+        updated: number;
+        alreadySet: number;
+        missingInSap: number;
+        total: number;
+      };
+      toast.success(
+        `Vendedores sincronizados: ${d.updated} atualizado(s), ${d.alreadySet} já tinham, ${d.missingInSap} sem BP no SAP.`,
+      );
+      await fetchCreds(true);
+      await fetchSalespersons();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao sincronizar vendedores");
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
   const openVendorModal = (c: B2BCredential) => {
     setVendorTarget(c);
     setVendorCode(c.sales_person_code != null ? String(c.sales_person_code) : "");
@@ -457,15 +498,30 @@ export default function B2BAcessosPage() {
               Empresas com credencial no Portal do Cliente — resete senhas ou defina uma temporária
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {isAdmin && (
-              <button
-                onClick={() => setContactsOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition"
-              >
-                <UserRound className="w-4 h-4" />
-                Contatos de vendedores
-              </button>
+              <>
+                <button
+                  onClick={handleSyncSalespersons}
+                  disabled={syncLoading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white bg-gsn-700 hover:bg-gsn-800 transition disabled:opacity-50"
+                  title="Busca o vendedor de cada cliente no SAP e preenche os que estão vazios"
+                >
+                  {syncLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserRound className="w-4 h-4" />
+                  )}
+                  Sincronizar vendedores do SAP
+                </button>
+                <button
+                  onClick={() => setContactsOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition"
+                >
+                  <Phone className="w-4 h-4" />
+                  Contatos de vendedores
+                </button>
+              </>
             )}
             <button
               onClick={() => { fetchCreds(true); fetchRequests(); fetchSalespersons(); }}
@@ -579,7 +635,7 @@ export default function B2BAcessosPage() {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <KpiCard label="Empresas" value={stats.total} />
           <KpiCard
             label="Com senha"
@@ -600,18 +656,46 @@ export default function B2BAcessosPage() {
             value={stats.verificados}
             icon={<MailCheck className="w-4 h-4 text-blue-500" />}
           />
+          <KpiCard
+            label="Com vendedor"
+            value={stats.comVendedor}
+            icon={<UserRound className="w-4 h-4 text-gsn-500" />}
+          />
+          <KpiCard
+            label="Sem vendedor"
+            value={stats.semVendedor}
+            icon={<UserRound className="w-4 h-4 text-gray-400" />}
+            onClick={() => setVendorFilter(vendorFilter === "none" ? "" : "none")}
+            active={vendorFilter === "none"}
+          />
         </div>
 
-        {/* Busca */}
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por empresa, CNPJ, código SAP ou e-mail..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
-          />
+        {/* Busca + filtro por vendedor */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por empresa, CNPJ, código SAP, e-mail ou vendedor..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
+            />
+          </div>
+          <select
+            value={vendorFilter}
+            onChange={(e) => setVendorFilter(e.target.value as VendorFilter)}
+            className="sm:w-64 px-3 py-2.5 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none"
+            aria-label="Filtrar por vendedor"
+          >
+            <option value="">Todos os vendedores</option>
+            <option value="none">Sem vendedor</option>
+            {salespersons.map((s) => (
+              <option key={s.code} value={String(s.code)}>
+                {s.name ?? `Vendedor ${s.code}`}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Tabela */}

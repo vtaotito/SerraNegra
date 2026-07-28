@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Header } from "@/components/layout/Header";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +16,17 @@ import { useQuery } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
 import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import { toast } from "sonner";
+import { toastAddedToCart } from "@/lib/toast-cart";
 import { cn } from "@/lib/utils";
 import { FavoriteButton } from "@/components/catalog/FavoriteButton";
+import { ClientEmptyState } from "@/components/ui/client-empty-state";
+import {
+  buildCatalogHref,
+  parseCatalogPage,
+  parseStockFilter,
+  rememberCatalogUrl,
+  type StockFilter,
+} from "@/lib/catalog-url";
 import {
   Search,
   Plus,
@@ -73,11 +84,46 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 export default function CatalogoPage() {
-  const [searchInput, setSearchInput] = useState("");
-  const search = useDebounce(searchInput, 350);
-  const [category, setCategory] = useState("");
-  const [stockFilter, setStockFilter] = useState<"" | "in" | "out">("");
-  const [page, setPage] = useState(1);
+  return (
+    <Suspense fallback={<CatalogoFallback />}>
+      <CatalogoContent />
+    </Suspense>
+  );
+}
+
+function CatalogoFallback() {
+  return (
+    <div className="min-h-screen bg-muted/30">
+      <Header />
+      <main className="mx-auto max-w-7xl px-4 pt-5 pb-24 sm:px-6 lg:px-8 md:pb-8">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="overflow-hidden rounded-xl border bg-card">
+              <Skeleton className="h-48 w-full" />
+              <div className="space-y-2 p-4">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="mt-3 h-8 w-full" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function CatalogoContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const search = searchParams.get("q") ?? "";
+  const category = searchParams.get("categoria") ?? "";
+  const stockFilter = parseStockFilter(searchParams.get("estoque"));
+  const page = parseCatalogPage(searchParams.get("page"));
+
+  const [searchInput, setSearchInput] = useState(search);
+  const debouncedSearch = useDebounce(searchInput, 350);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Quantidade (em embalagens) do add rápido por produto de combinação única.
@@ -85,7 +131,90 @@ export default function CatalogoPage() {
 
   const { addItem, getItem } = useCart();
 
-  useEffect(() => { setPage(1); }, [search, category, stockFilter]);
+  const replaceCatalogUrl = useCallback(
+    (next: {
+      q?: string;
+      categoria?: string;
+      estoque?: StockFilter;
+      page?: number;
+    }) => {
+      const href = buildCatalogHref({
+        q: next.q ?? "",
+        categoria: next.categoria ?? "",
+        estoque: next.estoque ?? "",
+        page: next.page ?? 1,
+      });
+      rememberCatalogUrl(href);
+      const current =
+        searchParams.toString().length > 0
+          ? `/catalogo?${searchParams.toString()}`
+          : "/catalogo";
+      if (href !== current) {
+        router.replace(href, { scroll: false });
+      }
+    },
+    [router, searchParams],
+  );
+
+  // Input → URL (após debounce); preserva deep link e histórico.
+  useEffect(() => {
+    if (debouncedSearch === search) return;
+    replaceCatalogUrl({
+      q: debouncedSearch,
+      categoria: category,
+      estoque: stockFilter,
+      page: 1,
+    });
+  }, [debouncedSearch, search, category, stockFilter, replaceCatalogUrl]);
+
+  // URL → input (voltar/avançar do browser ou deep link).
+  useEffect(() => {
+    setSearchInput((prev) => (prev === search ? prev : search));
+  }, [search]);
+
+  // Mantém o último estado do catálogo para o breadcrumb do detalhe.
+  useEffect(() => {
+    rememberCatalogUrl(
+      buildCatalogHref({ q: search, categoria: category, estoque: stockFilter, page }),
+    );
+  }, [search, category, stockFilter, page]);
+
+  const setCategory = useCallback(
+    (value: string) => {
+      replaceCatalogUrl({
+        q: search,
+        categoria: value,
+        estoque: stockFilter,
+        page: 1,
+      });
+    },
+    [replaceCatalogUrl, search, stockFilter],
+  );
+
+  const setStockFilter = useCallback(
+    (value: StockFilter) => {
+      replaceCatalogUrl({
+        q: search,
+        categoria: category,
+        estoque: value,
+        page: 1,
+      });
+    },
+    [replaceCatalogUrl, search, category],
+  );
+
+  const setPage = useCallback(
+    (value: number | ((prev: number) => number)) => {
+      const next = typeof value === "function" ? value(page) : value;
+      replaceCatalogUrl({
+        q: search,
+        categoria: category,
+        estoque: stockFilter,
+        page: Math.max(1, next),
+      });
+    },
+    [replaceCatalogUrl, search, category, stockFilter, page],
+  );
 
   // Rola para o topo ao trocar de página/filtro (melhora a navegação no grid).
   const isFirstRender = useRef(true);
@@ -95,7 +224,7 @@ export default function CatalogoPage() {
       return;
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [page]);
+  }, [page, search, category, stockFilter]);
 
   const queryParams = new URLSearchParams();
   if (search) queryParams.set("search", search);
@@ -160,33 +289,28 @@ export default function CatalogoPage() {
       perPack > 1
         ? `${addPacks} ${label} = ${addUnits} ${variant.unitOfMeasure}`
         : `${addUnits} ${variant.unitOfMeasure}`;
-    if (exceedsStock) {
-      toast.success(`${product.name} adicionado ao carrinho`, {
-        description: `${baseDesc} · acima do estoque — seu vendedor confirmará prazo/disponibilidade.`,
-      });
-    } else {
-      toast.success(`${product.name} adicionado ao carrinho`, {
-        description: baseDesc,
-      });
-    }
+    toastAddedToCart(product.name, {
+      description: exceedsStock
+        ? `${baseDesc} · acima do estoque — seu vendedor confirmará prazo/disponibilidade.`
+        : baseDesc,
+      onViewCart: () => router.push("/carrinho"),
+    });
   }
 
   async function handleNotify(variant: AttributeVariant, productName: string) {
     try {
       await post(`/b2b/catalog/${variant.sku}/notify`, {});
       toast.success("Cadastrado com sucesso!", {
-        description: `Voce sera notificado quando "${productName}" estiver disponivel.`,
+        description: `Você será notificado quando "${productName}" estiver disponível.`,
       });
     } catch {
-      toast.error("Erro ao cadastrar notificacao");
+      toast.error("Erro ao cadastrar notificação");
     }
   }
 
   function resetFilters() {
     setSearchInput("");
-    setCategory("");
-    setStockFilter("");
-    setPage(1);
+    replaceCatalogUrl({ q: "", categoria: "", estoque: "", page: 1 });
   }
 
   const hasFilters = !!search || !!category || !!stockFilter;
@@ -208,7 +332,7 @@ export default function CatalogoPage() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               <Input
-                placeholder="Buscar produto, codigo ou EAN..."
+                placeholder="Buscar produto, código ou EAN..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-9 pr-9 h-9 text-base sm:text-sm bg-muted/50 border-transparent focus:border-input focus:bg-white transition-colors"
@@ -383,6 +507,13 @@ export default function CatalogoPage() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 pt-5 pb-24 sm:px-6 lg:px-8 md:pb-8">
+        <Breadcrumb
+          items={[
+            { label: "Início", href: "/" },
+            { label: "Catálogo" },
+          ]}
+          className="mb-4"
+        />
         <div className="space-y-4">
           {/* Results Header + Active Filter Chips */}
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -463,21 +594,23 @@ export default function CatalogoPage() {
             </div>
           ) : !data?.items?.length ? (
             <Card>
-              <CardContent className="flex flex-col items-center py-16 text-center">
-                <div className="rounded-full bg-muted p-4 mb-4">
-                  <Package className="h-10 w-10 text-muted-foreground/40" />
-                </div>
-                <h3 className="font-semibold text-lg">Nenhum produto encontrado</h3>
-                <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                  {hasFilters
-                    ? "Nao encontramos resultados para os filtros selecionados. Tente ajustar sua busca."
-                    : "Nenhum produto disponivel no momento."}
-                </p>
-                {hasFilters && (
-                  <Button variant="outline" size="sm" className="mt-4" onClick={resetFilters}>
-                    Limpar filtros
-                  </Button>
-                )}
+              <CardContent className="p-0">
+                <ClientEmptyState
+                  icon={Package}
+                  title="Nenhum produto encontrado"
+                  description={
+                    hasFilters
+                      ? "Não encontramos resultados para os filtros selecionados. Tente ajustar sua busca."
+                      : "Nenhum produto disponível no momento."
+                  }
+                  action={
+                    hasFilters ? (
+                      <Button variant="outline" size="sm" onClick={resetFilters}>
+                        Limpar filtros
+                      </Button>
+                    ) : undefined
+                  }
+                />
               </CardContent>
             </Card>
           ) : (
@@ -716,11 +849,11 @@ function ProductCard({
         {product.inStock ? (
           <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-emerald-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-            Disponivel
+            Disponível
           </span>
         ) : (
           <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-red-600/90 text-white px-2 py-0.5 text-[10px] font-medium shadow-sm backdrop-blur-sm">
-            Indisponivel
+            Indisponível
           </span>
         )}
         {inCart && (

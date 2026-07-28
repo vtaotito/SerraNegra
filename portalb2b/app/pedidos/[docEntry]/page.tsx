@@ -1,7 +1,8 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +12,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
 import { formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import { useCart } from "@/lib/cart/context";
+import {
+  maxOrderableUnits,
+  packagingLabel,
+  packStep,
+  snapToPackStep,
+} from "@/lib/catalog";
 import { getProductImageUrl, getProductImageBySku } from "@/lib/product-images";
 import { toast } from "sonner";
+import { toastAddedToCart } from "@/lib/toast-cart";
 import {
   ORDER_FLOW,
   getOrderStatusConfig,
@@ -22,8 +30,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FavoriteButton } from "@/components/catalog/FavoriteButton";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
+import { ClientEmptyState } from "@/components/ui/client-empty-state";
+import { SalespersonCard } from "@/components/salesperson/SalespersonCard";
+import { useInbox } from "@/lib/messages/useInbox";
 import {
-  ArrowLeft,
   Calendar,
   MapPin,
   Package,
@@ -66,6 +76,9 @@ interface OrderItem {
   slug?: string | null;
   inCatalog?: boolean;
   isInStock?: boolean;
+  packagingType?: string | null;
+  unitsPerPack?: number;
+  stockUnits?: number;
   flags?: ItemFlag[];
 }
 
@@ -125,17 +138,50 @@ function itemImage(item: OrderItem): string | null {
   return item.thumbUrl || item.imageUrl || getProductImageBySku(item.sku) || getProductImageUrl(item.description ?? item.sku);
 }
 
+/** Monta payload de carrinho a partir de uma linha do pedido (embalagem + estoque). */
+function toCartPayload(it: OrderItem) {
+  const perPack = packStep(it.unitsPerPack ?? 1);
+  const maxUnits = maxOrderableUnits({
+    stockUnits: it.stockUnits ?? 0,
+    unitsPerPack: perPack,
+  });
+  const baseName = it.description ?? it.sku;
+  const label = packagingLabel(it.packagingType, perPack);
+  const name =
+    perPack > 1 && label !== "Unidade" ? `${baseName} — ${label}` : baseName;
+  const quantity = snapToPackStep(it.quantity, perPack);
+
+  return {
+    item: {
+      sku: it.sku,
+      name,
+      unit: it.unit ?? "UN",
+      unitsPerPack: perPack,
+      maxUnits,
+    },
+    quantity,
+    exceedsStock: maxUnits > 0 && quantity > maxUnits,
+  };
+}
+
 export default function PedidoDetalhePage({ params }: { params: Promise<{ docEntry: string }> }) {
   const { docEntry } = use(params);
   const router = useRouter();
   const { addItem } = useCart();
   const qc = useQueryClient();
+  const { markSeen, summaryFor } = useInbox();
   const [cancelOpen, setCancelOpen] = useState(false);
 
   const { data: order, isLoading } = useQuery<OrderDetail>({
     queryKey: ["b2b-order", docEntry],
     queryFn: () => get(`/b2b/orders/${docEntry}`),
   });
+
+  // Marca mensagens deste pedido como lidas ao abrir o detalhe.
+  useEffect(() => {
+    const summary = summaryFor(Number(docEntry));
+    if (summary?.lastAt) markSeen(docEntry, summary.lastAt);
+  }, [docEntry, markSeen, summaryFor]);
 
   const cancelOrder = useMutation({
     mutationFn: (reason: string) =>
@@ -156,36 +202,33 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
 
   function addAllToCart() {
     if (!order) return;
+    let anyExceeds = false;
     for (const it of order.items) {
-      addItem(
-        {
-          sku: it.sku,
-          name: it.description ?? it.sku,
-          unit: it.unit ?? "UN",
-          unitsPerPack: 1,
-          maxUnits: 0,
-        },
-        it.quantity,
-      );
+      const { item, quantity, exceedsStock } = toCartPayload(it);
+      if (quantity <= 0) continue;
+      addItem(item, quantity);
+      if (exceedsStock) anyExceeds = true;
     }
-    toast.success("Itens adicionados ao carrinho", {
-      description: "Revise as quantidades e finalize a recompra.",
+    toastAddedToCart("Itens adicionados ao carrinho", {
+      asIs: true,
+      description: anyExceeds
+        ? "Revise as quantidades — alguns itens estão acima do estoque. Seu vendedor confirmará prazo/disponibilidade."
+        : "Revise as quantidades e finalize a recompra.",
+      onViewCart: () => router.push("/carrinho"),
     });
     router.push("/carrinho");
   }
 
   function addOneToCart(it: OrderItem) {
-    addItem(
-      {
-        sku: it.sku,
-        name: it.description ?? it.sku,
-        unit: it.unit ?? "UN",
-        unitsPerPack: 1,
-        maxUnits: 0,
-      },
-      it.quantity,
-    );
-    toast.success(`${it.description ?? it.sku} adicionado ao carrinho`);
+    const { item, quantity, exceedsStock } = toCartPayload(it);
+    if (quantity <= 0) return;
+    addItem(item, quantity);
+    toastAddedToCart(it.description ?? it.sku, {
+      description: exceedsStock
+        ? "Acima do estoque — seu vendedor confirmará prazo/disponibilidade."
+        : undefined,
+      onViewCart: () => router.push("/carrinho"),
+    });
   }
 
   return (
@@ -195,21 +238,30 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
       </div>
       <main className="mx-auto max-w-4xl px-4 pt-6 pb-40 sm:px-6 lg:px-8 md:pb-8 print:max-w-none print:py-2">
         <div className="space-y-6">
+          <div className="print:hidden">
+            <Breadcrumb
+              items={[
+                { label: "Início", href: "/" },
+                { label: "Pedidos", href: "/pedidos" },
+                {
+                  label: isLoading
+                    ? "…"
+                    : order
+                      ? `#${order.docNum}`
+                      : `#${docEntry}`,
+                },
+              ]}
+              className="mb-3"
+            />
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-            <div className="flex min-w-0 items-center gap-3">
-              <Link href="/pedidos">
-                <Button variant="ghost" size="icon" aria-label="Voltar para pedidos">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
-              <div className="min-w-0">
-                <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
-                  {isLoading ? <Skeleton className="h-8 w-48" /> : `Pedido #${order?.docNum}`}
-                </h1>
-                {order && (
-                  <p className="text-sm text-muted-foreground">Pedido nº {order.docEntry}</p>
-                )}
-              </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">
+                {isLoading ? <Skeleton className="h-8 w-48" /> : `Pedido #${order?.docNum}`}
+              </h1>
+              {order && (
+                <p className="text-sm text-muted-foreground">Pedido nº {order.docEntry}</p>
+              )}
             </div>
             {order && (
               <div className="flex flex-1 items-center gap-2 sm:flex-none">
@@ -241,9 +293,17 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
             </div>
           ) : !order ? (
             <Card>
-              <CardContent className="flex flex-col items-center py-12 text-center">
-                <FileText className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                <h3 className="font-semibold text-lg">Pedido nao encontrado</h3>
+              <CardContent className="p-0">
+                <ClientEmptyState
+                  icon={FileText}
+                  title="Pedido não encontrado"
+                  description="Verifique o número ou volte à lista de pedidos."
+                  action={
+                    <Link href="/pedidos">
+                      <Button variant="outline">Ver meus pedidos</Button>
+                    </Link>
+                  }
+                />
               </CardContent>
             </Card>
           ) : (
@@ -378,7 +438,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-sm flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4" /> Observacoes
+                      <MessageSquare className="h-4 w-4" /> Observações
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -398,7 +458,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                 <CardContent>
                   {order.items.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
-                      Detalhes dos itens nao disponiveis
+                      Detalhes dos itens não disponíveis
                     </p>
                   ) : (
                     <div className="space-y-3">
@@ -503,6 +563,8 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                 </CardContent>
               </Card>
 
+              <SalespersonCard className="print:hidden" />
+
               {/* Conversa com o vendedor */}
               <MessagesThread docEntry={docEntry} canInteract={canInteract} />
             </>
@@ -542,6 +604,7 @@ function MessagesThread({
   canInteract: boolean;
 }) {
   const qc = useQueryClient();
+  const { markSeen } = useInbox();
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<MessageKind>("message");
 
@@ -557,12 +620,18 @@ function MessagesThread({
     [messages],
   );
 
+  useEffect(() => {
+    const last = messages[messages.length - 1];
+    if (last?.createdAt) markSeen(docEntry, last.createdAt);
+  }, [messages, docEntry, markSeen]);
+
   const mutation = useMutation({
     mutationFn: () => post(`/b2b/orders/${docEntry}/messages`, { kind, body: body.trim() }),
     onSuccess: () => {
       setBody("");
       setKind("message");
       qc.invalidateQueries({ queryKey: ["b2b-order-messages", docEntry] });
+      qc.invalidateQueries({ queryKey: ["b2b-inbox"] });
       toast.success("Enviado!", {
         description: "Nossa equipe de vendas vai responder em breve.",
       });

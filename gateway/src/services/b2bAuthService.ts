@@ -85,6 +85,45 @@ export class B2BAuthService {
     );
   }
 
+  /**
+   * Preenche sales_person_code a partir do SAP somente quando ainda está vazio
+   * (não sobrescreve associação já feita no painel).
+   * `pairs`: Map cardCode → SalesPersonCode válido (>= 0).
+   */
+  async syncSalesPersonsFromSap(
+    pairs: Map<string, number>,
+  ): Promise<{ updated: number; alreadySet: number; missingInSap: number; total: number }> {
+    const { rows } = await this.pool.query<{
+      card_code: string;
+      sales_person_code: number | null;
+    }>("SELECT card_code, sales_person_code FROM b2b_credentials");
+
+    let updated = 0;
+    let alreadySet = 0;
+    let missingInSap = 0;
+
+    for (const row of rows) {
+      if (row.sales_person_code != null) {
+        alreadySet += 1;
+        continue;
+      }
+      const code = pairs.get(row.card_code);
+      if (code === undefined) {
+        missingInSap += 1;
+        continue;
+      }
+      await this.pool.query(
+        `UPDATE b2b_credentials
+         SET sales_person_code = $1, updated_at = NOW()
+         WHERE card_code = $2 AND sales_person_code IS NULL`,
+        [code, row.card_code],
+      );
+      updated += 1;
+    }
+
+    return { updated, alreadySet, missingInSap, total: rows.length };
+  }
+
   async generateOtp(cnpj: string): Promise<string> {
     const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);

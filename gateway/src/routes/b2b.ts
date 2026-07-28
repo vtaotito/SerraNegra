@@ -1232,6 +1232,85 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     },
   );
 
+  /**
+   * Sincroniza SalesPersonCode do BP (SAP) → b2b_credentials.
+   * Só preenche credenciais com sales_person_code NULL (não sobrescreve painel).
+   */
+  app.post(
+    "/b2b/admin/credentials/sync-salespersons",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      try {
+        const client = getSapClient();
+        const pairs = new Map<string, number>();
+        const pageSize = 500;
+        let skip = 0;
+        const selectCandidates = [
+          `$select=CardCode,SalesPersonCode&$filter=CardType eq 'cCustomer'`,
+          `$select=CardCode,SalesPersonCode`,
+        ];
+
+        let loaded = false;
+        let lastError: unknown;
+        for (const sel of selectCandidates) {
+          try {
+            pairs.clear();
+            skip = 0;
+            while (pairs.size < 20000) {
+              const url = `/BusinessPartners?${sel}&$top=${pageSize}&$skip=${skip}`;
+              const res = await client.get<{ value: { CardCode?: string; SalesPersonCode?: number }[] }>(
+                url,
+                { correlationId },
+              );
+              const page = res.data.value ?? [];
+              if (page.length === 0) break;
+              for (const bp of page) {
+                const cardCode = String(bp.CardCode ?? "").trim();
+                if (!cardCode) continue;
+                const sp = Number(bp.SalesPersonCode);
+                // SAP usa -1 quando não há vendedor; só aceitamos códigos válidos.
+                if (Number.isFinite(sp) && sp >= 0) {
+                  pairs.set(cardCode, sp);
+                }
+              }
+              if (page.length < pageSize) break;
+              skip += pageSize;
+            }
+            loaded = true;
+            break;
+          } catch (err) {
+            lastError = err;
+            req.log.warn(
+              { error: err, correlationId },
+              "sync-salespersons: candidato SAP falhou",
+            );
+          }
+        }
+
+        if (!loaded) {
+          const msg =
+            lastError instanceof Error
+              ? lastError.message
+              : "Não foi possível listar Business Partners no SAP";
+          reply.code(502).send({ error: msg });
+          return;
+        }
+
+        const result = await authService.syncSalesPersonsFromSap(pairs);
+        req.log.info(
+          { ...result, sapPairs: pairs.size, admin: admin?.user, correlationId },
+          "B2B admin: vendedores sincronizados do SAP",
+        );
+        reply.code(200).send({ ok: true, ...result, sapPairs: pairs.size });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
   // Reset: limpa a senha — o cliente refaz o primeiro acesso via OTP
   app.post(
     "/b2b/admin/credentials/:cnpj/reset",
@@ -3205,6 +3284,8 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         }
 
         // Itens em formato camelCase para o portal.
+        // unitsPerPack/stockUnits alimentam o "Comprar novamente" (múltiplo da
+        // embalagem + aviso de estoque no carrinho), espelhando o add do catálogo.
         const items = lines.map((l: any) => {
           const cat = (catalogMap as Record<string, any>)[l.ItemCode] ?? null;
           return {
@@ -3220,6 +3301,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
             slug: cat?.slug ?? null,
             inCatalog: cat?.isActive ?? false,
             isInStock: cat?.isInStock ?? false,
+            packagingType: cat?.packagingType ?? null,
+            unitsPerPack: cat?.unitsPerPack ?? 1,
+            stockUnits: cat?.stockUnits ?? 0,
             flags: notesBySku.get(l.ItemCode) ?? [],
           };
         });
@@ -3406,6 +3490,45 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       createdAt: m.created_at,
     };
   }
+
+  // Inbox de mensagens do cliente (pedidos com conversa ativa).
+  // Rota própria (/b2b/messages/…) para não colidir com /b2b/orders/:docEntry.
+  app.get(
+    "/b2b/messages/inbox",
+    { preHandler: b2bAuth },
+    async (req, reply) => {
+      const customer = (req as any).b2bCustomer as B2BTokenPayload;
+      try {
+        const rows = await orderMessageService.inboxByCustomer(customer.cardCode);
+        const docEntries = rows.map((r) => r.docEntry);
+        let docNumMap: Record<number, number> = {};
+        if (docEntries.length > 0) {
+          const numRes = await ordersPool.query(
+            `SELECT doc_entry, doc_num FROM sap_sales_orders
+             WHERE doc_entry = ANY($1::int[])`,
+            [docEntries],
+          );
+          for (const r of numRes.rows) {
+            docNumMap[Number(r.doc_entry)] = Number(r.doc_num);
+          }
+        }
+        const items = rows.map((r) => ({
+          docEntry: r.docEntry,
+          docNum: docNumMap[r.docEntry] ?? null,
+          messages: r.messages,
+          openRequests: r.openRequests,
+          lastAuthor: r.lastAuthor,
+          lastBody: r.lastBody,
+          lastAt: r.lastAt,
+        }));
+        const awaitingCount = items.filter((i) => i.lastAuthor === "seller").length;
+        reply.code(200).send({ items, awaitingCount });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
 
   // Fio de mensagens do pedido (visão do cliente).
   app.get(

@@ -70,7 +70,7 @@ export function renderLayout({
               <td style="background: ${BRAND.color}; padding: 22px 28px; text-align: center;">
                 <img src="${BRAND.logoUrl}" alt="${escapeHtml(
                   BRAND.name,
-                )}" height="44" style="height: 44px; width: auto; display: inline-block;" />
+                )}" height="44" style="height: 44px; width: auto; display: inline-block; filter: brightness(0) invert(1);" />
               </td>
             </tr>
             <tr>

@@ -24,10 +24,13 @@ import {
   Package,
   Filter,
   Ban,
+  MessageSquare,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { CancelOrderDialog } from "@/components/orders/CancelOrderDialog";
+import { ClientEmptyState } from "@/components/ui/client-empty-state";
+import { useInbox } from "@/lib/messages/useInbox";
 
 interface OrdersResponse {
   items: OrderSummary[];
@@ -39,6 +42,7 @@ export default function PedidosPage() {
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<OrderSummary | null>(null);
   const qc = useQueryClient();
+  const { isUnread, summaryFor } = useInbox();
 
   const { data, isLoading } = useQuery<OrdersResponse>({
     queryKey: ["b2b-orders"],
@@ -87,7 +91,7 @@ export default function PedidosPage() {
               <div className="relative flex-1 sm:w-64">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar por numero..."
+                  placeholder="Buscar por número..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -128,19 +132,23 @@ export default function PedidosPage() {
             </div>
           ) : filtered.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center py-12 text-center">
-                <ClipboardList className="h-12 w-12 text-muted-foreground/30 mb-4" />
-                <h3 className="font-semibold text-lg">Nenhum pedido encontrado</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {search || statusFilter
-                    ? "Tente alterar os filtros"
-                    : "Voce ainda nao possui pedidos"}
-                </p>
-                <Link href="/catalogo" className="mt-4">
-                  <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
-                    Fazer primeiro pedido
-                  </Button>
-                </Link>
+              <CardContent className="p-0">
+                <ClientEmptyState
+                  icon={ClipboardList}
+                  title="Nenhum pedido encontrado"
+                  description={
+                    search || statusFilter
+                      ? "Tente alterar os filtros"
+                      : "Você ainda não possui pedidos"
+                  }
+                  action={
+                    <Link href="/catalogo">
+                      <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
+                        Fazer primeiro pedido
+                      </Button>
+                    </Link>
+                  }
+                />
               </CardContent>
             </Card>
           ) : (
@@ -148,6 +156,8 @@ export default function PedidosPage() {
               {filtered.map((order) => {
                 const cfg = getOrderStatusConfig(order.status);
                 const StatusIcon = cfg.icon;
+                const unread = !order.pending && isUnread(order.docEntry);
+                const msgSummary = !order.pending ? summaryFor(order.docEntry) : null;
 
                 const cardBody = (
                   <CardContent className="flex items-center gap-4 p-4 sm:p-5">
@@ -161,6 +171,18 @@ export default function PedidosPage() {
                           {order.pending ? `Solicitação #${order.docNum}` : `Pedido #${order.docNum}`}
                         </span>
                         <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                        {unread && (
+                          <Badge className="bg-gsn-brand text-white hover:bg-gsn-brand gap-1">
+                            <MessageSquare className="h-3 w-3" />
+                            Nova msg
+                          </Badge>
+                        )}
+                        {!unread && msgSummary && msgSummary.messages > 0 && (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <MessageSquare className="h-3 w-3" />
+                            {msgSummary.messages}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">

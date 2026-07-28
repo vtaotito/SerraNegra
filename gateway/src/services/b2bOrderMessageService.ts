@@ -163,4 +163,42 @@ export class B2BOrderMessageService {
     }
     return out;
   }
+
+  /**
+   * Inbox do cliente: pedidos com conversa, ordenados pela última mensagem.
+   * "Aguardando resposta" = última mensagem do vendedor.
+   */
+  async inboxByCustomer(cardCode: string): Promise<
+    Array<{
+      docEntry: number;
+      messages: number;
+      openRequests: number;
+      lastAuthor: AuthorType | null;
+      lastBody: string | null;
+      lastAt: string | null;
+    }>
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT doc_entry,
+              COUNT(*)::int AS messages,
+              COUNT(*) FILTER (WHERE status = 'aberto')::int AS open_requests,
+              (ARRAY_AGG(author_type ORDER BY created_at DESC, id DESC))[1] AS last_author,
+              (ARRAY_AGG(body ORDER BY created_at DESC, id DESC))[1] AS last_body,
+              MAX(created_at) AS last_at
+       FROM b2b_order_messages
+       WHERE LOWER(card_code) = LOWER($1)
+       GROUP BY doc_entry
+       ORDER BY MAX(created_at) DESC
+       LIMIT 50`,
+      [cardCode],
+    );
+    return rows.map((r) => ({
+      docEntry: Number(r.doc_entry),
+      messages: Number(r.messages),
+      openRequests: Number(r.open_requests),
+      lastAuthor: (r.last_author as AuthorType) ?? null,
+      lastBody: (r.last_body as string) ?? null,
+      lastAt: r.last_at ? String(r.last_at) : null,
+    }));
+  }
 }

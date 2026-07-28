@@ -1470,6 +1470,9 @@ export class B2BCatalogService {
         isInStock: boolean;
         isActive: boolean;
         unitOfMeasure: string | null;
+        packagingType: string | null;
+        unitsPerPack: number;
+        stockUnits: number;
       }
     >
   > {
@@ -1477,13 +1480,15 @@ export class B2BCatalogService {
     const { rows } = await this.pool.query(
       `SELECT sap_item_code, sap_item_name, gsn_product_name, gsn_slug,
               image_url, image_thumb_url, is_in_stock, is_active, is_sales_item,
-              unit_of_measure
+              unit_of_measure, packaging_type, units_per_package, total_stock
        FROM b2b_catalog_products
        WHERE sap_item_code = ANY($1::text[])`,
       [skus],
     );
     const out: Record<string, any> = {};
     for (const r of rows) {
+      const unitsPerPack = normUnitsPerPack(r.units_per_package);
+      const stockQuantity = Number(r.total_stock) || 0;
       out[r.sap_item_code] = {
         name: r.gsn_product_name ?? r.sap_item_name ?? null,
         imageUrl: r.image_url ?? null,
@@ -1492,6 +1497,9 @@ export class B2BCatalogService {
         isInStock: r.is_in_stock === true,
         isActive: r.is_active === true && r.is_sales_item === true,
         unitOfMeasure: r.unit_of_measure ?? null,
+        packagingType: r.packaging_type ?? null,
+        unitsPerPack,
+        stockUnits: Math.max(0, Math.round(stockQuantity * unitsPerPack)),
       };
     }
     return out;

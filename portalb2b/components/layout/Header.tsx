@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/context";
 import { useCart } from "@/lib/cart/context";
+import { useInbox } from "@/lib/messages/useInbox";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -15,13 +16,18 @@ import {
   LogOut,
   Truck,
   User,
+  Heart,
+  MessageSquare,
+  ListOrdered,
 } from "lucide-react";
 import { GSN_LOGO_URL } from "@/lib/product-images";
 import { MobileNav } from "./MobileNav";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Inicio", icon: LayoutDashboard },
-  { href: "/catalogo", label: "Catalogo", icon: Package },
+  { href: "/", label: "Início", icon: LayoutDashboard },
+  { href: "/catalogo", label: "Catálogo", icon: Package },
+  { href: "/favoritos", label: "Favoritos", icon: Heart },
+  { href: "/listas", label: "Listas", icon: ListOrdered },
   { href: "/pedidos", label: "Meus Pedidos", icon: ClipboardList },
   { href: "/entrega", label: "Entrega", icon: Truck },
 ];
@@ -29,6 +35,7 @@ const NAV_ITEMS = [
 export function Header() {
   const { customer, logout } = useAuth();
   const { totalItems } = useCart();
+  const { unreadCount } = useInbox();
   const pathname = usePathname();
 
   return (
@@ -47,7 +54,7 @@ export function Header() {
               </span>
             </Link>
 
-            <nav className="hidden items-center gap-1 md:flex">
+            <nav className="hidden items-center gap-1 lg:flex">
               {NAV_ITEMS.map((item) => {
                 const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
                 return (
@@ -87,6 +94,21 @@ export function Header() {
                 </span>
               </Link>
             )}
+
+            <Link
+              href="/mensagens"
+              aria-label={`Mensagens${unreadCount > 0 ? ` (${unreadCount} sem ler)` : ""}`}
+              title="Mensagens"
+            >
+              <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
+                <MessageSquare className="h-5 w-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-brand text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
 
             <Link href="/carrinho" aria-label={`Carrinho${totalItems > 0 ? ` (${totalItems} itens)` : ""}`}>
               <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
