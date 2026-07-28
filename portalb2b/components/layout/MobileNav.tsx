@@ -2,28 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutDashboard, Package, ShoppingCart } from "lucide-react";
 
 import { useCart } from "@/lib/cart/context";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Package,
-  ClipboardList,
-  ShoppingCart,
-  User,
-} from "lucide-react";
+import { AccountMenu } from "./AccountMenu";
 
 const ITEMS = [
   { href: "/", label: "Início", icon: LayoutDashboard },
   { href: "/catalogo", label: "Catálogo", icon: Package },
-  { href: "/pedidos", label: "Pedidos", icon: ClipboardList },
   { href: "/carrinho", label: "Carrinho", icon: ShoppingCart, badge: true },
-  { href: "/entrega", label: "Conta", icon: User },
 ] as const;
 
 /**
- * Barra de navegação inferior (mobile-first). Fixa na base da viewport, some
- * a partir de md. Respeita a safe-area do iOS (viewport-fit=cover no layout).
+ * Barra inferior mobile: fluxo de compra + Conta (sheet com Favoritos, Listas, Pedidos, Entrega).
  */
 export function MobileNav() {
   const pathname = usePathname();
@@ -66,6 +58,9 @@ export function MobileNav() {
             </li>
           );
         })}
+        <li className="flex flex-1">
+          <AccountMenu variant="mobile" />
+        </li>
       </ul>
     </nav>
   );

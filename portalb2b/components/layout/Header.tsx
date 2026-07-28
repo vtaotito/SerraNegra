@@ -1,39 +1,24 @@
 "use client";
 
 import Link from "next/link";
-
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/lib/auth/context";
+import { LayoutDashboard, MessageSquare, Package, ShoppingCart } from "lucide-react";
+
 import { useCart } from "@/lib/cart/context";
 import { useInbox } from "@/lib/messages/useInbox";
+import { GSN_LOGO_URL } from "@/lib/product-images";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  ShoppingCart,
-  Package,
-  ClipboardList,
-  LayoutDashboard,
-  LogOut,
-  Truck,
-  User,
-  Heart,
-  MessageSquare,
-  ListOrdered,
-} from "lucide-react";
-import { GSN_LOGO_URL } from "@/lib/product-images";
+import { AccountMenu } from "./AccountMenu";
 import { MobileNav } from "./MobileNav";
 
+/** Navegação primária: só o fluxo de compra. Conta fica no menu do usuário. */
 const NAV_ITEMS = [
   { href: "/", label: "Início", icon: LayoutDashboard },
   { href: "/catalogo", label: "Catálogo", icon: Package },
-  { href: "/favoritos", label: "Favoritos", icon: Heart },
-  { href: "/listas", label: "Listas", icon: ListOrdered },
-  { href: "/pedidos", label: "Meus Pedidos", icon: ClipboardList },
-  { href: "/entrega", label: "Entrega", icon: Truck },
 ];
 
 export function Header() {
-  const { customer, logout } = useAuth();
   const { totalItems } = useCart();
   const { unreadCount } = useInbox();
   const pathname = usePathname();
@@ -54,9 +39,11 @@ export function Header() {
               </span>
             </Link>
 
-            <nav className="hidden items-center gap-1 lg:flex">
+            <nav className="hidden items-center gap-1 md:flex" aria-label="Principal">
               {NAV_ITEMS.map((item) => {
-                const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href));
                 return (
                   <Link
                     key={item.href}
@@ -64,8 +51,8 @@ export function Header() {
                     className={cn(
                       "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                       isActive
-                        ? "bg-gsn-brand/10 text-gsn-brand font-semibold"
-                        : "text-gsn-gray hover:bg-accent hover:text-foreground"
+                        ? "bg-gsn-brand/10 font-semibold text-gsn-brand"
+                        : "text-gsn-gray hover:bg-accent hover:text-foreground",
                     )}
                   >
                     <item.icon className="h-4 w-4" />
@@ -76,31 +63,17 @@ export function Header() {
             </nav>
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-3">
-            {customer && (
-              <Link
-                href="/entrega"
-                title="Minha conta e dados de entrega"
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
-                  pathname.startsWith("/entrega")
-                    ? "text-gsn-brand"
-                    : "text-gsn-gray hover:text-gsn-brand",
-                )}
-              >
-                <User className="h-4 w-4" />
-                <span className="hidden max-w-[150px] truncate sm:inline">
-                  {customer.cardName}
-                </span>
-              </Link>
-            )}
-
+          <div className="flex items-center gap-1 sm:gap-2">
             <Link
               href="/mensagens"
               aria-label={`Mensagens${unreadCount > 0 ? ` (${unreadCount} sem ler)` : ""}`}
               title="Mensagens"
             >
-              <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative text-gsn-text hover:text-gsn-brand"
+              >
                 <MessageSquare className="h-5 w-5" />
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-brand text-[10px] font-bold text-white">
@@ -110,8 +83,16 @@ export function Header() {
               </Button>
             </Link>
 
-            <Link href="/carrinho" aria-label={`Carrinho${totalItems > 0 ? ` (${totalItems} itens)` : ""}`}>
-              <Button variant="ghost" size="icon" className="relative text-gsn-text hover:text-gsn-brand">
+            <Link
+              href="/carrinho"
+              aria-label={`Carrinho${totalItems > 0 ? ` (${totalItems} itens)` : ""}`}
+              className="hidden md:inline-flex"
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative text-gsn-text hover:text-gsn-brand"
+              >
                 <ShoppingCart className="h-5 w-5" />
                 {totalItems > 0 && (
                   <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gsn-brand text-[10px] font-bold text-white">
@@ -121,9 +102,7 @@ export function Header() {
               </Button>
             </Link>
 
-            <Button variant="ghost" size="icon" onClick={logout} title="Sair" aria-label="Sair" className="text-gsn-gray hover:text-gsn-brand">
-              <LogOut className="h-5 w-5" />
-            </Button>
+            <AccountMenu variant="desktop" />
           </div>
         </div>
       </header>
