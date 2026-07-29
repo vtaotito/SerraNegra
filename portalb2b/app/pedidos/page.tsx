@@ -82,9 +82,11 @@ export default function PedidosPage() {
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gsn-text">Meus Pedidos</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-gsn-text">
+                Cotações e Pedidos
+              </h1>
               <p className="text-muted-foreground">
-                {filtered.length} pedido(s)
+                {filtered.length} documento(s)
               </p>
             </div>
             <div className="flex gap-2">
@@ -95,13 +97,13 @@ export default function PedidosPage() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
-                  aria-label="Buscar pedido por número"
+                  aria-label="Buscar por número"
                 />
               </div>
               <Link href="/catalogo">
                 <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
                   <Package className="h-4 w-4" />
-                  <span className="hidden sm:inline">Novo Pedido</span>
+                  <span className="hidden sm:inline">Nova cotação</span>
                 </Button>
               </Link>
             </div>
@@ -135,16 +137,16 @@ export default function PedidosPage() {
               <CardContent className="p-0">
                 <ClientEmptyState
                   icon={ClipboardList}
-                  title="Nenhum pedido encontrado"
+                  title="Nenhuma cotação ou pedido"
                   description={
                     search || statusFilter
                       ? "Tente alterar os filtros"
-                      : "Você ainda não possui pedidos"
+                      : "Você ainda não solicitou cotações"
                   }
                   action={
                     <Link href="/catalogo">
                       <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
-                        Fazer primeiro pedido
+                        Solicitar primeira cotação
                       </Button>
                     </Link>
                   }

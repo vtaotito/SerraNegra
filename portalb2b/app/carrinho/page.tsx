@@ -97,8 +97,11 @@ export default function CarrinhoPage() {
     try {
       const result = await post<{
         ok: boolean;
-        pending: boolean;
-        pendingId: number;
+        quotation?: boolean;
+        pending?: boolean;
+        pendingId?: number;
+        quotationId?: number;
+        docNum?: number | null;
         message?: string;
       }>("/b2b/orders", {
         items: normalizedItems,
@@ -107,12 +110,13 @@ export default function CarrinhoPage() {
 
       clearCart();
       setConfirmOpen(false);
-      setSuccessId(result.pendingId);
-      toast.success(`Solicitação #${result.pendingId} enviada!`, {
-        description: "Aguarde a confirmação da nossa equipe de vendas.",
+      const id = result.docNum ?? result.quotationId ?? result.pendingId ?? 0;
+      setSuccessId(id);
+      toast.success(`Cotação #${id} enviada!`, {
+        description: "Nossa equipe comercial vai revisar e gerar o pedido.",
       });
     } catch (error) {
-      toast.error("Erro ao enviar pedido", {
+      toast.error("Erro ao solicitar cotação", {
         description: error instanceof Error ? error.message : "Tente novamente",
       });
       setConfirmOpen(false);
@@ -131,11 +135,11 @@ export default function CarrinhoPage() {
               <CheckCircle2 className="h-8 w-8 text-emerald-600" />
             </div>
             <div className="space-y-1">
-              <h2 className="text-xl font-semibold text-gsn-text">Solicitação enviada</h2>
+              <h2 className="text-xl font-semibold text-gsn-text">Cotação solicitada</h2>
               <p className="text-sm text-muted-foreground">
-                Sua solicitação{" "}
+                Sua cotação{" "}
                 <span className="font-semibold text-gsn-text">#{successId}</span> foi
-                recebida e aguarda confirmação da equipe de vendas.
+                registrada no SAP. O vendedor validará e, se aprovada, gerará o pedido.
               </p>
             </div>
             <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row">
@@ -143,7 +147,7 @@ export default function CarrinhoPage() {
                 className="flex-1 bg-gsn-brand hover:bg-gsn-brand-dark text-white"
                 onClick={() => router.push("/pedidos")}
               >
-                Ver pedido
+                Ver cotações e pedidos
               </Button>
               <Button
                 variant="outline"
@@ -227,8 +231,8 @@ export default function CarrinhoPage() {
                           {exceedingItems.length} item(ns) acima do estoque
                         </p>
                         <p>
-                          Você pode enviar o pedido normalmente — seu vendedor vai confirmar
-                          prazo e disponibilidade.
+                          Você pode solicitar a cotação normalmente — seu vendedor vai
+                          confirmar prazo e disponibilidade.
                           {salesperson?.name ? ` Fale com ${salesperson.name}:` : ""}
                         </p>
                         {(waHref || salesperson?.phone) && (
@@ -265,7 +269,7 @@ export default function CarrinhoPage() {
 
               <Card className="sticky top-24">
                 <CardHeader>
-                  <CardTitle className="text-base">Resumo do Pedido</CardTitle>
+                  <CardTitle className="text-base">Resumo da cotação</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2 text-sm">
@@ -296,7 +300,7 @@ export default function CarrinhoPage() {
                     <label className="text-sm font-medium">Observações</label>
                     <textarea
                       className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      placeholder="Observações sobre o pedido..."
+                      placeholder="Observações sobre a cotação..."
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
@@ -305,7 +309,8 @@ export default function CarrinhoPage() {
                   <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800">
                     <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
                     <span>
-                      Seu pedido passará por confirmação da equipe de vendas antes de ser registrado. Os preços serão aplicados conforme a tabela de preços do seu cadastro.
+                      Ao enviar, criamos uma cotação no SAP. A equipe comercial revisa e,
+                      se aprovada, gera o pedido. Preços seguem a lista do seu cadastro.
                     </span>
                   </div>
                 </CardContent>
@@ -320,7 +325,7 @@ export default function CarrinhoPage() {
                     disabled={submitting}
                   >
                     <Send className="h-4 w-4" />
-                    Enviar Pedido
+                    Solicitar cotação
                   </Button>
                   <Button
                     variant="outline"
@@ -367,7 +372,7 @@ export default function CarrinhoPage() {
           <div className="relative flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-background shadow-2xl">
             <div className="flex items-center gap-2 border-b px-5 py-4">
               <ShoppingCart className="h-5 w-5 text-gsn-brand" />
-              <h2 className="text-base font-semibold text-gsn-text">Revisar e enviar pedido</h2>
+              <h2 className="text-base font-semibold text-gsn-text">Revisar e solicitar cotação</h2>
             </div>
 
             <div className="space-y-4 overflow-y-auto px-5 py-4">
@@ -430,9 +435,9 @@ export default function CarrinhoPage() {
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                 <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                 <span>
-                  Este pedido será enviado para <strong>confirmação e precificação</strong>{" "}
-                  da equipe de vendas. Você será avisado assim que ele for aprovado e
-                  registrado.
+                  Você está solicitando uma <strong>cotação</strong>. Nossa equipe
+                  comercial revisará quantidades e preços e, se aprovada, converterá
+                  em pedido no SAP. Você receberá um e-mail com a atualização.
                 </span>
               </div>
             </div>
@@ -455,7 +460,7 @@ export default function CarrinhoPage() {
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                {submitting ? "Enviando..." : "Confirmar envio"}
+                {submitting ? "Enviando..." : "Solicitar cotação"}
               </Button>
             </div>
           </div>

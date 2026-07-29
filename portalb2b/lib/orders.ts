@@ -17,6 +17,9 @@ import {
  */
 export type OrderStatus =
   | "aguardando"
+  | "cotacao_aberta"
+  | "cotacao_em_analise"
+  | "cotacao_convertida"
   | "novo"
   | "em_analise"
   | "separacao"
@@ -48,6 +51,24 @@ export const ORDER_STATUS_CONFIG: Record<OrderStatus, OrderStatusConfig> = {
     variant: "warning",
     icon: Hourglass,
     hint: "Pedido enviado. Aguardando a confirmação da nossa equipe de vendas.",
+  },
+  cotacao_aberta: {
+    label: "Cotação aberta",
+    variant: "info",
+    icon: ClipboardList,
+    hint: "Cotação registrada no SAP. Aguardando revisão da equipe comercial.",
+  },
+  cotacao_em_analise: {
+    label: "Cotação em análise",
+    variant: "warning",
+    icon: Clock,
+    hint: "Nossa equipe comercial está revisando sua cotação.",
+  },
+  cotacao_convertida: {
+    label: "Cotação → Pedido",
+    variant: "success",
+    icon: CheckCircle2,
+    hint: "Cotação aprovada e convertida em pedido.",
   },
   novo: {
     label: "Novo",
@@ -106,8 +127,10 @@ export const ORDER_FLOW: OrderStatus[] = [
 /** Filtros de status para a lista de pedidos. */
 export const ORDER_STATUS_FILTERS: { value: OrderStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
-  { value: "aguardando", label: "Aguardando" },
-  { value: "novo", label: "Novos" },
+  { value: "cotacao_aberta", label: "Cotações abertas" },
+  { value: "cotacao_em_analise", label: "Cotações em análise" },
+  { value: "aguardando", label: "Aguardando (legado)" },
+  { value: "novo", label: "Pedidos novos" },
   { value: "em_analise", label: "Em análise" },
   { value: "separacao", label: "Em separação" },
   { value: "faturado", label: "Faturados" },
@@ -146,6 +169,13 @@ export interface OrderSummary {
   /** true quando o pedido ainda aguarda confirmação do vendedor (não existe no SAP). */
   pending?: boolean;
   pendingId?: number;
+  /** true quando o documento é uma cotação SAP (OQUT). */
+  quotation?: boolean;
+  quotationId?: number;
+  quotationStatus?: string;
+  documentType?: "order" | "quotation" | "pending_order";
+  orderDocEntry?: number | null;
+  orderDocNum?: number | null;
   rejectReason?: string | null;
   /** true quando o pedido ainda pode ser cancelado (não faturado / pendente). */
   canCancel?: boolean;

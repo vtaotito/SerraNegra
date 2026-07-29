@@ -783,6 +783,93 @@ export class SapEntitiesService {
     }
   }
 
+  /** Listas de preço ativas (OPLN) — uso BI e admin B2B. */
+  async listActivePriceLists(
+    correlationId?: string,
+  ): Promise<Array<{ priceListNo: number; priceListName: string }>> {
+    const map = await this.loadPriceLists(correlationId);
+    return Array.from(map.entries())
+      .map(([priceListNo, priceListName]) => ({ priceListNo, priceListName }))
+      .sort((a, b) => a.priceListNo - b.priceListNo);
+  }
+
+  /**
+   * Amostra de preços de uma lista (ITM1 / ItemPrices), com filtro opcional
+   * por SKU ou nome do item.
+   */
+  async previewPriceList(
+    priceListNo: number,
+    opts?: { search?: string; limit?: number; correlationId?: string },
+  ): Promise<
+    Array<{
+      itemCode: string;
+      itemName: string | null;
+      price: number;
+      currency: string | null;
+    }>
+  > {
+    const limit = Math.min(Math.max(opts?.limit ?? 40, 1), 100);
+    const needle = opts?.search?.trim().toUpperCase() ?? "";
+    const correlationId = opts?.correlationId;
+
+    // Reusa o sync de preços (SQLQuery ITM1+OPLN ou fallback Items).
+    try {
+      const all = await this.listItemPrices(correlationId);
+      const filtered = all.filter((r) => {
+        if (r.PriceList !== priceListNo || !(r.Price > 0)) return false;
+        if (!needle) return true;
+        return String(r.ItemCode).toUpperCase().includes(needle);
+      });
+      return filtered.slice(0, limit).map((r) => ({
+        itemCode: r.ItemCode,
+        itemName: null,
+        price: Number(r.Price),
+        currency: null,
+      }));
+    } catch {
+      // fallback OData abaixo
+    }
+
+    const out: Array<{
+      itemCode: string;
+      itemName: string | null;
+      price: number;
+      currency: string | null;
+    }> = [];
+    let skip = 0;
+    while (out.length < limit && skip < 500) {
+      const url = `/Items?$select=ItemCode,ItemName,ItemPrices&$filter=Valid eq 'tYES' and Frozen eq 'tNO'&$top=50&$skip=${skip}`;
+      const res = await this.client.get<{
+        value: Array<{
+          ItemCode: string;
+          ItemName?: string;
+          ItemPrices?: Array<{ PriceList?: number; Price?: number; Currency?: string }>;
+        }>;
+      }>(url, { correlationId });
+      const page = res.data.value || [];
+      if (page.length === 0) break;
+      for (const item of page) {
+        if (needle) {
+          const hay = `${item.ItemCode} ${item.ItemName ?? ""}`.toUpperCase();
+          if (!hay.includes(needle)) continue;
+        }
+        const price = (item.ItemPrices ?? []).find(
+          (p) => p.PriceList === priceListNo && (p.Price ?? 0) > 0,
+        );
+        if (!price) continue;
+        out.push({
+          itemCode: item.ItemCode,
+          itemName: item.ItemName ?? null,
+          price: Number(price.Price),
+          currency: price.Currency ?? null,
+        });
+        if (out.length >= limit) break;
+      }
+      skip += page.length;
+    }
+    return out;
+  }
+
   private async loadPriceLists(
     correlationId?: string
   ): Promise<Map<number, string>> {

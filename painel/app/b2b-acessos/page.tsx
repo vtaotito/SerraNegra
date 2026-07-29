@@ -269,7 +269,7 @@ export default function B2BAcessosPage() {
     });
   }, [creds, searchQuery, pwFilter, vendorFilter, vendorName]);
 
-  if (!user || !["admin", "supervisor"].includes(user.role)) {
+  if (!user || !["admin", "supervisor", "comercial"].includes(user.role)) {
     return (
       <ProtectedLayout>
         <div className="flex items-center justify-center h-64">

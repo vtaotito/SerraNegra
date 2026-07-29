@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { listB2BSalespersons } from "@/lib/b2b-admin";
+import { fetchB2BUdfMetadata } from "@/lib/b2b-admin";
 
+/** GET /api/b2b-admin/udf-metadata — metadados de UDFs/SAP para revisão de cadastro. */
 export async function GET() {
   try {
     await requireRole("admin", "supervisor", "comercial");
-    const data = await listB2BSalespersons();
+    const data = await fetchB2BUdfMetadata();
     return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof Error) {
@@ -14,9 +15,9 @@ export async function GET() {
       if (error.message === "FORBIDDEN")
         return NextResponse.json({ success: false, error: "Sem permissão" }, { status: 403 });
     }
-    console.error("[B2B_ADMIN_SALESPERSONS GET]", error);
+    console.error("[B2B_ADMIN_UDF_METADATA GET]", error);
     return NextResponse.json(
-      { success: false, error: "Erro ao listar vendedores" },
+      { success: false, error: "Erro ao buscar metadados UDF" },
       { status: 500 },
     );
   }

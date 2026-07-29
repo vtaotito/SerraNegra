@@ -561,7 +561,18 @@ export default function UsuariosPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Perfil</label>
                 <select
                   value={form.role}
-                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value as UserRole }))}
+                  onChange={(e) => {
+                    const role = e.target.value as UserRole;
+                    setForm((p) => ({
+                      ...p,
+                      role,
+                      // Comercial precisa do módulo B2B (Acessos / Cadastros / Pedidos).
+                      allowedModules:
+                        role === "comercial" && !p.allowedModules.includes("b2b")
+                          ? [...p.allowedModules, "b2b"]
+                          : p.allowedModules,
+                    }));
+                  }}
                   className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-gsn-700/40 focus:border-gsn-700 outline-none bg-white"
                 >
                   {Object.entries(ROLE_LABELS).map(([key, label]) => (
@@ -570,6 +581,11 @@ export default function UsuariosPage() {
                     </option>
                   ))}
                 </select>
+                {form.role === "comercial" && (
+                  <p className="mt-1.5 text-xs text-gray-500">
+                    Perfil Comercial: mantenha o módulo Portal B2B habilitado para Acessos B2B e aprovação de cadastros.
+                  </p>
+                )}
               </div>
 
               <div>

@@ -22,6 +22,8 @@ import {
   UsersRound,
   Radio,
   KeyRound,
+  ClipboardCheck,
+  FileSpreadsheet,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -37,7 +39,9 @@ const navItems = [
   { href: "/catalogo", label: "Catálogo", icon: Tag, roles: null, module: "cockpit" as const },
   { href: "/clientes", label: "Clientes", icon: UsersRound, roles: null, module: "cockpit" as const },
   { href: "/usuarios", label: "Usuários", icon: Users, roles: ["admin", "supervisor"] },
-  { href: "/b2b-acessos", label: "Acessos B2B", icon: KeyRound, roles: ["admin", "supervisor"] },
+  { href: "/b2b-acessos", label: "Acessos B2B", icon: KeyRound, roles: ["admin", "supervisor", "comercial"], module: "b2b" as const },
+  { href: "/b2b-cadastros", label: "Cadastros B2B", icon: ClipboardCheck, roles: ["admin", "supervisor", "comercial"], module: "b2b" as const },
+  { href: "/b2b-listas-preco", label: "Listas de preço", icon: FileSpreadsheet, roles: ["admin", "supervisor", "comercial"], module: "b2b" as const },
   { href: "/integracoes", label: "Integrações", icon: Zap, roles: ["admin", "supervisor"] },
 ];
 

@@ -80,6 +80,7 @@ interface UdfMetadata {
 
 const STATUS_MAP: Record<string, { label: string; variant: "warning" | "info" | "destructive" | "success" }> = {
   pending: { label: "Pendente", variant: "warning" },
+  in_review: { label: "Em análise", variant: "info" },
   approved: { label: "Aprovado", variant: "info" },
   rejected: { label: "Rejeitado", variant: "destructive" },
   published: { label: "Publicado no SAP", variant: "success" },

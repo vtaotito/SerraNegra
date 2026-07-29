@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, runInvoicesSync, runInventorySync, runMovementsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, runInvoicesSync, runInventorySync, runMovementsSync, runQuotationsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1568,6 +1568,23 @@ export async function registerSapRoutes(app: FastifyInstance) {
   app.post("/sap/sales-orders/sync", async (req, reply) => {
     try {
       const result = await runSalesOrdersSync();
+      reply.code(result.ok ? 200 : 500).send({
+        ...result,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
+
+  /**
+   * POST /api/sap/quotations/sync
+   * Sync manual OQUT → espelho b2b_quotations.
+   */
+  app.post("/sap/quotations/sync", async (_req, reply) => {
+    try {
+      const result = await runQuotationsSync();
       reply.code(result.ok ? 200 : 500).send({
         ...result,
         timestamp: new Date().toISOString(),

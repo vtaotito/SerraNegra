@@ -506,3 +506,295 @@ export function createB2BAdminOrder(data: {
     { method: "POST", body: JSON.stringify(data) },
   );
 }
+
+// ─── Cadastros B2B (registros pendentes) ──
+
+export type B2BRegistrationStatus =
+  | "pending"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "published";
+
+export interface B2BRegistrationRow {
+  id: number;
+  cnpj: string;
+  razao_social: string;
+  nome_fantasia: string | null;
+  email: string;
+  phone: string | null;
+  contact_name: string | null;
+  address: string | null;
+  street_number: string | null;
+  neighborhood: string | null;
+  city: string | null;
+  state: string | null;
+  zip_code: string | null;
+  inscricao_estadual: string | null;
+  udf_bp: Record<string, unknown>;
+  udf_addr: Record<string, unknown>;
+  sap_config: Record<string, unknown>;
+  status: B2BRegistrationStatus;
+  admin_notes: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  published_at: string | null;
+  sap_card_code: string | null;
+  sap_error: string | null;
+  created_at: string;
+  updated_at: string;
+  delivery?: Record<string, unknown> | null;
+}
+
+export function listB2BRegistrations(status?: string) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return b2bAdminFetch<{ items: B2BRegistrationRow[]; total: number }>(
+    `/b2b/admin/registrations${qs}`,
+  );
+}
+
+export function getB2BRegistration(id: number) {
+  return b2bAdminFetch<B2BRegistrationRow>(`/b2b/admin/registrations/${id}`);
+}
+
+export function updateB2BRegistration(
+  id: number,
+  data: {
+    udfBp?: Record<string, unknown>;
+    udfAddr?: Record<string, unknown>;
+    sapConfig?: Record<string, unknown>;
+    adminNotes?: string;
+    reviewedBy?: string;
+    address?: string;
+    streetNumber?: string;
+    neighborhood?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    inscricaoEstadual?: string;
+    phone?: string;
+    contactName?: string;
+    delivery?: Record<string, unknown>;
+  },
+) {
+  return b2bAdminFetch<B2BRegistrationRow>(`/b2b/admin/registrations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function reviewB2BRegistration(
+  id: number,
+  opts?: { notes?: string; reviewedBy?: string; notifyCustomer?: boolean },
+) {
+  return b2bAdminFetch<B2BRegistrationRow>(
+    `/b2b/admin/registrations/${id}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        notes: opts?.notes ?? null,
+        reviewedBy: opts?.reviewedBy ?? null,
+        notifyCustomer: opts?.notifyCustomer ?? true,
+      }),
+    },
+  );
+}
+
+export function approveB2BRegistration(
+  id: number,
+  opts?: {
+    notes?: string;
+    reviewedBy?: string;
+    priceListNum?: number;
+    salesPersonCode?: number;
+    sapConfig?: Record<string, unknown>;
+  },
+) {
+  return b2bAdminFetch<B2BRegistrationRow>(
+    `/b2b/admin/registrations/${id}/approve`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        notes: opts?.notes ?? null,
+        reviewedBy: opts?.reviewedBy ?? null,
+        priceListNum: opts?.priceListNum,
+        salesPersonCode: opts?.salesPersonCode,
+        sapConfig: opts?.sapConfig,
+      }),
+    },
+  );
+}
+
+export function rejectB2BRegistration(
+  id: number,
+  opts?: { notes?: string; reviewedBy?: string },
+) {
+  return b2bAdminFetch<B2BRegistrationRow>(
+    `/b2b/admin/registrations/${id}/reject`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        notes: opts?.notes ?? null,
+        reviewedBy: opts?.reviewedBy ?? null,
+      }),
+    },
+  );
+}
+
+export function publishB2BRegistration(
+  id: number,
+  opts?: {
+    notes?: string;
+    reviewedBy?: string;
+    priceListNum?: number;
+    salesPersonCode?: number;
+    sapConfig?: Record<string, unknown>;
+  },
+) {
+  return b2bAdminFetch<{
+    ok: boolean;
+    message?: string;
+    cardCode?: string;
+    error?: string;
+    emailSent?: boolean;
+  }>(`/b2b/admin/registrations/${id}/publish`, {
+    method: "POST",
+    body: JSON.stringify({
+      notes: opts?.notes ?? null,
+      reviewedBy: opts?.reviewedBy ?? null,
+      priceListNum: opts?.priceListNum,
+      salesPersonCode: opts?.salesPersonCode,
+      sapConfig: opts?.sapConfig,
+    }),
+  });
+}
+
+export function fetchB2BUdfMetadata() {
+  return b2bAdminFetch<{
+    udfBp: { label: string; fields: Record<string, unknown> };
+    udfAddr: { label: string; fields: Record<string, unknown> };
+    sapConfig: { label: string; fields: Record<string, unknown> };
+  }>("/b2b/admin/udf-metadata");
+}
+
+// ─── Listas de preço SAP (admin B2B) ──
+
+export interface B2BPriceList {
+  priceListNo: number;
+  priceListName: string;
+}
+
+export interface B2BPricePreviewItem {
+  itemCode: string;
+  itemName: string | null;
+  price: number;
+  currency: string | null;
+}
+
+export function listB2BPriceLists() {
+  return b2bAdminFetch<{ items: B2BPriceList[]; total: number }>(
+    "/b2b/admin/price-lists",
+  );
+}
+
+export function previewB2BPriceList(
+  priceListNo: number,
+  opts?: { search?: string; limit?: number },
+) {
+  const qs = new URLSearchParams();
+  if (opts?.search) qs.set("search", opts.search);
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return b2bAdminFetch<{
+    priceListNo: number;
+    items: B2BPricePreviewItem[];
+    total: number;
+  }>(`/b2b/admin/price-lists/${priceListNo}/preview${suffix}`);
+}
+
+// ─── Cotações B2B ──
+
+export type B2BQuotationStatus =
+  | "aberta"
+  | "em_analise"
+  | "convertida"
+  | "recusada"
+  | "cancelada";
+
+export interface B2BQuotationItem {
+  sku: string;
+  name: string | null;
+  quantity: number;
+  warehouse?: string | null;
+  unitPrice?: number | null;
+  lineNum?: number | null;
+  stockAvailable?: number | null;
+  exceedsStock?: boolean;
+}
+
+export interface B2BQuotationRow {
+  id: number;
+  doc_entry: number | null;
+  doc_num: number | null;
+  card_code: string;
+  card_name: string | null;
+  status: B2BQuotationStatus;
+  items: B2BQuotationItem[];
+  notes: string | null;
+  due_date: string | null;
+  origin: string;
+  created_by: string | null;
+  total_quantity: number;
+  has_stock_alert: boolean;
+  doc_total: number | null;
+  order_doc_entry: number | null;
+  order_doc_num: number | null;
+  reject_reason: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listB2BQuotations(status?: B2BQuotationStatus) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return b2bAdminFetch<{
+    items: B2BQuotationRow[];
+    total: number;
+    openCount: number;
+  }>(`/b2b/admin/quotations${qs}`);
+}
+
+export function getB2BQuotation(id: number) {
+  return b2bAdminFetch<B2BQuotationRow>(`/b2b/admin/quotations/${id}`);
+}
+
+export function updateB2BQuotation(
+  id: number,
+  data: {
+    items?: B2BQuotationItem[];
+    notes?: string;
+    dueDate?: string;
+  },
+) {
+  return b2bAdminFetch<B2BQuotationRow>(`/b2b/admin/quotations/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function convertB2BQuotation(id: number) {
+  return b2bAdminFetch<{
+    ok: boolean;
+    docEntry: number;
+    docNum: number | null;
+    quotation: B2BQuotationRow;
+  }>(`/b2b/admin/quotations/${id}/convert`, { method: "POST" });
+}
+
+export function rejectB2BQuotation(id: number, reason?: string) {
+  return b2bAdminFetch<{ ok: boolean; quotation: B2BQuotationRow }>(
+    `/b2b/admin/quotations/${id}/reject`,
+    { method: "POST", body: JSON.stringify({ reason: reason ?? null }) },
+  );
+}

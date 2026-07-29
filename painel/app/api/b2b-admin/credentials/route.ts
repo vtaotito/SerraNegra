@@ -4,7 +4,7 @@ import { listB2BCredentials } from "@/lib/b2b-admin";
 
 export async function GET() {
   try {
-    await requireRole("admin", "supervisor");
+    await requireRole("admin", "supervisor", "comercial");
     const data = await listB2BCredentials();
     return NextResponse.json({ success: true, data });
   } catch (error) {

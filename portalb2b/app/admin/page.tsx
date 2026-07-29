@@ -45,6 +45,7 @@ const STATUS_CONFIG: Record<
   { label: string; variant: "default" | "warning" | "success" | "destructive" | "info"; icon: typeof Clock }
 > = {
   pending: { label: "Pendente", variant: "warning", icon: Clock },
+  in_review: { label: "Em análise", variant: "info", icon: Clock },
   approved: { label: "Aprovado", variant: "info", icon: CheckCircle2 },
   rejected: { label: "Rejeitado", variant: "destructive", icon: XCircle },
   published: { label: "Publicado", variant: "success", icon: Send },
@@ -155,8 +156,8 @@ export default function AdminPage() {
           <EmailRequestsPanel />
         ) : (
           <>
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {(["pending", "approved", "rejected", "published"] as const).map((s) => {
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {(["pending", "in_review", "approved", "rejected", "published"] as const).map((s) => {
             const cfg = STATUS_CONFIG[s];
             const Icon = cfg.icon;
             return (

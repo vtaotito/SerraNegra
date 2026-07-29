@@ -92,6 +92,7 @@ export async function sendRegistrationReceivedEmail(params: {
   return sendEmail({ to, subject: `Cadastro recebido — ${BRAND.name}`, html, text });
 }
 
+/** Enviado somente após publish no SAP + criação da credencial. */
 export async function sendRegistrationApprovedEmail(params: {
   to: string;
   razaoSocial: string;
@@ -103,13 +104,32 @@ export async function sendRegistrationApprovedEmail(params: {
     preheader: "Seu acesso ao Portal B2B foi liberado.",
     bodyHtml: `
       ${p(`Olá, <strong>${escapeHtml(razaoSocial)}</strong>!`)}
-      ${p("Seu cadastro foi aprovado e seu acesso ao Portal B2B está liberado. Faça seu primeiro acesso para criar sua senha e começar a comprar.")}
+      ${p("Seu cadastro foi publicado e seu acesso ao Portal B2B está liberado. Faça seu primeiro acesso para criar sua senha e começar a solicitar cotações.")}
       ${renderButton({ label: "Acessar o Portal B2B", url: `${BRAND.portalUrl}/login` })}
-      ${muted("No primeiro acesso, informe seu CNPJ e siga as etapas de verificação por e-mail.")}
+      ${muted("No primeiro acesso, informe seu CNPJ e siga as etapas de verificação por e-mail (você também receberá um código OTP).")}
     `,
   });
-  const text = `Olá, ${razaoSocial}! Seu cadastro foi aprovado. Acesse ${BRAND.portalUrl}/login e faça seu primeiro acesso informando o CNPJ.`;
-  return sendEmail({ to, subject: `Cadastro aprovado — ${BRAND.name}`, html, text });
+  const text = `Olá, ${razaoSocial}! Seu cadastro foi publicado. Acesse ${BRAND.portalUrl}/login e faça seu primeiro acesso informando o CNPJ.`;
+  return sendEmail({ to, subject: `Acesso liberado — ${BRAND.name}`, html, text });
+}
+
+export async function sendRegistrationInReviewEmail(params: {
+  to: string;
+  razaoSocial: string;
+}): Promise<boolean> {
+  const { to, razaoSocial } = params;
+  const title = "Cadastro em análise";
+  const html = renderLayout({
+    title,
+    preheader: "Nossa equipe comercial está analisando seu cadastro.",
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(razaoSocial)}</strong>!`)}
+      ${p("Seu cadastro entrou em análise pela nossa equipe comercial. Em breve você receberá uma atualização por e-mail.")}
+      ${muted("Não é necessário reenviar a solicitação.")}
+    `,
+  });
+  const text = `Olá, ${razaoSocial}! Seu cadastro está em análise pela equipe comercial. Avisaremos por e-mail assim que houver uma atualização.`;
+  return sendEmail({ to, subject: `Cadastro em análise — ${BRAND.name}`, html, text });
 }
 
 export async function sendRegistrationRejectedEmail(params: {
@@ -232,6 +252,49 @@ export async function sendInternalAccessRequestNotification(params: {
     (contactName ? ` Contato: ${contactName}.` : "") +
     (panelUrl ? ` Revisar: ${panelUrl}` : "");
   return sendEmail({ to, subject: `Nova solicitação de acesso — ${cardName}`, html, text });
+}
+
+/** Aviso interno dedicado: empresa NOVA (fora do SAP) pediu cadastro. */
+export async function sendInternalNewRegistrationNotification(params: {
+  to: string;
+  razaoSocial: string;
+  cnpj: string;
+  email: string;
+  contactName?: string | null;
+  city?: string | null;
+  state?: string | null;
+  panelUrl?: string;
+}): Promise<boolean> {
+  const { to, razaoSocial, cnpj, email, contactName, city, state, panelUrl } = params;
+  const title = "Novo cadastro B2B para aprovação";
+  const local =
+    city || state
+      ? `<br><strong>Cidade/UF:</strong> ${escapeHtml([city, state].filter(Boolean).join(" / "))}`
+      : "";
+  const html = renderLayout({
+    title,
+    preheader: `${razaoSocial} solicitou cadastro no Portal B2B.`,
+    bodyHtml: `
+      ${p("Uma empresa <strong>nova</strong> (ainda fora do SAP) solicitou cadastro no Portal B2B:")}
+      ${p(`<strong>Razão social:</strong> ${escapeHtml(razaoSocial)}<br>
+           <strong>CNPJ:</strong> ${escapeHtml(cnpj)}<br>
+           <strong>E-mail:</strong> ${escapeHtml(email)}` +
+        (contactName ? `<br><strong>Contato:</strong> ${escapeHtml(contactName)}` : "") +
+        local)}
+      ${panelUrl ? renderButton({ label: "Revisar cadastro no Painel", url: panelUrl }) : ""}
+      ${muted("Defina lista de preços e vendedor antes de aprovar e publicar no SAP.")}
+    `,
+  });
+  const text =
+    `Novo cadastro B2B — ${razaoSocial} (CNPJ ${cnpj}). E-mail: ${email}.` +
+    (contactName ? ` Contato: ${contactName}.` : "") +
+    (panelUrl ? ` Revisar: ${panelUrl}` : "");
+  return sendEmail({
+    to,
+    subject: `Novo cadastro B2B — ${razaoSocial}`,
+    html,
+    text,
+  });
 }
 
 /* ─────────────────────── Pedidos ─────────────────────── */
@@ -396,6 +459,104 @@ export async function sendOrderCancelledEmail(params: {
     (reason ? ` Motivo: ${reason}.` : "") +
     ` Faça um novo pedido em ${BRAND.portalUrl}/catalogo.`;
   return sendEmail({ to, subject: `Pedido #${docNum} cancelado — ${BRAND.name}`, html, text });
+}
+
+/* ─────────────────────── Cotações B2B ─────────────────────── */
+
+export async function sendQuotationCreatedEmail(params: {
+  to: string;
+  cardName: string;
+  docNum: number | string;
+}): Promise<boolean> {
+  const { to, cardName, docNum } = params;
+  const title = "Cotação recebida";
+  const html = renderLayout({
+    title,
+    preheader: `Cotação #${docNum} recebida.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(`Recebemos sua solicitação de cotação <strong>#${escapeHtml(String(docNum))}</strong>. Nossa equipe comercial vai revisar e, após a aprovação, o pedido será gerado.`)}
+      ${renderButton({ label: "Acompanhar cotações e pedidos", url: `${BRAND.portalUrl}/pedidos` })}
+    `,
+  });
+  const text = `Olá, ${cardName}! Recebemos sua cotação #${docNum}. Acompanhe em ${BRAND.portalUrl}/pedidos.`;
+  return sendEmail({ to, subject: `Cotação #${docNum} recebida — ${BRAND.name}`, html, text });
+}
+
+export async function sendNewQuotationToSellerEmail(params: {
+  to: string;
+  sellerName?: string | null;
+  cardName: string;
+  docNum: number | string;
+  panelUrl?: string;
+}): Promise<boolean> {
+  const { to, sellerName, cardName, docNum, panelUrl } = params;
+  const title = "Nova cotação pelo Portal B2B";
+  const html = renderLayout({
+    title,
+    preheader: `${cardName} solicitou a cotação #${docNum}.`,
+    bodyHtml: `
+      ${p(`Olá${sellerName ? `, <strong>${escapeHtml(sellerName)}</strong>` : ""}!`)}
+      ${p(`O cliente <strong>${escapeHtml(cardName)}</strong> solicitou uma nova cotação pelo Portal B2B:`)}
+      ${p(`<strong>Cotação:</strong> #${escapeHtml(String(docNum))}`)}
+      ${panelUrl ? renderButton({ label: "Revisar cotação no Painel", url: panelUrl }) : ""}
+    `,
+  });
+  const text =
+    `Nova cotação B2B — ${cardName}, cotação #${docNum}.` +
+    (panelUrl ? ` Revisar: ${panelUrl}` : "");
+  return sendEmail({ to, subject: `Nova cotação #${docNum} — ${cardName}`, html, text });
+}
+
+export async function sendQuotationConvertedEmail(params: {
+  to: string;
+  cardName: string;
+  quotationDocNum: number | string;
+  orderDocNum: number | string;
+}): Promise<boolean> {
+  const { to, cardName, quotationDocNum, orderDocNum } = params;
+  const title = "Cotação aprovada — pedido gerado";
+  const html = renderLayout({
+    title,
+    preheader: `Pedido #${orderDocNum} gerado a partir da cotação #${quotationDocNum}.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(`Sua cotação <strong>#${escapeHtml(String(quotationDocNum))}</strong> foi aprovada e geramos o pedido <strong>#${escapeHtml(String(orderDocNum))}</strong>.`)}
+      ${renderButton({ label: "Acompanhar meu pedido", url: `${BRAND.portalUrl}/pedidos` })}
+    `,
+  });
+  const text = `Olá, ${cardName}! Cotação #${quotationDocNum} aprovada. Pedido #${orderDocNum} gerado. Acompanhe em ${BRAND.portalUrl}/pedidos.`;
+  return sendEmail({
+    to,
+    subject: `Pedido #${orderDocNum} gerado — ${BRAND.name}`,
+    html,
+    text,
+  });
+}
+
+export async function sendQuotationRejectedEmail(params: {
+  to: string;
+  cardName: string;
+  docNum: number | string;
+  reason?: string | null;
+}): Promise<boolean> {
+  const { to, cardName, docNum, reason } = params;
+  const title = "Sobre a sua cotação";
+  const html = renderLayout({
+    title,
+    preheader: `Atualização sobre a cotação #${docNum}.`,
+    bodyHtml: `
+      ${p(`Olá, <strong>${escapeHtml(cardName)}</strong>!`)}
+      ${p(`Não foi possível aprovar a cotação <strong>#${escapeHtml(String(docNum))}</strong> no momento.`)}
+      ${reason ? p(`<strong>Motivo:</strong> ${escapeHtml(reason)}`) : ""}
+      ${renderButton({ label: "Solicitar nova cotação", url: `${BRAND.portalUrl}/catalogo` })}
+    `,
+  });
+  const text =
+    `Olá, ${cardName}! Cotação #${docNum} não foi aprovada.` +
+    (reason ? ` Motivo: ${reason}.` : "") +
+    ` Solicite nova cotação em ${BRAND.portalUrl}/catalogo.`;
+  return sendEmail({ to, subject: `Sobre a cotação #${docNum} — ${BRAND.name}`, html, text });
 }
 
 /* ─────────────────────── Catálogo ─────────────────────── */

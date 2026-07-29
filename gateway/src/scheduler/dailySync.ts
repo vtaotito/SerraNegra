@@ -1490,13 +1490,14 @@ export async function startSyncScheduler() {
 
   console.log(`[syncOrders] Scheduler ativado — cron: "${SYNC_CRON}" (a cada hora)`);
 
-  // Job recorrente — pedidos + notas fiscais + estoque + movimentações
+  // Job recorrente — pedidos + notas fiscais + estoque + movimentações + cotações
   cron.schedule(SYNC_CRON, async () => {
     console.log(`[sync] Cron disparado: ${new Date().toISOString()}`);
     await runSalesOrdersSync();
     await runInvoicesSync();
     await runInventorySync();
     await runMovementsSync();
+    await runQuotationsSync();
   });
 
   // Sync inicial após boot (com delay para garantir que o SAP está acessível)
@@ -1506,7 +1507,94 @@ export async function startSyncScheduler() {
     await runInvoicesSync();
     await runInventorySync();
     await runMovementsSync();
+    await runQuotationsSync();
   }, BOOT_SYNC_DELAY_MS);
+}
+
+/**
+ * Sync OQUT (Quotations) → espelho `b2b_quotations`.
+ * Não substitui o create em tempo real do portal; cobre cotações criadas
+ * fora do B2B e mantém status DocStatus/Cancelled alinhados.
+ */
+export async function runQuotationsSync(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  error?: string;
+}> {
+  if (!DB_URL) {
+    return { ok: false, fetched: 0, upserted: 0, error: "DATABASE_URL ausente" };
+  }
+
+  const logger = {
+    debug: (msg: string) => console.log(`[syncQuotations] ${msg}`),
+    info: (msg: string) => console.log(`[syncQuotations] ${msg}`),
+    warn: (msg: string) => console.warn(`[syncQuotations] ${msg}`),
+    error: (msg: string) => console.error(`[syncQuotations] ${msg}`),
+  };
+
+  try {
+    const { B2BQuotationService } = await import(
+      "../services/b2bQuotationService.js"
+    );
+    const quotationService = new B2BQuotationService(DB_URL);
+    await quotationService.init();
+
+    const storedClient = sapConfigStore.getClient(logger);
+    const client = storedClient ?? createSapClient(logger);
+
+    // Últimos 90 dias — suficiente para o funil comercial B2B.
+    const since = new Date(Date.now() - 90 * 86400000)
+      .toISOString()
+      .split("T")[0];
+    const filter = encodeURIComponent(`DocDate ge '${since}'`);
+    const url =
+      `/Quotations?$select=DocEntry,DocNum,CardCode,CardName,DocDate,DocDueDate,` +
+      `DocTotal,DocStatus,Cancelled,Comments&$filter=${filter}&$orderby=DocDate desc&$top=200`;
+
+    const res = await client.get<{
+      value: Array<{
+        DocEntry: number;
+        DocNum?: number;
+        CardCode: string;
+        CardName?: string;
+        DocDueDate?: string;
+        DocTotal?: number;
+        DocStatus?: string;
+        Cancelled?: string;
+        Comments?: string;
+      }>;
+    }>(url, { correlationId: `sync-oqut-${Date.now()}` });
+
+    const rows = res.data?.value ?? [];
+    let upserted = 0;
+    for (const q of rows) {
+      const cancelled = q.Cancelled === "tYES" || q.Cancelled === "Y";
+      let status: "aberta" | "em_analise" | "cancelada" = "aberta";
+      if (cancelled || q.DocStatus === "C") status = "cancelada";
+
+      await quotationService.upsertFromSap({
+        docEntry: Number(q.DocEntry),
+        docNum: q.DocNum != null ? Number(q.DocNum) : null,
+        cardCode: q.CardCode,
+        cardName: q.CardName ?? null,
+        status,
+        notes: q.Comments ?? null,
+        dueDate: q.DocDueDate ?? null,
+        docTotal: q.DocTotal != null ? Number(q.DocTotal) : null,
+      });
+      upserted++;
+    }
+
+    console.log(
+      `[syncQuotations] OK — fetched=${rows.length} upserted=${upserted}`,
+    );
+    return { ok: true, fetched: rows.length, upserted };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[syncQuotations] Erro: ${message}`);
+    return { ok: false, fetched: 0, upserted: 0, error: message };
+  }
 }
 
 // Manter compatibilidade com import anterior

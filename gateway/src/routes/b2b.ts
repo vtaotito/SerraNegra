@@ -25,6 +25,12 @@ import {
   type PendingOrderItem,
   type PendingOrderRow,
 } from "../services/b2bPendingOrderService.js";
+import {
+  B2BQuotationService,
+  isQuotationStatus,
+  type QuotationItem,
+  type QuotationRow,
+} from "../services/b2bQuotationService.js";
 import { B2BSalespersonService } from "../services/b2bSalespersonService.js";
 import {
   B2BOrderMessageService,
@@ -81,16 +87,22 @@ import {
   sendRegistrationReceivedEmail,
   sendRegistrationApprovedEmail,
   sendRegistrationRejectedEmail,
+  sendRegistrationInReviewEmail,
   sendEmailAccessRequestedEmail,
   sendEmailAccessApprovedEmail,
   sendEmailAccessRejectedEmail,
   sendInternalAccessRequestNotification,
+  sendInternalNewRegistrationNotification,
   sendOrderConfirmationEmail,
   sendNewOrderToSellerEmail,
   sendOrderInteractionEmail,
   sendOrderApprovedEmail,
   sendOrderRejectedEmail,
   sendOrderCancelledEmail,
+  sendQuotationCreatedEmail,
+  sendNewQuotationToSellerEmail,
+  sendQuotationConvertedEmail,
+  sendQuotationRejectedEmail,
 } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
 
@@ -309,6 +321,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   const pendingOrderService = new B2BPendingOrderService(B2B_DB_URL);
   await pendingOrderService.init();
 
+  const quotationService = new B2BQuotationService(B2B_DB_URL);
+  await quotationService.init();
+
   const salespersonService = new B2BSalespersonService(B2B_DB_URL);
   await salespersonService.init();
 
@@ -395,6 +410,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   // DTO de um pedido AGUARDANDO confirmação do vendedor (ainda não existe no
   // SAP). Reaproveita o mesmo formato do mapCustomerOrder para a lista/dashboard
   // do portal, marcando `pending: true` e status sintético "aguardando".
+  // Legado: novos fluxos criam cotação SAP; pendentes antigos ainda aparecem.
   function mapPendingOrder(row: PendingOrderRow) {
     // `rejeitado` (recusa da equipe) e `cancelado` (cancelamento do cliente)
     // ambos aparecem para o cliente como estado terminal "cancelado".
@@ -417,8 +433,45 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       pending: true,
       pendingId: Number(row.id),
       rejectReason: row.reject_reason ?? null,
+      documentType: "pending_order" as const,
       // Permite ao portal habilitar o botão "Cancelar" apenas enquanto pendente.
       canCancel: row.status === "pendente",
+    };
+  }
+
+  function mapQuotation(row: QuotationRow) {
+    const statusMap: Record<string, string> = {
+      aberta: "cotacao_aberta",
+      em_analise: "cotacao_em_analise",
+      convertida: "cotacao_convertida",
+      recusada: "cancelado",
+      cancelada: "cancelado",
+    };
+    const terminated = row.status === "recusada" || row.status === "cancelada";
+    return {
+      docEntry: row.doc_entry != null ? Number(row.doc_entry) : -Number(row.id),
+      docNum: row.doc_num != null ? Number(row.doc_num) : Number(row.id),
+      createdAt: row.created_at,
+      dueDate: row.due_date ?? null,
+      cardCode: row.card_code,
+      cardName: row.card_name ?? null,
+      docTotal: row.doc_total != null ? Number(row.doc_total) : null,
+      currency: "BRL",
+      sapStatus: null,
+      cancelled: terminated,
+      status: statusMap[row.status] ?? "cotacao_aberta",
+      quotationStatus: row.status,
+      itemCount: Array.isArray(row.items) ? row.items.length : 0,
+      totalQuantity: Number(row.total_quantity ?? 0),
+      comments: row.notes ?? null,
+      pending: false,
+      quotation: true,
+      quotationId: Number(row.id),
+      orderDocEntry: row.order_doc_entry,
+      orderDocNum: row.order_doc_num,
+      rejectReason: row.reject_reason ?? null,
+      documentType: "quotation" as const,
+      canCancel: row.status === "aberta" || row.status === "em_analise",
     };
   }
 
@@ -1069,18 +1122,20 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         );
       });
 
-      // Confirmação ao cliente + aviso interno ao comercial (best-effort).
+      // Confirmação ao cliente + aviso interno dedicado (empresa nova).
       await sendRegistrationReceivedEmail({
         to: body.email,
         razaoSocial: body.razaoSocial,
       }).catch(() => undefined);
-      await sendInternalAccessRequestNotification({
+      await sendInternalNewRegistrationNotification({
         to: EMAIL_COMMERCIAL,
-        cardName: body.razaoSocial,
+        razaoSocial: body.razaoSocial,
         cnpj: digits,
-        requestedEmail: body.email,
+        email: body.email,
         contactName: body.contactName ?? null,
-        panelUrl: `${PAINEL_URL}/b2b-acessos`,
+        city: body.city ?? null,
+        state: body.state ?? null,
+        panelUrl: `${PAINEL_URL}/b2b-cadastros`,
       }).catch(() => undefined);
 
       reply.code(201).send({
@@ -2613,6 +2668,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       const { id } = req.params as any;
       const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
       const body = req.body as any;
+      const reviewedBy =
+        typeof body?.reviewedBy === "string" && body.reviewedBy.trim()
+          ? body.reviewedBy.trim()
+          : admin.user;
 
       try {
         const updated = await registrationService.updateFields(Number(id), {
@@ -2620,7 +2679,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           udfAddr: body.udfAddr,
           sapConfig: body.sapConfig,
           adminNotes: body.adminNotes,
-          reviewedBy: admin.user,
+          reviewedBy,
           address: body.address,
           streetNumber: body.streetNumber,
           neighborhood: body.neighborhood,
@@ -2662,7 +2721,50 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   );
 
   // =============================================
-  // ADMIN - APROVAR REGISTRO
+  // ADMIN - ASSUMIR ANÁLISE (in_review)
+  // =============================================
+  app.post(
+    "/b2b/admin/registrations/:id/review",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const { id } = req.params as any;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const body = (req.body as any) ?? {};
+      const reviewedBy =
+        typeof body.reviewedBy === "string" && body.reviewedBy.trim()
+          ? body.reviewedBy.trim()
+          : admin.user;
+      const notifyCustomer = body.notifyCustomer !== false;
+
+      try {
+        const updated = await registrationService.setStatus(
+          Number(id),
+          "in_review",
+          reviewedBy,
+          body.notes,
+        );
+        if (!updated) {
+          reply.code(400).send({
+            error: "Registro nao encontrado ou nao esta pendente",
+          });
+          return;
+        }
+        if (notifyCustomer) {
+          await sendRegistrationInReviewEmail({
+            to: updated.email,
+            razaoSocial: updated.razao_social,
+          }).catch(() => undefined);
+        }
+        reply.code(200).send(updated);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - APROVAR REGISTRO (sem e-mail — liberação só pós-publish)
   // =============================================
   app.post(
     "/b2b/admin/registrations/:id/approve",
@@ -2670,20 +2772,47 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as any;
       const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
-      const { notes } = (req.body as any) ?? {};
+      const body = (req.body as any) ?? {};
+      const { notes } = body;
+      const reviewedBy =
+        typeof body.reviewedBy === "string" && body.reviewedBy.trim()
+          ? body.reviewedBy.trim()
+          : admin.user;
 
       try {
+        // Persiste PriceList / vendedor antes de marcar aprovado (UI unificada).
+        if (
+          body.priceListNum != null ||
+          body.salesPersonCode != null ||
+          body.sapConfig
+        ) {
+          const sapConfig: Record<string, unknown> = {
+            ...(body.sapConfig && typeof body.sapConfig === "object"
+              ? body.sapConfig
+              : {}),
+          };
+          if (body.priceListNum != null)
+            sapConfig.PriceListNum = Number(body.priceListNum);
+          if (body.salesPersonCode != null)
+            sapConfig.SalesPersonCode = Number(body.salesPersonCode);
+          await registrationService.updateFields(Number(id), {
+            sapConfig,
+            reviewedBy,
+            adminNotes: notes,
+          });
+        }
+
         const updated = await registrationService.setStatus(
-          Number(id), "approved", admin.user, notes,
+          Number(id),
+          "approved",
+          reviewedBy,
+          notes,
         );
         if (!updated) {
           reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
           return;
         }
-        await sendRegistrationApprovedEmail({
-          to: updated.email,
-          razaoSocial: updated.razao_social,
-        }).catch(() => undefined);
+        // E-mail de liberação de acesso só após publish bem-sucedido.
         reply.code(200).send(updated);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
@@ -2701,11 +2830,16 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { id } = req.params as any;
       const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
-      const { notes } = (req.body as any) ?? {};
+      const body = (req.body as any) ?? {};
+      const { notes } = body;
+      const reviewedBy =
+        typeof body.reviewedBy === "string" && body.reviewedBy.trim()
+          ? body.reviewedBy.trim()
+          : admin.user;
 
       try {
         const updated = await registrationService.setStatus(
-          Number(id), "rejected", admin.user, notes,
+          Number(id), "rejected", reviewedBy, notes,
         );
         if (!updated) {
           reply.code(400).send({ error: "Registro nao encontrado ou ja processado" });
@@ -2740,9 +2874,63 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reply.code(404).send({ error: "Registro nao encontrado" });
           return;
         }
-        if (reg.status !== "approved") {
-          reply.code(400).send({ error: `Registro deve estar aprovado (atual: ${reg.status})` });
+        if (
+          reg.status !== "approved" &&
+          reg.status !== "pending" &&
+          reg.status !== "in_review"
+        ) {
+          reply.code(400).send({
+            error: `Registro nao pode ser publicado (atual: ${reg.status})`,
+          });
           return;
+        }
+
+        const body = (req.body as any) ?? {};
+        // Permite aprovar+publicar na mesma ação com PriceList e vendedor.
+        if (
+          body.priceListNum != null ||
+          body.salesPersonCode != null ||
+          body.sapConfig
+        ) {
+          const sapConfig: Record<string, unknown> = {
+            ...(body.sapConfig && typeof body.sapConfig === "object"
+              ? body.sapConfig
+              : {}),
+          };
+          if (body.priceListNum != null)
+            sapConfig.PriceListNum = Number(body.priceListNum);
+          if (body.salesPersonCode != null)
+            sapConfig.SalesPersonCode = Number(body.salesPersonCode);
+          const patched = await registrationService.updateFields(Number(id), {
+            sapConfig,
+            reviewedBy:
+              typeof body.reviewedBy === "string"
+                ? body.reviewedBy
+                : undefined,
+            adminNotes: body.notes,
+          });
+          if (patched) Object.assign(reg, patched);
+        }
+
+        const cfgCheck = reg.sap_config ?? {};
+        if (cfgCheck.PriceListNum == null || cfgCheck.SalesPersonCode == null) {
+          reply.code(400).send({
+            error:
+              "PriceListNum e SalesPersonCode sao obrigatorios para publicar",
+          });
+          return;
+        }
+
+        if (reg.status !== "approved") {
+          const approved = await registrationService.setStatus(
+            Number(id),
+            "approved",
+            typeof body.reviewedBy === "string" && body.reviewedBy.trim()
+              ? body.reviewedBy.trim()
+              : "painel",
+            body.notes,
+          );
+          if (approved) Object.assign(reg, approved);
         }
 
         const digits = normalizeCnpj(reg.cnpj);
@@ -2752,10 +2940,23 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           await deliveryService
             .attachCardCode(digits, existing.CardCode)
             .catch(() => undefined);
+          await authService.upsertCredential({
+            cardCode: existing.CardCode,
+            cnpj: digits,
+            cardName: reg.razao_social,
+            email: reg.email,
+          });
+          const otp = await authService.generateOtp(digits);
+          const emailSent = await sendOtpEmail(reg.email, otp, reg.razao_social);
+          await sendRegistrationApprovedEmail({
+            to: reg.email,
+            razaoSocial: reg.razao_social,
+          }).catch(() => undefined);
           reply.code(200).send({
             ok: true,
-            message: "BP ja existia no SAP",
+            message: "BP ja existia no SAP — acesso liberado",
             cardCode: existing.CardCode,
+            emailSent,
           });
           return;
         }
@@ -2918,6 +3119,11 @@ export async function registerB2BRoutes(app: FastifyInstance) {
 
         const otp = await authService.generateOtp(digits);
         const emailSent = await sendOtpEmail(reg.email, otp, reg.razao_social);
+        // Liberação de acesso somente após publish bem-sucedido.
+        await sendRegistrationApprovedEmail({
+          to: reg.email,
+          razaoSocial: reg.razao_social,
+        }).catch(() => undefined);
 
         reply.code(201).send({
           ok: true,
@@ -2943,6 +3149,388 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           sapStatus,
           sapDetails,
         });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - LISTAS DE PREÇO SAP
+  // =============================================
+  app.get(
+    "/b2b/admin/price-lists",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      try {
+        const items = await getEntitiesService().listActivePriceLists(
+          correlationId,
+        );
+        reply.code(200).send({ items, total: items.length });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao listar listas";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.get(
+    "/b2b/admin/price-lists/:id/preview",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      const priceListNo = Number((req.params as any).id);
+      const query = req.query as { search?: string; limit?: string };
+      if (!Number.isFinite(priceListNo)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        const items = await getEntitiesService().previewPriceList(priceListNo, {
+          search: query.search,
+          limit: query.limit ? Number(query.limit) : 40,
+          correlationId,
+        });
+        reply.code(200).send({
+          priceListNo,
+          items,
+          total: items.length,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro no preview";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  // =============================================
+  // ADMIN - COTAÇÕES B2B (SAP Quotations / OQUT)
+  // =============================================
+  app.get(
+    "/b2b/admin/quotations",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      try {
+        const status = isQuotationStatus(query.status)
+          ? query.status
+          : undefined;
+        const items = await quotationService.list({
+          status,
+          cardCode: query.cardCode || undefined,
+        });
+        const openCount =
+          (await quotationService.countByStatus("aberta")) +
+          (await quotationService.countByStatus("em_analise"));
+        reply.code(200).send({ items, total: items.length, openCount });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.get(
+    "/b2b/admin/quotations/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        const row = await quotationService.get(id);
+        if (!row) {
+          reply.code(404).send({ error: "Cotacao nao encontrada" });
+          return;
+        }
+        reply.code(200).send(row);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.patch(
+    "/b2b/admin/quotations/:id",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const id = Number((req.params as any).id);
+      const body = (req.body as any) ?? {};
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        const row = await quotationService.get(id);
+        if (!row) {
+          reply.code(404).send({ error: "Cotacao nao encontrada" });
+          return;
+        }
+        if (row.status !== "aberta" && row.status !== "em_analise") {
+          reply.code(409).send({ error: `Cotacao nao editavel (${row.status})` });
+          return;
+        }
+        if (row.doc_entry == null) {
+          reply.code(400).send({ error: "Cotacao sem DocEntry SAP" });
+          return;
+        }
+
+        const items: QuotationItem[] = Array.isArray(body.items)
+          ? body.items
+              .filter((it: any) => it?.sku && Number(it?.quantity) > 0)
+              .map((it: any, idx: number) => ({
+                sku: String(it.sku),
+                name: typeof it.name === "string" ? it.name : null,
+                quantity: Number(it.quantity),
+                warehouse: it.warehouse ?? null,
+                unitPrice:
+                  it.unitPrice != null ? Number(it.unitPrice) : null,
+                lineNum:
+                  it.lineNum != null ? Number(it.lineNum) : idx,
+              }))
+          : row.items;
+
+        const client = getSapClient();
+        const patchBody: Record<string, unknown> = {
+          DocumentLines: items.map((item, idx) => ({
+            LineNum: item.lineNum ?? idx,
+            ItemCode: item.sku,
+            Quantity: Number(item.quantity),
+            WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+            Usage: B2B_DEFAULT_USAGE,
+            ...(item.unitPrice && item.unitPrice > 0
+              ? { UnitPrice: item.unitPrice }
+              : {}),
+          })),
+        };
+        if (typeof body.notes === "string") {
+          patchBody.Comments = body.notes;
+        }
+        if (typeof body.dueDate === "string") {
+          patchBody.DocDueDate = body.dueDate;
+        }
+
+        await client.patch<any>(`/Quotations(${row.doc_entry})`, patchBody, {
+          correlationId,
+        });
+
+        const updated = await quotationService.updateItems(id, items, {
+          notes: typeof body.notes === "string" ? body.notes : null,
+          dueDate: typeof body.dueDate === "string" ? body.dueDate : null,
+        });
+        await quotationService.setStatus(id, "em_analise", {
+          reviewedBy: admin.user,
+        });
+
+        reply.code(200).send(updated ?? (await quotationService.get(id)));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao atualizar cotacao";
+        req.log.error({ error, correlationId }, "Erro PATCH Quotation");
+        reply.code(500).send({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/quotations/:id/convert",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const id = Number((req.params as any).id);
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        const row = await quotationService.get(id);
+        if (!row) {
+          reply.code(404).send({ error: "Cotacao nao encontrada" });
+          return;
+        }
+        if (row.status === "convertida") {
+          reply.code(409).send({ error: "Cotacao ja convertida" });
+          return;
+        }
+        if (row.status === "recusada" || row.status === "cancelada") {
+          reply.code(409).send({ error: `Cotacao ${row.status}` });
+          return;
+        }
+        if (row.doc_entry == null) {
+          reply.code(400).send({ error: "Cotacao sem DocEntry SAP" });
+          return;
+        }
+
+        const items = Array.isArray(row.items) ? row.items : [];
+        const validItems = items.filter(
+          (it) => it.sku && Number(it.quantity) > 0,
+        );
+        if (validItems.length === 0) {
+          reply.code(400).send({ error: "Cotacao sem itens validos" });
+          return;
+        }
+
+        const client = getSapClient();
+        const seller = admin.user ?? "Equipe de vendas";
+        const comments = `Pedido via Portal B2B (cotacao #${row.doc_num ?? row.id} aprovada por ${seller})`;
+
+        // Copia linhas com BaseType 23 (OQUT) — padrão Service Layer.
+        const sapOrder = {
+          CardCode: row.card_code,
+          DocDueDate:
+            row.due_date ??
+            new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0],
+          Comments: comments,
+          BPL_IDAssignedToInvoice: B2B_DEFAULT_BRANCH,
+          DocumentLines: validItems.map((item, idx) => ({
+            LineNum: idx,
+            ItemCode: item.sku,
+            Quantity: Number(item.quantity),
+            WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+            Usage: B2B_DEFAULT_USAGE,
+            BaseType: 23,
+            BaseEntry: row.doc_entry,
+            BaseLine: item.lineNum ?? idx,
+            ...(item.unitPrice && item.unitPrice > 0
+              ? { UnitPrice: item.unitPrice }
+              : {}),
+          })),
+        };
+
+        const response = await client.post<any>("/Orders", sapOrder, {
+          correlationId,
+        });
+        const created = response.data;
+        const orderDocEntry = Number(created.DocEntry);
+        const orderDocNum =
+          created.DocNum != null ? Number(created.DocNum) : null;
+
+        const updated = await quotationService.setStatus(id, "convertida", {
+          reviewedBy: seller,
+          orderDocEntry,
+          orderDocNum,
+        });
+
+        if (orderDocEntry) {
+          await orderStatusService
+            .confirm({
+              docEntry: orderDocEntry,
+              cardCode: row.card_code,
+              by: seller,
+            })
+            .catch((err) =>
+              req.log.warn(
+                { err },
+                "Falha ao iniciar status do pedido convertido",
+              ),
+            );
+        }
+
+        if (row.created_by) {
+          await sendQuotationConvertedEmail({
+            to: row.created_by,
+            cardName: row.card_name ?? row.card_code,
+            quotationDocNum: row.doc_num ?? row.id,
+            orderDocNum: orderDocNum ?? orderDocEntry,
+          }).catch(() => undefined);
+        }
+
+        reply.code(200).send({
+          ok: true,
+          docEntry: orderDocEntry,
+          docNum: orderDocNum,
+          quotation: updated,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao converter cotacao";
+        let sapDetails: string | undefined;
+        if (error instanceof SapHttpError) {
+          sapDetails = error.responseBodyText;
+        }
+        req.log.error(
+          { error, correlationId, sapDetails },
+          "Erro ao converter cotacao em pedido",
+        );
+        reply.code(500).send({ error: message, sapDetails });
+      }
+    },
+  );
+
+  app.post(
+    "/b2b/admin/quotations/:id/reject",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const correlationId = (req as any).correlationId as string;
+      const admin = (req as any).b2bAdmin as B2BAdminTokenPayload;
+      const id = Number((req.params as any).id);
+      const body = (req.body as any) ?? {};
+      if (!Number.isFinite(id)) {
+        reply.code(400).send({ error: "id invalido" });
+        return;
+      }
+      try {
+        const row = await quotationService.get(id);
+        if (!row) {
+          reply.code(404).send({ error: "Cotacao nao encontrada" });
+          return;
+        }
+        if (row.status === "convertida") {
+          reply.code(409).send({ error: "Cotacao ja convertida" });
+          return;
+        }
+
+        if (row.doc_entry != null) {
+          const client = getSapClient();
+          try {
+            await client.post<any>(
+              `/Quotations(${row.doc_entry})/Cancel`,
+              undefined,
+              { correlationId },
+            );
+          } catch (cancelErr) {
+            // Alguns ambientes usam Close em vez de Cancel.
+            try {
+              await client.post<any>(
+                `/Quotations(${row.doc_entry})/Close`,
+                undefined,
+                { correlationId },
+              );
+            } catch {
+              req.log.warn(
+                { cancelErr, correlationId },
+                "Falha ao cancelar/fechar cotacao no SAP — seguindo com espelho local",
+              );
+            }
+          }
+        }
+
+        const updated = await quotationService.setStatus(id, "recusada", {
+          reviewedBy: admin.user,
+          rejectReason: body.reason?.trim() || null,
+        });
+
+        if (row.created_by) {
+          await sendQuotationRejectedEmail({
+            to: row.created_by,
+            cardName: row.card_name ?? row.card_code,
+            docNum: row.doc_num ?? row.id,
+            reason: body.reason?.trim() || null,
+          }).catch(() => undefined);
+        }
+
+        reply.code(200).send({ ok: true, quotation: updated });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Erro ao recusar cotacao";
+        reply.code(500).send({ error: message });
       }
     },
   );
@@ -3191,21 +3779,30 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           mapCustomerOrder(r, funnelMap[Number(r.doc_entry)]),
         );
 
-        // Pedidos aguardando confirmação do vendedor (ainda não estão no SAP):
-        // entram no topo da lista para o cliente acompanhar o andamento.
+        // Cotações SAP + pedidos pendentes legados no topo da lista.
+        const quotationRows = await quotationService
+          .listOpenForCustomer(customer.cardCode)
+          .catch(() => [] as QuotationRow[]);
+        const quotationItems = quotationRows
+          .filter((q) => q.status !== "convertida")
+          .map(mapQuotation);
+
         const pendingRows = await pendingOrderService
           .listPendingForCustomer(customer.cardCode)
           .catch(() => [] as PendingOrderRow[]);
         const pendingItems = pendingRows.map(mapPendingOrder);
 
-        let items = [...pendingItems, ...sapItems];
+        let items = [...quotationItems, ...pendingItems, ...sapItems];
 
-        // Filtro opcional por estágio (?status=aguardando|novo|...).
+        // Filtro opcional por estágio (?status=aguardando|novo|cotacao_aberta|...).
         if (query.status) {
           items = items.filter((o) => o.status === query.status);
         }
 
-        reply.code(200).send({ items, total: total + pendingItems.length });
+        reply.code(200).send({
+          items,
+          total: total + pendingItems.length + quotationItems.length,
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Erro";
         req.log.error({ error }, "Erro ao listar pedidos B2B");
@@ -3741,10 +4338,9 @@ export async function registerB2BRoutes(app: FastifyInstance) {
       }
 
       try {
-        // Pedidos do portal NÃO vão direto ao SAP: ficam pendentes de
-        // confirmação manual do vendedor pelo painel. Só após a confirmação o
-        // documento é criado no SAP (ver POST /b2b/admin/pending-orders/:id/confirm).
-        const items: PendingOrderItem[] = body.items
+        // Carrinho do portal cria Cotação no SAP (OQUT) imediatamente.
+        // O comercial revisa no Painel e converte para Pedido (ORDR).
+        const items: QuotationItem[] = body.items
           .filter((it: any) => it?.sku && Number(it?.quantity) > 0)
           .map((it: any) => ({
             sku: String(it.sku),
@@ -3760,9 +4356,6 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           return;
         }
 
-        // Marca linhas cuja quantidade excede o estoque disponível (em unidades).
-        // Não bloqueia o pedido: apenas sinaliza para o vendedor tratar no painel
-        // e para o cliente ser orientado a falar com o vendedor no portal.
         try {
           const stockBySku = await catalogService.getStockUnitsBySkus(
             items.map((i) => i.sku),
@@ -3775,53 +4368,140 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         } catch (stockErr) {
           req.log.warn(
             { error: stockErr, correlationId },
-            "Não foi possível avaliar estoque das linhas do pedido pendente",
+            "Não foi possível avaliar estoque das linhas da cotação",
           );
         }
 
-        const pending = await pendingOrderService.create({
+        const dueDate =
+          body.dueDate ??
+          new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0];
+        const baseComment = `Cotacao via Portal B2B - ${customer.cardName ?? customer.cardCode}`;
+        const comments = body.notes?.trim()
+          ? `${baseComment} | Obs: ${String(body.notes).trim()}`
+          : baseComment;
+
+        const priceMap = await resolveUnitPrices(
+          customer.cardCode,
+          items.map((i) => i.sku),
+          correlationId,
+        );
+
+        const sapQuotation = {
+          CardCode: customer.cardCode,
+          DocDueDate: dueDate,
+          Comments: comments,
+          BPL_IDAssignedToInvoice: B2B_DEFAULT_BRANCH,
+          DocumentLines: items.map((item, idx) => {
+            const unitPrice = priceMap.get(item.sku);
+            if (unitPrice && unitPrice > 0) item.unitPrice = unitPrice;
+            return {
+              LineNum: idx,
+              ItemCode: item.sku,
+              Quantity: Number(item.quantity),
+              WarehouseCode: item.warehouse ?? B2B_DEFAULT_WAREHOUSE,
+              Usage: B2B_DEFAULT_USAGE,
+              ...(unitPrice && unitPrice > 0 ? { UnitPrice: unitPrice } : {}),
+            };
+          }),
+        };
+
+        const client = getSapClient();
+        const response = await client.post<any>("/Quotations", sapQuotation, {
+          correlationId,
+        });
+        const created = response.data;
+        const docEntry =
+          created.DocEntry != null ? Number(created.DocEntry) : null;
+        const docNum = created.DocNum != null ? Number(created.DocNum) : null;
+        const docTotal =
+          created.DocTotal != null ? Number(created.DocTotal) : null;
+
+        // Espelha LineNum do SAP nas linhas locais quando disponível.
+        const sapLines = Array.isArray(created.DocumentLines)
+          ? created.DocumentLines
+          : [];
+        for (let i = 0; i < items.length; i++) {
+          const sapLine = sapLines[i];
+          if (sapLine?.LineNum != null) items[i].lineNum = Number(sapLine.LineNum);
+        }
+
+        const quotation = await quotationService.create({
           cardCode: customer.cardCode,
           cardName: customer.cardName,
           items,
           notes: body.notes ?? null,
-          dueDate: body.dueDate ?? null,
+          dueDate,
           origin: "portal",
           createdBy: customer.email ?? null,
+          docEntry,
+          docNum,
+          docTotal,
+          status: "aberta",
         });
 
-        // Confirmação ao cliente (recebido / aguardando) + alerta ao comercial.
         if (customer.email) {
-          await sendOrderConfirmationEmail({
+          await sendQuotationCreatedEmail({
             to: customer.email,
             cardName: customer.cardName,
-            docNum: pending.id,
+            docNum: docNum ?? quotation.id,
           }).catch(() => undefined);
         }
-        await sendNewOrderToSellerEmail({
-          to: EMAIL_COMMERCIAL,
-          cardName: customer.cardName,
-          docNum: pending.id,
-          orderUrl: `${PAINEL_URL}/pedidos`,
-        }).catch(() => undefined);
+
+        // Notifica vendedor do cliente (se houver contato) + caixa comercial.
+        let sellerEmail: string | null = null;
+        try {
+          const cred = await authService.findByCardCode(customer.cardCode);
+          if (cred?.sales_person_code != null) {
+            const contact = await salespersonService.get(
+              Number(cred.sales_person_code),
+            );
+            if (contact?.email) sellerEmail = contact.email;
+          }
+        } catch {
+          /* ignore */
+        }
+        const notifyTargets = new Set(
+          [sellerEmail, EMAIL_COMMERCIAL].filter(Boolean) as string[],
+        );
+        for (const to of notifyTargets) {
+          await sendNewQuotationToSellerEmail({
+            to,
+            cardName: customer.cardName,
+            docNum: docNum ?? quotation.id,
+            panelUrl: `${PAINEL_URL}/pedidos`,
+          }).catch(() => undefined);
+        }
 
         reply.code(201).send({
           ok: true,
-          pending: true,
-          message: "Pedido enviado. Aguardando confirmação da equipe de vendas.",
-          pendingId: pending.id,
+          quotation: true,
+          pending: false,
+          message:
+            "Cotação enviada ao SAP. A equipe comercial irá revisar e, se aprovada, gerar o pedido.",
+          quotationId: quotation.id,
+          docEntry,
+          docNum,
+          // Compat: portal antigo lia pendingId
+          pendingId: quotation.id,
         });
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "Erro ao registrar pedido";
+          error instanceof Error ? error.message : "Erro ao criar cotação";
+        let sapDetails: string | undefined;
+        if (error instanceof SapHttpError) {
+          sapDetails = error.responseBodyText;
+        }
         req.log.error(
-          { error, correlationId },
-          "Erro ao registrar pedido pendente B2B"
+          { error, correlationId, sapDetails },
+          "Erro ao criar cotação B2B",
         );
-        reply
-          .code(500)
-          .send({ error: "Erro ao registrar pedido", message });
+        reply.code(500).send({
+          error: "Erro ao criar cotação",
+          message,
+          sapDetails,
+        });
       }
-    }
+    },
   );
 
   // =============================================

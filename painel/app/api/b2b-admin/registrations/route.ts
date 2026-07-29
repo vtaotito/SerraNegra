@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
-import { listB2BEmailRequests } from "@/lib/b2b-admin";
+import { listB2BRegistrations } from "@/lib/b2b-admin";
 
-/**
- * GET /api/b2b-admin/email-requests?status=pending
- * Lista solicitações de acesso por e-mail (clientes SAP sem e-mail cadastrado).
- */
+/** GET /api/b2b-admin/registrations?status=pending — cadastros B2B pendentes. */
 export async function GET(request: NextRequest) {
   try {
     await requireRole("admin", "supervisor", "comercial");
     const status = request.nextUrl.searchParams.get("status") ?? undefined;
-    const data = await listB2BEmailRequests(status);
+    const data = await listB2BRegistrations(status);
     return NextResponse.json({ success: true, data });
   } catch (error) {
     if (error instanceof Error) {
@@ -19,9 +16,9 @@ export async function GET(request: NextRequest) {
       if (error.message === "FORBIDDEN")
         return NextResponse.json({ success: false, error: "Sem permissão" }, { status: 403 });
     }
-    console.error("[B2B_ADMIN_EMAIL_REQUESTS GET]", error);
+    console.error("[B2B_ADMIN_REGISTRATIONS GET]", error);
     return NextResponse.json(
-      { success: false, error: "Erro ao listar solicitações de acesso" },
+      { success: false, error: "Erro ao listar cadastros B2B" },
       { status: 500 },
     );
   }

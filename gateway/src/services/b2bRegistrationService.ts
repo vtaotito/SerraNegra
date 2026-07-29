@@ -20,7 +20,7 @@ export interface PendingRegistration {
   udf_bp: Record<string, unknown>;
   udf_addr: Record<string, unknown>;
   sap_config: Record<string, unknown>;
-  status: "pending" | "approved" | "rejected" | "published";
+  status: "pending" | "in_review" | "approved" | "rejected" | "published";
   admin_notes: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
@@ -271,15 +271,22 @@ export class B2BRegistrationService {
 
   async setStatus(
     id: number,
-    status: "approved" | "rejected",
+    status: "in_review" | "approved" | "rejected",
     reviewedBy: string,
     notes?: string,
   ): Promise<PendingRegistration | null> {
+    // in_review ← pending
+    // approved / rejected ← pending | in_review | approved (re-aprovação antes do publish)
+    const fromClause =
+      status === "in_review"
+        ? "status = 'pending'"
+        : "status IN ('pending', 'in_review', 'approved')";
     const { rows } = await this.pool.query(
       `UPDATE b2b_pending_registrations SET
          status = $1, reviewed_by = $2, reviewed_at = NOW(),
          admin_notes = COALESCE($3, admin_notes), updated_at = NOW()
-       WHERE id = $4 AND status = 'pending' RETURNING *`,
+       WHERE id = $4 AND ${fromClause} AND status <> 'published'
+       RETURNING *`,
       [status, reviewedBy, notes ?? null, id],
     );
     return rows[0] ?? null;
