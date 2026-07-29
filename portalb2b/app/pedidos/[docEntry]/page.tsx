@@ -23,6 +23,8 @@ import { toast } from "sonner";
 import { toastAddedToCart } from "@/lib/toast-cart";
 import {
   ORDER_FLOW,
+  ORDER_FLOW_LABELS,
+  getOrderFlowStepIndex,
   getOrderStatusConfig,
   type OrderStatus,
 } from "@/lib/orders";
@@ -197,7 +199,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
 
   const cfg = order ? getOrderStatusConfig(order.status) : null;
   const isCancelled = order?.status === "cancelado";
-  const currentStepIdx = order ? ORDER_FLOW.indexOf(order.status) : -1;
+  const currentStepIdx = order ? getOrderFlowStepIndex(order.status) : -1;
   const canInteract = !!order && !isCancelled;
 
   function addAllToCart() {
@@ -368,7 +370,7 @@ export default function PedidoDetalhePage({ params }: { params: Promise<{ docEnt
                                   : "hidden text-muted-foreground"
                               }`}
                             >
-                              {stepConf.label}
+                              {ORDER_FLOW_LABELS[step] ?? stepConf.label}
                             </span>
                           </div>
                         );

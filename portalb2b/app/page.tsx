@@ -11,7 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { get } from "@/lib/api/client";
 import { formatDate, formatCurrency, cn } from "@/lib/utils";
-import { getOrderStatusConfig, type OrderSummary } from "@/lib/orders";
+import {
+  getDocumentTitle,
+  getOrderStatusConfig,
+  isQuotationLike,
+  type OrderSummary,
+} from "@/lib/orders";
 import { useFavorites } from "@/lib/favorites/useFavorites";
 import { FeaturedProductCard, type FeaturedProduct } from "@/components/catalog/FeaturedProductCard";
 import Link from "next/link";
@@ -228,7 +233,7 @@ export default function DashboardPage() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="font-medium text-gsn-text">
-                              {order.pending ? `Solicitação #${order.docNum}` : `Pedido #${order.docNum}`}
+                              {getDocumentTitle(order)}
                             </span>
                             <Badge variant={cfg.variant}>{cfg.label}</Badge>
                           </div>
@@ -244,11 +249,11 @@ export default function DashboardPage() {
                       </>
                     );
 
-                    if (order.pending) {
+                    if (isQuotationLike(order) || order.pending) {
                       return (
                         <div
                           key={order.docEntry}
-                          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/30 p-4"
+                          className="flex items-center justify-between rounded-lg border border-sky-100 bg-sky-50/30 p-4"
                         >
                           {inner}
                         </div>

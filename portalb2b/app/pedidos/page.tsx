@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,14 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "@/lib/api/client";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { cn, formatDate, formatCurrency } from "@/lib/utils";
 import {
   ORDER_STATUS_FILTERS,
+  getDocumentTitle,
   getOrderStatusConfig,
-  type OrderStatus,
+  isQuotationLike,
+  matchesOrderFilter,
+  type OrderFilterKey,
   type OrderSummary,
 } from "@/lib/orders";
 import Link from "next/link";
@@ -22,9 +25,9 @@ import {
   ArrowRight,
   Calendar,
   Package,
-  Filter,
   Ban,
   MessageSquare,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -37,8 +40,17 @@ interface OrdersResponse {
   total: number;
 }
 
+const JOURNEY_STEPS = [
+  "Cotação",
+  "Confirmado",
+  "Separação",
+  "Faturado",
+  "Entrega",
+  "Entregue",
+] as const;
+
 export default function PedidosPage() {
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState<OrderFilterKey>("");
   const [search, setSearch] = useState("");
   const [cancelTarget, setCancelTarget] = useState<OrderSummary | null>(null);
   const qc = useQueryClient();
@@ -55,38 +67,68 @@ export default function PedidosPage() {
         reason: vars.reason.trim() || null,
       }),
     onSuccess: () => {
-      toast.success("Solicitação cancelada.");
+      toast.success("Cotação cancelada.");
       setCancelTarget(null);
       qc.invalidateQueries({ queryKey: ["b2b-orders"] });
     },
-    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao cancelar"),
+    onError: (e) =>
+      toast.error(e instanceof Error ? e.message : "Erro ao cancelar"),
   });
 
   const allOrders = data?.items ?? [];
 
+  const filterCounts = useMemo(() => {
+    const counts: Record<string, number> = { "": allOrders.length };
+    for (const f of ORDER_STATUS_FILTERS) {
+      if (!f.value) continue;
+      counts[f.value] = allOrders.filter((o) =>
+        matchesOrderFilter(o.status, f.value),
+      ).length;
+    }
+    return counts;
+  }, [allOrders]);
+
   const filtered = allOrders.filter((o) => {
-    if (statusFilter && o.status !== statusFilter) return false;
+    if (!matchesOrderFilter(o.status, statusFilter)) return false;
     if (search) {
-      const q = search.toLowerCase();
-      if (!String(o.docNum).includes(search) && !String(o.docEntry).includes(search)) {
+      const q = search.replace(/\D/g, "") || search.toLowerCase();
+      const num = String(o.docNum);
+      const entry = String(o.docEntry);
+      if (
+        !num.includes(q) &&
+        !entry.includes(q) &&
+        !String(o.docNum).toLowerCase().includes(search.toLowerCase())
+      ) {
         return false;
       }
     }
     return true;
   });
 
+  const quotationCount = allOrders.filter((o) => isQuotationLike(o)).length;
+  const orderCount = allOrders.length - quotationCount;
+
   return (
     <div className="min-h-screen bg-muted/30">
       <Header />
       <main className="mx-auto max-w-7xl px-4 pt-6 pb-24 sm:px-6 lg:px-8 md:pb-8">
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-gsn-text">
-                Cotações e Pedidos
+                Meus pedidos
               </h1>
-              <p className="text-muted-foreground">
-                {filtered.length} documento(s)
+              <p className="text-sm text-muted-foreground mt-1">
+                Acompanhe da cotação até a entrega
+                {!isLoading && allOrders.length > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-gsn-text/80">
+                      {quotationCount} cotação(ões)
+                      {orderCount > 0 ? ` · ${orderCount} pedido(s)` : ""}
+                    </span>
+                  </>
+                )}
               </p>
             </div>
             <div className="flex gap-2">
@@ -96,7 +138,7 @@ export default function PedidosPage() {
                   placeholder="Buscar por número..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 bg-white"
                   aria-label="Buscar por número"
                 />
               </div>
@@ -109,27 +151,76 @@ export default function PedidosPage() {
             </div>
           </div>
 
-          {/* Filtros de Status */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            {ORDER_STATUS_FILTERS.map((f) => (
-              <Button
-                key={f.value || "all"}
-                variant={statusFilter === f.value ? "default" : "outline"}
-                size="sm"
-                className={statusFilter === f.value ? "bg-gsn-brand hover:bg-gsn-brand-dark text-white" : ""}
-                onClick={() => setStatusFilter(f.value)}
-              >
-                {f.label}
-              </Button>
-            ))}
+          {/* Jornada resumida */}
+          <div className="rounded-xl border bg-white px-3 py-3 sm:px-5">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-2.5">
+              Como funciona
+            </p>
+            <ol className="flex items-center gap-0 overflow-x-auto pb-0.5">
+              {JOURNEY_STEPS.map((step, idx) => (
+                <li key={step} className="flex items-center min-w-0">
+                  <div className="flex flex-col items-center gap-1 px-1 sm:px-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gsn-brand/10 text-[11px] font-semibold text-gsn-brand">
+                      {idx + 1}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap">
+                      {step}
+                    </span>
+                  </div>
+                  {idx < JOURNEY_STEPS.length - 1 && (
+                    <div className="mb-4 h-px w-4 sm:w-8 bg-border shrink-0" />
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Filtros da jornada */}
+          <div className="-mx-4 px-4 sm:mx-0 sm:px-0 overflow-x-auto">
+            <div
+              className="flex gap-2 min-w-min pb-1"
+              role="tablist"
+              aria-label="Filtrar por etapa"
+            >
+              {ORDER_STATUS_FILTERS.map((f) => {
+                const count = filterCounts[f.value] ?? 0;
+                const active = statusFilter === f.value;
+                return (
+                  <button
+                    key={f.value || "all"}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setStatusFilter(f.value)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium whitespace-nowrap border transition",
+                      active
+                        ? "bg-gsn-brand text-white border-gsn-brand shadow-sm"
+                        : "bg-white text-muted-foreground border-border hover:border-gsn-brand/40 hover:text-gsn-text",
+                    )}
+                  >
+                    {f.label}
+                    <span
+                      className={cn(
+                        "text-xs tabular-nums rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center",
+                        active
+                          ? "bg-white/20 text-white"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Lista */}
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
+                <Skeleton key={i} className="h-28 rounded-xl" />
               ))}
             </div>
           ) : filtered.length === 0 ? (
@@ -137,18 +228,34 @@ export default function PedidosPage() {
               <CardContent className="p-0">
                 <ClientEmptyState
                   icon={ClipboardList}
-                  title="Nenhuma cotação ou pedido"
+                  title={
+                    search || statusFilter
+                      ? "Nenhum resultado nesta etapa"
+                      : "Nenhuma cotação ou pedido"
+                  }
                   description={
                     search || statusFilter
-                      ? "Tente alterar os filtros"
-                      : "Você ainda não solicitou cotações"
+                      ? "Tente outro filtro ou limpe a busca"
+                      : "Solicite uma cotação no catálogo para começar"
                   }
                   action={
-                    <Link href="/catalogo">
-                      <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
-                        Solicitar primeira cotação
+                    search || statusFilter ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setStatusFilter("");
+                          setSearch("");
+                        }}
+                      >
+                        Ver todos
                       </Button>
-                    </Link>
+                    ) : (
+                      <Link href="/catalogo">
+                        <Button className="bg-gsn-brand hover:bg-gsn-brand-dark text-white">
+                          Solicitar primeira cotação
+                        </Button>
+                      </Link>
+                    )
                   }
                 />
               </CardContent>
@@ -158,20 +265,50 @@ export default function PedidosPage() {
               {filtered.map((order) => {
                 const cfg = getOrderStatusConfig(order.status);
                 const StatusIcon = cfg.icon;
-                const unread = !order.pending && isUnread(order.docEntry);
-                const msgSummary = !order.pending ? summaryFor(order.docEntry) : null;
+                const quotation = isQuotationLike(order);
+                const title = getDocumentTitle(order);
+                const unread = !quotation && !order.pending && isUnread(order.docEntry);
+                const msgSummary =
+                  !quotation && !order.pending
+                    ? summaryFor(order.docEntry)
+                    : null;
+                const showCancel = Boolean(order.pending && order.canCancel);
+                // Cotação e pending legado não têm detalhe de pedido SAP.
+                const canOpenDetail = !quotation && !order.pending;
 
                 const cardBody = (
-                  <CardContent className="flex items-center gap-4 p-4 sm:p-5">
-                    <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-lg bg-muted flex-shrink-0">
-                      <StatusIcon className="h-5 w-5 text-muted-foreground" />
+                  <CardContent className="flex items-start gap-3 p-4 sm:items-center sm:gap-4 sm:p-5">
+                    <div
+                      className={cn(
+                        "hidden sm:flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0",
+                        quotation
+                          ? "bg-sky-50 text-sky-600"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {quotation ? (
+                        <FileText className="h-5 w-5" />
+                      ) : (
+                        <StatusIcon className="h-5 w-5" />
+                      )}
                     </div>
 
-                    <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex-1 min-w-0 space-y-1.5">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold">
-                          {order.pending ? `Solicitação #${order.docNum}` : `Pedido #${order.docNum}`}
+                        <span className="font-semibold text-gsn-text">
+                          {title}
                         </span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[11px]",
+                            quotation
+                              ? "border-sky-200 bg-sky-50 text-sky-700"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                          )}
+                        >
+                          {quotation ? "Cotação" : "Pedido"}
+                        </Badge>
                         <Badge variant={cfg.variant}>{cfg.label}</Badge>
                         {unread && (
                           <Badge className="bg-gsn-brand text-white hover:bg-gsn-brand gap-1">
@@ -186,41 +323,70 @@ export default function PedidosPage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
                           {formatDate(order.createdAt)}
                         </span>
                         <span>{order.itemCount} item(ns)</span>
+                        {order.totalQuantity > 0 && (
+                          <span>{order.totalQuantity} un</span>
+                        )}
+                        {order.orderDocNum != null && quotation && (
+                          <span className="text-emerald-700">
+                            → Pedido #{order.orderDocNum}
+                          </span>
+                        )}
                       </div>
-                      {order.pending && order.status === "cancelado" && order.rejectReason && (
-                        <p className="text-xs text-destructive">Motivo: {order.rejectReason}</p>
+
+                      {cfg.hint && order.status !== "entregue" && (
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {cfg.hint}
+                        </p>
                       )}
-                      {order.pending && order.status === "aguardando" && (
-                        <p className="text-xs text-muted-foreground">{cfg.hint}</p>
+                      {order.status === "cancelado" && order.rejectReason && (
+                        <p className="text-xs text-destructive">
+                          Motivo: {order.rejectReason}
+                        </p>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      {order.docTotal != null && (
-                        <span className="font-semibold text-sm whitespace-nowrap">
-                          {formatCurrency(order.docTotal, order.currency ?? "BRL")}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {order.docTotal != null ? (
+                        <span className="font-semibold text-sm whitespace-nowrap text-gsn-text">
+                          {formatCurrency(
+                            order.docTotal,
+                            order.currency ?? "BRL",
+                          )}
                         </span>
-                      )}
-                      {!order.pending && (
-                        <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      ) : quotation ? (
+                        <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                          Aguardando preço
+                        </span>
+                      ) : null}
+                      {canOpenDetail && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-gsn-brand">
+                          Detalhes
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </span>
                       )}
                     </div>
                   </CardContent>
                 );
 
-                // Pedidos pendentes não têm página de detalhe (não existem no SAP).
-                if (order.pending) {
+                if (!canOpenDetail) {
                   return (
-                    <Card key={order.docEntry} className="border-amber-200 bg-amber-50/30">
+                    <Card
+                      key={`q-${order.quotationId ?? order.pendingId ?? order.docEntry}`}
+                      className={cn(
+                        quotation &&
+                          "border-sky-100 bg-gradient-to-r from-sky-50/40 to-white",
+                      )}
+                    >
                       {cardBody}
-                      {order.canCancel && (
-                        <div className="flex justify-end border-t border-amber-100 px-4 py-2 sm:px-5">
+                      {showCancel && (
+                        <div className="flex justify-end border-t px-4 py-2 sm:px-5">
                           <Button
                             variant="ghost"
                             size="sm"
@@ -228,7 +394,7 @@ export default function PedidosPage() {
                             onClick={() => setCancelTarget(order)}
                           >
                             <Ban className="h-4 w-4" />
-                            Cancelar solicitação
+                            Cancelar cotação
                           </Button>
                         </div>
                       )}
@@ -237,8 +403,12 @@ export default function PedidosPage() {
                 }
 
                 return (
-                  <Link key={order.docEntry} href={`/pedidos/${order.docEntry}`}>
-                    <Card className="transition-all hover:shadow-md hover:border-gsn-brand/20 cursor-pointer">
+                  <Link
+                    key={order.docEntry}
+                    href={`/pedidos/${order.docEntry}`}
+                    className="block"
+                  >
+                    <Card className="transition-all hover:shadow-md hover:border-gsn-brand/25 cursor-pointer">
                       {cardBody}
                     </Card>
                   </Link>
@@ -246,17 +416,26 @@ export default function PedidosPage() {
               })}
             </div>
           )}
+
+          {!isLoading && filtered.length > 0 && (
+            <p className="text-center text-xs text-muted-foreground pt-1">
+              Exibindo {filtered.length} de {allOrders.length}
+            </p>
+          )}
         </div>
       </main>
 
       {cancelTarget && (
         <CancelOrderDialog
-          title={`Cancelar solicitação #${cancelTarget.docNum}`}
-          description="Sua solicitação ainda não foi confirmada pela equipe de vendas. Ao cancelar, ela não será enviada ao SAP."
-          confirmLabel="Cancelar solicitação"
+          title={`Cancelar cotação #${cancelTarget.docNum}`}
+          description="Sua cotação ainda não foi convertida em pedido. Ao cancelar, ela não seguirá para a equipe de vendas."
+          confirmLabel="Cancelar cotação"
           busy={cancelPending.isPending}
           onConfirm={(reason) =>
-            cancelPending.mutate({ pendingId: cancelTarget.pendingId!, reason })
+            cancelPending.mutate({
+              pendingId: cancelTarget.pendingId!,
+              reason,
+            })
           }
           onClose={() => {
             if (!cancelPending.isPending) setCancelTarget(null);
