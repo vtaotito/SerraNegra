@@ -137,7 +137,7 @@ export const ORDER_FLOW: OrderStatus[] = [
 ];
 
 /** Rótulos curtos da timeline (mobile/desktop). */
-export const ORDER_FLOW_LABELS: Record<(typeof ORDER_FLOW)[number], string> = {
+export const ORDER_FLOW_LABELS: Partial<Record<OrderStatus, string>> = {
   novo: "Confirmado",
   separacao: "Separação",
   faturado: "Faturado",
