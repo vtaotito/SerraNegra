@@ -2,10 +2,12 @@
  * Engine de Produção GSN
  *
  * Por produto unificado e por embalagem (FARDO / CAIXA / PALETE):
- *   - estoque disponível (embalagens e UND)
- *   - pedidos reservados ainda no on-hand (quantity_reserved)
- *   - média mensal vendida nos 3 meses anteriores
- *   - qtd a produzir = max(0, ceil(médiaMensalEmb − estoqueEmb))
+ *   estoque     = on-hand físico (emb / UND)
+ *   pedidos     = reservado em pedidos (ainda no on-hand)
+ *   disponivel  = max(estoque − pedidos, 0)
+ *   média 3m    = vendas ÷ 3
+ *   faltamUnd   = max(0, médiaMensalUnd − disponivelUnd)
+ *   produzir    = ceil(faltamUnd / undPorEmbalagem)
  *
  * Grupos excluídos: TA, TM, TP, RO, OUTROS.
  * ────────────────────────────────────────────────────────────── */
@@ -45,38 +47,27 @@ export const PRODUCAO_GROUP_ORDER = [
   "LA",
 ] as const;
 
-/** Meses da janela de média de vendas */
 export const PRODUCAO_MONTHS = 3;
 
 export interface PackDetail {
   type: PackType;
-  /** Und por embalagem (ex.: 20) */
   units: number;
   label: string;
-  /**
-   * Embalagens livres em estoque (unidade nativa do SKU):
-   * max(on_hand − reserved, 0)
-   */
+  /** Embalagens físicas on-hand */
   estoqueEmb: number;
-  /** Unidades livres = estoqueEmb × units */
   estoqueUnd: number;
-  /**
-   * Embalagens comprometidas em pedidos (reserved/committed),
-   * ainda presentes no on-hand físico.
-   */
+  /** Embalagens reservadas em pedidos */
   pedidosEmb: number;
-  /** Unidades comprometidas = pedidosEmb × units */
   pedidosUnd: number;
-  /** Volume vendido nos 3 meses (unidade nativa da embalagem) */
+  /** Disponível = max(estoque − pedidos, 0) */
+  disponivelEmb: number;
+  disponivelUnd: number;
   vol3mEmb: number;
-  /** Média mensal vendida = vol3mEmb / 3 */
   mediaMensalEmb: number;
-  /** Média mensal em UND = mediaMensalEmb × units */
   mediaMensalUnd: number;
-  /**
-   * Embalagens a produzir para atingir a média mensal disponível:
-   * max(0, ceil(mediaMensalEmb − estoqueEmb))
-   */
+  /** Unidades que faltam para atingir a média mensal */
+  faltamUnd: number;
+  /** Embalagens a produzir = ceil(faltamUnd / units) */
   produzir: number;
 }
 
@@ -86,20 +77,20 @@ export interface ProducaoRow {
   group: string;
   groupName: string;
   skus: number;
-  /** Total UND livre (todas as embalagens + UND avulsa do produto) */
+  /** On-hand total em UND */
   estoqueUnd: number;
-  /** Total UND reservada (pedidos) */
+  /** Reservado total em UND */
   pedidosUnd: number;
-  /** Volume 3m em UND (todas as variantes) */
+  /** Disponível = max(estoque − pedidos, 0) em UND */
+  disponivelUnd: number;
   vol3mUnd: number;
-  /** Média mensal UND = vol3mUnd / 3 */
   mediaMensalUnd: number;
-  /** Gap produto em UND = max(0, mediaMensalUnd − estoqueUnd) */
-  gapUnd: number;
+  /** Unidades que faltam no produto = max(0, média − disponível) */
+  faltamUnd: number;
   packs: PackDetail[];
-  /** Soma das embalagens a produzir (todas as linhas de pack) */
+  /** Soma das embalagens a produzir */
   qtdProduzirTotal: number;
-  /** cobertura meses = estoqueUnd / mediaMensalUnd */
+  /** cobertura meses = disponivelUnd / mediaMensalUnd */
   coberturaMeses: number | null;
   status: ProducaoStatus;
 }
@@ -123,10 +114,10 @@ function packMeta(desc: string | null | undefined): {
 
 export function getProducaoStatus(
   mediaMensalUnd: number,
-  qtdProduzirTotal: number,
+  faltamUnd: number,
 ): ProducaoStatus {
   if (mediaMensalUnd <= 0) return "sem_venda";
-  if (qtdProduzirTotal > 0) return "produzir";
+  if (faltamUnd > 0) return "produzir";
   return "ok";
 }
 
@@ -136,11 +127,11 @@ export const PRODUCAO_STATUS_META: Record<
 > = {
   produzir: {
     label: "Produzir",
-    acao: "Produzir para atingir a média mensal (3m)",
+    acao: "Faltam unidades para atingir a média mensal (3m)",
   },
   ok: {
     label: "OK",
-    acao: "Estoque cobre a média mensal (3m)",
+    acao: "Disponível cobre a média mensal (3m)",
   },
   sem_venda: {
     label: "Sem venda",
@@ -165,7 +156,6 @@ type ProductAgg = {
   nome: string;
   group: string;
   skuSet: Set<string>;
-  /** UND livre de SKUs sem FARDO/CAIXA/PALETE (ex.: UND avulsa) */
   estoqueUndAvulso: number;
   pedidosUndAvulso: number;
   vol3mUndAvulso: number;
@@ -183,17 +173,12 @@ function ensurePack(
     p = { type, units, label, estoqueEmb: 0, pedidosEmb: 0, vol3mEmb: 0 };
     packs.set(type, p);
   } else if (units > p.units) {
-    // Prefere a variante com mais und/embalagem para o rótulo de conversão
     p.units = units;
     p.label = label;
   }
   return p;
 }
 
-/**
- * Constrói linhas de produção a partir de analytics (3 meses) e inventário
- * (já filtrado por praça). Só produtos com FARDO, CAIXA ou PALETE.
- */
 export function buildProducaoRows(
   products: ProductAnalyticsRow[],
   inventory: InventoryRow[],
@@ -217,7 +202,6 @@ export function buildProducaoRows(
     return a;
   };
 
-  // Vendas 3m por SKU → embalagem
   for (const r of products) {
     const group = getComprasGroup(r.item_code);
     if (!isProducaoGroup(group)) continue;
@@ -235,7 +219,6 @@ export function buildProducaoRows(
     }
   }
 
-  // Estoque por SKU → embalagem
   for (const inv of inventory) {
     const group = getComprasGroup(inv.product_id);
     if (!isProducaoGroup(group)) continue;
@@ -248,14 +231,13 @@ export function buildProducaoRows(
 
     const onHand = Math.max(inv.quantity_available ?? 0, 0);
     const reserved = Math.max(inv.quantity_reserved ?? 0, 0);
-    const free = Math.max(onHand - reserved, 0);
 
     if (meta.type) {
       const p = ensurePack(a.packs, meta.type, meta.units, meta.label);
-      p.estoqueEmb += free;
+      p.estoqueEmb += onHand;
       p.pedidosEmb += reserved;
     } else {
-      a.estoqueUndAvulso += free * meta.units;
+      a.estoqueUndAvulso += onHand * meta.units;
       a.pedidosUndAvulso += reserved * meta.units;
     }
   }
@@ -267,6 +249,7 @@ export function buildProducaoRows(
       Array.from(a.packs.values()).some((p) => p.vol3mEmb > 0);
     const hasStock =
       a.estoqueUndAvulso > 0 ||
+      a.pedidosUndAvulso > 0 ||
       Array.from(a.packs.values()).some(
         (p) => p.estoqueEmb > 0 || p.pedidosEmb > 0,
       );
@@ -278,22 +261,28 @@ export function buildProducaoRows(
       const p = a.packs.get(type);
       if (!p) return null;
       const mediaMensalEmb = p.vol3mEmb / PRODUCAO_MONTHS;
+      const mediaMensalUnd = mediaMensalEmb * p.units;
       const estoqueEmb = p.estoqueEmb;
+      const pedidosEmb = p.pedidosEmb;
+      const disponivelEmb = Math.max(estoqueEmb - pedidosEmb, 0);
+      const disponivelUnd = disponivelEmb * p.units;
+      const faltamUnd = Math.max(0, mediaMensalUnd - disponivelUnd);
       const produzir =
-        mediaMensalEmb > 0
-          ? Math.max(0, Math.ceil(mediaMensalEmb - estoqueEmb))
-          : 0;
+        faltamUnd > 0 ? Math.ceil(faltamUnd / Math.max(1, p.units)) : 0;
       return {
         type: p.type,
         units: p.units,
         label: p.label,
         estoqueEmb,
         estoqueUnd: estoqueEmb * p.units,
-        pedidosEmb: p.pedidosEmb,
-        pedidosUnd: p.pedidosEmb * p.units,
+        pedidosEmb,
+        pedidosUnd: pedidosEmb * p.units,
+        disponivelEmb,
+        disponivelUnd,
         vol3mEmb: p.vol3mEmb,
         mediaMensalEmb,
-        mediaMensalUnd: mediaMensalEmb * p.units,
+        mediaMensalUnd,
+        faltamUnd,
         produzir,
       } satisfies PackDetail;
     }).filter((p): p is PackDetail => p != null);
@@ -302,15 +291,21 @@ export function buildProducaoRows(
       a.estoqueUndAvulso + packs.reduce((s, p) => s + p.estoqueUnd, 0);
     const pedidosUnd =
       a.pedidosUndAvulso + packs.reduce((s, p) => s + p.pedidosUnd, 0);
+    const disponivelUndAvulso = Math.max(
+      a.estoqueUndAvulso - a.pedidosUndAvulso,
+      0,
+    );
+    const disponivelUnd =
+      disponivelUndAvulso + packs.reduce((s, p) => s + p.disponivelUnd, 0);
     const vol3mUnd =
       a.vol3mUndAvulso +
       packs.reduce((s, p) => s + p.vol3mEmb * p.units, 0);
     const mediaMensalUnd = vol3mUnd / PRODUCAO_MONTHS;
-    const gapUnd = Math.max(0, mediaMensalUnd - estoqueUnd);
+    const faltamUnd = Math.max(0, mediaMensalUnd - disponivelUnd);
     const qtdProduzirTotal = packs.reduce((s, p) => s + p.produzir, 0);
     const coberturaMeses =
-      mediaMensalUnd > 0 ? estoqueUnd / mediaMensalUnd : null;
-    const status = getProducaoStatus(mediaMensalUnd, qtdProduzirTotal);
+      mediaMensalUnd > 0 ? disponivelUnd / mediaMensalUnd : null;
+    const status = getProducaoStatus(mediaMensalUnd, faltamUnd);
 
     return {
       key,
@@ -320,9 +315,10 @@ export function buildProducaoRows(
       skus: a.skuSet.size,
       estoqueUnd,
       pedidosUnd,
+      disponivelUnd,
       vol3mUnd,
       mediaMensalUnd,
-      gapUnd,
+      faltamUnd,
       packs,
       qtdProduzirTotal,
       coberturaMeses,

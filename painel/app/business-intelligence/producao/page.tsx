@@ -5,8 +5,9 @@
  *
  * Janela de vendas: últimos 3 meses (média mensal = total / 3).
  * Por FARDO / CAIXA / PALETE:
- *   estoque emb + UND, pedidos reservados, média mensal, produzir.
- * Produzir = max(0, ceil(médiaMensalEmb − estoqueEmb)).
+ *   estoque (on-hand), pedidos, disponível (= estoque − pedidos),
+ *   média mensal, faltam UND / emb. a produzir.
+ * Produzir: faltamUnd = max(0, média − disponível); emb = ceil(faltam/und).
  * Grupos excluídos: TA, TM, TP, RO, OUTROS.
  * ═══════════════════════════════════════════════════════════════ */
 
@@ -48,9 +49,10 @@ import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 type SortField =
   | "nome"
   | "estoqueUnd"
-  | "mediaMensalUnd"
   | "pedidosUnd"
-  | "gapUnd"
+  | "disponivelUnd"
+  | "mediaMensalUnd"
+  | "faltamUnd"
   | "qtdProduzirTotal"
   | "coberturaMeses";
 
@@ -192,7 +194,7 @@ export default function ProducaoPage() {
   const [statusFilter, setStatusFilter] = useState<ProducaoStatus | null>(
     "produzir",
   );
-  const [sortField, setSortField] = useState<SortField>("qtdProduzirTotal");
+  const [sortField, setSortField] = useState<SortField>("faltamUnd");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showAll, setShowAll] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -260,12 +262,14 @@ export default function ProducaoPage() {
           return a.nome.localeCompare(b.nome) * dir;
         case "estoqueUnd":
           return (a.estoqueUnd - b.estoqueUnd) * dir;
-        case "mediaMensalUnd":
-          return (a.mediaMensalUnd - b.mediaMensalUnd) * dir;
         case "pedidosUnd":
           return (a.pedidosUnd - b.pedidosUnd) * dir;
-        case "gapUnd":
-          return (a.gapUnd - b.gapUnd) * dir;
+        case "disponivelUnd":
+          return (a.disponivelUnd - b.disponivelUnd) * dir;
+        case "mediaMensalUnd":
+          return (a.mediaMensalUnd - b.mediaMensalUnd) * dir;
+        case "faltamUnd":
+          return (a.faltamUnd - b.faltamUnd) * dir;
         case "qtdProduzirTotal":
           return (a.qtdProduzirTotal - b.qtdProduzirTotal) * dir;
         case "coberturaMeses":
@@ -305,10 +309,13 @@ export default function ProducaoPage() {
           Embalagem: p.label,
           "Estoque (emb)": Math.round(p.estoqueEmb),
           "Estoque (UND)": Math.round(p.estoqueUnd),
-          "Pedidos reservados (emb)": Math.round(p.pedidosEmb),
-          "Pedidos reservados (UND)": Math.round(p.pedidosUnd),
+          "Pedidos (emb)": Math.round(p.pedidosEmb),
+          "Pedidos (UND)": Math.round(p.pedidosUnd),
+          "Disponivel (emb)": Math.round(p.disponivelEmb),
+          "Disponivel (UND)": Math.round(p.disponivelUnd),
           "Media mensal 3m (emb)": Math.round(p.mediaMensalEmb),
           "Media mensal 3m (UND)": Math.round(p.mediaMensalUnd),
+          "Faltam (UND)": Math.round(p.faltamUnd),
           "Produzir (emb)": p.produzir,
           "Status produto": PRODUCAO_STATUS_META[r.status].label,
         });
@@ -339,8 +346,8 @@ export default function ProducaoPage() {
             Produção
           </h1>
           <p className="text-sm text-cockpit-muted mt-1">
-            Estoque e pedidos por embalagem · média mensal dos últimos 3 meses ·
-            produzir para atingir a volumetria de venda
+            Disponível = estoque − pedidos · média mensal (3m) · unidades que
+            faltam para atingir a previsão de venda
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -363,12 +370,12 @@ export default function ProducaoPage() {
       <div className="flex gap-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3.5 py-2.5 text-xs text-sky-900">
         <Info className="w-4 h-4 shrink-0 mt-0.5" />
         <p>
-          <strong>Estoque</strong> = embalagens livres (on-hand − reservado).{" "}
-          <strong>Pedidos</strong> = quantidade reservada em pedidos ainda no
-          estoque físico. <strong>Média 3m</strong> = vendas daquela embalagem ÷
-          3. <strong>Produzir</strong> = o que falta para o estoque livre
-          alcançar a média mensal. Expanda o produto para ver FARDO, CAIXA e
-          PALETE.
+          <strong>Estoque</strong> = on-hand físico. <strong>Pedidos</strong> =
+          reservado ainda no estoque. <strong>Disponível</strong> = Estoque −
+          Pedidos. <strong>Média 3m</strong> = vendas ÷ 3.{" "}
+          <strong>Produzir</strong> mostra quantas <em>unidades</em> faltam para
+          o disponível atingir a média e quantas embalagens isso representa.
+          Expanda o produto para FARDO, CAIXA e PALETE.
         </p>
       </div>
 
@@ -499,18 +506,26 @@ export default function ProducaoPage() {
                 </th>
                 <th className="px-3 py-2.5 font-medium text-right">
                   <button
+                    onClick={() => toggleSort("disponivelUnd")}
+                    className="inline-flex items-center gap-1 hover:text-gray-800"
+                  >
+                    Disponível <SortIcon field="disponivelUnd" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 font-medium text-right">
+                  <button
                     onClick={() => toggleSort("mediaMensalUnd")}
                     className="inline-flex items-center gap-1 hover:text-gray-800"
                   >
                     Média 3m / mês <SortIcon field="mediaMensalUnd" />
                   </button>
                 </th>
-                <th className="px-3 py-2.5 font-medium text-right">
+                <th className="px-3 py-2.5 font-medium text-right min-w-[120px]">
                   <button
-                    onClick={() => toggleSort("qtdProduzirTotal")}
+                    onClick={() => toggleSort("faltamUnd")}
                     className="inline-flex items-center gap-1 hover:text-gray-800"
                   >
-                    Produzir <SortIcon field="qtdProduzirTotal" />
+                    Produzir <SortIcon field="faltamUnd" />
                   </button>
                 </th>
                 <th className="px-3 py-2.5 font-medium text-right">
@@ -528,7 +543,7 @@ export default function ProducaoPage() {
               {visible.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-3 py-10 text-center text-sm text-gray-400"
                   >
                     Nenhum produto encontrado com os filtros atuais.
@@ -586,6 +601,14 @@ export default function ProducaoPage() {
                           <div className="text-[10px] text-gray-400">UND</div>
                         </td>
                         <td className="px-3 py-2.5 text-right">
+                          <div className="tabular-nums text-gray-900 font-semibold">
+                            {fmtUnd(r.disponivelUnd)}
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            est. − ped.
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
                           <div className="tabular-nums text-gray-800 font-medium">
                             {fmtUnd(r.mediaMensalUnd)}
                           </div>
@@ -594,18 +617,28 @@ export default function ProducaoPage() {
                           </div>
                         </td>
                         <td className="px-3 py-2.5 text-right">
-                          <div
-                            className={`text-base font-bold tabular-nums ${
-                              r.qtdProduzirTotal > 0
-                                ? "text-amber-600"
-                                : "text-gray-400"
-                            }`}
-                          >
-                            {fmtNum(r.qtdProduzirTotal)}
-                          </div>
-                          <div className="text-[10px] text-gray-400">
-                            emb. total
-                          </div>
+                          {r.faltamUnd > 0 ? (
+                            <>
+                              <div className="text-base font-bold tabular-nums text-amber-600">
+                                {fmtUnd(r.faltamUnd)}
+                              </div>
+                              <div className="text-[10px] text-amber-700/80">
+                                UND faltam
+                              </div>
+                              <div className="text-[10px] text-gray-400 mt-0.5">
+                                ≈ {fmtNum(r.qtdProduzirTotal)} emb.
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-base font-bold tabular-nums text-gray-400">
+                                0
+                              </div>
+                              <div className="text-[10px] text-gray-400">
+                                UND faltam
+                              </div>
+                            </>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">
                           {fmtMeses(r.coberturaMeses)}
@@ -682,21 +715,41 @@ function PackDetailRow({ pack }: { pack: PackDetail }) {
       </td>
       <td className="px-3 py-2">
         <PackCell
+          value={pack.disponivelEmb}
+          sub={`${fmtUnd(pack.disponivelUnd)} UND`}
+        />
+      </td>
+      <td className="px-3 py-2">
+        <PackCell
           value={pack.mediaMensalEmb}
           sub={`${fmtUnd(pack.mediaMensalUnd)} UND/mês`}
         />
       </td>
-      <td className="px-3 py-2">
-        <PackCell value={pack.produzir} accent sub="embalagens" />
+      <td className="px-3 py-2 text-right">
+        {pack.faltamUnd > 0 ? (
+          <>
+            <div className="tabular-nums font-bold text-amber-600">
+              {fmtUnd(pack.faltamUnd)}
+            </div>
+            <div className="text-[10px] text-amber-700/80">UND faltam</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">
+              = {fmtEmb(pack.produzir)} {ui.label.toLowerCase()}
+              {pack.produzir !== 1 ? "s" : ""}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="tabular-nums font-semibold text-gray-400">0</div>
+            <div className="text-[10px] text-gray-400">UND faltam</div>
+          </>
+        )}
       </td>
       <td className="px-3 py-2" colSpan={2}>
         <div className="text-[11px] text-gray-500 leading-snug">
-          {pack.produzir > 0
-            ? `Produzir ${fmtEmb(pack.produzir)} ${ui.label.toLowerCase()}${
-                pack.produzir !== 1 ? "s" : ""
-              } para chegar a ~${fmtEmb(pack.mediaMensalEmb)} emb./mês`
-            : pack.mediaMensalEmb > 0
-              ? "Estoque cobre a média mensal desta embalagem"
+          {pack.faltamUnd > 0
+            ? `Faltam ${fmtUnd(pack.faltamUnd)} UND (média ${fmtUnd(pack.mediaMensalUnd)} − disponível ${fmtUnd(pack.disponivelUnd)}) → produzir ${fmtEmb(pack.produzir)} ${ui.label.toLowerCase()}${pack.produzir !== 1 ? "s" : ""}`
+            : pack.mediaMensalUnd > 0
+              ? "Disponível cobre a média mensal desta embalagem"
               : "Sem vendas desta embalagem nos 3 meses"}
         </div>
       </td>
