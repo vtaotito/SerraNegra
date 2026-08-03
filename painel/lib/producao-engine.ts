@@ -1,12 +1,13 @@
 /* ──────────────────────────────────────────────────────────────
  * Engine de Produção GSN
  *
- * Calcula quantas embalagens (FARDO/CAIXA) produzir na semana:
+ * Calcula quantas embalagens produzir na semana para cobrir o gap:
  *   mediaSemanalUnd = totalUndPeriodo / 4   (28 dias rolantes)
  *   gapUnd          = max(0, mediaSemanalUnd - estoqueAtualUnd)
- *   qtdProduzir     = ceil(gapUnd / undPorEmbalagemProducao)
+ *   qtd[tipo]       = ceil(gapUnd / undPorEmbalagemDoTipo)
  *
- * Embalagem de produção: FARDO → CAIXA → maior multiunidade.
+ * Tipos considerados: FARDO, CAIXA, PALETE (alternativas para o mesmo gap).
+ * Grupos excluídos: TA, TM, TP, RO, OUTROS.
  * Unificação e conversão UND idênticas a Compras / item-parser.
  * ────────────────────────────────────────────────────────────── */
 
@@ -24,10 +25,42 @@ import {
 
 export type ProducaoStatus = "produzir" | "ok" | "sem_venda";
 
+/** Tipos de embalagem de produção */
+export type PackType = "FARDO" | "CAIXA" | "PALETE";
+
+export const PACK_TYPES: PackType[] = ["FARDO", "CAIXA", "PALETE"];
+
+/** Grupos fora do escopo de Produção */
+export const PRODUCAO_EXCLUDED_GROUPS = new Set([
+  "TA",
+  "TM",
+  "TP",
+  "RO",
+  "OUTROS",
+]);
+
+export const PRODUCAO_GROUP_ORDER = [
+  "GN",
+  "GI",
+  "GF",
+  "PO",
+  "AR",
+  "LA",
+] as const;
+
 export interface PackCandidate {
-  type: string;
+  type: PackType;
   units: number;
   label: string;
+}
+
+/** Quantidade sugerida para um tipo de embalagem (null = produto sem essa variante) */
+export interface PackQty {
+  type: PackType;
+  units: number;
+  label: string;
+  /** ceil(gap / units); 0 quando gap = 0 */
+  qtd: number;
 }
 
 export interface ProducaoRow {
@@ -44,12 +77,10 @@ export interface ProducaoRow {
   estoqueUnd: number;
   /** max(0, mediaSemanal - estoque) */
   gapUnd: number;
-  /** Embalagem escolhida para produção */
-  embalagemLabel: string;
-  embalagemType: string;
-  undPorEmbalagem: number;
-  /** Quantidade de embalagens a produzir (ceil) */
-  qtdProduzir: number;
+  /** Embalagens disponíveis no produto (FARDO/CAIXA/PALETE) */
+  packs: PackQty[];
+  /** Maior qtd entre as embalagens (para ordenação / status) */
+  qtdProduzirMax: number;
   /** estoqueUnd / mediaSemanalUnd (null se sem venda) */
   coberturaSemanas: number | null;
   status: ProducaoStatus;
@@ -57,48 +88,44 @@ export interface ProducaoRow {
 
 const WEEKS_IN_WINDOW = 4;
 
-const PACK_PRIORITY: Record<string, number> = {
-  FARDO: 0,
-  CAIXA: 1,
-};
+const PACK_TYPE_SET = new Set<string>(PACK_TYPES);
+
+function asPackType(raw: string): PackType | null {
+  return PACK_TYPE_SET.has(raw) ? (raw as PackType) : null;
+}
 
 function packFromDescription(desc: string | null | undefined): PackCandidate | null {
   const units = getEmbalaQty(desc);
   const label = getEmbalaLabel(desc);
   if (units <= 1) return null;
-  const type = label.split(" ")[0] || "CAIXA";
+  const type = asPackType(label.split(" ")[0] || "");
+  if (!type) return null;
   return { type, units, label };
 }
 
-/**
- * Escolhe a embalagem de produção: FARDO, senão CAIXA, senão a maior
- * multiunidade conhecida do produto.
- */
-export function pickProductionPack(candidates: PackCandidate[]): PackCandidate {
-  if (candidates.length === 0) {
-    return { type: "UND", units: 1, label: "UND" };
-  }
-  const unique = new Map<string, PackCandidate>();
+/** Dedup por tipo: mantém a variante com mais unidades (ex.: FARDO C/24 > C/20). */
+export function dedupePacksByType(candidates: PackCandidate[]): PackCandidate[] {
+  const best = new Map<PackType, PackCandidate>();
   for (const c of candidates) {
-    const k = `${c.type}:${c.units}`;
-    if (!unique.has(k)) unique.set(k, c);
+    const prev = best.get(c.type);
+    if (!prev || c.units > prev.units) best.set(c.type, c);
   }
-  const list = Array.from(unique.values());
-  list.sort((a, b) => {
-    const pa = PACK_PRIORITY[a.type] ?? 99;
-    const pb = PACK_PRIORITY[b.type] ?? 99;
-    if (pa !== pb) return pa - pb;
-    return b.units - a.units;
-  });
-  return list[0];
+  return PACK_TYPES.map((t) => best.get(t)).filter(
+    (p): p is PackCandidate => p != null,
+  );
+}
+
+export function qtyForGap(gapUnd: number, units: number): number {
+  if (gapUnd <= 0) return 0;
+  return Math.ceil(gapUnd / Math.max(1, units));
 }
 
 export function getProducaoStatus(
   mediaSemanalUnd: number,
-  qtdProduzir: number,
+  gapUnd: number,
 ): ProducaoStatus {
   if (mediaSemanalUnd <= 0) return "sem_venda";
-  if (qtdProduzir > 0) return "produzir";
+  if (gapUnd > 0) return "produzir";
   return "ok";
 }
 
@@ -111,9 +138,14 @@ export const PRODUCAO_STATUS_META: Record<
   sem_venda: { label: "Sem venda", acao: "Sem vendas nas últimas 4 semanas" },
 };
 
+export function isProducaoGroup(group: string | null): group is string {
+  return group != null && !PRODUCAO_EXCLUDED_GROUPS.has(group);
+}
+
 /**
  * Constrói as linhas de produção a partir do analytics (28d) e do inventário
  * já filtrado por praça (quando aplicável).
+ * Só inclui produtos com ao menos uma embalagem FARDO, CAIXA ou PALETE.
  */
 export function buildProducaoRows(
   products: ProductAnalyticsRow[],
@@ -147,7 +179,7 @@ export function buildProducaoRows(
 
   for (const r of products) {
     const group = getComprasGroup(r.item_code);
-    if (!group) continue;
+    if (!isProducaoGroup(group)) continue;
     const key = getUnifiedProductKey(r.item_code, r.item_description);
     const nome = getBaseProductName(r.item_description) || r.item_code;
     const emb = getEmbalaQty(r.item_description);
@@ -160,7 +192,7 @@ export function buildProducaoRows(
 
   for (const inv of inventory) {
     const group = getComprasGroup(inv.product_id);
-    if (!group) continue;
+    if (!isProducaoGroup(group)) continue;
     const desc = inv.item_name ?? "";
     const key = getUnifiedProductKey(inv.product_id, desc || inv.product_id);
     const nome = getBaseProductName(desc) || inv.product_id;
@@ -176,20 +208,25 @@ export function buildProducaoRows(
     if (pack) a.packs.push(pack);
   }
 
-  const entries = Array.from(map.entries()).filter(
-    ([, a]) => a.volPeriodoUnd > 0 || a.estoqueUnd > 0,
-  );
+  const entries = Array.from(map.entries()).filter(([, a]) => {
+    if (!(a.volPeriodoUnd > 0 || a.estoqueUnd > 0)) return false;
+    return dedupePacksByType(a.packs).length > 0;
+  });
 
   return entries.map(([key, a]) => {
     const mediaSemanalUnd = a.volPeriodoUnd / WEEKS_IN_WINDOW;
     const gapUnd = Math.max(0, mediaSemanalUnd - a.estoqueUnd);
-    const pack = pickProductionPack(a.packs);
-    const undPorEmbalagem = Math.max(1, pack.units);
-    const qtdProduzir =
-      gapUnd > 0 ? Math.ceil(gapUnd / undPorEmbalagem) : 0;
+    const uniquePacks = dedupePacksByType(a.packs);
+    const packs: PackQty[] = uniquePacks.map((p) => ({
+      type: p.type,
+      units: p.units,
+      label: p.label,
+      qtd: qtyForGap(gapUnd, p.units),
+    }));
+    const qtdProduzirMax = packs.reduce((m, p) => Math.max(m, p.qtd), 0);
     const coberturaSemanas =
       mediaSemanalUnd > 0 ? a.estoqueUnd / mediaSemanalUnd : null;
-    const status = getProducaoStatus(mediaSemanalUnd, qtdProduzir);
+    const status = getProducaoStatus(mediaSemanalUnd, gapUnd);
 
     return {
       key,
@@ -201,12 +238,25 @@ export function buildProducaoRows(
       mediaSemanalUnd,
       estoqueUnd: a.estoqueUnd,
       gapUnd,
-      embalagemLabel: pack.label,
-      embalagemType: pack.type,
-      undPorEmbalagem,
-      qtdProduzir,
+      packs,
+      qtdProduzirMax,
       coberturaSemanas,
       status,
     } satisfies ProducaoRow;
   });
+}
+
+/** Soma de quantidades sugeridas por tipo (alternativa por produto; útil como KPI). */
+export function sumPackQtyByType(
+  rows: ProducaoRow[],
+): Record<PackType, number> {
+  const totals: Record<PackType, number> = { FARDO: 0, CAIXA: 0, PALETE: 0 };
+  for (const r of rows) {
+    for (const p of r.packs) totals[p.type] += p.qtd;
+  }
+  return totals;
+}
+
+export function packQtyOf(row: ProducaoRow, type: PackType): PackQty | null {
+  return row.packs.find((p) => p.type === type) ?? null;
 }

@@ -4,8 +4,9 @@
  * Produção — previsão semanal de embalagens a produzir
  *
  * Janela: últimos 28 dias (média semanal = total / 4).
- * Regra A: produzir = ceil(max(0, média − estoque) / undPorEmbalagem).
- * Embalagem: FARDO → CAIXA → maior multiunidade.
+ * Regra A: gap = max(0, média − estoque); qtd = ceil(gap / undTipo).
+ * Embalagens: FARDO, CAIXA e PALETE (alternativas para o mesmo gap).
+ * Grupos excluídos: TA, TM, TP, RO, OUTROS.
  * ═══════════════════════════════════════════════════════════════ */
 
 import { useMemo, useState } from "react";
@@ -19,6 +20,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   PackageX,
+  Info,
 } from "lucide-react";
 import { useFetch } from "@/hooks/useFetch";
 import {
@@ -29,10 +31,14 @@ import {
 import {
   buildProducaoRows,
   PRODUCAO_STATUS_META,
+  PRODUCAO_GROUP_ORDER,
+  PACK_TYPES,
+  packQtyOf,
+  sumPackQtyByType,
+  type PackType,
   type ProducaoRow,
   type ProducaoStatus,
 } from "@/lib/producao-engine";
-import { COMPRAS_GROUP_ORDER } from "@/lib/compras-engine";
 import { fmtNum, exportCSV, getWarehouseRegion } from "@/lib/format";
 import { usePracaFilter } from "@/contexts/PracaFilterContext";
 import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
@@ -42,7 +48,9 @@ type SortField =
   | "estoqueUnd"
   | "mediaSemanalUnd"
   | "gapUnd"
-  | "qtdProduzir"
+  | "fardo"
+  | "caixa"
+  | "palete"
   | "coberturaSemanas";
 
 const STATUS_ORDER: ProducaoStatus[] = ["produzir", "ok", "sem_venda"];
@@ -76,6 +84,30 @@ const STATUS_UI: Record<
   },
 };
 
+const PACK_UI: Record<
+  PackType,
+  { label: string; short: string; accent: string; bg: string }
+> = {
+  FARDO: {
+    label: "Fardos",
+    short: "FD",
+    accent: "text-sky-700",
+    bg: "bg-sky-50 text-sky-800 border-sky-200",
+  },
+  CAIXA: {
+    label: "Caixas",
+    short: "CX",
+    accent: "text-violet-700",
+    bg: "bg-violet-50 text-violet-800 border-violet-200",
+  },
+  PALETE: {
+    label: "Paletes",
+    short: "PL",
+    accent: "text-teal-700",
+    bg: "bg-teal-50 text-teal-800 border-teal-200",
+  },
+};
+
 function fmtUnd(v: number): string {
   return fmtNum(Math.round(v));
 }
@@ -87,6 +119,10 @@ function fmtSemanas(v: number | null): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   });
+}
+
+function packSortValue(row: ProducaoRow, type: PackType): number {
+  return packQtyOf(row, type)?.qtd ?? -1;
 }
 
 export default function ProducaoPage() {
@@ -134,7 +170,7 @@ export default function ProducaoPage() {
   const [statusFilter, setStatusFilter] = useState<ProducaoStatus | null>(
     "produzir",
   );
-  const [sortField, setSortField] = useState<SortField>("qtdProduzir");
+  const [sortField, setSortField] = useState<SortField>("gapUnd");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showAll, setShowAll] = useState(false);
 
@@ -156,14 +192,11 @@ export default function ProducaoPage() {
     return counts;
   }, [rows]);
 
-  const totalEmbalagens = useMemo(
-    () => rows.reduce((s, r) => s + r.qtdProduzir, 0),
-    [rows],
-  );
+  const packTotals = useMemo(() => sumPackQtyByType(rows.filter((r) => r.status === "produzir")), [rows]);
 
   const gruposPresentes = useMemo(() => {
     const present = new Set(rows.map((r) => r.group));
-    return COMPRAS_GROUP_ORDER.filter((g) => present.has(g));
+    return PRODUCAO_GROUP_ORDER.filter((g) => present.has(g));
   }, [rows]);
 
   const filtered = useMemo(() => {
@@ -174,7 +207,10 @@ export default function ProducaoPage() {
     if (statusFilter) list = list.filter((r) => r.status === statusFilter);
     if (q)
       list = list.filter(
-        (r) => r.nome.includes(q) || r.group.includes(q) || r.groupName.toUpperCase().includes(q),
+        (r) =>
+          r.nome.includes(q) ||
+          r.group.includes(q) ||
+          r.groupName.toUpperCase().includes(q),
       );
 
     const dir = sortDir === "asc" ? 1 : -1;
@@ -189,8 +225,12 @@ export default function ProducaoPage() {
           return (a.mediaSemanalUnd - b.mediaSemanalUnd) * dir;
         case "gapUnd":
           return (a.gapUnd - b.gapUnd) * dir;
-        case "qtdProduzir":
-          return (a.qtdProduzir - b.qtdProduzir) * dir;
+        case "fardo":
+          return (packSortValue(a, "FARDO") - packSortValue(b, "FARDO")) * dir;
+        case "caixa":
+          return (packSortValue(a, "CAIXA") - packSortValue(b, "CAIXA")) * dir;
+        case "palete":
+          return (packSortValue(a, "PALETE") - packSortValue(b, "PALETE")) * dir;
         case "coberturaSemanas":
           return (num(a.coberturaSemanas) - num(b.coberturaSemanas)) * dir;
         default:
@@ -220,21 +260,28 @@ export default function ProducaoPage() {
 
   const handleExport = () => {
     exportCSV(
-      filtered.map((r) => ({
-        Produto: r.nome,
-        Grupo: r.groupName,
-        SKUs: r.skus,
-        "Estoque (UND)": Math.round(r.estoqueUnd),
-        "Media semanal (UND)": Math.round(r.mediaSemanalUnd),
-        "Gap (UND)": Math.round(r.gapUnd),
-        Embalagem: r.embalagemLabel,
-        "Und por embalagem": r.undPorEmbalagem,
-        "Qtd a produzir": r.qtdProduzir,
-        "Cobertura (semanas)":
-          r.coberturaSemanas !== null ? r.coberturaSemanas.toFixed(2) : "",
-        Status: PRODUCAO_STATUS_META[r.status].label,
-        Acao: PRODUCAO_STATUS_META[r.status].acao,
-      })),
+      filtered.map((r) => {
+        const fardo = packQtyOf(r, "FARDO");
+        const caixa = packQtyOf(r, "CAIXA");
+        const palete = packQtyOf(r, "PALETE");
+        return {
+          Produto: r.nome,
+          Grupo: r.groupName,
+          SKUs: r.skus,
+          "Estoque (UND)": Math.round(r.estoqueUnd),
+          "Media semanal (UND)": Math.round(r.mediaSemanalUnd),
+          "Gap (UND)": Math.round(r.gapUnd),
+          "Fardo label": fardo?.label ?? "",
+          "Fardos a produzir": fardo?.qtd ?? "",
+          "Caixa label": caixa?.label ?? "",
+          "Caixas a produzir": caixa?.qtd ?? "",
+          "Palete label": palete?.label ?? "",
+          "Paletes a produzir": palete?.qtd ?? "",
+          "Cobertura (semanas)":
+            r.coberturaSemanas !== null ? r.coberturaSemanas.toFixed(2) : "",
+          Status: PRODUCAO_STATUS_META[r.status].label,
+        };
+      }),
       `producao-${format(today, "yyyy-MM-dd")}.csv`,
     );
   };
@@ -261,8 +308,8 @@ export default function ProducaoPage() {
             Produção
           </h1>
           <p className="text-sm text-cockpit-muted mt-1">
-            Média semanal das últimas 4 semanas · produzir o gap entre demanda e
-            estoque em FARDO/CAIXA · sem buffer de segurança
+            Média semanal das últimas 4 semanas · gap = demanda − estoque ·
+            quantidades em FARDO, CAIXA e PALETE para cobrir a volumetria
           </p>
         </div>
         <button
@@ -274,8 +321,19 @@ export default function ProducaoPage() {
         </button>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Nota UX */}
+      <div className="flex gap-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3.5 py-2.5 text-xs text-sky-900">
+        <Info className="w-4 h-4 shrink-0 mt-0.5" />
+        <p>
+          As colunas <strong>Fardos</strong>, <strong>Caixas</strong> e{" "}
+          <strong>Paletes</strong> são alternativas para cobrir o mesmo gap em
+          unidades — escolha a embalagem de produção desejada. Produtos sem
+          essas embalagens e grupos TA/TM/TP/RO/OUTROS ficam fora da lista.
+        </p>
+      </div>
+
+      {/* KPIs status */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {STATUS_ORDER.map((s) => {
           const ui = STATUS_UI[s];
           const Icon = ui.icon;
@@ -302,15 +360,29 @@ export default function ProducaoPage() {
             </button>
           );
         })}
-        <div className="bg-white rounded-xl border border-cockpit-border px-4 py-3">
-          <div className="text-xs text-gray-500 mb-1">Embalagens a produzir</div>
-          <div className="text-2xl font-bold text-cockpit-accent">
-            {fmtNum(totalEmbalagens)}
-          </div>
-          <div className="text-[11px] text-gray-400 mt-0.5">
-            Soma de FARDOS/CAIXAS sugeridos
-          </div>
-        </div>
+      </div>
+
+      {/* KPIs por embalagem (soma dos produtos a produzir) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {PACK_TYPES.map((type) => {
+          const ui = PACK_UI[type];
+          return (
+            <div
+              key={type}
+              className="bg-white rounded-xl border border-cockpit-border px-4 py-3"
+            >
+              <div className={`text-xs font-medium mb-1 ${ui.accent}`}>
+                {ui.label} a produzir
+              </div>
+              <div className={`text-2xl font-bold tabular-nums ${ui.accent}`}>
+                {fmtNum(packTotals[type])}
+              </div>
+              <div className="text-[11px] text-gray-400 mt-0.5">
+                Soma nos produtos com status Produzir
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Filtros */}
@@ -362,7 +434,7 @@ export default function ProducaoPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-xs text-gray-500 border-b border-cockpit-border">
-                <th className="px-3 py-2.5 font-medium">
+                <th className="px-3 py-2.5 font-medium sticky left-0 bg-gray-50 z-10">
                   <button
                     onClick={() => toggleSort("nome")}
                     className="inline-flex items-center gap-1 hover:text-gray-800"
@@ -384,7 +456,7 @@ export default function ProducaoPage() {
                     onClick={() => toggleSort("mediaSemanalUnd")}
                     className="inline-flex items-center gap-1 hover:text-gray-800"
                   >
-                    Média sem. UND <SortIcon field="mediaSemanalUnd" />
+                    Média sem. <SortIcon field="mediaSemanalUnd" />
                   </button>
                 </th>
                 <th className="px-3 py-2.5 font-medium text-right">
@@ -395,13 +467,28 @@ export default function ProducaoPage() {
                     Gap UND <SortIcon field="gapUnd" />
                   </button>
                 </th>
-                <th className="px-3 py-2.5 font-medium">Embalagem</th>
-                <th className="px-3 py-2.5 font-medium text-right">
+                <th className="px-3 py-2.5 font-medium text-right min-w-[88px]">
                   <button
-                    onClick={() => toggleSort("qtdProduzir")}
-                    className="inline-flex items-center gap-1 hover:text-gray-800"
+                    onClick={() => toggleSort("fardo")}
+                    className={`inline-flex items-center gap-1 hover:text-gray-800 ${PACK_UI.FARDO.accent}`}
                   >
-                    Produzir <SortIcon field="qtdProduzir" />
+                    Fardos <SortIcon field="fardo" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 font-medium text-right min-w-[88px]">
+                  <button
+                    onClick={() => toggleSort("caixa")}
+                    className={`inline-flex items-center gap-1 hover:text-gray-800 ${PACK_UI.CAIXA.accent}`}
+                  >
+                    Caixas <SortIcon field="caixa" />
+                  </button>
+                </th>
+                <th className="px-3 py-2.5 font-medium text-right min-w-[88px]">
+                  <button
+                    onClick={() => toggleSort("palete")}
+                    className={`inline-flex items-center gap-1 hover:text-gray-800 ${PACK_UI.PALETE.accent}`}
+                  >
+                    Paletes <SortIcon field="palete" />
                   </button>
                 </th>
                 <th className="px-3 py-2.5 font-medium text-right">
@@ -409,7 +496,7 @@ export default function ProducaoPage() {
                     onClick={() => toggleSort("coberturaSemanas")}
                     className="inline-flex items-center gap-1 hover:text-gray-800"
                   >
-                    Cobertura sem. <SortIcon field="coberturaSemanas" />
+                    Cobertura <SortIcon field="coberturaSemanas" />
                   </button>
                 </th>
                 <th className="px-3 py-2.5 font-medium">Status</th>
@@ -419,7 +506,7 @@ export default function ProducaoPage() {
               {visible.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10}
                     className="px-3 py-10 text-center text-sm text-gray-400"
                   >
                     Nenhum produto encontrado com os filtros atuais.
@@ -433,13 +520,19 @@ export default function ProducaoPage() {
                       key={r.key}
                       className={`border-b border-gray-100 border-l-4 ${ui.border} hover:bg-gray-50/60`}
                     >
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-2.5 sticky left-0 bg-white">
                         <div className="font-medium text-gray-900">{r.nome}</div>
                         <div className="text-[11px] text-gray-400">
                           {r.skus} SKU{r.skus !== 1 ? "s" : ""}
+                          {r.packs.length > 0 && (
+                            <>
+                              {" · "}
+                              {r.packs.map((p) => p.label).join(" · ")}
+                            </>
+                          )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-gray-600">
+                      <td className="px-3 py-2.5">
                         <span className="text-xs font-medium text-gray-500">
                           {r.group}
                         </span>
@@ -450,25 +543,39 @@ export default function ProducaoPage() {
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">
                         {fmtUnd(r.mediaSemanalUnd)}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-700">
+                      <td className="px-3 py-2.5 text-right tabular-nums font-medium text-gray-800">
                         {fmtUnd(r.gapUnd)}
                       </td>
-                      <td className="px-3 py-2.5">
-                        <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700">
-                          {r.embalagemLabel}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right">
-                        <span
-                          className={`text-base font-bold tabular-nums ${
-                            r.qtdProduzir > 0
-                              ? "text-amber-600"
-                              : "text-gray-400"
-                          }`}
-                        >
-                          {fmtNum(r.qtdProduzir)}
-                        </span>
-                      </td>
+                      {PACK_TYPES.map((type) => {
+                        const pack = packQtyOf(r, type);
+                        const pui = PACK_UI[type];
+                        if (!pack) {
+                          return (
+                            <td
+                              key={type}
+                              className="px-3 py-2.5 text-right text-gray-300 tabular-nums"
+                            >
+                              —
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={type} className="px-3 py-2.5 text-right">
+                            <div
+                              className={`text-base font-bold tabular-nums ${
+                                pack.qtd > 0 ? pui.accent : "text-gray-400"
+                              }`}
+                            >
+                              {fmtNum(pack.qtd)}
+                            </div>
+                            <div
+                              className={`inline-flex mt-0.5 px-1.5 py-0.5 rounded border text-[10px] font-medium ${pui.bg}`}
+                            >
+                              {pack.label}
+                            </div>
+                          </td>
+                        );
+                      })}
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-600">
                         {fmtSemanas(r.coberturaSemanas)}
                       </td>
