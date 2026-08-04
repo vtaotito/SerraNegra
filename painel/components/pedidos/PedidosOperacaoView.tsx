@@ -31,6 +31,7 @@ import {
   Trash2,
   ClipboardList,
   Percent,
+  Receipt,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort } from "@/lib/format";
@@ -1933,6 +1934,13 @@ function OrderDrawer({
             <p className="text-xs text-gray-400">{order.card_code}</p>
           </div>
           <div className="flex items-center gap-1">
+            <Link
+              href={`/pedidos?view=notas&pedido=${encodeURIComponent(String(order.doc_num))}`}
+              title="Ver notas fiscais deste pedido"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-cockpit-accent hover:bg-cockpit-accent/5 border border-cockpit-accent/20"
+            >
+              <Receipt className="w-3.5 h-3.5" /> NF
+            </Link>
             {cancellable && (
               <button
                 onClick={() => setCancelOpen(true)}

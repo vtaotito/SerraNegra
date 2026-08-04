@@ -7,19 +7,24 @@ import {
   BarChart3,
   ClipboardList,
   Plus,
+  Receipt,
   ShoppingCart,
 } from "lucide-react";
 import { DateRangePicker } from "@/components/cockpit/DateRangePicker";
 import { LoadingSkeleton } from "@/components/cockpit/DataState";
 import { PedidosAnaliseView } from "@/components/pedidos/PedidosAnaliseView";
+import { PedidosNotasView } from "@/components/pedidos/PedidosNotasView";
 import { PedidosOperacaoView } from "@/components/pedidos/PedidosOperacaoView";
 import { cn } from "@/lib/utils";
 
-type PedidosView = "operacao" | "analise";
+type PedidosView = "operacao" | "analise" | "notas";
 
 function resolveView(searchParams: URLSearchParams): PedidosView {
   const explicit = searchParams.get("view");
-  if (explicit === "analise" || explicit === "operacao") return explicit;
+  if (explicit === "analise" || explicit === "operacao" || explicit === "notas") {
+    return explicit;
+  }
+  if (searchParams.get("pedido")) return "notas";
   // Deep-links legados do BI → Análise; docEntry / fluxo B2B → Operação
   if (
     searchParams.get("cardCode") ||
@@ -30,6 +35,12 @@ function resolveView(searchParams: URLSearchParams): PedidosView {
   }
   return "operacao";
 }
+
+const VIEW_COPY: Record<PedidosView, string> = {
+  operacao: "Funil B2B, confirmação e atendimento — período compartilhado",
+  analise: "KPIs, gráficos e lista SAP — sync e CSV na análise",
+  notas: "Notas fiscais de venda vinculadas aos pedidos SAP",
+};
 
 export default function PedidosPage() {
   return (
@@ -54,8 +65,15 @@ function PedidosShell() {
         params.delete("clientName");
         params.delete("search");
         params.delete("panel");
+        params.delete("pedido");
+      } else if (next === "analise") {
+        params.delete("docEntry");
+        params.delete("pedido");
       } else {
         params.delete("docEntry");
+        params.delete("cardCode");
+        params.delete("clientName");
+        params.delete("panel");
       }
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -74,11 +92,7 @@ function PedidosShell() {
               </span>
               Pedidos
             </h1>
-            <p className="text-sm text-gray-500 mt-1.5 max-w-xl">
-              {view === "operacao"
-                ? "Funil B2B, confirmação e atendimento — período compartilhado com a análise"
-                : "KPIs, gráficos e lista SAP — sync e CSV no painel de análise"}
-            </p>
+            <p className="text-sm text-gray-500 mt-1.5 max-w-xl">{VIEW_COPY[view]}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {view === "operacao" && (
@@ -94,7 +108,7 @@ function PedidosShell() {
         </div>
 
         <div
-          className="inline-flex p-1 rounded-xl bg-gray-100 gap-1 w-full sm:w-auto"
+          className="inline-flex p-1 rounded-xl bg-gray-100 gap-1 w-full sm:w-auto overflow-x-auto"
           role="tablist"
           aria-label="Modo da sessão Pedidos"
         >
@@ -112,14 +126,19 @@ function PedidosShell() {
             label="Análise"
             description="Gráficos e lista"
           />
+          <ViewTab
+            active={view === "notas"}
+            onClick={() => setView("notas")}
+            icon={Receipt}
+            label="Notas fiscais"
+            description="NF-e e vínculo"
+          />
         </div>
       </header>
 
-      {view === "operacao" ? (
-        <PedidosOperacaoView embedded />
-      ) : (
-        <PedidosAnaliseView embedded />
-      )}
+      {view === "operacao" && <PedidosOperacaoView embedded />}
+      {view === "analise" && <PedidosAnaliseView embedded />}
+      {view === "notas" && <PedidosNotasView embedded />}
     </div>
   );
 }
@@ -144,7 +163,7 @@ function ViewTab({
       aria-selected={active}
       onClick={onClick}
       className={cn(
-        "flex-1 sm:flex-none inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium motion-safe:transition-colors min-h-[44px] sm:min-h-0",
+        "flex-1 sm:flex-none inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium motion-safe:transition-colors min-h-[44px] sm:min-h-0 shrink-0",
         active
           ? "bg-white text-gsn-700 shadow-sm ring-1 ring-black/[0.04]"
           : "text-gray-500 hover:text-gray-700",

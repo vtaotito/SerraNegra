@@ -10,7 +10,7 @@ import {
   RefreshCw, DollarSign, Users, TrendingUp,
   ArrowUpDown, ArrowUp, ArrowDown, ListOrdered,
   Briefcase, Minus, MapPin, Truck, BarChart3, LayoutList, Activity,
-  Clock, PieChart as PieChartIcon,
+  Clock, PieChart as PieChartIcon, Receipt,
 } from "lucide-react";
 import {
   ResponsiveContainer, ComposedChart, BarChart, Bar, Line, PieChart, Pie, Cell,
@@ -1401,7 +1401,17 @@ function PedidosAnaliseContent({ embedded }: { embedded: boolean }) {
                         <div className="pl-0.5 flex justify-center">
                           {isExpanded ? <ChevronDown className="w-4 h-4 text-cockpit-accent" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                         </div>
-                        <div className="font-bold text-gray-900 tabular-nums text-sm min-w-0">{order.doc_num}</div>
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                          <span className="font-bold text-gray-900 tabular-nums text-sm">{order.doc_num}</span>
+                          <Link
+                            href={`/pedidos?view=notas&pedido=${encodeURIComponent(String(order.doc_num))}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-cockpit-accent hover:underline w-fit"
+                            title="Ver notas fiscais deste pedido"
+                          >
+                            <Receipt className="w-3 h-3" /> NF
+                          </Link>
+                        </div>
                         <div className="text-gray-600 tabular-nums whitespace-nowrap text-xs sm:text-sm min-w-0">{fmtDateShort(order.doc_date)}</div>
                         <div className="text-gray-800 min-w-0 truncate font-medium" title={`${order.card_name} (${order.card_code})`}>
                           <span className="text-xs sm:text-sm">{order.card_name || order.card_code}</span>
