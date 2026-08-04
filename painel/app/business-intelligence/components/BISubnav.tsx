@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useCallback, useRef, type KeyboardEvent } from "react";
 import {
   LayoutDashboard,
-  ShoppingCart,
   FileText,
   Package,
   Wallet,
@@ -34,7 +33,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Comercial",
     items: [
-      { label: "Pedidos", path: "/pedidos" },
       { label: "Documentos", path: "/comercial/dados" },
       { label: "Estoque", path: "/estoque" },
       { label: "Compras", path: "/compras" },
@@ -59,7 +57,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
 
 const ICONS: Record<string, typeof LayoutDashboard> = {
   "": LayoutDashboard,
-  "/pedidos": ShoppingCart,
   "/comercial/dados": FileText,
   "/estoque": Package,
   "/compras": ShoppingBag,

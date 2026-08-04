@@ -132,7 +132,7 @@ function PedidoLink({ docNum }: { docNum: number | null }) {
   }
   return (
     <Link
-      href={`/business-intelligence/pedidos?search=${encodeURIComponent(String(docNum))}`}
+      href={`/pedidos?view=analise&search=${encodeURIComponent(String(docNum))}`}
       onClick={(e) => e.stopPropagation()}
       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 motion-safe:transition-colors"
       title="Abrir pedido vinculado em Pedidos de Venda"
@@ -884,7 +884,7 @@ export default function ComercialDadosPage() {
 
       <footer className="text-center text-[10px] text-cockpit-muted py-2">
         Origem: SAP B1 · Sincronização horária ·{" "}
-        <Link href="/business-intelligence/pedidos" className="text-cockpit-accent hover:underline inline-flex items-center gap-1">
+        <Link href="/pedidos?view=analise" className="text-cockpit-accent hover:underline inline-flex items-center gap-1">
           Ver Pedidos de Venda <ExternalLink className="w-3 h-3" />
         </Link>
       </footer>

@@ -533,7 +533,7 @@ function FretesContent() {
 
       {/* Footer com link para pedidos */}
       <div className="text-center text-xs text-cockpit-muted">
-        Quer ver o faturamento de produto? <Link href="/business-intelligence/pedidos" className="text-cockpit-accent hover:underline font-medium">Voltar para Pedidos</Link>
+        Quer ver o faturamento de produto? <Link href="/pedidos?view=analise" className="text-cockpit-accent hover:underline font-medium">Voltar para Pedidos</Link>
       </div>
     </div>
   );
