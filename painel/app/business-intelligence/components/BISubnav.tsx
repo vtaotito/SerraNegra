@@ -12,7 +12,6 @@ import {
   DollarSign,
   Calculator,
   Megaphone,
-  Truck,
   ShoppingBag,
   Factory,
 } from "lucide-react";
@@ -43,7 +42,6 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Financeiro",
     items: [
       { label: "Faturamento", path: "/faturamento" },
-      { label: "Fretes", path: "/fretes" },
       { label: "Preços", path: "/precos" },
     ],
   },
@@ -61,7 +59,6 @@ const ICONS: Record<string, typeof LayoutDashboard> = {
   "/carteira": Wallet,
   "/vendedores": UserCircle,
   "/faturamento": Target,
-  "/fretes": Truck,
   "/precos": DollarSign,
   "/markup": Calculator,
   "/marketing": Megaphone,

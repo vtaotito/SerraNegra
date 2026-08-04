@@ -99,7 +99,7 @@ function buildClientAnalytics(
 
   for (const o of orders) {
     if (o.cancelled === "Y") continue;
-    if (isFreightOrder(o)) continue; // frete tratado em /business-intelligence/fretes
+    if (isFreightOrder(o)) continue; // frete tratado em /pedidos?view=fretes
     const cur = agg.get(o.card_code) ?? {
       fat: 0, pedidos: 0, qtd: 0, first: o.doc_date, last: o.doc_date,
       vendor: null, uf: null, city: null, name: null,

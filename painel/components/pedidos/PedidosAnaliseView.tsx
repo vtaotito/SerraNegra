@@ -952,7 +952,7 @@ function PedidosAnaliseContent({ embedded }: { embedded: boolean }) {
             </div>
           </div>
           <Link
-            href="/business-intelligence/fretes"
+            href="/pedidos?view=fretes"
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 motion-safe:transition-colors whitespace-nowrap"
           >
             Ver Fretes <ChevronRight className="w-3.5 h-3.5" />

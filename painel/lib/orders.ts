@@ -4,7 +4,7 @@
 // Regra de negócio:
 //   Pedidos com nenhuma linha (num_lines === 0) representam cobranças de
 //   **frete avulso** ao cliente — não devem entrar no faturamento de produto.
-//   Esses pedidos são tratados em uma sessão dedicada (/business-intelligence/fretes).
+//   Esses pedidos são tratados na aba Fretes de /pedidos?view=fretes.
 // ---------------------------------------------------------------------------
 
 import type { SalesOrderRow, SalesOrderLine } from "@/lib/cockpit-api";

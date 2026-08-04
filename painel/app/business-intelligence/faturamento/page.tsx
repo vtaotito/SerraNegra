@@ -274,7 +274,7 @@ function FaturamentoUnifiedInner() {
   const loading = l1 || l2;
 
   const allOrdersRaw = useMemo(() => ordersData?.items ?? [], [ordersData]);
-  // Faturamento exclui pedidos de frete (num_lines = 0) — ver /business-intelligence/fretes
+  // Faturamento exclui pedidos de frete (num_lines = 0) — ver /pedidos?view=fretes
   const allOrders = useMemo(() => excludeFreight(allOrdersRaw), [allOrdersRaw]);
   const ordersActive = useMemo(
     () => allOrders.filter((o) => o.cancelled !== "Y"),
@@ -701,7 +701,7 @@ function FaturamentoUnifiedInner() {
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
             {freightStats.total} pedido{freightStats.total > 1 ? "s" : ""} de frete ({fmtBRL(freightStats.valor)}) excluído{freightStats.total > 1 ? "s" : ""} —{" "}
             <a
-              href="/business-intelligence/fretes"
+              href="/pedidos?view=fretes"
               className="underline hover:text-amber-900 font-medium"
             >
               ver custo de frete por cliente

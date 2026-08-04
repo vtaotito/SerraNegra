@@ -9,19 +9,26 @@ import {
   Plus,
   Receipt,
   ShoppingCart,
+  Truck,
 } from "lucide-react";
 import { DateRangePicker } from "@/components/cockpit/DateRangePicker";
 import { LoadingSkeleton } from "@/components/cockpit/DataState";
 import { PedidosAnaliseView } from "@/components/pedidos/PedidosAnaliseView";
+import { PedidosFretesView } from "@/components/pedidos/PedidosFretesView";
 import { PedidosNotasView } from "@/components/pedidos/PedidosNotasView";
 import { PedidosOperacaoView } from "@/components/pedidos/PedidosOperacaoView";
 import { cn } from "@/lib/utils";
 
-type PedidosView = "operacao" | "analise" | "notas";
+type PedidosView = "operacao" | "analise" | "notas" | "fretes";
 
 function resolveView(searchParams: URLSearchParams): PedidosView {
   const explicit = searchParams.get("view");
-  if (explicit === "analise" || explicit === "operacao" || explicit === "notas") {
+  if (
+    explicit === "analise" ||
+    explicit === "operacao" ||
+    explicit === "notas" ||
+    explicit === "fretes"
+  ) {
     return explicit;
   }
   if (searchParams.get("pedido")) return "notas";
@@ -40,6 +47,7 @@ const VIEW_COPY: Record<PedidosView, string> = {
   operacao: "Funil B2B, confirmação e atendimento — período compartilhado",
   analise: "KPIs, gráficos e lista SAP — sync e CSV na análise",
   notas: "Notas fiscais de venda vinculadas aos pedidos SAP",
+  fretes: "Pedidos de frete (0 itens) e custo por cliente — fora do faturamento",
 };
 
 export default function PedidosPage() {
@@ -69,10 +77,15 @@ function PedidosShell() {
       } else if (next === "analise") {
         params.delete("docEntry");
         params.delete("pedido");
-      } else {
+      } else if (next === "notas") {
         params.delete("docEntry");
         params.delete("cardCode");
         params.delete("clientName");
+        params.delete("panel");
+      } else {
+        // fretes
+        params.delete("docEntry");
+        params.delete("pedido");
         params.delete("panel");
       }
       const qs = params.toString();
@@ -133,12 +146,20 @@ function PedidosShell() {
             label="Notas fiscais"
             description="NF-e e vínculo"
           />
+          <ViewTab
+            active={view === "fretes"}
+            onClick={() => setView("fretes")}
+            icon={Truck}
+            label="Fretes"
+            description="Custo por cliente"
+          />
         </div>
       </header>
 
       {view === "operacao" && <PedidosOperacaoView embedded />}
       {view === "analise" && <PedidosAnaliseView embedded />}
       {view === "notas" && <PedidosNotasView embedded />}
+      {view === "fretes" && <PedidosFretesView embedded />}
     </div>
   );
 }
