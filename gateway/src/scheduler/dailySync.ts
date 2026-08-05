@@ -958,18 +958,60 @@ export async function runSalesOrdersNearRealtimeSync(): Promise<{
     let totalFetched = 0;
     let totalSaved = 0;
 
+    // Mesmo estilo do sync full (sem $select) — o SL desta company rejeita
+    // certas combinações de $select/$orderby com filtro.
+    const preferHeaders = { Prefer: "odata.maxpagesize=100" };
+    let filterOk = true;
+
     while (totalFetched < ORDERS_RT_MAX) {
       const filter = encodeURIComponent(`DocDate ge '${sinceStr}'`);
-      const url =
-        `/Orders?$select=DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,` +
-        `DocTotal,DocCurrency,DocStatus,DocumentStatus,SalesPersonCode,Cancelled,Comments` +
-        `&$filter=${filter}&$orderby=DocEntry desc&$top=${PAGE_SIZE}&$skip=${skip}`;
+      const url = filterOk
+        ? `/Orders?$filter=${filter}&$orderby=DocDate desc&$top=${PAGE_SIZE}&$skip=${skip}`
+        : `/Orders?$orderby=DocDate desc&$top=${PAGE_SIZE}&$skip=${skip}`;
 
-      const res = await client.get<{ value: SapSalesOrderRow[] }>(url, {
-        correlationId: `rt-orders-${Date.now()}`,
-      });
-      const page = res.data?.value ?? [];
+      let page: SapSalesOrderRow[] = [];
+      try {
+        const res = await client.get<{ value: SapSalesOrderRow[] }>(url, {
+          correlationId: `rt-orders-${Date.now()}`,
+          headers: preferHeaders,
+        });
+        page = res.data?.value ?? [];
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (filterOk && /status 400/.test(msg)) {
+          console.warn(
+            `[syncOrders] RT: filtro DocDate rejeitado pelo SL — fallback por DocDate desc (max ${ORDERS_RT_MAX})`,
+          );
+          filterOk = false;
+          skip = 0;
+          totalFetched = 0;
+          totalSaved = 0;
+          continue;
+        }
+        throw err;
+      }
+
       if (page.length === 0) break;
+      const rawLen = page.length;
+
+      // Sem filtro OData: corta quando a página já saiu da janela de datas.
+      if (!filterOk) {
+        const oldest = page[rawLen - 1]?.DocDate
+          ? String(page[rawLen - 1].DocDate).slice(0, 10)
+          : "";
+        const inWindow = page.filter((o) => {
+          const d = o.DocDate ? String(o.DocDate).slice(0, 10) : "";
+          return d >= sinceStr;
+        });
+        if (inWindow.length === 0) break;
+        const saved = await upsertOrderHeaders(inWindow);
+        totalFetched += inWindow.length;
+        totalSaved += saved;
+        skip += rawLen;
+        if (oldest && oldest < sinceStr) break;
+        if (rawLen < PAGE_SIZE) break;
+        continue;
+      }
 
       const saved = await upsertOrderHeaders(page);
       totalFetched += page.length;
