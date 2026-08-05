@@ -165,12 +165,22 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
   const dateFrom = format(range.from, "yyyy-MM-dd");
   const dateTo = format(range.to, "yyyy-MM-dd");
 
-  const { data: ordersData, loading } = useFetch(
+  const { data: ordersData, loading, refetchSilent: refetchOrdersSilent } = useFetch(
     () => fetchSalesOrders({ limit: 50000, dateFrom, dateTo, salesPerson: salesPersonCode }),
     [dateFrom, dateTo, salesPersonCode],
   );
   const { data: spData } = useFetch(() => fetchSalesPersons(), []);
   const { data: custData } = useFetch(() => fetchCustomers({ limit: 5000, active: true }), []);
+
+  // Polling leve: espelho near-realtime (cron 2 min + write-through) aparece no board sem F5.
+  useEffect(() => {
+    const tick = () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      refetchOrdersSilent();
+    };
+    const id = window.setInterval(tick, 45_000);
+    return () => window.clearInterval(id);
+  }, [refetchOrdersSilent]);
 
   const orders = useMemo(() => ordersData?.items ?? [], [ordersData]);
 

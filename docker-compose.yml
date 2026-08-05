@@ -70,6 +70,10 @@ services:
       B2B_DATABASE_URL: "postgresql://wms:${POSTGRES_PASSWORD:-CHANGE_ME}@postgres:5432/wms"
       B2B_JWT_SECRET: "${B2B_JWT_SECRET:-b2b-secret-change-me}"
       SAP_SYNC_CRON: "${SAP_SYNC_CRON:-0 * * * *}"
+      # Near-realtime: pedidos recentes a cada 2 min (write-through cobre creates do painel)
+      SAP_ORDERS_RT_CRON: "${SAP_ORDERS_RT_CRON:-*/2 * * * *}"
+      SAP_ORDERS_RT_DAYS: "${SAP_ORDERS_RT_DAYS:-3}"
+      SAP_ORDERS_RT_MAX: "${SAP_ORDERS_RT_MAX:-2000}"
       # Janela/lote de enriquecimento das linhas de pedido (cobertura de 12 meses no catálogo)
       SAP_LINES_ENRICH_DAYS: "${SAP_LINES_ENRICH_DAYS:-400}"
       SAP_LINES_ENRICH_CONCURRENCY: "${SAP_LINES_ENRICH_CONCURRENCY:-10}"

@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, runInvoicesSync, runInventorySync, runMovementsSync, runQuotationsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, runSalesOrdersNearRealtimeSync, runInvoicesSync, runInventorySync, runMovementsSync, runQuotationsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1493,12 +1493,15 @@ export async function registerSapRoutes(app: FastifyInstance) {
   app.get("/sap/products/analytics", async (req, reply) => {
     const q = req.query as any;
     try {
+      const pracaRaw = typeof q.praca === "string" ? q.praca.toLowerCase() : "";
+      const praca = pracaRaw === "sp" || pracaRaw === "bh" ? pracaRaw : undefined;
       const result = await queryProductAnalytics({
         dateFrom: q.dateFrom,
         dateTo: q.dateTo,
         date3mCutoff: q.date3mCutoff,
         estado: q.estado || undefined,
         salesPerson: q.salesPerson ? Number(q.salesPerson) : undefined,
+        praca,
       });
       reply.code(200).send({ ok: true, ...result, timestamp: new Date().toISOString() });
     } catch (error) {
@@ -1564,12 +1567,18 @@ export async function registerSapRoutes(app: FastifyInstance) {
   /**
    * POST /api/sap/sales-orders/sync
    * Dispara sync manual: busca pedidos do SAP e persiste no PostgreSQL.
+   * Query: ?mode=recent → janela curta (near-realtime); default = full.
    */
   app.post("/sap/sales-orders/sync", async (req, reply) => {
     try {
-      const result = await runSalesOrdersSync();
+      const mode = String((req.query as { mode?: string })?.mode ?? "full").toLowerCase();
+      const result =
+        mode === "recent" || mode === "rt"
+          ? await runSalesOrdersNearRealtimeSync()
+          : await runSalesOrdersSync();
       reply.code(result.ok ? 200 : 500).send({
         ...result,
+        mode: mode === "recent" || mode === "rt" ? "recent" : "full",
         timestamp: new Date().toISOString(),
       });
     } catch (error) {

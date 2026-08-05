@@ -7,6 +7,10 @@ import { InventoryEnrichmentService } from "../services/inventoryEnrichmentServi
 
 // ─── Config ───────────────────────────────────────────────────
 const SYNC_CRON = process.env.SAP_SYNC_CRON ?? "0 * * * *"; // cada hora, minuto 0
+// Near-realtime: janela curta de pedidos recentes (default a cada 2 min).
+const ORDERS_RT_CRON = process.env.SAP_ORDERS_RT_CRON ?? "*/2 * * * *";
+const ORDERS_RT_DAYS = Number(process.env.SAP_ORDERS_RT_DAYS ?? "3");
+const ORDERS_RT_MAX = Number(process.env.SAP_ORDERS_RT_MAX ?? "2000");
 const DB_URL = process.env.B2B_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 const CORE_BASE_URL = process.env.CORE_BASE_URL ?? "http://localhost:8000";
 const BOOT_SYNC_DELAY_MS = Number(process.env.SAP_BOOT_SYNC_DELAY_MS ?? "15000");
@@ -822,6 +826,190 @@ export async function runSalesOrdersSync(): Promise<{
   }
 }
 
+/**
+ * Espelha um pedido criado/alterado no SAP imediatamente no Postgres.
+ * Usado no write-through das rotas B2B (venda assistida, confirmação, conversão).
+ */
+export async function mirrorCreatedSalesOrder(
+  created: Record<string, unknown>,
+): Promise<{ ok: boolean; docEntry: number; linesWritten: number }> {
+  const docEntry = Number(created?.DocEntry ?? 0);
+  if (!docEntry || !DB_URL) {
+    return { ok: false, docEntry: 0, linesWritten: 0 };
+  }
+
+  try {
+    await ensureSchema();
+  } catch {
+    /* schema já deve existir em runtime */
+  }
+
+  let payload = created;
+  const hasLines =
+    Array.isArray(created.DocumentLines) && created.DocumentLines.length > 0;
+
+  if (!hasLines) {
+    const svc = getSapEntitiesService();
+    if (svc) {
+      try {
+        const full = await svc.getSapClient().get<Record<string, unknown>>(
+          `/Orders(${docEntry})`,
+          { correlationId: `mirror-${docEntry}` },
+        );
+        if (full.data?.DocEntry != null) payload = full.data;
+      } catch (err) {
+        console.warn(
+          `[syncOrders] mirror: GET Orders(${docEntry}) falhou — upsert só com payload de create`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+
+  const row: SapSalesOrderRow = {
+    DocEntry: docEntry,
+    DocNum: payload.DocNum != null ? Number(payload.DocNum) : undefined,
+    DocDate:
+      payload.DocDate != null
+        ? String(payload.DocDate).slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+    DocDueDate:
+      payload.DocDueDate != null
+        ? String(payload.DocDueDate).slice(0, 10)
+        : undefined,
+    CardCode: payload.CardCode != null ? String(payload.CardCode) : undefined,
+    CardName: payload.CardName != null ? String(payload.CardName) : undefined,
+    DocTotal: Number(payload.DocTotal ?? 0),
+    DocCurrency: String(payload.DocCurrency ?? "BRL"),
+    DocStatus: payload.DocStatus != null ? String(payload.DocStatus) : undefined,
+    DocumentStatus:
+      payload.DocumentStatus != null
+        ? String(payload.DocumentStatus)
+        : undefined,
+    SalesPersonCode:
+      payload.SalesPersonCode != null
+        ? Number(payload.SalesPersonCode)
+        : undefined,
+    Cancelled:
+      payload.Cancelled != null ? String(payload.Cancelled) : undefined,
+    Comments: payload.Comments != null ? String(payload.Comments) : undefined,
+    DocumentLines: Array.isArray(payload.DocumentLines)
+      ? (payload.DocumentLines as SapSalesOrderRow["DocumentLines"])
+      : [],
+  };
+
+  const { upsertedOrders, linesWritten } = await upsertOrders([row]);
+  if (upsertedOrders > 0) {
+    console.log(
+      `[syncOrders] mirror write-through DocEntry=${docEntry} lines=${linesWritten}`,
+    );
+  }
+  return { ok: upsertedOrders > 0, docEntry, linesWritten };
+}
+
+// ─── Near-realtime (janela curta) ─────────────────────────────
+let rtSyncRunning = false;
+
+/**
+ * Sync leve: pedidos com DocDate nos últimos N dias (default 3).
+ * Roda a cada poucos minutos para capturar alterações feitas fora do painel.
+ */
+export async function runSalesOrdersNearRealtimeSync(): Promise<{
+  ok: boolean;
+  fetched: number;
+  upserted: number;
+  linesWritten: number;
+  message: string;
+  durationMs: number;
+}> {
+  if (syncRunning || rtSyncRunning) {
+    return {
+      ok: true,
+      fetched: 0,
+      upserted: 0,
+      linesWritten: 0,
+      message: "Sync já em execução",
+      durationMs: 0,
+    };
+  }
+  rtSyncRunning = true;
+  const startMs = Date.now();
+
+  const svc = getSapEntitiesService();
+  if (!svc || !DB_URL) {
+    rtSyncRunning = false;
+    return {
+      ok: false,
+      fetched: 0,
+      upserted: 0,
+      linesWritten: 0,
+      message: !DB_URL ? "DATABASE_URL ausente" : "SAP client não configurado",
+      durationMs: 0,
+    };
+  }
+
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - Math.max(1, ORDERS_RT_DAYS));
+    const sinceStr = since.toISOString().slice(0, 10);
+    const client = svc.getSapClient();
+    const PAGE_SIZE = 100;
+    let skip = 0;
+    let totalFetched = 0;
+    let totalSaved = 0;
+
+    while (totalFetched < ORDERS_RT_MAX) {
+      const filter = encodeURIComponent(`DocDate ge '${sinceStr}'`);
+      const url =
+        `/Orders?$select=DocEntry,DocNum,DocDate,DocDueDate,CardCode,CardName,` +
+        `DocTotal,DocCurrency,DocStatus,DocumentStatus,SalesPersonCode,Cancelled,Comments` +
+        `&$filter=${filter}&$orderby=DocEntry desc&$top=${PAGE_SIZE}&$skip=${skip}`;
+
+      const res = await client.get<{ value: SapSalesOrderRow[] }>(url, {
+        correlationId: `rt-orders-${Date.now()}`,
+      });
+      const page = res.data?.value ?? [];
+      if (page.length === 0) break;
+
+      const saved = await upsertOrderHeaders(page);
+      totalFetched += page.length;
+      totalSaved += saved;
+      skip += page.length;
+      if (page.length < PAGE_SIZE) break;
+    }
+
+    // Sem enrich de linhas aqui — mantém o job leve (< few seconds).
+    // Linhas vêm do write-through (create) ou do sync horário completo.
+
+    const durationMs = Date.now() - startMs;
+    const msg = `RT OK: ${totalFetched} buscados, ${totalSaved} salvos (${(durationMs / 1000).toFixed(1)}s) desde ${sinceStr}`;
+    if (totalFetched > 0) {
+      console.log(`[syncOrders] ${msg}`);
+    }
+    return {
+      ok: true,
+      fetched: totalFetched,
+      upserted: totalSaved,
+      linesWritten: 0,
+      message: msg,
+      durationMs,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[syncOrders] RT erro: ${msg}`);
+    return {
+      ok: false,
+      fetched: 0,
+      upserted: 0,
+      linesWritten: 0,
+      message: msg,
+      durationMs: Date.now() - startMs,
+    };
+  } finally {
+    rtSyncRunning = false;
+  }
+}
+
 // ─── Query helpers (usados pelas rotas) ───────────────────────
 export async function querySalesOrders(opts: {
   dateFrom?: string;
@@ -907,6 +1095,8 @@ export async function queryProductAnalytics(opts: {
   date3mCutoff: string;
   estado?: string;
   salesPerson?: number;
+  /** Praça operacional via WhsCode: "04*" = SP, demais/vazio = BH */
+  praca?: "sp" | "bh";
 }) {
   const db = getPool();
   const conditions: string[] = ["o.cancelled = 'N'"];
@@ -930,6 +1120,12 @@ export async function queryProductAnalytics(opts: {
     )`);
     params.push(opts.estado);
     idx++;
+  }
+  // Mesma regra do painel (getWarehouseRegion): 04* → SP; vazio/demais → BH
+  if (opts.praca === "sp") {
+    conditions.push(`l.warehouse_code LIKE '04%'`);
+  } else if (opts.praca === "bh") {
+    conditions.push(`(COALESCE(TRIM(l.warehouse_code), '') = '' OR l.warehouse_code NOT LIKE '04%')`);
   }
 
   const where = conditions.join(" AND ");
@@ -1488,7 +1684,7 @@ export async function startSyncScheduler() {
     return;
   }
 
-  console.log(`[syncOrders] Scheduler ativado — cron: "${SYNC_CRON}" (a cada hora)`);
+  console.log(`[syncOrders] Scheduler ativado — cron full: "${SYNC_CRON}"`);
 
   // Job recorrente — pedidos + notas fiscais + estoque + movimentações + cotações
   cron.schedule(SYNC_CRON, async () => {
@@ -1500,9 +1696,25 @@ export async function startSyncScheduler() {
     await runQuotationsSync();
   });
 
+  // Near-realtime: só pedidos recentes (não compete com o full se este estiver rodando).
+  if (cron.validate(ORDERS_RT_CRON)) {
+    console.log(
+      `[syncOrders] Near-realtime ativado — cron: "${ORDERS_RT_CRON}" (últimos ${ORDERS_RT_DAYS} dias)`,
+    );
+    cron.schedule(ORDERS_RT_CRON, async () => {
+      await runSalesOrdersNearRealtimeSync();
+    });
+  } else {
+    console.error(
+      `[syncOrders] SAP_ORDERS_RT_CRON inválido: ${ORDERS_RT_CRON} — near-realtime desativado`,
+    );
+  }
+
   // Sync inicial após boot (com delay para garantir que o SAP está acessível)
   setTimeout(async () => {
     console.log("[sync] Executando sync inicial pós-boot...");
+    // RT primeiro (rápido) para o painel já ter dados recentes; full em seguida.
+    await runSalesOrdersNearRealtimeSync();
     await runSalesOrdersSync();
     await runInvoicesSync();
     await runInventorySync();

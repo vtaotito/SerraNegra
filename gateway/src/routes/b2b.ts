@@ -105,6 +105,7 @@ import {
   sendQuotationRejectedEmail,
 } from "../services/emailService.js";
 import jwt from "jsonwebtoken";
+import { mirrorCreatedSalesOrder } from "../scheduler/dailySync.js";
 
 const B2B_JWT_SECRET =
   process.env.B2B_JWT_SECRET ??
@@ -2295,6 +2296,13 @@ export async function registerB2BRoutes(app: FastifyInstance) {
           reviewedBy: seller,
         });
 
+        // Espelho imediato no Postgres (painel /pedidos em tempo real).
+        if (created.DocEntry != null) {
+          await mirrorCreatedSalesOrder(created).catch((err) =>
+            req.log.warn({ err }, "Falha no mirror write-through do pedido confirmado"),
+          );
+        }
+
         // Inicia o funil e já marca como confirmado (o vendedor acabou de
         // confirmar este pedido) para não reaparecer em "a confirmar".
         if (created.DocEntry != null) {
@@ -2535,6 +2543,10 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const created = response.data;
 
         if (created.DocEntry != null) {
+          // Espelho imediato no Postgres (painel /pedidos em tempo real).
+          await mirrorCreatedSalesOrder(created).catch((err) =>
+            req.log.warn({ err }, "Falha no mirror write-through da venda assistida"),
+          );
           // Venda assistida já nasce confirmada (foi a equipe que criou).
           await orderStatusService
             .confirm({
@@ -3449,6 +3461,15 @@ export async function registerB2BRoutes(app: FastifyInstance) {
         const orderDocEntry = Number(created.DocEntry);
         const orderDocNum =
           created.DocNum != null ? Number(created.DocNum) : null;
+
+        if (orderDocEntry) {
+          await mirrorCreatedSalesOrder(created).catch((err) =>
+            req.log.warn(
+              { err },
+              "Falha no mirror write-through do pedido convertido",
+            ),
+          );
+        }
 
         const updated = await quotationService.setStatus(id, "convertida", {
           reviewedBy: seller,
