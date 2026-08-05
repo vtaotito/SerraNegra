@@ -2419,6 +2419,44 @@ export async function registerB2BRoutes(app: FastifyInstance) {
     },
   );
 
+  // Catálogo UNIFICADO p/ venda assistida: produto + embalagens (inclui UND),
+  // sem filtro de vendas recentes — o vendedor enxerga todo o acervo ativo.
+  app.get(
+    "/b2b/admin/catalog/unified",
+    { preHandler: b2bAdminAuth },
+    async (req, reply) => {
+      const query = req.query as Record<string, string>;
+      const limit = Math.min(Number(query.limit) || 48, 200);
+      const page = Number(query.page) || 1;
+      try {
+        const result = await catalogService.listUnifiedProducts({
+          search: query.search,
+          category: query.category,
+          inStock:
+            query.inStock === "true"
+              ? true
+              : query.inStock === "false"
+                ? false
+                : undefined,
+          page,
+          limit,
+          skipRecentSalesFilter: true,
+          includeUnitVariants: true,
+        });
+        reply.code(200).send({
+          items: result.items,
+          total: result.total,
+          page,
+          pages: Math.ceil(result.total / limit) || 1,
+          categories: result.categories,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Erro";
+        reply.code(500).send({ error: "Erro ao listar catálogo unificado", message });
+      }
+    },
+  );
+
   // Criação de pedido em nome do cliente (venda assistida pelo vendedor).
   app.post(
     "/b2b/admin/orders",

@@ -569,6 +569,16 @@ interface CatalogFilters {
   limit?: number;
   /** Se true, restringe a itens com pedido de venda nos últimos 12 meses. */
   onlyRecentlySold?: boolean;
+  /**
+   * Catálogo unificado: se true, não aplica o filtro de vendas recentes
+   * (usado na venda assistida do painel — todos os SKUs ativos).
+   */
+  skipRecentSalesFilter?: boolean;
+  /**
+   * Catálogo unificado: se true, inclui variantes UND (unitsPerPack = 1).
+   * O portal B2B omite UND; a venda assistida precisa delas.
+   */
+  includeUnitVariants?: boolean;
 }
 
 /** Janela (em meses) da regra "produtos com pedido de venda recente". */
@@ -1333,22 +1343,26 @@ export class B2BCatalogService {
       groups.set(key, arr);
     }
 
-    let unified = Array.from(groups.values()).map((g) => buildUnifiedProduct(g));
+    const includeUnitVariants = filters.includeUnitVariants === true;
+    let unified = Array.from(groups.values()).map((g) =>
+      buildUnifiedProduct(g, { includeUnitVariants }),
+    );
 
-    // Só vendemos por embalagem: oculta produtos que ficaram sem nenhuma variante
-    // de embalagem (isto é, produtos que só existiam como unidade avulsa).
+    // Portal: só por embalagem (oculta produtos só com UND). Venda assistida
+    // inclui UND, então basta ter ao menos uma variante.
     unified = unified.filter((u) => u.variants.length > 0);
 
     // Remove categorias ocultas (configuráveis em b2b_catalog_category_settings).
     unified = unified.filter((u) => !this.isHiddenCategory(hidden, u.category));
 
-    // Regra de negócio: só exibir produtos com pedido de venda nos últimos 12
-    // meses. Mantém o produto se QUALQUER variação de embalagem vendeu (assim as
-    // demais embalagens do mesmo produto continuam disponíveis para pedido).
-    // Se o conjunto vier vazio (dados de venda indisponíveis), não filtra.
-    const soldSkus = await this.getRecentlySoldSkus();
-    if (soldSkus.size > 0) {
-      unified = unified.filter((u) => u.variants.some((v) => soldSkus.has(v.sku)));
+    // Regra de negócio do portal: só exibir produtos com pedido de venda nos
+    // últimos 12 meses. Venda assistida (skipRecentSalesFilter) ignora isso
+    // para disponibilizar todo o catálogo ativo ao vendedor.
+    if (!filters.skipRecentSalesFilter) {
+      const soldSkus = await this.getRecentlySoldSkus();
+      if (soldSkus.size > 0) {
+        unified = unified.filter((u) => u.variants.some((v) => soldSkus.has(v.sku)));
+      }
     }
 
     // Categorias com contagem de produtos (antes dos filtros de categoria/estoque).
@@ -1379,7 +1393,9 @@ export class B2BCatalogService {
 
     const total = unified.length;
     const page = Math.max(1, filters.page ?? 1);
-    const limit = Math.min(100, Math.max(1, filters.limit ?? 24));
+    // Venda assistida precisa de páginas maiores (até 200 produtos unificados).
+    const maxLimit = filters.includeUnitVariants || filters.skipRecentSalesFilter ? 200 : 100;
+    const limit = Math.min(maxLimit, Math.max(1, filters.limit ?? 24));
     const offset = (page - 1) * limit;
 
     return { items: unified.slice(offset, offset + limit), total, categories };
@@ -2210,8 +2226,14 @@ function resolveVariantPackagingType(p: CatalogProduct, unitsPerPack: number): s
 /**
  * Constrói um produto unificado a partir das variantes (linhas SAP que
  * compartilham a mesma chave de unificação).
+ *
+ * @param opts.includeUnitVariants — se true, mantém variantes UND (venda assistida).
+ *   Portal B2B continua com o default (só embalagens multi-unidade).
  */
-export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDetailDto {
+export function buildUnifiedProduct(
+  rows: CatalogProduct[],
+  opts: { includeUnitVariants?: boolean } = {},
+): B2BUnifiedProductDetailDto {
   const first = rows[0];
   const groupCode = getProductPrefix(first?.sap_item_code);
   // Nome-base do card (sem embalagem, mas COM cor/fechamento/diâmetro). Todas as
@@ -2243,11 +2265,9 @@ export function buildUnifiedProduct(rows: CatalogProduct[]): B2BUnifiedProductDe
         imageUrl: r.image_url ?? null,
       } satisfies B2BAttributeVariant;
     })
-    // Regra de negócio: o Portal B2B vende SOMENTE por embalagem. Descartamos as
-    // variantes avulsas (unidade, unitsPerPack <= 1). Produtos que ficam sem
-    // nenhuma variante de embalagem são ocultados pelos chamadores (list/detail).
-    .filter((v) => v.unitsPerPack > 1)
-    // Ordena por unidades por embalagem (menor primeiro: CAIXA → FARDO).
+    // Portal B2B: só embalagem multi-unidade. Venda assistida: inclui UND.
+    .filter((v) => (opts.includeUnitVariants ? true : v.unitsPerPack > 1))
+    // Ordena por unidades por embalagem (menor primeiro: UND → CAIXA → FARDO).
     .sort((a, b) => a.unitsPerPack - b.unitsPerPack || a.sku.localeCompare(b.sku));
 
   // Dimensões distintas disponíveis (para os seletores em cascata do front).

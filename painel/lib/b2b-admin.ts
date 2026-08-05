@@ -493,6 +493,61 @@ export function fetchB2BAdminCatalog(params: {
   }>(`/b2b/admin/catalog${suffix}`);
 }
 
+/** Variante de embalagem do catálogo unificado (venda assistida). */
+export interface B2BAdminCatalogVariant {
+  sku: string;
+  color: string | null;
+  closure: string | null;
+  packagingType: string;
+  unitsPerPack: number;
+  unitOfMeasure: string;
+  inStock: boolean;
+  stockQuantity: number;
+  stockUnits: number;
+  imageUrl?: string | null;
+}
+
+/** Produto unificado: uma família com várias embalagens. */
+export interface B2BAdminUnifiedProduct {
+  id: string;
+  sku: string;
+  name: string;
+  description: string;
+  category: string | null;
+  groupCode: string;
+  capacity: string | null;
+  color: string | null;
+  closure: string | null;
+  diameter: string | null;
+  imageUrl: string | null;
+  inStock: boolean;
+  stockUnits: number;
+  variants: B2BAdminCatalogVariant[];
+}
+
+export function fetchB2BAdminCatalogUnified(params: {
+  search?: string;
+  category?: string;
+  inStock?: boolean;
+  page?: number;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.category) qs.set("category", params.category);
+  if (typeof params.inStock === "boolean") qs.set("inStock", String(params.inStock));
+  if (params.page) qs.set("page", String(params.page));
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return b2bAdminFetch<{
+    items: B2BAdminUnifiedProduct[];
+    total: number;
+    page: number;
+    pages: number;
+    categories: { name: string; count: number }[];
+  }>(`/b2b/admin/catalog/unified${suffix}`);
+}
+
 export function createB2BAdminOrder(data: {
   cardCode: string;
   cardName?: string;
