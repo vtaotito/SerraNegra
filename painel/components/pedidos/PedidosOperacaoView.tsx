@@ -32,6 +32,8 @@ import {
   ClipboardList,
   Percent,
   Receipt,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { format } from "date-fns";
 import { fmtBRL, fmtNum, fmtDateShort } from "@/lib/format";
@@ -122,6 +124,18 @@ function deriveStatus(o: SalesOrderRow): StatusKey {
   return closed ? "fechado" : "aberto";
 }
 
+/**
+ * Etapa do funil quando ainda não há registro em b2b_order_status.
+ * Alinha ao portal/gateway: cancelado SAP → cancelado; fechado → faturado; senão novo.
+ */
+function deriveFunnelFromSap(o: SalesOrderRow): PipelineStatus {
+  if (o.cancelled === "Y") return "cancelado";
+  const closed =
+    o.doc_status === "C" ||
+    (o.document_status ?? "").toLowerCase().includes("close");
+  return closed ? "faturado" : "novo";
+}
+
 function StatusBadge({ status }: { status: StatusKey }) {
   const map: Record<StatusKey, string> = {
     aberto: "bg-emerald-50 text-emerald-700",
@@ -174,11 +188,13 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
-  // Workspace centrado no canal e-commerce: começa na origem Portal B2B.
-  const [originFilter, setOriginFilter] = useState<OriginFilter>("portal");
+  // Workspace: todos os pedidos — o funil cobre Portal + SAP/outros.
+  const [originFilter, setOriginFilter] = useState<OriginFilter>("todos");
   const [pipelineFilter, setPipelineFilter] = useState<PipelineStatus | "todos">("todos");
   const [confirmFilter, setConfirmFilter] = useState<ConfirmFilter>("todos");
+  const [viewMode, setViewMode] = useState<"lista" | "funil">("funil");
   const [selected, setSelected] = useState<SalesOrderRow | null>(null);
+  const [stageSavingId, setStageSavingId] = useState<number | null>(null);
   const [followCounts, setFollowCounts] = useState<Record<string, number>>({});
   const [statusMap, setStatusMap] = useState<Record<string, PipelineStatus>>({});
   const [confirmedMap, setConfirmedMap] = useState<Record<string, boolean>>({});
@@ -217,27 +233,41 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
     loadQuotations();
   }, [loadPendingOrders, loadQuotations]);
 
-  // Etapa efetiva no funil: status salvo ou "novo" como padrão. O funil agora
-  // vale para TODOS os pedidos (qualquer origem), permitindo confirmar e
-  // acompanhar tudo pelo painel.
-  const effStatus = useCallback(
-    (o: SalesOrderRow): PipelineStatus => {
-      return statusMap[String(o.doc_entry)] ?? "novo";
-    },
-    [statusMap],
-  );
-
-  // Pedido confirmado (estado operacional local). Não confirmado = "a confirmar".
-  const isConfirmed = useCallback(
-    (o: SalesOrderRow): boolean => confirmedMap[String(o.doc_entry)] === true,
-    [confirmedMap],
-  );
-
   // Status SAP considerando o cancelamento otimista feito nesta sessão.
   const sapStatusOf = useCallback(
     (o: SalesOrderRow): StatusKey =>
       cancelledMap[String(o.doc_entry)] ? "cancelado" : deriveStatus(o),
     [cancelledMap],
+  );
+
+  // Etapa efetiva: status salvo no painel tem prioridade; senão deriva do SAP.
+  const effStatus = useCallback(
+    (o: SalesOrderRow): PipelineStatus => {
+      if (cancelledMap[String(o.doc_entry)]) return "cancelado";
+      const saved = statusMap[String(o.doc_entry)];
+      if (saved) return saved;
+      return deriveFunnelFromSap(o);
+    },
+    [statusMap, cancelledMap],
+  );
+
+  /**
+   * Confirmação operacional. Evita inundar "A confirmar" com todo o SAP:
+   * - confirmado no painel
+   * - documento SAP já fechado/cancelado
+   * - origem não-Portal sem registro de funil (não exige confirmação manual)
+   */
+  const isConfirmed = useCallback(
+    (o: SalesOrderRow): boolean => {
+      if (confirmedMap[String(o.doc_entry)] === true) return true;
+      const sap = cancelledMap[String(o.doc_entry)]
+        ? "cancelado"
+        : deriveStatus(o);
+      if (sap !== "aberto") return true;
+      if (!isPortalOrder(o) && statusMap[String(o.doc_entry)] == null) return true;
+      return false;
+    },
+    [confirmedMap, cancelledMap, statusMap],
   );
 
   // Registra o cancelamento na UI sem recarregar tudo.
@@ -252,7 +282,7 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
     return orders
       .filter((o) => !isFreightOrder(o))
       .filter((o) => {
-        if (statusFilter !== "todos" && deriveStatus(o) !== statusFilter) return false;
+        if (statusFilter !== "todos" && sapStatusOf(o) !== statusFilter) return false;
         if (q) {
           const hay = `${o.card_name} ${o.card_code} ${o.doc_num}`.toLowerCase();
           if (!hay.includes(q)) return false;
@@ -260,7 +290,7 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
         return true;
       })
       .sort((a, b) => (a.doc_date < b.doc_date ? 1 : -1));
-  }, [orders, search, statusFilter]);
+  }, [orders, search, statusFilter, sapStatusOf]);
 
   // Contadores por origem (para os badges das abas).
   const originCounts = useMemo(() => {
@@ -308,7 +338,7 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
 
   // KPIs (operacionais + taxa/valor a confirmar sem fetch extra)
   const kpis = useMemo(() => {
-    const abertos = filtered.filter((o) => deriveStatus(o) === "aberto");
+    const abertos = filtered.filter((o) => sapStatusOf(o) === "aberto");
     // "Valor faturado": soma apenas pedidos já faturados (Faturado/Enviado/
     // Entregue), ignorando cancelados.
     const faturado = filtered.reduce(
@@ -346,36 +376,59 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
   useEffect(() => {
     if (!docEntriesKey) {
       setFollowCounts({});
-      setStatusMap({});
       return;
     }
-    const ids = docEntriesKey.split(",").slice(0, 500).join(",");
-    fetch(`/api/b2b-admin/orders/followups/counts?docEntries=${ids}`)
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.success) setFollowCounts(j.data.counts ?? {});
-      })
-      .catch(() => undefined);
-    fetch(`/api/b2b-admin/orders/status?docEntries=${ids}`)
-      .then((r) => r.json())
-      .then((j) => {
-        if (!j.success) return;
-        setStatusMap(j.data.map ?? {});
-        const detail = (j.data.detail ?? {}) as Record<
-          string,
-          { status: PipelineStatus; confirmed: boolean }
-        >;
-        const cmap: Record<string, boolean> = {};
-        for (const [k, v] of Object.entries(detail)) cmap[k] = v.confirmed === true;
-        setConfirmedMap(cmap);
-      })
-      .catch(() => undefined);
-    fetch(`/api/b2b-admin/orders/messages/summary?docEntries=${ids}`)
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.success) setMsgSummary(j.data.map ?? {});
-      })
-      .catch(() => undefined);
+    const allIds = docEntriesKey.split(",").filter(Boolean);
+    const chunks: string[] = [];
+    for (let i = 0; i < allIds.length; i += 400) {
+      chunks.push(allIds.slice(i, i + 400).join(","));
+    }
+
+    let cancelled = false;
+    (async () => {
+      const followAcc: Record<string, number> = {};
+      const statusAcc: Record<string, PipelineStatus> = {};
+      const confirmAcc: Record<string, boolean> = {};
+      const msgAcc: Record<string, B2BOrderMessageSummary> = {};
+
+      await Promise.all(
+        chunks.map(async (ids) => {
+          const [fRes, sRes, mRes] = await Promise.all([
+            fetch(`/api/b2b-admin/orders/followups/counts?docEntries=${ids}`)
+              .then((r) => r.json())
+              .catch(() => null),
+            fetch(`/api/b2b-admin/orders/status?docEntries=${ids}`)
+              .then((r) => r.json())
+              .catch(() => null),
+            fetch(`/api/b2b-admin/orders/messages/summary?docEntries=${ids}`)
+              .then((r) => r.json())
+              .catch(() => null),
+          ]);
+          if (fRes?.success) Object.assign(followAcc, fRes.data.counts ?? {});
+          if (sRes?.success) {
+            Object.assign(statusAcc, sRes.data.map ?? {});
+            const detail = (sRes.data.detail ?? {}) as Record<
+              string,
+              { status: PipelineStatus; confirmed: boolean }
+            >;
+            for (const [k, v] of Object.entries(detail)) {
+              confirmAcc[k] = v.confirmed === true;
+            }
+          }
+          if (mRes?.success) Object.assign(msgAcc, mRes.data.map ?? {});
+        }),
+      );
+
+      if (cancelled) return;
+      setFollowCounts(followAcc);
+      setStatusMap((prev) => ({ ...prev, ...statusAcc }));
+      setConfirmedMap((prev) => ({ ...prev, ...confirmAcc }));
+      setMsgSummary(msgAcc);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [docEntriesKey]);
 
   // Confirma um pedido (estado local) e atualiza a UI sem recarregar tudo.
@@ -394,10 +447,41 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
             ...m,
             [String(o.doc_entry)]: m[String(o.doc_entry)] ?? "novo",
           }));
+          toast.success(`Pedido #${o.doc_num} confirmado`);
+        } else {
+          toast.error(j.error || "Não foi possível confirmar");
         }
       })
+      .catch(() => toast.error("Erro ao confirmar pedido"))
       .finally(() => setConfirmingId(null));
   }, []);
+
+  /** Move etapa do funil (lista/board) e persiste no gateway. */
+  const moveStage = useCallback(
+    async (o: SalesOrderRow, next: PipelineStatus) => {
+      const current = effStatus(o);
+      if (next === current || stageSavingId === o.doc_entry) return;
+      setStageSavingId(o.doc_entry);
+      const prev = statusMap[String(o.doc_entry)] ?? current;
+      setStatusMap((m) => ({ ...m, [String(o.doc_entry)]: next }));
+      try {
+        const res = await fetch(`/api/b2b-admin/orders/${o.doc_entry}/status`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: next, cardCode: o.card_code }),
+        });
+        const j = await res.json();
+        if (!res.ok || !j.success) throw new Error(j.error || "Erro ao atualizar etapa");
+        toast.success(`#${o.doc_num} → ${PIPELINE_LABEL[next]}`);
+      } catch (err) {
+        setStatusMap((m) => ({ ...m, [String(o.doc_entry)]: prev }));
+        toast.error(err instanceof Error ? err.message : "Erro ao atualizar etapa");
+      } finally {
+        setStageSavingId(null);
+      }
+    },
+    [effStatus, stageSavingId, statusMap],
+  );
 
   // Deep-link dos e-mails (?docEntry=…) abre o pedido automaticamente.
   const searchParams = useSearchParams();
@@ -555,27 +639,51 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
         </div>
       </div>
 
-      {/* Funil proporcional (etapas e-commerce) */}
+      {/* Funil proporcional + toggle Board/Lista */}
       <PipelineFunnel
         counts={pipelineCounts}
         total={byConfirm.length}
         active={pipelineFilter}
         onSelect={setPipelineFilter}
+        viewMode={viewMode}
+        onViewMode={setViewMode}
       />
 
-      {/* Tabela */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <Loader2 className="w-6 h-6 animate-spin text-gsn-700" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-40 text-sm text-gray-500">
+      {loading ? (
+        <div className="flex items-center justify-center h-40 bg-white rounded-xl border border-gray-200">
+          <Loader2 className="w-6 h-6 animate-spin text-gsn-700" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-40 bg-white rounded-xl border border-gray-200 text-sm text-gray-500 gap-1">
+          <Package className="w-6 h-6 text-gray-300" />
+          <span>
             {originFilter === "portal"
-              ? "Nenhum pedido via Portal B2B no período/filtros selecionados"
+              ? "Nenhum pedido via Portal B2B no período/filtros"
               : "Nenhum pedido no período/filtros selecionados"}
-          </div>
-        ) : (
+          </span>
+        </div>
+      ) : viewMode === "funil" ? (
+        <FunnelBoard
+          orders={filtered}
+          effStatus={effStatus}
+          isConfirmed={isConfirmed}
+          sapStatusOf={sapStatusOf}
+          stageSavingId={stageSavingId}
+          confirmingId={confirmingId}
+          followCounts={followCounts}
+          msgSummary={msgSummary}
+          onOpen={setSelected}
+          onMoveStage={moveStage}
+          onConfirm={confirmOrder}
+          activeStage={pipelineFilter}
+        />
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          {filtered.length > 500 && (
+            <p className="px-4 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-100">
+              Exibindo 500 de {fmtNum(filtered.length)} pedidos. Refine a busca ou o período.
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -595,6 +703,7 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
               <tbody>
                 {filtered.slice(0, 500).map((o) => {
                   const notes = followCounts[String(o.doc_entry)] ?? 0;
+                  const stage = effStatus(o);
                   return (
                     <tr
                       key={o.doc_entry}
@@ -622,8 +731,12 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
                           <span className="text-xs text-gray-400">SAP / outros</span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        <OrderStageBadge status={effStatus(o)} />
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <StageSelect
+                          value={stage}
+                          disabled={stageSavingId === o.doc_entry}
+                          onChange={(next) => void moveStage(o, next)}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         {isConfirmed(o) ? (
@@ -696,8 +809,8 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {selected && (
         <OrderDrawer
@@ -1466,16 +1579,226 @@ function RejectReasonModal({
   );
 }
 
+function StageSelect({
+  value,
+  onChange,
+  disabled,
+  compact,
+}: {
+  value: PipelineStatus;
+  onChange: (next: PipelineStatus) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <select
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value as PipelineStatus)}
+      onClick={(e) => e.stopPropagation()}
+      className={cn(
+        "rounded-lg border border-gray-200 bg-white text-xs font-medium text-gray-700 outline-none focus:ring-2 focus:ring-gsn-700/30 disabled:opacity-60",
+        compact ? "h-8 max-w-full px-1.5" : "h-8 px-2 min-w-[8.5rem]",
+        PIPELINE_CLS[value],
+      )}
+      aria-label="Etapa do funil"
+    >
+      {PIPELINE.map((p) => (
+        <option key={p.key} value={p.key}>
+          {p.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function FunnelBoard({
+  orders,
+  effStatus,
+  isConfirmed,
+  sapStatusOf,
+  stageSavingId,
+  confirmingId,
+  followCounts,
+  msgSummary,
+  onOpen,
+  onMoveStage,
+  onConfirm,
+  activeStage,
+}: {
+  orders: SalesOrderRow[];
+  effStatus: (o: SalesOrderRow) => PipelineStatus;
+  isConfirmed: (o: SalesOrderRow) => boolean;
+  sapStatusOf: (o: SalesOrderRow) => StatusKey;
+  stageSavingId: number | null;
+  confirmingId: number | null;
+  followCounts: Record<string, number>;
+  msgSummary: Record<string, B2BOrderMessageSummary>;
+  onOpen: (o: SalesOrderRow) => void;
+  onMoveStage: (o: SalesOrderRow, next: PipelineStatus) => void;
+  onConfirm: (o: SalesOrderRow) => void;
+  activeStage: "todos" | PipelineStatus;
+}) {
+  const columns = useMemo(() => {
+    const keys =
+      activeStage === "todos"
+        ? PIPELINE.map((p) => p.key)
+        : ([activeStage] as PipelineStatus[]);
+    const map = new Map<PipelineStatus, SalesOrderRow[]>();
+    for (const k of keys) map.set(k, []);
+    for (const o of orders) {
+      const s = effStatus(o);
+      if (!map.has(s)) continue;
+      const arr = map.get(s)!;
+      if (arr.length < 80) arr.push(o);
+    }
+    return keys.map((key) => ({
+      key,
+      label: PIPELINE_LABEL[key],
+      cls: PIPELINE_CLS[key],
+      dot: PIPELINE.find((p) => p.key === key)!.dot,
+      items: map.get(key) ?? [],
+      totalInStage: orders.filter((o) => effStatus(o) === key).length,
+    }));
+  }, [orders, effStatus, activeStage]);
+
+  return (
+    <div className="-mx-1 overflow-x-auto pb-2">
+      <div
+        className={cn(
+          "flex gap-3 min-w-min px-1",
+          activeStage !== "todos" && "justify-stretch",
+        )}
+      >
+        {columns.map((col) => (
+          <div
+            key={col.key}
+            className={cn(
+              "flex flex-col rounded-2xl border border-gray-200 bg-gray-50/80",
+              activeStage === "todos"
+                ? "w-[260px] sm:w-[280px] shrink-0"
+                : "w-full min-w-[280px]",
+            )}
+          >
+            <div className="sticky top-0 z-[1] flex items-center gap-2 px-3 py-2.5 border-b border-gray-200/80 bg-white/90 backdrop-blur rounded-t-2xl">
+              <span className={cn("h-2.5 w-2.5 rounded-full", col.dot)} />
+              <span className="text-xs font-semibold text-gray-800">{col.label}</span>
+              <span className="ml-auto text-[11px] font-bold tabular-nums text-gray-500">
+                {col.totalInStage}
+              </span>
+            </div>
+            <div className="flex-1 space-y-2 p-2 max-h-[70vh] overflow-y-auto">
+              {col.items.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-8 px-2">
+                  Nenhum pedido nesta etapa
+                </p>
+              ) : (
+                col.items.map((o) => {
+                  const notes = followCounts[String(o.doc_entry)] ?? 0;
+                  const sum = msgSummary[String(o.doc_entry)];
+                  const confirmed = isConfirmed(o);
+                  return (
+                    <article
+                      key={o.doc_entry}
+                      className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:border-gsn-200 hover:shadow transition cursor-pointer"
+                      onClick={() => onOpen(o)}
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="text-xs font-mono font-semibold text-gray-500">
+                          #{o.doc_num}
+                        </span>
+                        <StatusBadge status={sapStatusOf(o)} />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+                        {o.card_name}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5">{o.card_code}</p>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-sm font-bold text-gray-900 tabular-nums">
+                          {fmtBRL(Number(o.doc_total) || 0)}
+                        </span>
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">
+                          {fmtDateShort(o.doc_date)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {isPortalOrder(o) && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-amber-50 text-amber-700">
+                            <Store className="w-3 h-3" /> Portal
+                          </span>
+                        )}
+                        {!confirmed && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onConfirm(o);
+                            }}
+                            disabled={confirmingId === o.doc_entry}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-gsn-700 text-white disabled:opacity-60"
+                          >
+                            {confirmingId === o.doc_entry ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Check className="w-3 h-3" />
+                            )}
+                            Confirmar
+                          </button>
+                        )}
+                        {(notes > 0 || (sum && sum.messages > 0)) && (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-gray-400">
+                            {notes > 0 && (
+                              <>
+                                <StickyNote className="w-3 h-3" /> {notes}
+                              </>
+                            )}
+                            {sum && sum.messages > 0 && (
+                              <>
+                                <MessageSquare className="w-3 h-3 ml-0.5" /> {sum.messages}
+                              </>
+                            )}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
+                        <StageSelect
+                          value={effStatus(o)}
+                          compact
+                          disabled={stageSavingId === o.doc_entry}
+                          onChange={(next) => onMoveStage(o, next)}
+                        />
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+              {col.totalInStage > col.items.length && (
+                <p className="text-[10px] text-center text-gray-400 py-1">
+                  +{col.totalInStage - col.items.length} nesta etapa — use Lista ou filtre
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PipelineFunnel({
   counts,
   total,
   active,
   onSelect,
+  viewMode,
+  onViewMode,
 }: {
   counts: Record<string, number>;
   total: number;
   active: "todos" | PipelineStatus;
   onSelect: (key: "todos" | PipelineStatus) => void;
+  viewMode: "lista" | "funil";
+  onViewMode: (mode: "lista" | "funil") => void;
 }) {
   const stages = PIPELINE.filter((p) => p.key !== "cancelado");
   const cancelled = counts.cancelado ?? 0;
@@ -1487,18 +1810,46 @@ function PipelineFunnel({
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wide">
           <Layers className="w-3.5 h-3.5" /> Funil de atendimento
         </span>
-        <button
-          type="button"
-          onClick={() => onSelect("todos")}
-          className={cn(
-            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition",
-            active === "todos"
-              ? "border-gsn-700 bg-gsn-50 text-gsn-800"
-              : "border-gray-200 text-gray-500 hover:border-gray-300",
-          )}
-        >
-          Todas <span className="font-semibold tabular-nums">{total}</span>
-        </button>
+        <div className="flex items-center gap-1.5">
+          <div className="inline-flex p-0.5 rounded-lg bg-gray-100 gap-0.5">
+            <button
+              type="button"
+              onClick={() => onViewMode("funil")}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition",
+                viewMode === "funil"
+                  ? "bg-white text-gsn-800 shadow-sm"
+                  : "text-gray-500",
+              )}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" /> Board
+            </button>
+            <button
+              type="button"
+              onClick={() => onViewMode("lista")}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition",
+                viewMode === "lista"
+                  ? "bg-white text-gsn-800 shadow-sm"
+                  : "text-gray-500",
+              )}
+            >
+              <List className="w-3.5 h-3.5" /> Lista
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelect("todos")}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition",
+              active === "todos"
+                ? "border-gsn-700 bg-gsn-50 text-gsn-800"
+                : "border-gray-200 text-gray-500 hover:border-gray-300",
+            )}
+          >
+            Todas <span className="font-semibold tabular-nums">{total}</span>
+          </button>
+        </div>
       </div>
 
       <div className="flex items-end gap-1.5 sm:gap-2 overflow-x-auto pb-1 min-h-[120px]">
