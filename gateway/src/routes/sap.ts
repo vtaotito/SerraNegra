@@ -836,7 +836,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
     // 4. Sync Clientes (BusinessPartners)
     try {
       const entSvc = getEntitiesService();
-      const sapBPs = await entSvc.listBusinessPartners({ limit: 500 }, correlationId);
+      const sapBPs = await entSvc.listBusinessPartners({ limit: 20000 }, correlationId);
       const customersBulk = sapBPs.map((bp) => ({
         card_code: bp.CardCode,
         card_name: bp.CardName || bp.CardCode,
@@ -860,7 +860,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
         ok: custRes.ok,
         imported: custResult?.upserted ?? 0,
         errors: 0,
-        message: `${custResult?.created ?? 0} criados, ${custResult?.updated ?? 0} atualizados`,
+        message: `${custResult?.created ?? 0} criados, ${custResult?.updated ?? 0} atualizados (SAP ${sapBPs.length})`,
       };
     } catch (error) {
       results.customers = { ok: false, imported: 0, errors: 0, message: error instanceof Error ? error.message : "Erro" };
@@ -1145,7 +1145,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
     try {
       const entSvc = getEntitiesService();
-      const sapBPs = await entSvc.listBusinessPartners({ limit: 500 }, correlationId);
+      const sapBPs = await entSvc.listBusinessPartners({ limit: 20000 }, correlationId);
 
       const customersBulk = sapBPs.map((bp) => ({
         card_code: bp.CardCode,
@@ -1375,7 +1375,7 @@ export async function registerSapRoutes(app: FastifyInstance) {
 
     // 5. Clientes (com U_REGIAO)
     try {
-      const bps = await entSvc.listBusinessPartners({ limit: 1000 }, correlationId);
+      const bps = await entSvc.listBusinessPartners({ limit: 20000 }, correlationId);
       const custBulk = bps.map((bp) => ({
         card_code: bp.CardCode, card_name: bp.CardName || bp.CardCode,
         card_type: bp.CardType === "cSupplier" ? "S" : "C",

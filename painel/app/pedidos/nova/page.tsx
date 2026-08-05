@@ -64,7 +64,7 @@ export default function NovaVendaPage() {
     }
     setCustLoading(true);
     const t = setTimeout(() => {
-      fetchCustomers({ search: q, active: true, limit: 20 })
+      fetchCustomers({ search: q, active: true, limit: 50 })
         .then((r) => setCustResults(r.data ?? []))
         .catch(() => setCustResults([]))
         .finally(() => setCustLoading(false));

@@ -12,7 +12,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from sqlalchemy import inspect as sa_inspect, select, text
+from sqlalchemy import func, inspect as sa_inspect, or_, select, text
 from sqlalchemy.orm import Session, selectinload
 
 from .db import Base, engine, get_session
@@ -407,17 +407,24 @@ def list_customers(
     offset: int = 0,
 ):
     """Listagem de clientes."""
-    q = select(DbCustomer).order_by(DbCustomer.card_name.asc())
+    q = select(DbCustomer)
     if search:
+        term = f"%{search.strip()}%"
         q = q.where(
-            DbCustomer.card_code.ilike(f"%{search}%")
-            | DbCustomer.card_name.ilike(f"%{search}%")
+            or_(
+                DbCustomer.card_code.ilike(term),
+                DbCustomer.card_name.ilike(term),
+            )
         )
     if active is not None:
         q = q.where(DbCustomer.is_active == active)
 
-    total = len(db.execute(select(DbCustomer)).scalars().all())
-    rows = db.execute(q.offset(offset).limit(min(max(limit, 1), 200))).scalars().all()
+    total = db.execute(select(func.count()).select_from(q.subquery())).scalar_one()
+    rows = db.execute(
+        q.order_by(DbCustomer.card_name.asc())
+        .offset(max(offset, 0))
+        .limit(min(max(limit, 1), 500))
+    ).scalars().all()
 
     return {
         "data": [
@@ -437,7 +444,7 @@ def list_customers(
             }
             for c in rows
         ],
-        "total": total,
+        "total": int(total or 0),
         "limit": limit,
         "offset": offset,
     }

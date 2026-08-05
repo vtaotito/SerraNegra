@@ -344,28 +344,67 @@ export class SapEntitiesService {
     opts: { limit?: number; cardType?: string } = {},
     correlationId?: string
   ): Promise<SapBusinessPartnerRow[]> {
-    const limit = opts.limit ?? 200;
+    // SAP Service Layer pagina em ~20 registros; sync de clientes precisa de
+    // $skip em loop (igual Items), senão só vêm a 1ª página (~20 BPs).
+    const maxItems = opts.limit ?? 20000;
     const cardType = opts.cardType ?? "cCustomer"; // cCustomer, cSupplier, cLead
-
-    const candidates: string[] = [];
+    const pageSize = 20;
 
     const fullSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress,Address,City,State,ZipCode,Valid,Frozen,UpdateDate,GroupCode,U_REGIAO";
     const minSelect = "CardCode,CardName,CardType,FederalTaxID,Phone1,EmailAddress";
     const bareSelect = "CardCode,CardName,FederalTaxID";
 
-    candidates.push(`/BusinessPartners?$select=${fullSelect}&$filter=CardType eq '${cardType}' and Valid eq 'tYES'&$top=${limit}&$orderby=CardName asc`);
-    candidates.push(`/BusinessPartners?$select=${minSelect}&$filter=CardType eq '${cardType}'&$top=${limit}&$orderby=CardName asc`);
-    candidates.push(`/BusinessPartners?$select=${fullSelect}&$top=${limit}`);
-    candidates.push(`/BusinessPartners?$select=${minSelect}&$top=${limit}`);
-    candidates.push(`/BusinessPartners?$select=${bareSelect}&$top=${limit}`);
+    const candidates: Array<{ label: string; buildUrl: (top: number, skip: number) => string }> = [
+      {
+        label: "cCustomer + Valid",
+        buildUrl: (top, skip) =>
+          `/BusinessPartners?$select=${fullSelect}&$filter=CardType eq '${cardType}' and Valid eq 'tYES'&$top=${top}&$skip=${skip}&$orderby=CardName asc`,
+      },
+      {
+        label: "cCustomer",
+        buildUrl: (top, skip) =>
+          `/BusinessPartners?$select=${minSelect}&$filter=CardType eq '${cardType}'&$top=${top}&$skip=${skip}&$orderby=CardName asc`,
+      },
+      {
+        label: "full sem filtro",
+        buildUrl: (top, skip) =>
+          `/BusinessPartners?$select=${fullSelect}&$top=${top}&$skip=${skip}&$orderby=CardName asc`,
+      },
+      {
+        label: "min sem filtro",
+        buildUrl: (top, skip) =>
+          `/BusinessPartners?$select=${minSelect}&$top=${top}&$skip=${skip}&$orderby=CardName asc`,
+      },
+      {
+        label: "bare",
+        buildUrl: (top, skip) =>
+          `/BusinessPartners?$select=${bareSelect}&$top=${top}&$skip=${skip}&$orderby=CardName asc`,
+      },
+    ];
 
     let lastError: unknown;
-    for (let i = 0; i < candidates.length; i++) {
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const { label, buildUrl } = candidates[ci];
       try {
-        const res = await this.client.get<{ value: SapBusinessPartnerRow[] }>(candidates[i], { correlationId });
-        const bps = res.data.value || [];
-        console.log(`[listBusinessPartners] Candidato #${i + 1} OK - ${bps.length} parceiros`);
-        return bps;
+        const all: SapBusinessPartnerRow[] = [];
+        let skip = 0;
+        while (all.length < maxItems) {
+          const top = Math.min(pageSize, maxItems - all.length);
+          const url = buildUrl(top, skip);
+          const res = await this.client.get<{ value: SapBusinessPartnerRow[] }>(url, {
+            correlationId,
+          });
+          const page = res.data.value || [];
+          if (page.length === 0) break;
+          all.push(...page);
+          console.log(
+            `[listBusinessPartners] ${label} skip=${skip} page=${page.length} acumulado=${all.length}`,
+          );
+          if (page.length < pageSize) break;
+          skip += page.length;
+        }
+        console.log(`[listBusinessPartners] Candidato #${ci + 1} (${label}) OK - ${all.length} parceiros`);
+        return all.slice(0, maxItems);
       } catch (err) {
         lastError = err;
         if (err instanceof SapHttpError && err.status === 400) continue;
