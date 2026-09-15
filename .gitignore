@@ -33,6 +33,12 @@ deploy/.env.local
 !.env.postgres.example
 !gateway/.env.example
 
+# Dump local do catálogo (sync Imperium)
+gateway/tests/gsn-catalog.tsv
+gateway/tests/gsn-estoque.tsv
+gateway/scripts/estoque.wsdl.xml
+gateway/scripts/*.wsdl.xml
+
 # Logs
 *.log
 npm-debug.log*

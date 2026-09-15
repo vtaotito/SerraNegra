@@ -38,6 +38,17 @@ export type ImperiumCargaInput = {
   pedidos: ImperiumPedido[];
 };
 
+export type ImperiumEmbalagem = {
+  codBarras?: string;
+  qtdEmbalagem: number;
+  descricao: string;
+  altura?: number;
+  largura?: number;
+  comprimento?: number;
+  peso?: number;
+  cubagem?: number;
+};
+
 export type ImperiumProdutoCadastro = {
   idProduto: string;
   descricao: string;
@@ -45,6 +56,9 @@ export type ImperiumProdutoCadastro = {
   idFabricante: string;
   tipo: string;
   idClasse: string;
+  referencia?: string;
+  possuiPesoVariavel?: "S" | "N";
+  embalagens?: ImperiumEmbalagem[];
 };
 
 export type ImperiumNotaSaida = {
@@ -60,6 +74,53 @@ export type ImperiumNotaSaida = {
     qtd: number;
     valorVenda: number;
   }>;
+};
+
+export type ImperiumFornecedor = {
+  idFornecedor: string;
+  nome: string;
+  cnpj?: string;
+  insc?: string;
+  cpf?: string;
+};
+
+export type ImperiumNotaEntrada = {
+  idFornecedor: string;
+  numero: string;
+  serie: string;
+  dataEmissao: string;
+  placa?: string;
+  bonificacao?: "S" | "N";
+  observacao?: string;
+  cnpjDestinatario?: string;
+  itens: Array<{ idProduto: string; grade?: string; quantidade: number }>;
+};
+
+export type ImperiumFiltroProduto = {
+  codProduto: string;
+  grade?: string;
+};
+
+export type ImperiumEstoquePosicao = {
+  codProduto: string;
+  grade: string;
+  estoqueArmazenado: number;
+  estoqueDisponivel: number;
+  areaArmazenagem: string;
+};
+
+export type ImperiumMovimentacao = {
+  ponteiro: string;
+  dthMovimentacao: string;
+  codProduto: string;
+  grade: string;
+  motivo: string;
+  quantidade: number;
+  tipo: string;
+  idAreaOrigem: string;
+  areaOrigem: string;
+  idAreaDestino: string;
+  areaDestino: string;
 };
 
 export type ImperiumSoapResult = {

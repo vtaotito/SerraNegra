@@ -13,6 +13,7 @@ import {
   pollImperiumCargas,
   sendOrdersToImperium,
   smokeTestImperium,
+  syncImperiumEstoque,
   syncImperiumProducts,
   type ImperiumCargaRow,
   type ImperiumHealth,
@@ -115,7 +116,7 @@ export function ImperiumPanel({
         { key: "IMPERIUM_BASE_URL", required: true },
         { key: "IMPERIUM_USERNAME", required: true },
         { key: "IMPERIUM_PASSWORD", required: true },
-        { key: "IMPERIUM_CNPJ_EMITENTE", note: "necessário para informar NF" },
+        { key: "IMPERIUM_CNPJ_EMITENTE", note: "GSN 18921882000193" },
       ]}
       actions={
         <div className="flex flex-wrap gap-2">
@@ -140,11 +141,22 @@ export function ImperiumPanel({
           <button
             type="button"
             disabled={!allowed || busy !== null || !health?.configured}
-            onClick={() => run("produtos", () => syncImperiumProducts(200), "Produtos enviados ao Imperium")}
+            onClick={() => run("produtos", () => syncImperiumProducts(5000), "Produtos enviados ao Imperium")}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
           >
             {busy === "produtos" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
             Sync produtos
+          </button>
+          <button
+            type="button"
+            disabled={!allowed || busy !== null || !health?.configured}
+            onClick={() =>
+              run("estoque", () => syncImperiumEstoque(), "Estoque sincronizado do Imperium")
+            }
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {busy === "estoque" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+            Sync estoque
           </button>
           <button
             type="button"

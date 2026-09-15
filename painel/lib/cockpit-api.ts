@@ -801,6 +801,16 @@ export function syncImperiumProducts(limit = 200): Promise<{ ok: boolean; sent: 
   return post("/integrations/imperium/produtos/sync", { limit });
 }
 
+export function syncImperiumEstoque(): Promise<{
+  ok: boolean;
+  positions: number;
+  comSaldo: number;
+  movements: number;
+  ponteiro: string;
+}> {
+  return post("/integrations/imperium/estoque/sync");
+}
+
 export function sendOrdersToImperium(data: {
   docNums: number[];
   placa?: string;

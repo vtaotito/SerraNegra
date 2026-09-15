@@ -85,6 +85,87 @@ export function parseSoapBoolean(xml: string): boolean | null {
   return null;
 }
 
+function tagValue(xml: string, tag: string): string {
+  const re = new RegExp(`<(?:[\\w-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w-]+:)?${tag}>`, "i");
+  const match = xml.match(re);
+  return match ? decodeXml(match[1].trim()) : "";
+}
+
+function soapBlocks(xml: string, tags: string[]): string[] {
+  const re = new RegExp(`<(?:[\\w-]+:)?(?:${tags.join("|")})\\b[^>]*>([\\s\\S]*?)</(?:[\\w-]+:)?(?:${tags.join("|")})>`, "gi");
+  const out: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(xml)) !== null) {
+    out.push(match[1]);
+  }
+  return out;
+}
+
+function soapNumber(value: string): number {
+  if (!value) return 0;
+  const n = Number(value.replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapEstoquePosicao(inner: string): {
+  codProduto: string;
+  grade: string;
+  estoqueArmazenado: number;
+  estoqueDisponivel: number;
+  areaArmazenagem: string;
+} {
+  return {
+    codProduto: tagValue(inner, "codProduto") || tagValue(inner, "idProduto"),
+    grade: tagValue(inner, "grade") || "UNICA",
+    estoqueArmazenado: soapNumber(tagValue(inner, "estoqueArmazenado")),
+    estoqueDisponivel: soapNumber(tagValue(inner, "estoqueDisponivel")),
+    areaArmazenagem: tagValue(inner, "areaArmazenagem"),
+  };
+}
+
+export function parseEstoqueResponse(xml: string): Array<{
+  codProduto: string;
+  grade: string;
+  estoqueArmazenado: number;
+  estoqueDisponivel: number;
+  areaArmazenagem: string;
+}> {
+  const rows = soapBlocks(xml, ["item", "estoque"]).map(mapEstoquePosicao).filter((row) => row.codProduto);
+  if (rows.length > 0) return rows;
+  const single = mapEstoquePosicao(xml);
+  return single.codProduto ? [single] : [];
+}
+
+export function parseMovimentacaoResponse(xml: string): Array<{
+  ponteiro: string;
+  dthMovimentacao: string;
+  codProduto: string;
+  grade: string;
+  motivo: string;
+  quantidade: number;
+  tipo: string;
+  idAreaOrigem: string;
+  areaOrigem: string;
+  idAreaDestino: string;
+  areaDestino: string;
+}> {
+  return soapBlocks(xml, ["item", "historicoMovimentacao"])
+    .map((inner) => ({
+      ponteiro: tagValue(inner, "ponteiro"),
+      dthMovimentacao: tagValue(inner, "dthMovimentacao"),
+      codProduto: tagValue(inner, "codProduto"),
+      grade: tagValue(inner, "grade") || "UNICA",
+      motivo: tagValue(inner, "motivo"),
+      quantidade: soapNumber(tagValue(inner, "quantidade")),
+      tipo: tagValue(inner, "tipo"),
+      idAreaOrigem: tagValue(inner, "idAreaOrigem"),
+      areaOrigem: tagValue(inner, "areaOrigem"),
+      idAreaDestino: tagValue(inner, "idAreaDestino"),
+      areaDestino: tagValue(inner, "areaDestino"),
+    }))
+    .filter((row) => row.ponteiro || row.codProduto);
+}
+
 function decodeXml(value: string): string {
   return value
     .replace(/&lt;/g, "<")

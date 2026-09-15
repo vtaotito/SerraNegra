@@ -1,8 +1,25 @@
 import { describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import { buildEnviarPedidosXml, buildProdutoSalvarXml, buildInformarNotaFiscalXml } from "../src/services/imperium/builders.js";
-import { escapeXml, formatBrMoney, parseSoapBoolean, extractSoapFault, buildSoapEnvelope } from "../src/services/imperium/xml.js";
-import { mapCargaFromOrders, mapProdutoCadastro, mapCliente } from "../src/services/imperium/mappers.js";
+import {
+  buildEnviarPedidosXml,
+  buildProdutoSalvarXml,
+  buildInformarNotaFiscalXml,
+  buildConsultarEstoqueXml,
+  buildConsultarMovimentacaoXml,
+  buildConsultaEstoqueGeralXml,
+  buildFornecedorSalvarXml,
+  buildNotaFiscalSalvarJsonXml,
+} from "../src/services/imperium/builders.js";
+import {
+  escapeXml,
+  formatBrMoney,
+  parseSoapBoolean,
+  extractSoapFault,
+  buildSoapEnvelope,
+  parseEstoqueResponse,
+  parseMovimentacaoResponse,
+} from "../src/services/imperium/xml.js";
+import { mapCargaFromOrders, mapProdutoCadastro, mapCliente, cnpjFromNfeKey } from "../src/services/imperium/mappers.js";
 
 describe("Imperium XML helpers", () => {
   it("escapa caracteres especiais", () => {
@@ -60,17 +77,26 @@ describe("Imperium builders", () => {
     assert.match(xml, /<cpf_cnpj[^>]*>31466253000189<\/cpf_cnpj>/);
   });
 
-  it("produto.salvar segue o contrato simplificado", () => {
+  it("produto.salvar segue o contrato unitário com embalagens", () => {
     const xml = buildProdutoSalvarXml({
-      idProduto: "200",
-      descricao: "PRODUTO DE TESTE",
+      idProduto: "96757",
+      descricao: "BEB LACTEA LIQ IBITURUNA 200ML MORANGO",
       grade: "UNICA",
       idFabricante: "1",
       tipo: "1",
-      idClasse: "130900",
+      idClasse: "101",
+      referencia: "96757",
+      possuiPesoVariavel: "N",
+      embalagens: [
+        { codBarras: "7896401601822", qtdEmbalagem: 1, descricao: "UN" },
+        { codBarras: "", qtdEmbalagem: 27, descricao: "CX" },
+      ],
     });
-    assert.match(xml, /<idProduto[^>]*>200<\/idProduto>/);
+    assert.match(xml, /<idProduto[^>]*>96757<\/idProduto>/);
     assert.match(xml, /<tipo[^>]*>1<\/tipo>/);
+    assert.match(xml, /<codBarras[^>]*>7896401601822<\/codBarras>/);
+    assert.match(xml, /<qtdEmbalagem[^>]*>27<\/qtdEmbalagem>/);
+    assert.match(xml, /<possuiPesoVariavel[^>]*>N<\/possuiPesoVariavel>/);
   });
 
   it("informarNotaFiscal inclui chave de 44 dígitos", () => {
@@ -87,6 +113,94 @@ describe("Imperium builders", () => {
     ]);
     assert.match(xml, /<chaveAcesso[^>]*>51080701212344000127550010000000981364117781<\/chaveAcesso>/);
     assert.match(xml, /<numeroNf[^>]*>140872<\/numeroNf>/);
+  });
+
+  it("consultarEstoque segue o XMLWebService (filtroProduto + grade)", () => {
+    const xml = buildConsultarEstoqueXml([
+      { codProduto: "106522", grade: "UNICA" },
+      { codProduto: "67891" },
+    ]);
+    assert.match(xml, /<filtroProduto>/);
+    assert.match(xml, /<codProduto[^>]*>106522<\/codProduto>/);
+    assert.match(xml, /<codProduto[^>]*>67891<\/codProduto>/);
+    assert.match(xml, /<grade[^>]*>UNICA<\/grade>/);
+    assert.match(xml, /ArrayOffiltroProduto/);
+  });
+
+  it("consultarMovimentacao envia o ponteiro", () => {
+    const xml = buildConsultarMovimentacaoXml("3");
+    assert.match(xml, /<ponteiro[^>]*>3<\/ponteiro>/);
+    assert.match(buildConsultaEstoqueGeralXml(""), /<idAreas[^>]*><\/idAreas>/);
+  });
+
+  it("fornecedor.salvar e notaFiscal.salvarJson seguem o XMLWebService", () => {
+    const forn = buildFornecedorSalvarXml({
+      idFornecedor: "GSN1",
+      nome: "FORNECEDOR TESTE",
+      cnpj: "18921882000193",
+    });
+    assert.match(forn, /<idFornecedor[^>]*>GSN1<\/idFornecedor>/);
+    assert.match(forn, /<cnpj[^>]*>18921882000193<\/cnpj>/);
+
+    const nf = buildNotaFiscalSalvarJsonXml({
+      idFornecedor: "GSN1",
+      numero: "360413",
+      serie: "1",
+      dataEmissao: "15/09/2015",
+      placa: "AAA0000",
+      itens: [{ idProduto: "AR00000001", grade: "UNICA", quantidade: 50 }],
+    });
+    assert.match(nf, /<idFornecedor[^>]*>GSN1<\/idFornecedor>/);
+    assert.match(nf, /idProduto/);
+    assert.match(nf, /AR00000001/);
+  });
+});
+
+describe("Imperium estoque parsers", () => {
+  it("lê historicoMovimentacao do XML de exemplo", () => {
+    const sample = `<return SOAP-ENC:arrayType="ns1:historicoMovimentacao[2]">
+      <item xsi:type="ns1:historicoMovimentacao">
+        <ponteiro xsi:type="xsd:string">3</ponteiro>
+        <dthMovimentacao xsi:type="xsd:string">24/01/2023 20:30:44</dthMovimentacao>
+        <codProduto xsi:type="xsd:string">IVF00011</codProduto>
+        <grade xsi:type="xsd:string">UNICA</grade>
+        <motivo xsi:type="xsd:string">MOVIMENTACAO PADRAO</motivo>
+        <quantidade xsi:type="xsd:float">-33</quantidade>
+        <tipo xsi:type="xsd:string">M</tipo>
+      </item>
+    </return>`;
+    const rows = parseMovimentacaoResponse(sample);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].codProduto, "IVF00011");
+    assert.equal(rows[0].quantidade, -33);
+    assert.equal(rows[0].ponteiro, "3");
+  });
+
+  it("lê posições de estoque do WSDL", () => {
+    const sample = `<return>
+      <item xsi:type="ns1:estoque">
+        <codProduto>AR00000001</codProduto>
+        <grade>UNICA</grade>
+        <estoqueArmazenado>12</estoqueArmazenado>
+        <estoqueDisponivel>10.5</estoqueDisponivel>
+        <areaArmazenagem>PULMAO</areaArmazenagem>
+      </item>
+    </return>`;
+    const rows = parseEstoqueResponse(sample);
+    assert.equal(rows[0].estoqueDisponivel, 10.5);
+    assert.equal(rows[0].areaArmazenagem, "PULMAO");
+  });
+
+  it("lê saldo embutido em produto.listar", () => {
+    const sample = `<return><produtos><item xsi:type="ns1:produto">
+      <idProduto>GF00000014</idProduto>
+      <grade>UNICA</grade>
+      <estoqueArmazenado>4</estoqueArmazenado>
+      <estoqueDisponivel>3</estoqueDisponivel>
+    </item></produtos></return>`;
+    const rows = parseEstoqueResponse(sample);
+    assert.equal(rows[0].codProduto, "GF00000014");
+    assert.equal(rows[0].estoqueDisponivel, 3);
   });
 });
 
@@ -125,9 +239,24 @@ describe("Imperium mappers", () => {
     assert.equal(cliente.tipoPessoa, "J");
   });
 
-  it("mapeia item do catálogo", () => {
-    const p = mapProdutoCadastro({ ItemCode: "ABC", ItemName: "Garrafa" });
-    assert.equal(p.idProduto, "ABC");
+  it("mapeia item do catálogo com embalagem e grupo SAP", () => {
+    const p = mapProdutoCadastro({
+      sap_item_code: "AR00000001",
+      sap_item_name: "BARRICA 3,5 LITROS",
+      unit_of_measure: "UN",
+      packaging_type: "Caixa",
+      units_per_package: 12,
+      sap_group_code: 132,
+    });
+    assert.equal(p.idProduto, "AR00000001");
     assert.equal(p.tipo, "1");
+    assert.equal(p.idClasse, "132");
+    assert.equal(p.embalagens?.length, 2);
+    assert.equal(p.embalagens?.[1].qtdEmbalagem, 12);
+  });
+
+  it("extrai CNPJ emitente da chave de acesso", () => {
+    assert.equal(cnpjFromNfeKey("51080701212344000127550010000000981364117781"), "01212344000127");
+    assert.equal(cnpjFromNfeKey("curta"), "");
   });
 });

@@ -45,7 +45,10 @@ export async function callImperiumSoap(
 
   const bodyXml = await res.body.text();
   const durationMs = Date.now() - started;
-  const fault = extractSoapFault(bodyXml);
+  let fault = extractSoapFault(bodyXml);
+  if (fault && /wms\.local/i.test(fault)) {
+    fault = `${fault} — o servidor Imperium tenta carregar o WSDL em http://wms.local (hostname interno). É preciso apontar wms.local para 127.0.0.1 no host do WMS ou publicar o WSDL no IP público.`;
+  }
   const booleanReturn = parseSoapBoolean(bodyXml);
 
   return {

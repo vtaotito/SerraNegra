@@ -43,6 +43,31 @@ export async function ensureImperiumSchema(db: pg.Pool): Promise<void> {
       value       TEXT,
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS imperium_stock (
+      cod_produto         TEXT NOT NULL,
+      grade               TEXT NOT NULL DEFAULT 'UNICA',
+      area_armazenagem    TEXT NOT NULL DEFAULT '',
+      estoque_armazenado  NUMERIC,
+      estoque_disponivel  NUMERIC,
+      synced_at           TIMESTAMPTZ DEFAULT NOW(),
+      PRIMARY KEY (cod_produto, grade, area_armazenagem)
+    );
+
+    CREATE TABLE IF NOT EXISTS imperium_stock_movements (
+      ponteiro          TEXT PRIMARY KEY,
+      dth_movimentacao  TEXT,
+      cod_produto       TEXT,
+      grade             TEXT,
+      motivo            TEXT,
+      quantidade        NUMERIC,
+      tipo              TEXT,
+      id_area_origem    TEXT,
+      area_origem       TEXT,
+      id_area_destino   TEXT,
+      area_destino      TEXT,
+      synced_at         TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   schemaReady = true;

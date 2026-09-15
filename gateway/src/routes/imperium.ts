@@ -50,6 +50,27 @@ export async function registerImperiumRoutes(app: FastifyInstance) {
     }
   });
 
+  app.post("/integrations/imperium/estoque/sync", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as { ponteiro?: string; skus?: string[] };
+      const svc = service(app);
+      return reply.send(await svc.syncEstoque(body));
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.get("/integrations/imperium/estoque", async (req, reply) => {
+    try {
+      const q = req.query as { limit?: string };
+      const svc = service(app);
+      const items = await svc.listEstoque(Number(q.limit) || 200);
+      return reply.send({ ok: true, items });
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
   app.post("/integrations/imperium/produtos/sync", async (req, reply) => {
     try {
       const body = (req.body ?? {}) as { limit?: number };
@@ -108,6 +129,53 @@ export async function registerImperiumRoutes(app: FastifyInstance) {
     try {
       const svc = service(app);
       return reply.send(await svc.pollCargas());
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/integrations/imperium/fornecedores", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as {
+        idFornecedor?: string;
+        nome?: string;
+        cnpj?: string;
+        insc?: string;
+      };
+      if (!body.idFornecedor || !body.nome) {
+        return reply.code(400).send({ ok: false, error: "idFornecedor e nome obrigatórios" });
+      }
+      const svc = service(app);
+      return reply.send(await svc.saveFornecedor(body as { idFornecedor: string; nome: string }));
+    } catch (err) {
+      return sendError(reply, err);
+    }
+  });
+
+  app.post("/integrations/imperium/notas-entrada", async (req, reply) => {
+    try {
+      const body = (req.body ?? {}) as {
+        idFornecedor?: string;
+        numero?: string;
+        serie?: string;
+        dataEmissao?: string;
+        placa?: string;
+        itens?: Array<{ idProduto: string; grade?: string; quantidade: number }>;
+      };
+      if (!body.idFornecedor || !body.numero || !body.dataEmissao || !body.itens?.length) {
+        return reply.code(400).send({ ok: false, error: "idFornecedor, numero, dataEmissao e itens são obrigatórios" });
+      }
+      const svc = service(app);
+      return reply.send(
+        await svc.saveNotaEntrada({
+          idFornecedor: body.idFornecedor,
+          numero: body.numero,
+          serie: body.serie ?? "1",
+          dataEmissao: body.dataEmissao,
+          placa: body.placa,
+          itens: body.itens,
+        }),
+      );
     } catch (err) {
       return sendError(reply, err);
     }

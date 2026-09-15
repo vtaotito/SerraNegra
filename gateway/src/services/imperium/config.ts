@@ -4,7 +4,8 @@ export type ImperiumService =
   | "produtoClasse"
   | "notaFiscal"
   | "fornecedor"
-  | "fabricante";
+  | "fabricante"
+  | "estoque";
 
 export type ImperiumConfig = {
   configured: boolean;
@@ -34,7 +35,7 @@ export function loadImperiumConfig(): ImperiumConfig {
     defaultGrade: (process.env.IMPERIUM_DEFAULT_GRADE ?? "UNICA").trim() || "UNICA",
     defaultClasse: (process.env.IMPERIUM_DEFAULT_CLASSE ?? "130900").trim(),
     defaultFabricante: (process.env.IMPERIUM_DEFAULT_FABRICANTE ?? "1").trim(),
-    cnpjEmitente: (process.env.IMPERIUM_CNPJ_EMITENTE ?? "").trim(),
+    cnpjEmitente: (process.env.IMPERIUM_CNPJ_EMITENTE ?? "18921882000193").replace(/\D/g, ""),
   };
 }
 

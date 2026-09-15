@@ -1,5 +1,12 @@
 import { formatBrMoney, xmlFloat, xmlInt, xmlString } from "./xml.js";
-import type { ImperiumCargaInput, ImperiumNotaSaida, ImperiumProdutoCadastro } from "./types.js";
+import type {
+  ImperiumCargaInput,
+  ImperiumFiltroProduto,
+  ImperiumFornecedor,
+  ImperiumNotaEntrada,
+  ImperiumNotaSaida,
+  ImperiumProdutoCadastro,
+} from "./types.js";
 
 export function buildEnviarPedidosXml(input: ImperiumCargaInput): string {
   const pedidos = input.pedidos
@@ -66,13 +73,41 @@ ${pedidos}
 }
 
 export function buildProdutoSalvarXml(input: ImperiumProdutoCadastro): string {
+  const embalagens = (input.embalagens ?? [])
+    .map(
+      (e) => `               <embalagem>
+                  ${xmlString("codBarras", e.codBarras ?? "")}
+                  ${xmlFloat("qtdEmbalagem", e.qtdEmbalagem)}
+                  ${xmlString("descricao", e.descricao)}
+                  ${xmlFloat("altura", e.altura ?? 0)}
+                  ${xmlFloat("largura", e.largura ?? 0)}
+                  ${xmlFloat("comprimento", e.comprimento ?? 0)}
+                  ${xmlFloat("peso", e.peso ?? 0)}
+                  ${xmlFloat("cubagem", e.cubagem ?? 0)}
+               </embalagem>`,
+    )
+    .join("\n");
+
   return `
          ${xmlString("idProduto", input.idProduto)}
          ${xmlString("descricao", input.descricao)}
          ${xmlString("grade", input.grade)}
          ${xmlString("idFabricante", input.idFabricante)}
          ${xmlString("tipo", input.tipo)}
-         ${xmlString("idClasse", input.idClasse)}`;
+         ${xmlString("idClasse", input.idClasse)}
+         <embalagens xsi:type="tns:ArrayOfembalagem">
+${embalagens}
+         </embalagens>
+         ${xmlString("referencia", input.referencia ?? "")}
+         ${xmlString("possuiPesoVariavel", input.possuiPesoVariavel ?? "N")}
+         <volumes xsi:type="tns:ArrayOfvolume"/>`;
+}
+
+export function buildProdutoClasseSalvarXml(idClasse: string, nome: string, idClassePai = ""): string {
+  return `
+         ${xmlString("idClasse", idClasse)}
+         ${xmlString("nome", nome)}
+         ${xmlString("idClassePai", idClassePai)}`;
 }
 
 export function buildInformarNotaFiscalXml(notas: ImperiumNotaSaida[]): string {
@@ -164,4 +199,106 @@ export function buildFabricanteSalvarXml(idFabricante: string, nome: string): st
 
 export function buildEmptyBody(): string {
   return "";
+}
+
+export function buildConsultaEstoqueGeralXml(idAreas = ""): string {
+  return `
+         ${xmlString("idAreas", idAreas)}`;
+}
+
+export function buildConsultarEstoqueXml(produtos: ImperiumFiltroProduto[], idAreas = ""): string {
+  const items = produtos
+    .map(
+      (p) => `         		<filtroProduto>
+         			${xmlString("codProduto", p.codProduto)}
+         			${xmlString("grade", p.grade ?? "UNICA")}
+         		</filtroProduto>`,
+    )
+    .join("\n");
+
+  return `
+         <produtos xsi:type="tns:ArrayOffiltroProduto">
+${items}
+         </produtos>
+         ${xmlString("idAreas", idAreas)}`;
+}
+
+export function buildConsultarEstoqueFiltradoXml(tipoFiltro: string, filtro: string): string {
+  return `
+         ${xmlString("tipoFiltro", tipoFiltro)}
+         ${xmlString("filtro", filtro)}`;
+}
+
+export function buildConsultarMovimentacaoXml(ponteiro: string): string {
+  return `
+         ${xmlString("ponteiro", ponteiro)}`;
+}
+
+export function buildFornecedorSalvarXml(input: ImperiumFornecedor): string {
+  return `
+         ${xmlString("idFornecedor", input.idFornecedor)}
+         ${xmlString("cnpj", input.cnpj ?? "")}
+         ${xmlString("insc", input.insc ?? "")}
+         ${xmlString("nome", input.nome)}
+         ${xmlString("cpf", input.cpf ?? "")}`;
+}
+
+export function buildNotaFiscalSalvarXml(input: ImperiumNotaEntrada): string {
+  const itens = input.itens
+    .map(
+      (item) => `			<item xsi:type="tns:item">
+				${xmlString("idProduto", item.idProduto)}
+				${xmlString("grade", item.grade ?? "UNICA")}
+				${xmlString("quantidade", String(item.quantidade))}
+			</item>`,
+    )
+    .join("\n");
+
+  return `
+		${xmlString("idFornecedor", input.idFornecedor)}
+		${xmlString("numero", input.numero)}
+		${xmlString("serie", input.serie)}
+		${xmlString("dataEmissao", input.dataEmissao)}
+		${xmlString("tipoNota", "E")}
+		${xmlString("placa", input.placa ?? "")}
+		<itens xsi:type="tns:ArrayOfitem">
+${itens}
+		</itens>
+		${xmlString("bonificacao", input.bonificacao ?? "N")}`;
+}
+
+export function buildNotaFiscalSalvarJsonXml(input: ImperiumNotaEntrada): string {
+  const itensJson = JSON.stringify({
+    produtos: input.itens.map((item) => ({
+      idProduto: item.idProduto,
+      grade: item.grade ?? "UNICA",
+      quantidade: String(item.quantidade),
+    })),
+  });
+
+  return `
+         ${xmlString("idFornecedor", input.idFornecedor)}
+         ${xmlString("numero", input.numero)}
+         ${xmlString("serie", input.serie)}
+         ${xmlString("dataEmissao", input.dataEmissao)}
+         ${xmlString("placa", input.placa ?? "")}
+         ${xmlString("itens", itensJson)}
+         ${xmlString("bonificacao", input.bonificacao ?? "N")}
+         ${xmlString("observacao", input.observacao ?? "")}
+         ${xmlString("cnpjDestinatario", input.cnpjDestinatario ?? "")}`;
+}
+
+export function buildBuscarNfXml(input: {
+  idFornecedor: string;
+  numero: string;
+  serie: string;
+  dataEmissao: string;
+  tipoNota?: string;
+}): string {
+  return `
+         ${xmlString("idFornecedor", input.idFornecedor)}
+         ${xmlString("numero", input.numero)}
+         ${xmlString("serie", input.serie)}
+         ${xmlString("dataEmissao", input.dataEmissao)}
+         ${input.tipoNota ? xmlString("tipoNota", input.tipoNota) : ""}`;
 }

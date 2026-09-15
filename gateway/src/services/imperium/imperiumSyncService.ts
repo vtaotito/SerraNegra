@@ -3,23 +3,30 @@ import { createSapClient } from "../../config/sap.js";
 import { sapConfigStore } from "../../config/sapConfigStore.js";
 import { loadImperiumConfig, maskUrl } from "./config.js";
 import {
+  buildBuscarNfXml,
   buildCancelarNotaFiscalXml,
   buildCancelarPedidoXml,
   buildChecarStatusXml,
+  buildConsultaEstoqueGeralXml,
   buildConsultarCargaXml,
+  buildConsultarEstoqueXml,
+  buildConsultarMovimentacaoXml,
   buildConsultarPedidoXml,
   buildEmptyBody,
   buildEnviarPedidosXml,
   buildFabricanteSalvarXml,
+  buildFornecedorSalvarXml,
   buildInformarNotaFiscalXml,
   buildListCargasXml,
+  buildNotaFiscalSalvarJsonXml,
+  buildProdutoClasseSalvarXml,
   buildProdutoSalvarXml,
 } from "./builders.js";
-import { formatBrDate, extractTag } from "./xml.js";
+import { formatBrDate, extractTag, parseEstoqueResponse, parseMovimentacaoResponse } from "./xml.js";
 import { callImperiumSoap, ImperiumNotConfiguredError, probeImperiumWsdl } from "./soapClient.js";
 import { mapCargaFromOrders, mapNotasSaida, mapProdutoCadastro, type SapPartner } from "./mappers.js";
 import { ensureImperiumSchema } from "./schema.js";
-import type { ImperiumSoapResult } from "./types.js";
+import type { ImperiumFornecedor, ImperiumNotaEntrada, ImperiumSoapResult } from "./types.js";
 
 type Logger = {
   info: (obj: unknown, msg?: string) => void;
@@ -117,6 +124,7 @@ export class ImperiumSyncService {
     if (!cfg.configured) throw new ImperiumNotConfiguredError();
 
     const wsdl = await probeImperiumWsdl("produto");
+    const estoqueWsdl = await probeImperiumWsdl("estoque");
     const listar = await callImperiumSoap("produto", "listar", buildEmptyBody());
     const hoje = new Date();
     const ini = new Date(hoje.getTime() - 7 * 86400000);
@@ -128,6 +136,11 @@ export class ImperiumSyncService {
 
     return {
       wsdl,
+      estoqueWsdl: {
+        ok: estoqueWsdl.ok,
+        message: estoqueWsdl.message,
+        wmsLocal: /wms\.local/i.test(estoqueWsdl.message),
+      },
       produtoListar: {
         ok: listar.ok,
         statusCode: listar.statusCode,
@@ -146,7 +159,7 @@ export class ImperiumSyncService {
 
   async ensureDefaultFabricante() {
     const cfg = loadImperiumConfig();
-    const xml = buildFabricanteSalvarXml(cfg.defaultFabricante, "GSN");
+    const xml = buildFabricanteSalvarXml(cfg.defaultFabricante, "Garrafaria Serra Negra");
     const result = await callImperiumSoap("fabricante", "salvar", xml);
     await recordOutbox(this.db, {
       entityType: "fabricante",
@@ -156,14 +169,49 @@ export class ImperiumSyncService {
       result,
       idempotencyKey: `fabricante:${cfg.defaultFabricante}`,
     });
+    if (!result.ok) throw soapError(result);
     return result;
+  }
+
+  async ensureClasses(classes: Array<{ idClasse: string; nome: string }>) {
+    const cfg = loadImperiumConfig();
+    const unique = new Map<string, string>();
+    unique.set(cfg.defaultClasse, "GSN");
+    for (const c of classes) {
+      if (c.idClasse) unique.set(c.idClasse, c.nome.slice(0, 80) || `Grupo ${c.idClasse}`);
+    }
+
+    let saved = 0;
+    for (const [idClasse, nome] of unique) {
+      const xml = buildProdutoClasseSalvarXml(idClasse, nome);
+      const result = await callImperiumSoap("produtoClasse", "salvar", xml);
+      await recordOutbox(this.db, {
+        entityType: "produtoClasse",
+        entityId: idClasse,
+        method: "salvar",
+        payloadXml: xml,
+        result,
+        idempotencyKey: `produtoClasse:${idClasse}`,
+      });
+      if (!result.ok) throw soapError(result);
+      saved += 1;
+    }
+    return saved;
   }
 
   async syncProducts(opts: { limit?: number } = {}) {
     await this.init();
     await this.ensureDefaultFabricante();
 
-    const items = await this.listLocalCatalog(opts.limit ?? 500);
+    const items = await this.listLocalCatalog(opts.limit ?? 5000);
+    await this.ensureClasses(
+      items
+        .filter((i) => i.sap_group_code != null)
+        .map((i) => ({
+          idClasse: String(i.sap_group_code),
+          nome: i.category_name || `Grupo SAP ${i.sap_group_code}`,
+        })),
+    );
     let sent = 0;
     let failed = 0;
     const errors: string[] = [];
@@ -200,6 +248,152 @@ export class ImperiumSyncService {
     );
 
     return { ok: failed === 0, fetched: items.length, sent, failed, errors: errors.slice(0, 20) };
+  }
+
+  async syncEstoque(opts: { ponteiro?: string; skus?: string[] } = {}) {
+    await this.init();
+    const cfg = loadImperiumConfig();
+    const grade = cfg.defaultGrade;
+
+    let snapshotXml = buildConsultaEstoqueGeralXml();
+    let snapshotRes = await callImperiumSoap("estoque", "consultaEstoqueGeral", snapshotXml);
+    let positions = snapshotRes.ok ? parseEstoqueResponse(snapshotRes.bodyXml) : [];
+
+    if (!snapshotRes.ok || positions.length === 0) {
+      snapshotXml = buildEmptyBody();
+      snapshotRes = await callImperiumSoap("produto", "listar", snapshotXml);
+      await recordOutbox(this.db, {
+        entityType: "estoque",
+        entityId: "produto.listar",
+        method: "listar",
+        payloadXml: snapshotXml,
+        result: snapshotRes,
+        idempotencyKey: `produto.listar:${new Date().toISOString().slice(0, 10)}`,
+      });
+      if (snapshotRes.ok) {
+        positions = parseEstoqueResponse(snapshotRes.bodyXml);
+      }
+    } else {
+      await recordOutbox(this.db, {
+        entityType: "estoque",
+        entityId: "geral",
+        method: "consultaEstoqueGeral",
+        payloadXml: snapshotXml,
+        result: snapshotRes,
+        idempotencyKey: `consultaEstoqueGeral:${new Date().toISOString().slice(0, 10)}`,
+      });
+    }
+
+    if (positions.length === 0) {
+      const skus = opts.skus?.length
+        ? opts.skus
+        : (await this.listLocalCatalog(5000)).map((i) => i.sap_item_code).filter(Boolean);
+      const batchSize = 80;
+      for (let i = 0; i < skus.length; i += batchSize) {
+        const batch = skus.slice(i, i + batchSize).map((codProduto) => ({ codProduto, grade }));
+        snapshotXml = buildConsultarEstoqueXml(batch);
+        snapshotRes = await callImperiumSoap("estoque", "consultarEstoque", snapshotXml);
+        if (!snapshotRes.ok) {
+          await recordOutbox(this.db, {
+            entityType: "estoque",
+            entityId: `consultarEstoque:${i}`,
+            method: "consultarEstoque",
+            payloadXml: snapshotXml,
+            result: snapshotRes,
+            idempotencyKey: `consultarEstoque:${i}:${Date.now()}`,
+          });
+          throw soapError(snapshotRes);
+        }
+        positions.push(...parseEstoqueResponse(snapshotRes.bodyXml));
+      }
+    }
+
+    for (const pos of positions) {
+      await this.db.query(
+        `INSERT INTO imperium_stock
+           (cod_produto, grade, area_armazenagem, estoque_armazenado, estoque_disponivel, synced_at)
+         VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (cod_produto, grade, area_armazenagem)
+         DO UPDATE SET
+           estoque_armazenado = EXCLUDED.estoque_armazenado,
+           estoque_disponivel = EXCLUDED.estoque_disponivel,
+           synced_at = NOW()`,
+        [pos.codProduto, pos.grade, pos.areaArmazenagem, pos.estoqueArmazenado, pos.estoqueDisponivel],
+      );
+    }
+
+    const savedPointer = await this.db.query<{ value: string | null }>(
+      `SELECT value FROM imperium_sync_state WHERE key = 'estoque.ponteiro'`,
+    );
+    const ponteiro = opts.ponteiro ?? savedPointer.rows[0]?.value ?? "0";
+    const movXml = buildConsultarMovimentacaoXml(ponteiro);
+    const movRes = await callImperiumSoap("estoque", "consultarMovimentacao", movXml);
+    await recordOutbox(this.db, {
+      entityType: "estoque",
+      entityId: ponteiro,
+      method: "consultarMovimentacao",
+      payloadXml: movXml,
+      result: movRes,
+      idempotencyKey: `consultarMovimentacao:${ponteiro}`,
+    });
+    const movements = movRes.ok ? parseMovimentacaoResponse(movRes.bodyXml) : [];
+    let maxPointer = Number(ponteiro) || 0;
+    for (const mov of movements) {
+      await this.db.query(
+        `INSERT INTO imperium_stock_movements
+           (ponteiro, dth_movimentacao, cod_produto, grade, motivo, quantidade, tipo,
+            id_area_origem, area_origem, id_area_destino, area_destino, synced_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+         ON CONFLICT (ponteiro) DO UPDATE SET
+           dth_movimentacao = EXCLUDED.dth_movimentacao,
+           quantidade = EXCLUDED.quantidade,
+           synced_at = NOW()`,
+        [
+          mov.ponteiro,
+          mov.dthMovimentacao,
+          mov.codProduto,
+          mov.grade,
+          mov.motivo,
+          mov.quantidade,
+          mov.tipo,
+          mov.idAreaOrigem,
+          mov.areaOrigem,
+          mov.idAreaDestino,
+          mov.areaDestino,
+        ],
+      );
+      const n = Number(mov.ponteiro);
+      if (Number.isFinite(n) && n > maxPointer) maxPointer = n;
+    }
+
+    await this.db.query(
+      `INSERT INTO imperium_sync_state (key, value, updated_at)
+       VALUES ('estoque.ponteiro', $1, NOW()),
+              ('estoque.last_sync', $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [String(maxPointer), new Date().toISOString()],
+    );
+
+    const comSaldo = positions.filter((p) => p.estoqueDisponivel > 0 || p.estoqueArmazenado > 0).length;
+    return {
+      ok: true,
+      positions: positions.length,
+      comSaldo,
+      movements: movements.length,
+      ponteiro: String(maxPointer),
+    };
+  }
+
+  async listEstoque(limit = 200) {
+    await this.init();
+    const res = await this.db.query(
+      `SELECT cod_produto, grade, area_armazenagem, estoque_armazenado, estoque_disponivel, synced_at
+         FROM imperium_stock
+        ORDER BY estoque_disponivel DESC, cod_produto
+        LIMIT $1`,
+      [limit],
+    );
+    return res.rows;
   }
 
   async sendCargas(opts: { docNums: number[]; placa?: string; placaExpedicao?: string }) {
@@ -277,8 +471,8 @@ export class ImperiumSyncService {
     if (mapped.length === 0) {
       return { ok: true, sent: 0, skipped: "NF sem número/chave" };
     }
-    if (!cfg.cnpjEmitente) {
-      return { ok: false, sent: 0, skipped: "IMPERIUM_CNPJ_EMITENTE não configurado" };
+    if (mapped.some((n) => !n.cnpjEmitente)) {
+      return { ok: false, sent: 0, skipped: "CNPJ emitente ausente (configure IMPERIUM_CNPJ_EMITENTE ou grave a chave da NF)" };
     }
 
     const xml = buildInformarNotaFiscalXml(mapped);
@@ -376,6 +570,56 @@ export class ImperiumSyncService {
     return { codCarga, situacao, liberado: statusRes.ok ? liberado : null };
   }
 
+  async saveFornecedor(input: ImperiumFornecedor) {
+    await this.init();
+    const xml = buildFornecedorSalvarXml(input);
+    const result = await callImperiumSoap("fornecedor", "salvar", xml);
+    await recordOutbox(this.db, {
+      entityType: "fornecedor",
+      entityId: input.idFornecedor,
+      method: "salvar",
+      payloadXml: xml,
+      result,
+      idempotencyKey: `fornecedor:${input.idFornecedor}`,
+    });
+    if (!result.ok) throw soapError(result);
+    return { ok: true, idFornecedor: input.idFornecedor };
+  }
+
+  async saveNotaEntrada(input: ImperiumNotaEntrada) {
+    await this.init();
+    const xml = buildNotaFiscalSalvarJsonXml(input);
+    const result = await callImperiumSoap("notaFiscal", "salvarJson", xml);
+    await recordOutbox(this.db, {
+      entityType: "nf_entrada",
+      entityId: `${input.idFornecedor}:${input.numero}`,
+      method: "salvarJson",
+      payloadXml: xml,
+      result,
+      idempotencyKey: `nfEntrada:${input.idFornecedor}:${input.numero}:${input.serie}`,
+    });
+    if (!result.ok) throw soapError(result);
+    return { ok: true, numero: input.numero, booleanReturn: result.booleanReturn };
+  }
+
+  async buscarNf(input: {
+    idFornecedor: string;
+    numero: string;
+    serie: string;
+    dataEmissao: string;
+    tipoNota?: string;
+  }) {
+    const xml = buildBuscarNfXml(input);
+    const result = await callImperiumSoap("notaFiscal", "buscarNf", xml);
+    return {
+      ok: result.ok,
+      fault: result.fault,
+      status: extractTag(result.bodyXml, "status"),
+      dataEntrada: extractTag(result.bodyXml, "dataEntrada"),
+      bodyPreview: result.bodyXml.slice(0, 4000),
+    };
+  }
+
   async consultarPedido(docNum: string) {
     const xml = buildConsultarPedidoXml(docNum);
     const result = await callImperiumSoap("expedicao", "consultarPedido", xml);
@@ -413,17 +657,31 @@ export class ImperiumSyncService {
   }
 
   private async listLocalCatalog(limit: number) {
-    const fromB2b = await this.db.query<{ sap_item_code: string; name: string }>(
-      `SELECT sap_item_code, COALESCE(gsn_product_name, sap_item_name, sap_item_code) AS name
+    type CatalogRow = {
+      sap_item_code: string;
+      sap_item_name: string | null;
+      ean: string | null;
+      unit_of_measure: string | null;
+      packaging_type: string | null;
+      units_per_package: string | number | null;
+      sap_group_code: number | null;
+      category_name: string | null;
+    };
+
+    const fromB2b = await this.db.query<CatalogRow>(
+      `SELECT sap_item_code,
+              COALESCE(gsn_product_name, sap_item_name, sap_item_code) AS sap_item_name,
+              ean, unit_of_measure, packaging_type, units_per_package,
+              sap_group_code, category_name
          FROM b2b_catalog_products
         WHERE sap_item_code IS NOT NULL AND sap_item_code <> ''
         ORDER BY sap_item_code
         LIMIT $1`,
       [limit],
-    ).catch(() => ({ rows: [] as Array<{ sap_item_code: string; name: string }> }));
+    ).catch(() => ({ rows: [] as CatalogRow[] }));
 
     if (fromB2b.rows.length > 0) {
-      return fromB2b.rows.map((r) => ({ ItemCode: r.sap_item_code, ItemName: r.name }));
+      return fromB2b.rows;
     }
 
     const fromLines = await this.db.query<{ item_code: string; item_description: string }>(
@@ -435,7 +693,16 @@ export class ImperiumSyncService {
         LIMIT $1`,
       [limit],
     );
-    return fromLines.rows.map((r) => ({ ItemCode: r.item_code, ItemName: r.item_description }));
+    return fromLines.rows.map((r) => ({
+      sap_item_code: r.item_code,
+      sap_item_name: r.item_description,
+      ean: null,
+      unit_of_measure: "UN",
+      packaging_type: null,
+      units_per_package: null,
+      sap_group_code: null,
+      category_name: null,
+    }));
   }
 
   private async loadOrders(docNums: number[]) {

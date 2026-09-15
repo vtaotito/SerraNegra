@@ -151,44 +151,116 @@ export function mapCargaFromOrders(
   };
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&ndash;/g, "-")
+    .replace(/&mdash;/g, "-");
+}
+
+/** Oracle DSC_PRODUTO é VARCHAR2(100 BYTE); acentos e lixo de encoding estouram o limite. */
+export function sanitizeProdutoDescricao(value: string, maxBytes = 100): string {
+  const cleaned = decodeHtmlEntities(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  let out = "";
+  for (const ch of cleaned) {
+    if (Buffer.byteLength(out + ch, "utf8") > maxBytes) break;
+    out += ch;
+  }
+  return out || "PRODUTO";
+}
+
 export function mapProdutoCadastro(item: {
   ItemCode?: string;
   item_code?: string;
+  sap_item_code?: string;
   ItemName?: string;
   item_name?: string;
+  sap_item_name?: string;
   descricao?: string;
+  ean?: string | null;
+  unit_of_measure?: string | null;
+  packaging_type?: string | null;
+  units_per_package?: number | string | null;
+  sap_group_code?: number | string | null;
 }): ImperiumProdutoCadastro {
   const cfg = loadImperiumConfig();
-  const idProduto = String(item.ItemCode ?? item.item_code ?? "").trim();
+  const idProduto = String(item.ItemCode ?? item.item_code ?? item.sap_item_code ?? "").trim();
   if (!idProduto) throw new Error("Item sem código");
+
+  const unidade = (item.unit_of_measure ?? item.packaging_type ?? "UN").trim() || "UN";
+  const ean = (item.ean ?? "").trim();
+  const packQty = Number(item.units_per_package);
+  const embalagens = [
+    {
+      codBarras: ean,
+      qtdEmbalagem: 1,
+      descricao: unidade.slice(0, 20) || "UN",
+    },
+  ];
+  if (Number.isFinite(packQty) && packQty > 1) {
+    embalagens.push({
+      codBarras: "",
+      qtdEmbalagem: packQty,
+      descricao: (item.packaging_type ?? "CX").slice(0, 20) || "CX",
+    });
+  }
+
+  const group = item.sap_group_code != null && String(item.sap_group_code).trim() !== ""
+    ? String(item.sap_group_code)
+    : cfg.defaultClasse;
+
   return {
     idProduto,
-    descricao: String(item.ItemName ?? item.item_name ?? item.descricao ?? idProduto).slice(0, 120),
+    descricao: sanitizeProdutoDescricao(
+      String(item.ItemName ?? item.item_name ?? item.sap_item_name ?? item.descricao ?? idProduto),
+    ),
     grade: cfg.defaultGrade,
     idFabricante: cfg.defaultFabricante,
     tipo: "1",
-    idClasse: cfg.defaultClasse,
+    idClasse: group,
+    referencia: idProduto.slice(0, 10),
+    possuiPesoVariavel: "N",
+    embalagens,
   };
+}
+
+export function cnpjFromNfeKey(chave: string | null | undefined): string {
+  const digits = digitsOnly(chave);
+  if (digits.length !== 44) return "";
+  return digits.slice(6, 20);
 }
 
 export function mapNotasSaida(invoices: SapInvoiceRow[]): ImperiumNotaSaida[] {
   const cfg = loadImperiumConfig();
   return invoices
     .filter((inv) => inv.nfe_key || inv.nfe_number)
-    .map((inv) => ({
-      codPedido: inv.base_doc_num != null ? String(inv.base_doc_num) : "",
-      numeroNf: Number(inv.nfe_number ?? inv.folio_number ?? 0),
-      serieNf: String(inv.series_number ?? "1"),
-      cnpjEmitente: cfg.cnpjEmitente,
-      valorVenda: Number(inv.doc_total) || 0,
-      chaveAcesso: String(inv.nfe_key ?? ""),
-      itens: (inv.lines ?? [])
-        .filter((l) => l.item_code)
-        .map((l) => ({
-          codProduto: String(l.item_code),
-          grade: cfg.defaultGrade,
-          qtd: Math.round(Number(l.quantity) || 0),
-          valorVenda: Number(l.line_total) || 0,
-        })),
-    }));
+    .map((inv) => {
+      const chave = String(inv.nfe_key ?? "");
+      return {
+        codPedido: inv.base_doc_num != null ? String(inv.base_doc_num) : "",
+        numeroNf: Number(inv.nfe_number ?? inv.folio_number ?? 0),
+        serieNf: String(inv.series_number ?? "1"),
+        cnpjEmitente: cnpjFromNfeKey(chave) || cfg.cnpjEmitente,
+        valorVenda: Number(inv.doc_total) || 0,
+        chaveAcesso: chave,
+        itens: (inv.lines ?? [])
+          .filter((l) => l.item_code)
+          .map((l) => ({
+            codProduto: String(l.item_code),
+            grade: cfg.defaultGrade,
+            qtd: Math.round(Number(l.quantity) || 0),
+            valorVenda: Number(l.line_total) || 0,
+          })),
+      };
+    });
 }
