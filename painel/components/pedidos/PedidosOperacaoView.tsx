@@ -81,16 +81,16 @@ type PipelineStatus =
 
 const PIPELINE: { key: PipelineStatus; label: string; cls: string; dot: string }[] = [
   { key: "novo", label: "Novo", cls: "bg-sky-50 text-sky-700", dot: "bg-sky-500" },
-  { key: "em_analise", label: "Em análise", cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
-  { key: "separacao", label: "Em separação", cls: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
+  { key: "em_analise", label: "Análise", cls: "bg-amber-50 text-amber-700", dot: "bg-amber-500" },
   { key: "faturado", label: "Faturado", cls: "bg-violet-50 text-violet-700", dot: "bg-violet-500" },
+  { key: "separacao", label: "Em separação", cls: "bg-indigo-50 text-indigo-700", dot: "bg-indigo-500" },
   { key: "enviado", label: "Enviado", cls: "bg-cyan-50 text-cyan-700", dot: "bg-cyan-500" },
   { key: "entregue", label: "Entregue", cls: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" },
   { key: "cancelado", label: "Cancelado", cls: "bg-red-50 text-red-600", dot: "bg-red-500" },
 ];
 
 // Etapas em que o pedido já foi faturado — base do KPI "Valor faturado".
-const INVOICED_STAGES: PipelineStatus[] = ["faturado", "enviado", "entregue"];
+const INVOICED_STAGES: PipelineStatus[] = ["faturado", "separacao", "enviado", "entregue"];
 
 const PIPELINE_LABEL = Object.fromEntries(
   PIPELINE.map((p) => [p.key, p.label]),
@@ -98,6 +98,43 @@ const PIPELINE_LABEL = Object.fromEntries(
 const PIPELINE_CLS = Object.fromEntries(
   PIPELINE.map((p) => [p.key, p.cls]),
 ) as Record<PipelineStatus, string>;
+
+type WmsSyncResult = {
+  ok?: boolean;
+  kind?: "nf" | "carga";
+  codCarga?: string;
+  numeroNf?: number;
+  nfSent?: number;
+  error?: string;
+} | null;
+
+function toastStageMove(
+  docNum: number,
+  next: PipelineStatus,
+  wms?: WmsSyncResult,
+  prefix = `#${docNum} → ${PIPELINE_LABEL[next]}`,
+) {
+  if (wms?.ok && wms.kind === "nf") {
+    toast.success(
+      `${prefix} · NF${wms.numeroNf ? ` ${wms.numeroNf}` : ""} enviada ao WMS`,
+    );
+    return;
+  }
+  if (wms?.ok) {
+    toast.success(
+      `${prefix} · enviado ao WMS${wms.codCarga ? ` (${wms.codCarga})` : ""}`,
+    );
+    return;
+  }
+  if (wms && wms.ok === false) {
+    const what = wms.kind === "nf" ? "a sincronização da NF" : "o envio ao WMS";
+    toast.warning(
+      `${prefix}, mas ${what} falhou: ${wms.error ?? "erro desconhecido"}`,
+    );
+    return;
+  }
+  toast.success(prefix);
+}
 
 function OrderStageBadge({ status }: { status: PipelineStatus }) {
   return (
@@ -478,11 +515,16 @@ function PedidosOperacaoContent({ embedded }: { embedded: boolean }) {
         const res = await fetch(`/api/b2b-admin/orders/${o.doc_entry}/status`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: next, cardCode: o.card_code }),
+          body: JSON.stringify({
+            status: next,
+            cardCode: o.card_code,
+            fromStatus: current,
+            docNum: o.doc_num,
+          }),
         });
         const j = await res.json();
         if (!res.ok || !j.success) throw new Error(j.error || "Erro ao atualizar etapa");
-        toast.success(`#${o.doc_num} → ${PIPELINE_LABEL[next]}`);
+        toastStageMove(o.doc_num, next, j.wms);
       } catch (err) {
         setStatusMap((m) => ({ ...m, [String(o.doc_entry)]: prev }));
         toast.error(err instanceof Error ? err.message : "Erro ao atualizar etapa");
@@ -1993,6 +2035,7 @@ interface Followup {
 // mais ser cancelado.
 const NON_CANCELLABLE_STAGES: PipelineStatus[] = [
   "faturado",
+  "separacao",
   "enviado",
   "entregue",
   "cancelado",
@@ -2235,14 +2278,24 @@ function OrderDrawer({
       const res = await fetch(`/api/b2b-admin/orders/${order.doc_entry}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: next, cardCode: order.card_code }),
+        body: JSON.stringify({
+          status: next,
+          cardCode: order.card_code,
+          fromStatus: currentStage,
+          docNum: order.doc_num,
+        }),
       });
       const j = await res.json();
       if (!res.ok || !j.success) throw new Error(j.error || "Erro ao atualizar etapa");
       setCurrentStage(next);
       onStageChange(order.doc_entry, next);
       loadFollowups();
-      toast.success(`Etapa alterada para “${PIPELINE_LABEL[next]}”`);
+      toastStageMove(
+        order.doc_num,
+        next,
+        j.wms,
+        `Etapa alterada para “${PIPELINE_LABEL[next]}”`,
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao atualizar etapa");
     } finally {

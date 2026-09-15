@@ -364,6 +364,7 @@ export async function registerB2BRoutes(app: FastifyInstance) {
   // não pode mais ser cancelado.
   const NON_CANCELLABLE_FUNNEL: ReadonlySet<OrderStatus> = new Set<OrderStatus>([
     "faturado",
+    "separacao",
     "enviado",
     "entregue",
     "cancelado",

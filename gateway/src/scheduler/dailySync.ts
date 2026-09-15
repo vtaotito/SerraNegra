@@ -481,7 +481,7 @@ async function upsertOrderHeaders(orders: SapSalesOrderRow[]) {
 }
 
 // ─── Upsert invoices + lines ──────────────────────────────────
-async function upsertInvoices(invoices: SapInvoiceRow[]) {
+export async function upsertInvoices(invoices: SapInvoiceRow[]) {
   const db = getPool();
   let upserted = 0;
   let linesWritten = 0;
@@ -499,13 +499,23 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
     const nfeNumber =
       (invAny["U_TX_NDfe"] as string | null | undefined) ??
       (invAny["U_nfe_NDfe"] as string | null | undefined) ??
+      (invAny["SequenceSerial"] != null ? String(invAny["SequenceSerial"]) : null) ??
+      (invAny["FolioNum"] != null ? String(invAny["FolioNum"]) : null) ??
       null;
     const folioNumber = invAny["FolioNumber"] != null ? String(invAny["FolioNumber"]) : null;
-    const nfeKey =
+    const nfeKeyRaw =
       (invAny["U_nfe_ChaveAcesso"] as string | null | undefined) ??
       (invAny["U_ChaveAcesso"] as string | null | undefined) ??
+      (invAny["U_ChaveNFe"] as string | null | undefined) ??
+      (invAny["U_ChaveNfe"] as string | null | undefined) ??
       null;
-    const seriesNumber = invAny["Series"] != null ? Number(invAny["Series"]) : null;
+    const nfeKey = nfeKeyRaw ? String(nfeKeyRaw).replace(/\D/g, "") || nfeKeyRaw : null;
+    const folioPrefNum = invAny["FolioPref"] != null ? Number(invAny["FolioPref"]) : NaN;
+    const seriesNumber = Number.isFinite(folioPrefNum)
+      ? folioPrefNum
+      : invAny["Series"] != null
+        ? Number(invAny["Series"])
+        : null;
 
     // Relação com pedido base — pega a primeira linha com BaseType = 17 (Sales Order)
     let baseDocEntry: number | null = null;
@@ -617,6 +627,94 @@ async function upsertInvoices(invoices: SapInvoiceRow[]) {
   `);
 
   return { upserted, linesWritten };
+}
+
+function invoiceCancelled(inv: SapInvoiceRow): boolean {
+  const raw = String(inv.Cancelled ?? "").toUpperCase();
+  return raw === "Y" || raw === "TYES";
+}
+
+function invoiceLinkedToOrder(inv: SapInvoiceRow, docEntry: number): boolean {
+  return (inv.DocumentLines ?? []).some((line) => {
+    const any = line as Record<string, unknown>;
+    return Number(any.BaseType ?? -1) === 17 && Number(any.BaseEntry ?? 0) === docEntry;
+  });
+}
+
+/**
+ * Busca no SAP a NF de saída ligada a um pedido (BaseType=17) e grava no
+ * espelho local — usado ao mover o funil para Faturado.
+ */
+export async function syncInvoicesForSalesOrder(docEntry: number): Promise<{
+  upserted: number;
+  fetched: number;
+}> {
+  if (!Number.isFinite(docEntry) || docEntry <= 0) return { upserted: 0, fetched: 0 };
+
+  const db = getPool();
+  const svc = getSapEntitiesService();
+  if (!svc) return { upserted: 0, fetched: 0 };
+
+  const orderRes = await db.query<{ card_code: string | null; doc_date: string | Date | null }>(
+    `SELECT card_code, doc_date FROM sap_sales_orders WHERE doc_entry = $1`,
+    [docEntry],
+  );
+  const order = orderRes.rows[0];
+  const client = svc.getSapClient();
+  const correlationId = `imperium-nf-${docEntry}`;
+
+  let headers: SapInvoiceRow[] = [];
+  try {
+    const filter = `DocumentLines/any(d:d/BaseType eq 17 and d/BaseEntry eq ${docEntry})`;
+    const res = await client.get<{ value: SapInvoiceRow[] }>(
+      `/Invoices?$filter=${encodeURIComponent(filter)}&$select=DocEntry,DocNum,DocDate,CardCode,Cancelled&$top=20`,
+      { correlationId },
+    );
+    headers = res.data.value ?? [];
+  } catch (err) {
+    console.warn(
+      `[syncInvoicesForSalesOrder] filtro lambda falhou: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+
+  if (headers.length === 0 && order?.card_code) {
+    const card = String(order.card_code).replace(/'/g, "''");
+    const dateFrom = order.doc_date
+      ? String(order.doc_date).slice(0, 10)
+      : new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    try {
+      const filter = `CardCode eq '${card}' and DocDate ge '${dateFrom}'`;
+      const res = await client.get<{ value: SapInvoiceRow[] }>(
+        `/Invoices?$filter=${encodeURIComponent(filter)}&$select=DocEntry,DocNum,DocDate,CardCode,Cancelled&$top=40&$orderby=DocDate desc`,
+        { correlationId },
+      );
+      headers = (res.data.value ?? []).filter((inv) => !invoiceCancelled(inv));
+    } catch (err) {
+      console.warn(
+        `[syncInvoicesForSalesOrder] fallback CardCode falhou: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  const full: SapInvoiceRow[] = [];
+  for (const header of headers.slice(0, 15)) {
+    if (!header.DocEntry) continue;
+    try {
+      const res = await client.get<SapInvoiceRow>(`/Invoices(${header.DocEntry})`, { correlationId });
+      if (res.data) full.push(res.data);
+    } catch (err) {
+      console.warn(
+        `[syncInvoicesForSalesOrder] enrich ${header.DocEntry} falhou: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  const matched = full.filter((inv) => !invoiceCancelled(inv) && invoiceLinkedToOrder(inv, docEntry));
+  const toUpsert = matched.length > 0 ? matched : full.filter((inv) => !invoiceCancelled(inv));
+  if (toUpsert.length === 0) return { upserted: 0, fetched: full.length };
+
+  const { upserted } = await upsertInvoices(toUpsert);
+  return { upserted, fetched: full.length };
 }
 
 // ─── Enriquecer pedidos recentes com DocumentLines (batch) ────

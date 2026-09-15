@@ -183,9 +183,9 @@ export async function registerImperiumRoutes(app: FastifyInstance) {
 
   app.post("/integrations/imperium/notas", async (req, reply) => {
     try {
-      const body = (req.body ?? {}) as { docNums?: number[] };
+      const body = (req.body ?? {}) as { docNums?: number[]; docEntry?: number };
       const svc = service(app);
-      return reply.send(await svc.informarNotas(body.docNums ?? []));
+      return reply.send(await svc.informarNotas(body.docNums ?? [], body.docEntry));
     } catch (err) {
       return sendError(reply, err);
     }

@@ -460,19 +460,53 @@ export class ImperiumSyncService {
     };
   }
 
-  async informarNotas(docNums: number[]) {
+  async informarNotas(docNums: number[], docEntry?: number) {
     await this.init();
-    const cfg = loadImperiumConfig();
-    const invoices = await this.loadInvoices(docNums);
+    const nums = [...new Set(docNums.map(Number).filter((n) => Number.isFinite(n) && n > 0))];
+    let entries = docEntry && Number.isFinite(docEntry) && docEntry > 0 ? [docEntry] : [];
+
+    if (nums.length === 0 && entries.length === 0) {
+      return { ok: false, sent: 0, skipped: "Informe o número ou o DocEntry do pedido" };
+    }
+
+    if (entries.length === 0 && nums.length > 0) {
+      const found = await this.db.query<{ doc_entry: number }>(
+        `SELECT doc_entry FROM sap_sales_orders WHERE doc_num = ANY($1::int[])`,
+        [nums],
+      );
+      entries = found.rows.map((r) => r.doc_entry);
+    }
+
+    if (nums.length === 0 && entries.length > 0) {
+      const found = await this.db.query<{ doc_num: number }>(
+        `SELECT doc_num FROM sap_sales_orders WHERE doc_entry = ANY($1::int[])`,
+        [entries],
+      );
+      for (const row of found.rows) {
+        if (Number.isFinite(row.doc_num)) nums.push(Number(row.doc_num));
+      }
+    }
+
+    for (const entry of entries) {
+      try {
+        const { syncInvoicesForSalesOrder } = await import("../../scheduler/dailySync.js");
+        await syncInvoicesForSalesOrder(entry);
+      } catch (err) {
+        this.log.warn({ err, entry }, "refresh NF SAP antes de informarNotaFiscal falhou");
+      }
+    }
+
+    const invoices = await this.loadInvoices(nums, entries);
     if (invoices.length === 0) {
-      return { ok: true, sent: 0, skipped: "Nenhuma NF local com chave/número para esses pedidos" };
+      return {
+        ok: false,
+        sent: 0,
+        skipped: "Nenhuma NF de saída encontrada no SAP para este pedido",
+      };
     }
-    const mapped = mapNotasSaida(invoices).filter((n) => n.numeroNf > 0);
+    const mapped = mapNotasSaida(invoices);
     if (mapped.length === 0) {
-      return { ok: true, sent: 0, skipped: "NF sem número/chave" };
-    }
-    if (mapped.some((n) => !n.cnpjEmitente)) {
-      return { ok: false, sent: 0, skipped: "CNPJ emitente ausente (configure IMPERIUM_CNPJ_EMITENTE ou grave a chave da NF)" };
+      return { ok: false, sent: 0, skipped: "NF sem número, chave ou CNPJ emitente" };
     }
 
     const xml = buildInformarNotaFiscalXml(mapped);
@@ -486,7 +520,12 @@ export class ImperiumSyncService {
       idempotencyKey: `informarNF:${mapped.map((n) => n.numeroNf).join(",")}`,
     });
     if (!result.ok) throw soapError(result);
-    return { ok: true, sent: mapped.length };
+    return {
+      ok: true,
+      sent: mapped.length,
+      numeroNf: mapped[0]?.numeroNf,
+      pedidos: mapped.map((n) => n.codPedido),
+    };
   }
 
   async cancelarPedido(docNum: number) {
@@ -744,7 +783,7 @@ export class ImperiumSyncService {
     return out;
   }
 
-  private async loadInvoices(docNums: number[]) {
+  private async loadInvoices(docNums: number[], docEntries: number[] = []) {
     const res = await this.db.query<{
       nfe_number: string | null;
       folio_number: string | null;
@@ -754,13 +793,24 @@ export class ImperiumSyncService {
       base_doc_num: number | null;
       doc_entry: number;
     }>(
-      `SELECT nfe_number, folio_number, nfe_key, series_number, doc_total,
-              COALESCE(base_doc_num, (SELECT so.doc_num FROM sap_sales_orders so WHERE so.doc_entry = sap_invoices.base_doc_entry)) AS base_doc_num,
-              doc_entry
-         FROM sap_invoices
-        WHERE COALESCE(base_doc_num, (SELECT so.doc_num FROM sap_sales_orders so WHERE so.doc_entry = sap_invoices.base_doc_entry)) = ANY($1::int[])
-          AND cancelled = 'N'`,
-      [docNums],
+      `SELECT i.nfe_number, i.folio_number, i.nfe_key, i.series_number, i.doc_total,
+              COALESCE(i.base_doc_num, so.doc_num) AS base_doc_num,
+              i.doc_entry
+         FROM sap_invoices i
+         LEFT JOIN sap_sales_orders so ON so.doc_entry = i.base_doc_entry
+        WHERE i.cancelled = 'N'
+          AND (
+            (cardinality($1::int[]) > 0 AND COALESCE(i.base_doc_num, so.doc_num) = ANY($1::int[]))
+            OR (cardinality($2::int[]) > 0 AND i.base_doc_entry = ANY($2::int[]))
+            OR EXISTS (
+              SELECT 1 FROM sap_invoice_lines l
+               WHERE l.doc_entry = i.doc_entry
+                 AND l.base_type = 17
+                 AND cardinality($2::int[]) > 0
+                 AND l.base_entry = ANY($2::int[])
+            )
+          )`,
+      [docNums, docEntries],
     );
 
     const invoices = [];

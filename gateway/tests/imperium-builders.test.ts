@@ -19,7 +19,15 @@ import {
   parseEstoqueResponse,
   parseMovimentacaoResponse,
 } from "../src/services/imperium/xml.js";
-import { mapCargaFromOrders, mapProdutoCadastro, mapCliente, cnpjFromNfeKey } from "../src/services/imperium/mappers.js";
+import {
+  mapCargaFromOrders,
+  mapProdutoCadastro,
+  mapCliente,
+  mapNotasSaida,
+  cnpjFromNfeKey,
+  fiscalFromNfeKey,
+  formatCnpj,
+} from "../src/services/imperium/mappers.js";
 
 describe("Imperium XML helpers", () => {
   it("escapa caracteres especiais", () => {
@@ -97,6 +105,29 @@ describe("Imperium builders", () => {
     assert.match(xml, /<codBarras[^>]*>7896401601822<\/codBarras>/);
     assert.match(xml, /<qtdEmbalagem[^>]*>27<\/qtdEmbalagem>/);
     assert.match(xml, /<possuiPesoVariavel[^>]*>N<\/possuiPesoVariavel>/);
+  });
+
+  it("deriva número, série e CNPJ da chave NF-e", () => {
+    const fiscal = fiscalFromNfeKey("31160918921882000193550010009000011000000010");
+    assert.equal(fiscal?.numero, 900001);
+    assert.equal(fiscal?.serie, "1");
+    assert.equal(fiscal?.cnpj, "18921882000193");
+    assert.equal(formatCnpj(fiscal?.cnpj), "18.921.882/0001-93");
+    assert.equal(cnpjFromNfeKey("31160918921882000193550010009000011000000010"), "18921882000193");
+
+    const notas = mapNotasSaida([
+      {
+        nfe_key: "31160918921882000193550010009000011000000010",
+        doc_total: 10,
+        base_doc_num: 52910,
+        lines: [{ item_code: "AR00000001", quantity: 1, line_total: 10 }],
+      },
+    ]);
+    assert.equal(notas.length, 1);
+    assert.equal(notas[0].numeroNf, 900001);
+    assert.equal(notas[0].serieNf, "1");
+    assert.equal(notas[0].codPedido, "52910");
+    assert.equal(notas[0].cnpjEmitente, "18.921.882/0001-93");
   });
 
   it("informarNotaFiscal inclui chave de 44 dígitos", () => {

@@ -133,13 +133,18 @@ export function buildInformarNotaFiscalXml(notas: ImperiumNotaSaida[]): string {
         )
         .join("\n");
 
+      const chave =
+        nf.chaveAcesso && nf.chaveAcesso.replace(/\D/g, "").length === 44
+          ? `               ${xmlString("chaveAcesso", nf.chaveAcesso.replace(/\D/g, ""))}`
+          : "";
+
       return `            <item xsi:type="tns:notaFiscal">
 ${pedidos}
                ${xmlInt("numeroNf", nf.numeroNf)}
                ${xmlString("serieNf", nf.serieNf)}
                ${xmlString("cnpjEmitente", nf.cnpjEmitente)}
                ${xmlFloat("valorVenda", nf.valorVenda)}
-               ${xmlString("chaveAcesso", nf.chaveAcesso)}
+${chave}
 	          <itens xsi:type="tns:ArrayOfnotaFiscalProduto">
 ${produtos}
 	          </itens>

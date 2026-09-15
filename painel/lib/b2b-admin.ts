@@ -8,6 +8,11 @@ function gatewayApiBase(): string {
   return (process.env.GATEWAY_INTERNAL_URL ?? "http://127.0.0.1:4000/api").replace(/\/$/, "");
 }
 
+/** Host do gateway sem sufixo /api — rotas de integração (Imperium, SAP). */
+function gatewayRoot(): string {
+  return gatewayApiBase().replace(/\/api$/, "");
+}
+
 const ADMIN_USER = process.env.B2B_ADMIN_USER ?? "admin";
 const ADMIN_PASS = process.env.B2B_ADMIN_PASSWORD ?? "gsn@comercial2026";
 
@@ -328,8 +333,8 @@ export function deleteB2BOrderItemNote(docEntry: number, id: number) {
 export const B2B_ORDER_STATUSES = [
   "novo",
   "em_analise",
-  "separacao",
   "faturado",
+  "separacao",
   "enviado",
   "entregue",
   "cancelado",
@@ -378,6 +383,60 @@ export function setB2BOrderStatus(
     `/b2b/admin/orders/${docEntry}/status`,
     { method: "PUT", body: JSON.stringify(data) },
   );
+}
+
+export async function sendImperiumNotas(opts: { docNums: number[]; docEntry?: number }) {
+  const res = await fetch(`${gatewayRoot()}/integrations/imperium/notas`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(opts),
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    message?: string;
+    detail?: string;
+    fault?: string;
+    skipped?: string;
+    sent?: number;
+    numeroNf?: number;
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(
+      json.skipped ||
+        json.error ||
+        json.fault ||
+        json.detail ||
+        json.message ||
+        `Imperium HTTP ${res.status}`,
+    );
+  }
+  return json;
+}
+
+export async function sendImperiumCargas(docNums: number[]) {
+  const res = await fetch(`${gatewayRoot()}/integrations/imperium/cargas`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ docNums }),
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    message?: string;
+    detail?: string;
+    fault?: string;
+    codCarga?: string;
+    pedidos?: string[];
+  };
+  if (!res.ok || json.ok === false) {
+    throw new Error(
+      json.error || json.fault || json.detail || json.message || `Imperium HTTP ${res.status}`,
+    );
+  }
+  return json;
 }
 
 /**

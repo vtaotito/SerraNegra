@@ -10,8 +10,8 @@ const { Pool } = pg;
 export const ORDER_STATUSES = [
   "novo",
   "em_analise",
-  "separacao",
   "faturado",
+  "separacao",
   "enviado",
   "entregue",
   "cancelado",

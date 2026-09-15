@@ -276,19 +276,51 @@ export function cnpjFromNfeKey(chave: string | null | undefined): string {
   return digits.slice(6, 20);
 }
 
+/** Formata CNPJ no padrão do XMLWebService (`27.264.001/0002-80`). */
+export function formatCnpj(value: string | null | undefined): string {
+  const digits = digitsOnly(value);
+  if (digits.length !== 14) return digits;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+}
+
+/** Extrai número, série e CNPJ da chave de acesso NF-e (44 dígitos). */
+export function fiscalFromNfeKey(chave: string | null | undefined): {
+  chave: string;
+  cnpj: string;
+  serie: string;
+  numero: number;
+} | null {
+  const digits = digitsOnly(chave);
+  if (digits.length !== 44) return null;
+  return {
+    chave: digits,
+    cnpj: digits.slice(6, 20),
+    serie: String(Number(digits.slice(22, 25)) || 1),
+    numero: Number(digits.slice(25, 34)) || 0,
+  };
+}
+
 export function mapNotasSaida(invoices: SapInvoiceRow[]): ImperiumNotaSaida[] {
   const cfg = loadImperiumConfig();
   return invoices
-    .filter((inv) => inv.nfe_key || inv.nfe_number)
+    .filter((inv) => inv.nfe_key || inv.nfe_number || inv.folio_number)
     .map((inv) => {
-      const chave = String(inv.nfe_key ?? "");
+      const fiscal = fiscalFromNfeKey(inv.nfe_key);
+      const numeroNf =
+        fiscal?.numero ||
+        Number(inv.nfe_number ?? inv.folio_number ?? 0);
+      const serieNf =
+        fiscal?.serie ||
+        String(inv.series_number ?? "1").trim() ||
+        "1";
+      const cnpj = formatCnpj(fiscal?.cnpj || cfg.cnpjEmitente);
       return {
         codPedido: inv.base_doc_num != null ? String(inv.base_doc_num) : "",
-        numeroNf: Number(inv.nfe_number ?? inv.folio_number ?? 0),
-        serieNf: String(inv.series_number ?? "1"),
-        cnpjEmitente: cnpjFromNfeKey(chave) || cfg.cnpjEmitente,
+        numeroNf,
+        serieNf,
+        cnpjEmitente: cnpj,
         valorVenda: Number(inv.doc_total) || 0,
-        chaveAcesso: chave,
+        chaveAcesso: fiscal?.chave || digitsOnly(inv.nfe_key),
         itens: (inv.lines ?? [])
           .filter((l) => l.item_code)
           .map((l) => ({
@@ -298,5 +330,6 @@ export function mapNotasSaida(invoices: SapInvoiceRow[]): ImperiumNotaSaida[] {
             valorVenda: Number(l.line_total) || 0,
           })),
       };
-    });
+    })
+    .filter((n) => n.numeroNf > 0 && n.cnpjEmitente);
 }
