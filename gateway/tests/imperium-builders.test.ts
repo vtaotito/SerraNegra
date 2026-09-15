@@ -228,6 +228,22 @@ describe("Imperium mappers", () => {
     assert.equal(carga.pedidos[0].produtos[0].codProduto, "SKU1");
     assert.equal(carga.pedidos[0].cliente.cidade, "BH");
     assert.equal(carga.pedidos[0].cliente.uf, "MG");
+    assert.equal(carga.pedidos[0].linhaEntrega, "BH");
+  });
+
+  it("parseia endereço SAP com quebra de linha e CEP", () => {
+    const cliente = mapCliente({
+      doc_entry: 1,
+      doc_num: 52910,
+      card_code: "C00059",
+      card_name: "CACHACA ARTESANAL",
+      comments: null,
+      address: "RUAPARIS,586\r\r32.110-270-CONTAGEM-MG\rBRASIL",
+    });
+    assert.equal(cliente.logradouro, "RUAPARIS");
+    assert.equal(cliente.numero, "586");
+    assert.equal(cliente.cidade, "CONTAGEM");
+    assert.equal(cliente.uf, "MG");
   });
 
   it("usa FederalTaxID do SAP para tipo pessoa", () => {

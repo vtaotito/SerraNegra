@@ -10,6 +10,15 @@ import {
 import { buildSoapEnvelope, extractSoapFault, parseSoapBoolean } from "./xml.js";
 import type { ImperiumSoapResult } from "./types.js";
 
+function hostWithPort(baseUrl: string): string | null {
+  try {
+    const parsed = new URL(baseUrl);
+    return parsed.port ? `${parsed.hostname}:${parsed.port}` : parsed.hostname;
+  } catch {
+    return null;
+  }
+}
+
 export class ImperiumNotConfiguredError extends Error {
   constructor() {
     super("Integração Imperium não configurada (IMPERIUM_BASE_URL / USERNAME / PASSWORD)");
@@ -29,6 +38,7 @@ export async function callImperiumSoap(
   const url = namespace;
   const envelope = buildSoapEnvelope(namespace, "tns", method, innerXml);
   const started = Date.now();
+  const hostHeader = hostWithPort(cfg.baseUrl);
 
   const res = await request(url, {
     method: "POST",
@@ -37,6 +47,7 @@ export async function callImperiumSoap(
       "Content-Type": "text/xml; charset=utf-8",
       SOAPAction: soapAction(cfg.baseUrl, service, method),
       Accept: "text/xml, application/xml, */*",
+      ...(hostHeader ? { Host: hostHeader } : {}),
     },
     body: envelope,
     headersTimeout: cfg.timeoutMs,
@@ -48,6 +59,8 @@ export async function callImperiumSoap(
   let fault = extractSoapFault(bodyXml);
   if (fault && /wms\.local/i.test(fault)) {
     fault = `${fault} — o servidor Imperium tenta carregar o WSDL em http://wms.local (hostname interno). É preciso apontar wms.local para 127.0.0.1 no host do WMS ou publicar o WSDL no IP público.`;
+  } else if (fault && /129\.148\.29\.26\/soap/i.test(fault) && !/129\.148\.29\.26:82/i.test(fault)) {
+    fault = `${fault} — o WMS está tentando o WSDL na porta 80, que está fechada. O SOAP da GSN só existe em http://129.148.29.26:82.`;
   }
   const booleanReturn = parseSoapBoolean(bodyXml);
 
@@ -76,11 +89,13 @@ export async function probeImperiumWsdl(service: ImperiumService = "expedicao"):
 
   const started = Date.now();
   try {
+    const hostHeader = hostWithPort(cfg.baseUrl);
     const res = await request(wsdlUrl(cfg.baseUrl, service), {
       method: "GET",
       headers: {
         Authorization: basicAuthHeader(cfg.username, cfg.password),
         Accept: "text/xml, application/xml, */*",
+        ...(hostHeader ? { Host: hostHeader } : {}),
       },
       headersTimeout: cfg.timeoutMs,
       bodyTimeout: cfg.timeoutMs,

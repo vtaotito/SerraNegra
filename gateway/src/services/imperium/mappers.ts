@@ -60,6 +60,10 @@ function digitsOnly(value: string | null | undefined): string {
   return (value ?? "").replace(/\D/g, "");
 }
 
+function soapText(value: string | null | undefined, max = 80): string {
+  return (value ?? "").replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
 function parseAddress(address?: string | null, address2?: string | null): {
   logradouro: string;
   numero: string;
@@ -67,32 +71,52 @@ function parseAddress(address?: string | null, address2?: string | null): {
   cidade: string;
   uf: string;
 } {
-  const line1 = (address ?? "").trim();
-  const line2 = (address2 ?? "").trim();
-  let logradouro = line1;
+  const lines = [address, address2]
+    .filter(Boolean)
+    .join("\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !/^BRASIL$/i.test(l));
+
+  let logradouro = lines[0] ?? "";
   let numero = "";
-  const streetMatch = line1.match(/^(.*?)[,\s]+(\d+\w*)\s*$/);
+  let bairro = "";
+  let cidade = "";
+  let uf = "";
+
+  const streetMatch = logradouro.match(/^(.*?)[,\s]+(\d+\w*)\s*$/);
   if (streetMatch) {
     logradouro = streetMatch[1].trim();
     numero = streetMatch[2].trim();
   }
 
-  const parts = line2.split(/[-,/]/).map((p) => p.trim()).filter(Boolean);
-  let bairro = "";
-  let cidade = "";
-  let uf = "";
-  if (parts.length >= 3) {
-    bairro = parts[0];
-    cidade = parts[1];
-    uf = parts[parts.length - 1].slice(0, 2).toUpperCase();
-  } else if (parts.length === 2) {
-    cidade = parts[0];
-    uf = parts[1].slice(0, 2).toUpperCase();
-  } else if (parts.length === 1) {
-    cidade = parts[0];
+  for (const line of lines.slice(1)) {
+    const loc = line.match(/^(?:[\d.]{5,}-?\d*)-([A-Za-zÀ-ú\s]+)-([A-Za-z]{2})$/);
+    if (loc) {
+      cidade = loc[1].trim();
+      uf = loc[2].slice(0, 2).toUpperCase();
+      continue;
+    }
+    const parts = line.split(/[-,/]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 3 && parts[parts.length - 1].length <= 2) {
+      bairro = bairro || parts[0];
+      cidade = cidade || parts[1];
+      uf = uf || parts[parts.length - 1].slice(0, 2).toUpperCase();
+    } else if (parts.length === 2 && parts[1].length <= 2) {
+      cidade = cidade || parts[0];
+      uf = uf || parts[1].slice(0, 2).toUpperCase();
+    }
   }
 
-  return { logradouro, numero, bairro, cidade, uf };
+  return {
+    logradouro: soapText(logradouro, 60),
+    numero: soapText(numero, 10),
+    bairro: soapText(bairro, 40),
+    cidade: soapText(cidade, 40),
+    uf: soapText(uf, 2),
+  };
 }
 
 export function mapCliente(order: SapOrderRow, partner?: SapPartner | null): ImperiumCliente {
@@ -102,18 +126,24 @@ export function mapCliente(order: SapOrderRow, partner?: SapPartner | null): Imp
     order.address2 ?? (order.raw_json?.Address2 as string | undefined),
   );
 
-  const cpfCnpj = digitsOnly(partner?.FederalTaxID);
+  const raw = order.raw_json ?? {};
+  const cpfCnpj = digitsOnly(
+    partner?.FederalTaxID
+      ?? (raw.FederalTaxID as string | undefined)
+      ?? (raw.LicTradNum as string | undefined)
+      ?? (raw.TaxIdNum as string | undefined),
+  );
   return {
-    codCliente: order.card_code ?? partner?.CardCode ?? "",
-    nome: order.card_name ?? partner?.CardName ?? "",
+    codCliente: soapText(order.card_code ?? partner?.CardCode ?? "", 20),
+    nome: soapText(order.card_name ?? partner?.CardName ?? "", 80),
     cpfCnpj,
-    tipoPessoa: cpfCnpj.length > 11 ? "J" : "F",
-    logradouro: shipTo?.Street || parsed.logradouro,
-    numero: shipTo?.StreetNo || parsed.numero,
-    bairro: shipTo?.Block || parsed.bairro,
-    cidade: shipTo?.City || partner?.City || parsed.cidade,
-    uf: (shipTo?.State || partner?.State || parsed.uf).slice(0, 2).toUpperCase(),
-    complemento: shipTo?.Building ?? "",
+    tipoPessoa: cpfCnpj.length === 11 ? "F" : "J",
+    logradouro: soapText(shipTo?.Street || parsed.logradouro, 60),
+    numero: soapText(shipTo?.StreetNo || parsed.numero, 10),
+    bairro: soapText(shipTo?.Block || parsed.bairro, 40),
+    cidade: soapText(shipTo?.City || partner?.City || parsed.cidade, 40),
+    uf: soapText(shipTo?.State || partner?.State || parsed.uf, 2),
+    complemento: soapText(shipTo?.Building ?? "", 40),
     referencia: "",
   };
 }
@@ -133,21 +163,27 @@ export function mapCargaFromOrders(
     codCarga: String(first.doc_num),
     placa,
     placaExpedicao: opts.placaExpedicao ?? "",
-    pedidos: orders.map(({ header, lines }) => ({
-      codPedido: String(header.doc_num),
-      tipo: "ENTREGA",
-      linhaEntrega: header.address2 ?? "",
-      cliente: mapCliente(header, opts.partnerByCard?.[header.card_code ?? ""] ?? null),
-      observacao: header.comments,
-      produtos: lines
-        .filter((l) => l.item_code)
-        .map((l) => ({
-          codProduto: String(l.item_code),
-          grade: cfg.defaultGrade,
-          quantidade: Number(l.quantity) || 0,
-          valorVenda: Number(l.line_total) || 0,
-        })),
-    })),
+    pedidos: orders.map(({ header, lines }) => {
+      const cliente = mapCliente(header, opts.partnerByCard?.[header.card_code ?? ""] ?? null);
+      const linha = soapText(cliente.cidade || cliente.uf || "GSN", 40);
+      return {
+        codPedido: String(header.doc_num),
+        tipo: "ENTREGA",
+        linhaEntrega: linha,
+        itinerarioId: linha,
+        itinerarioNome: linha,
+        cliente,
+        observacao: soapText(header.comments, 120),
+        produtos: lines
+          .filter((l) => l.item_code)
+          .map((l) => ({
+            codProduto: String(l.item_code),
+            grade: cfg.defaultGrade,
+            quantidade: Number(l.quantity) || 0,
+            valorVenda: Number(l.line_total) || 0,
+          })),
+      };
+    }),
   };
 }
 

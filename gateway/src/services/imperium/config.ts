@@ -20,10 +20,25 @@ export type ImperiumConfig = {
   cnpjEmitente: string;
 };
 
+function normalizeBaseUrl(raw: string): string {
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname === "129.148.29.26" && !parsed.port) {
+      parsed.port = "82";
+    }
+    return parsed.toString().replace(/\/+$/, "");
+  } catch {
+    return trimmed;
+  }
+}
+
 export function loadImperiumConfig(): ImperiumConfig {
-  const baseUrl = (process.env.IMPERIUM_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  const baseUrl = normalizeBaseUrl(process.env.IMPERIUM_BASE_URL ?? "");
   const username = (process.env.IMPERIUM_USERNAME ?? "").trim();
   const password = process.env.IMPERIUM_PASSWORD ?? "";
+  const rawCnpj = (process.env.IMPERIUM_CNPJ_EMITENTE ?? "").trim();
 
   return {
     configured: Boolean(baseUrl && username && password),
@@ -35,7 +50,7 @@ export function loadImperiumConfig(): ImperiumConfig {
     defaultGrade: (process.env.IMPERIUM_DEFAULT_GRADE ?? "UNICA").trim() || "UNICA",
     defaultClasse: (process.env.IMPERIUM_DEFAULT_CLASSE ?? "130900").trim(),
     defaultFabricante: (process.env.IMPERIUM_DEFAULT_FABRICANTE ?? "1").trim(),
-    cnpjEmitente: (process.env.IMPERIUM_CNPJ_EMITENTE ?? "18921882000193").replace(/\D/g, ""),
+    cnpjEmitente: (rawCnpj || "18921882000193").replace(/\D/g, ""),
   };
 }
 
