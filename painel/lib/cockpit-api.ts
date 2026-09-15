@@ -505,6 +505,8 @@ export function fetchProductAnalytics(opts: {
   date3mCutoff: string;
   estado?: string;
   salesPerson?: number;
+  /** Praça via WhsCode: sp | bh (omitir = todas) */
+  praca?: "sp" | "bh";
 }): Promise<ProductAnalyticsResult> {
   const p: Record<string, string> = {
     dateFrom: opts.dateFrom,
@@ -513,6 +515,7 @@ export function fetchProductAnalytics(opts: {
   };
   if (opts.estado) p.estado = opts.estado;
   if (opts.salesPerson != null) p.salesPerson = String(opts.salesPerson);
+  if (opts.praca) p.praca = opts.praca;
   return get("/sap/products/analytics", p);
 }
 
@@ -761,4 +764,59 @@ export interface SaveMarkupOverrideInput {
 
 export function saveMarkupOverride(data: SaveMarkupOverrideInput): Promise<{ ok: boolean }> {
   return post("/sap/markup/overrides", data);
+}
+
+export interface ImperiumHealth {
+  ok?: boolean;
+  configured: boolean;
+  healthy?: boolean;
+  baseUrl: string | null;
+  username?: string | null;
+  defaultPlaca?: string | null;
+  defaultGrade?: string | null;
+  hasCnpjEmitente?: boolean;
+  responseTimeMs?: number | null;
+  message?: string | null;
+}
+
+export interface ImperiumCargaRow {
+  cod_carga: string;
+  doc_nums: number[];
+  placa: string | null;
+  situacao: string | null;
+  liberado: boolean | null;
+  last_polled_at: string | null;
+  last_error: string | null;
+}
+
+export function fetchImperiumHealth(): Promise<ImperiumHealth> {
+  return get("/integrations/imperium/health");
+}
+
+export function smokeTestImperium(): Promise<{ ok: boolean }> {
+  return post("/integrations/imperium/smoke");
+}
+
+export function syncImperiumProducts(limit = 200): Promise<{ ok: boolean; sent: number; failed: number }> {
+  return post("/integrations/imperium/produtos/sync", { limit });
+}
+
+export function sendOrdersToImperium(data: {
+  docNums: number[];
+  placa?: string;
+  placaExpedicao?: string;
+}): Promise<{ ok: boolean; codCarga: string; pedidos: string[] }> {
+  return post("/integrations/imperium/cargas", data);
+}
+
+export function fetchImperiumCargas(): Promise<{ ok: boolean; items: ImperiumCargaRow[] }> {
+  return get("/integrations/imperium/cargas");
+}
+
+export function pollImperiumCargas(): Promise<{ ok: boolean; polled: number }> {
+  return post("/integrations/imperium/cargas/poll");
+}
+
+export function cancelImperiumPedido(docNum: number): Promise<{ ok: boolean }> {
+  return post(`/integrations/imperium/pedidos/${docNum}/cancelar`);
 }

@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from "uuid";
 import { mkdirSync } from "node:fs";
 import { registerSapRoutes } from "./routes/sap.js";
 import { registerB2BRoutes } from "./routes/b2b.js";
+import { registerImperiumRoutes } from "./routes/imperium.js";
 import { startDailySyncScheduler } from "./scheduler/dailySync.js";
 
 // Diretório dos uploads (imagens de produto). Persistido em volume Docker.
@@ -228,6 +229,9 @@ await registerSapRoutes(app);
 
 // Registrar rotas B2B (Portal de Pedidos)
 await registerB2BRoutes(app);
+
+// Integração WMS Imperium (SOAP)
+await registerImperiumRoutes(app);
 
 // Proxy genérico para API Core - todas as rotas /v1/*
 // Usar ALL com wildcard parameter

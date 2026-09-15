@@ -19,7 +19,7 @@ import {
 import { fmtBRL, fmtNum, exportCSV } from "@/lib/format";
 import {
   fetchSalesOrders, syncSalesOrders, fetchOrderLines,
-  fetchSalesPersons, fetchCustomers,
+  fetchSalesPersons, fetchCustomers, sendOrdersToImperium,
   type SalesOrderRow, type SalesOrderLine,
 } from "@/lib/cockpit-api";
 import { isFreightOrder } from "@/lib/orders";
@@ -392,6 +392,7 @@ interface OrderDetailPanelProps {
   orderTotalQty: number;
   vendorName?: string;
   location?: string;
+  docNum?: number;
 }
 
 interface GroupedOrderLine {
@@ -471,12 +472,42 @@ function groupOrderLines(lines: SalesOrderLine[]): GroupedOrderLine[] {
   return Array.from(groups.values());
 }
 
-function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderDetailPanelProps) {
+function OrderDetailPanel({ lines, orderTotalQty, vendorName, location, docNum }: OrderDetailPanelProps) {
+  const [wmsBusy, setWmsBusy] = useState(false);
+  const [wmsMsg, setWmsMsg] = useState<string | null>(null);
+
+  const sendWms = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (docNum == null) return;
+    setWmsBusy(true);
+    setWmsMsg(null);
+    try {
+      const res = await sendOrdersToImperium({ docNums: [docNum] });
+      setWmsMsg(`Enviado ao WMS (carga ${res.codCarga})`);
+    } catch (err) {
+      setWmsMsg(err instanceof Error ? err.message : "Falha ao enviar ao WMS");
+    } finally {
+      setWmsBusy(false);
+    }
+  };
+
   if (lines.length === 0) {
     return (
-      <div className="px-6 py-6 text-sm text-cockpit-muted italic bg-gradient-to-b from-amber-50/80 to-white rounded-b-lg border border-t-0 border-cockpit-border/50 flex items-center gap-3">
+      <div className="px-6 py-6 text-sm text-cockpit-muted italic bg-gradient-to-b from-amber-50/80 to-white rounded-b-lg border border-t-0 border-cockpit-border/50 flex items-center gap-3 flex-wrap">
         <ListOrdered className="w-5 h-5 text-amber-500/70 shrink-0" />
         Detalhamento de itens indisponível para este pedido.
+        {docNum != null && (
+          <button
+            type="button"
+            disabled={wmsBusy}
+            onClick={sendWms}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50 not-italic"
+          >
+            {wmsBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />}
+            Enviar ao WMS
+          </button>
+        )}
+        {wmsMsg && <span className="text-[11px] text-gray-500 not-italic">{wmsMsg}</span>}
       </div>
     );
   }
@@ -501,6 +532,18 @@ function OrderDetailPanel({ lines, orderTotalQty, vendorName, location }: OrderD
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm">
+            {docNum != null && (
+              <button
+                type="button"
+                disabled={wmsBusy}
+                onClick={sendWms}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 ring-1 ring-amber-200 hover:bg-amber-100 disabled:opacity-50"
+              >
+                {wmsBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />}
+                Enviar ao WMS
+              </button>
+            )}
+            {wmsMsg && <span className="text-[11px] text-gray-500 max-w-[240px] truncate" title={wmsMsg}>{wmsMsg}</span>}
             <span className="text-gray-600">Saída: <strong className="text-gray-900 tabular-nums">{fmtNum(totalUnd)} un</strong></span>
             {totalEmb !== totalUnd && (
               <span className="text-gray-500 text-xs">({fmtNum(totalEmb)} emb)</span>
@@ -1442,7 +1485,7 @@ function PedidosAnaliseContent({ embedded }: { embedded: boolean }) {
                             <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-cockpit-accent" /> Carregando itens do SAP...
                           </div>
                         ) : (
-                          <OrderDetailPanel lines={lines} orderTotalQty={qty} vendorName={vendorName} location={loc} />
+                          <OrderDetailPanel lines={lines} orderTotalQty={qty} vendorName={vendorName} location={loc} docNum={order.doc_num} />
                         )
                       )}
                     </div>

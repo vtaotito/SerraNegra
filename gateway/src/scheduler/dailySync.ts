@@ -1752,6 +1752,23 @@ export async function startSyncScheduler() {
     );
   }
 
+  const IMPERIUM_POLL_CRON = process.env.IMPERIUM_POLL_CRON ?? "*/5 * * * *";
+  if (process.env.IMPERIUM_BASE_URL && cron.validate(IMPERIUM_POLL_CRON)) {
+    console.log(`[imperium] Poll de cargas ativado — cron: "${IMPERIUM_POLL_CRON}"`);
+    cron.schedule(IMPERIUM_POLL_CRON, async () => {
+      try {
+        const { ImperiumSyncService } = await import("../services/imperium/imperiumSyncService.js");
+        const svc = new ImperiumSyncService(getPool());
+        const result = await svc.pollCargas();
+        if (result.polled > 0) {
+          console.log(`[imperium] Poll cargas: ${result.polled}`);
+        }
+      } catch (err) {
+        console.error("[imperium] Poll falhou:", err instanceof Error ? err.message : err);
+      }
+    });
+  }
+
   // Sync inicial após boot (com delay para garantir que o SAP está acessível)
   setTimeout(async () => {
     console.log("[sync] Executando sync inicial pós-boot...");

@@ -37,6 +37,8 @@ import {
   type ConfigFieldDef,
 } from "@/components/integrations/IntegrationConfigForm";
 import { RdStationPanel } from "@/components/integrations/RdStationPanel";
+import { ImperiumPanel } from "@/components/integrations/ImperiumPanel";
+import type { ImperiumHealth } from "@/lib/cockpit-api";
 
 type SyncKey =
   | "cockpit"
@@ -89,6 +91,7 @@ interface IntegrationsStatusResp {
     smtp: SmtpStatus;
     rdCrm: RdStatus;
     rdMarketing: RdStatus;
+    imperium?: ImperiumHealth;
   };
   error?: string;
 }
@@ -185,7 +188,7 @@ function IntegracoesContent() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Integrações</h1>
               <p className="text-sm text-gray-500">
-                SAP Business One · SMTP · RD Station CRM/Marketing
+                SAP Business One · SMTP · RD Station · WMS Imperium
               </p>
             </div>
           </div>
@@ -286,6 +289,12 @@ function IntegracoesContent() {
             allowed={allowed}
             loading={statusLoading && !status}
             onConfigSaved={fetchStatus}
+          />
+
+          <ImperiumPanel
+            allowed={allowed}
+            initial={status?.imperium ?? null}
+            loading={statusLoading && !status}
           />
         </div>
       </div>

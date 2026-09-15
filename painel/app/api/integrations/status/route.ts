@@ -3,6 +3,17 @@ import { requireRole } from "@/lib/auth";
 import { smtpStatus } from "@/lib/mailer";
 import { rdStationStatus } from "@/lib/rd-station-server";
 
+interface ImperiumHealthResp {
+  configured?: boolean;
+  healthy?: boolean;
+  baseUrl?: string | null;
+  username?: string | null;
+  defaultPlaca?: string | null;
+  defaultGrade?: string | null;
+  responseTimeMs?: number | null;
+  message?: string | null;
+}
+
 interface SapHealthResp {
   status?: string;
   sap_connected?: boolean;
@@ -68,6 +79,36 @@ async function probeSap(): Promise<{
   }
 }
 
+async function probeImperium(): Promise<ImperiumHealthResp> {
+  const gatewayUrl =
+    process.env.GATEWAY_INTERNAL_URL?.trim() || "http://gateway:3000";
+  try {
+    const res = await fetch(`${gatewayUrl}/integrations/imperium/health`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const body = (await res.json().catch(() => ({}))) as ImperiumHealthResp;
+      return {
+        configured: body.configured ?? true,
+        healthy: false,
+        baseUrl: body.baseUrl ?? null,
+        message: body.message ?? `Gateway HTTP ${res.status}`,
+        responseTimeMs: body.responseTimeMs ?? null,
+      };
+    }
+    return (await res.json()) as ImperiumHealthResp;
+  } catch (err) {
+    return {
+      configured: false,
+      healthy: false,
+      baseUrl: null,
+      message: err instanceof Error ? err.message : "Gateway inacessível",
+      responseTimeMs: null,
+    };
+  }
+}
+
 export async function GET() {
   try {
     await requireRole("admin", "supervisor");
@@ -84,10 +125,11 @@ export async function GET() {
     );
   }
 
-  const [sap, smtp, rd] = await Promise.all([
+  const [sap, smtp, rd, imperium] = await Promise.all([
     probeSap(),
     smtpStatus(),
     rdStationStatus(),
+    probeImperium(),
   ]);
 
   return NextResponse.json({
@@ -97,6 +139,7 @@ export async function GET() {
       smtp,
       rdCrm: rd.crm,
       rdMarketing: rd.marketing,
+      imperium,
     },
   });
 }
