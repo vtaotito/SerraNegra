@@ -1501,7 +1501,8 @@ export async function registerSapRoutes(app: FastifyInstance) {
       });
       return;
     }
-    const bucket = isCustomerInactivityBucketId(bucketRaw) ? bucketRaw : undefined;
+    // Extração nominal temporariamente desativada — só volumetria.
+    const bucket = undefined;
     try {
       const result = await queryCustomerInactivity({
         salesPerson: q.salesPerson ? Number(q.salesPerson) : undefined,

@@ -36,6 +36,9 @@ function formatInactivityTooltip(_seriesName: string | undefined, value: number)
   return `${fmtNum(value)} cliente${value === 1 ? "" : "s"}`;
 }
 
+/** Ligar de volta para reativar o CSV com dados nominais. */
+const CUSTOMER_EXPORT_ENABLED = false;
+
 export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number }) {
   const { data, loading, error, refetch } = useFetch(
     () => fetchCustomerInactivity({ salesPerson }),
@@ -60,7 +63,7 @@ export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number })
   );
 
   async function handleExport() {
-    if (!selectedBucket) return;
+    if (!CUSTOMER_EXPORT_ENABLED || !selectedBucket) return;
     setExporting(true);
     setExportError(null);
     try {
@@ -116,7 +119,8 @@ export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number })
         <button
           type="button"
           onClick={() => void handleExport()}
-          disabled={!selectedBucket || selectedBucket.count === 0 || exporting}
+          disabled={!CUSTOMER_EXPORT_ENABLED || !selectedBucket || selectedBucket.count === 0 || exporting}
+          title={CUSTOMER_EXPORT_ENABLED ? undefined : "Exportação temporariamente desativada"}
           className="inline-flex items-center justify-center gap-2 px-3.5 py-2 text-sm rounded-lg border border-cockpit-border text-gray-600 hover:bg-black/5 motion-safe:transition-colors disabled:opacity-40 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0"
         >
           {exporting ? (
@@ -133,7 +137,11 @@ export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number })
           Faixa selecionada: <strong className="text-gray-900">{selectedBucket.label}</strong>
           {" · "}
           {fmtNum(selectedBucket.count)} cliente{selectedBucket.count === 1 ? "" : "s"}
-          {selectedBucket.count > 0 ? " — clique em Exportar CSV para baixar nome, UF, cidade, último pedido, e-mail e telefone." : "."}
+          {CUSTOMER_EXPORT_ENABLED && selectedBucket.count > 0
+            ? " — clique em Exportar CSV para baixar nome, UF, cidade, último pedido, e-mail e telefone."
+            : !CUSTOMER_EXPORT_ENABLED
+              ? " — extração de dados temporariamente desativada."
+              : "."}
         </p>
       )}
       {exportError && (
