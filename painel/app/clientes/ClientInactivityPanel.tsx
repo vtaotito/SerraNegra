@@ -76,6 +76,8 @@ export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number })
       exportCSV(
         items.map((item) => ({
           Cliente: item.cardName,
+          UF: item.state ?? "",
+          Cidade: item.city ?? "",
           "Data último pedido": item.lastOrderDate ? fmtDateShort(item.lastOrderDate) : "",
           "E-mail": item.email ?? "",
           Telefone: item.phone ?? "",
@@ -131,7 +133,7 @@ export function ClientInactivityPanel({ salesPerson }: { salesPerson?: number })
           Faixa selecionada: <strong className="text-gray-900">{selectedBucket.label}</strong>
           {" · "}
           {fmtNum(selectedBucket.count)} cliente{selectedBucket.count === 1 ? "" : "s"}
-          {selectedBucket.count > 0 ? " — clique em Exportar CSV para baixar nome, último pedido, e-mail e telefone." : "."}
+          {selectedBucket.count > 0 ? " — clique em Exportar CSV para baixar nome, UF, cidade, último pedido, e-mail e telefone." : "."}
         </p>
       )}
       {exportError && (

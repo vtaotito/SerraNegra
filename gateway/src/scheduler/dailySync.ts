@@ -1666,6 +1666,8 @@ export async function queryCustomerInactivity(opts: {
     lastOrderDate: string | null;
     email: string | null;
     phone: string | null;
+    city: string | null;
+    state: string | null;
   }>;
 }> {
   const db = getPool();
@@ -1686,6 +1688,8 @@ export async function queryCustomerInactivity(opts: {
       COALESCE(NULLIF(TRIM(c.card_name), ''), c.card_code) AS card_name,
       NULLIF(TRIM(c.email), '') AS email,
       NULLIF(TRIM(c.phone), '') AS phone,
+      NULLIF(TRIM(c.city), '') AS city,
+      NULLIF(TRIM(c.state), '') AS state,
       NULL::date AS last_order_date,
       'never'::text AS bucket
     FROM customers c
@@ -1713,6 +1717,8 @@ export async function queryCustomerInactivity(opts: {
         COALESCE(NULLIF(TRIM(c.card_name), ''), NULLIF(TRIM(l.card_name), ''), l.card_code) AS card_name,
         NULLIF(TRIM(c.email), '') AS email,
         NULLIF(TRIM(c.phone), '') AS phone,
+        NULLIF(TRIM(c.city), '') AS city,
+        NULLIF(TRIM(c.state), '') AS state,
         l.last_order_date,
         CASE
           WHEN (CURRENT_DATE - l.last_order_date) <= 90 THEN '0-3'
@@ -1760,9 +1766,11 @@ export async function queryCustomerInactivity(opts: {
     last_order_date: string | null;
     email: string | null;
     phone: string | null;
+    city: string | null;
+    state: string | null;
   }>(
     `${classifiedCte}
-     SELECT card_name, last_order_date::text AS last_order_date, email, phone
+     SELECT card_name, last_order_date::text AS last_order_date, email, phone, city, state
      FROM classified
      WHERE bucket = $${bucketIdx}
      ORDER BY card_name ASC`,
@@ -1777,6 +1785,8 @@ export async function queryCustomerInactivity(opts: {
       lastOrderDate: row.last_order_date,
       email: row.email,
       phone: row.phone,
+      city: row.city,
+      state: row.state,
     })),
   };
 }

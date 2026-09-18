@@ -264,6 +264,8 @@ export interface CustomerInactivityItem {
   lastOrderDate: string | null;
   email: string | null;
   phone: string | null;
+  city: string | null;
+  state: string | null;
 }
 
 export interface CustomerInactivityResult {
