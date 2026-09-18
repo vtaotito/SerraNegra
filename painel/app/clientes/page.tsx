@@ -23,6 +23,7 @@ import { LoadingSkeleton, ErrorState } from "@/components/cockpit/DataState";
 import { DateRangePicker } from "@/components/cockpit/DateRangePicker";
 import { BrazilMap, type BrazilStateDatum } from "@/components/cockpit/BrazilMap";
 import { ClientRdInsights } from "./ClientRdInsights";
+import { ClientInactivityPanel } from "./ClientInactivityPanel";
 import { BiChartTooltip } from "@/components/cockpit/ChartTooltip";
 import { CHART_AXIS_LINE, CHART_MUTED, chartAxisTick, formatYAxisCompact } from "@/lib/chart-theme";
 import { format, differenceInDays } from "date-fns";
@@ -425,7 +426,7 @@ export default function ClientesPage() {
   const debouncedSearch = useDebouncedValue(search, 300);
   const [classeFilter, setClasseFilter] = useState<"ALL" | "A" | "B" | "C">("ALL");
   const [estadoFilter, setEstadoFilter] = useState("ALL");
-  const [tab, setTab] = useState<"carteira" | "geo" | "pareto">("carteira");
+  const [tab, setTab] = useState<"carteira" | "geo" | "pareto" | "inatividade">("carteira");
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [geoMetric, setGeoMetric] = useState<"fat" | "count">("fat");
   const [modalClient, setModalClient] = useState<ClientAgg | null>(null);
@@ -620,6 +621,7 @@ export default function ClientesPage() {
           { id: "carteira", label: "Carteira" },
           { id: "geo", label: "Geográfico" },
           { id: "pareto", label: "Curva 80-20" },
+          { id: "inatividade", label: "Inatividade" },
         ] as const).map((t) => (
           <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== "geo") setSelectedState(null); }}
             className={`flex-1 px-4 py-2 rounded-lg text-xs font-semibold motion-safe:transition-all ${
@@ -849,9 +851,14 @@ export default function ClientesPage() {
             </div>
           </>
         )}
+
+        {tab === "inatividade" && (
+          <ClientInactivityPanel salesPerson={salesPersonCode} />
+        )}
       </div>
 
       {/* Table */}
+      {tab !== "inatividade" && (
       <div className="rounded-xl border border-cockpit-border bg-cockpit-surface overflow-hidden shadow-sm">
         <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-400px)]">
           <table className="w-full text-sm text-left table-sticky-head">
@@ -924,6 +931,7 @@ export default function ClientesPage() {
           <span className="ml-2 text-cockpit-accent/60">· Clique em um cliente para ver detalhes</span>
         </div>
       </div>
+      )}
 
       {/* Client Detail Modal */}
       {modalClient && (

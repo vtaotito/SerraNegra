@@ -243,6 +243,47 @@ export function fetchInventoryAnalytics(opts: {
   return get("/sap/inventory/analytics", p);
 }
 
+export type CustomerInactivityBucketId =
+  | "0-3"
+  | "3-6"
+  | "6-9"
+  | "9-12"
+  | "12+"
+  | "never";
+
+export interface CustomerInactivityBucket {
+  id: CustomerInactivityBucketId;
+  label: string;
+  minDays: number | null;
+  maxDays: number | null;
+  count: number;
+}
+
+export interface CustomerInactivityItem {
+  cardName: string;
+  lastOrderDate: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CustomerInactivityResult {
+  ok: boolean;
+  buckets: CustomerInactivityBucket[];
+  total: number;
+  items?: CustomerInactivityItem[];
+  timestamp: string;
+}
+
+export function fetchCustomerInactivity(opts?: {
+  salesPerson?: number;
+  bucket?: CustomerInactivityBucketId;
+}): Promise<CustomerInactivityResult> {
+  const p: Record<string, string> = {};
+  if (opts?.salesPerson != null) p.salesPerson = String(opts.salesPerson);
+  if (opts?.bucket) p.bucket = opts.bucket;
+  return get("/sap/customers/inactivity", p);
+}
+
 export function fetchCustomers(opts?: {
   search?: string;
   active?: boolean;

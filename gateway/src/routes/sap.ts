@@ -4,7 +4,7 @@ import { SapOrdersService } from "../services/sapOrdersService.js";
 import { SapEntitiesService } from "../services/sapEntitiesService.js";
 import { InventoryEnrichmentService } from "../services/inventoryEnrichmentService.js";
 import { sapConfigStore } from "../config/sapConfigStore.js";
-import { runSalesOrdersSync, runSalesOrdersNearRealtimeSync, runInvoicesSync, runInventorySync, runMovementsSync, runQuotationsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics } from "../scheduler/dailySync.js";
+import { runSalesOrdersSync, runSalesOrdersNearRealtimeSync, runInvoicesSync, runInventorySync, runMovementsSync, runQuotationsSync, querySalesOrders, queryInvoices, querySyncHistory, queryDbStats, queryProductAnalytics, queryProductOrders, queryInventoryAnalytics, queryCustomerInactivity, isCustomerInactivityBucketId } from "../scheduler/dailySync.js";
 
 /**
  * Registra rotas de integração SAP.
@@ -1484,6 +1484,35 @@ export async function registerSapRoutes(app: FastifyInstance) {
   // ========================================
   // PEDIDOS DE VENDA — base local (PostgreSQL)
   // ========================================
+
+  /**
+   * GET /api/sap/customers/inactivity
+   * Volumetria de clientes por faixa de inatividade (último pedido all-time).
+   * Sem `bucket`: só contagens. Com `bucket`: também os dados para CSV.
+   */
+  app.get("/sap/customers/inactivity", async (req, reply) => {
+    const q = req.query as Record<string, string | undefined>;
+    const bucketRaw = typeof q.bucket === "string" ? q.bucket.trim() : "";
+    if (bucketRaw && !isCustomerInactivityBucketId(bucketRaw)) {
+      reply.code(400).send({
+        ok: false,
+        message: "bucket inválido",
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+    const bucket = isCustomerInactivityBucketId(bucketRaw) ? bucketRaw : undefined;
+    try {
+      const result = await queryCustomerInactivity({
+        salesPerson: q.salesPerson ? Number(q.salesPerson) : undefined,
+        bucket,
+      });
+      reply.code(200).send({ ok: true, ...result, timestamp: new Date().toISOString() });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro";
+      reply.code(500).send({ ok: false, message, timestamp: new Date().toISOString() });
+    }
+  });
 
   /**
    * GET /api/sap/products/analytics

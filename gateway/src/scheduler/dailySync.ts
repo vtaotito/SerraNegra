@@ -1630,6 +1630,157 @@ export async function queryInventoryAnalytics(opts: {
   return { items: res.rows, totalDays };
 }
 
+export const CUSTOMER_INACTIVITY_BUCKETS = [
+  { id: "0-3", label: "0 a 3 meses", minDays: 0, maxDays: 90 },
+  { id: "3-6", label: "3 a 6 meses", minDays: 91, maxDays: 180 },
+  { id: "6-9", label: "6 a 9 meses", minDays: 181, maxDays: 270 },
+  { id: "9-12", label: "9 a 12 meses", minDays: 271, maxDays: 365 },
+  { id: "12+", label: "Mais de 12 meses", minDays: 366, maxDays: null as number | null },
+  { id: "never", label: "Sem histórico de pedido", minDays: null as number | null, maxDays: null as number | null },
+] as const;
+
+export type CustomerInactivityBucketId = (typeof CUSTOMER_INACTIVITY_BUCKETS)[number]["id"];
+
+export function isCustomerInactivityBucketId(value: string): value is CustomerInactivityBucketId {
+  return CUSTOMER_INACTIVITY_BUCKETS.some((b) => b.id === value);
+}
+
+/**
+ * Volumetria de inatividade: último pedido all-time (não cancelado / não frete)
+ * + clientes ativos sem nenhum pedido válido.
+ */
+export async function queryCustomerInactivity(opts: {
+  salesPerson?: number;
+  bucket?: CustomerInactivityBucketId;
+}): Promise<{
+  buckets: Array<{
+    id: CustomerInactivityBucketId;
+    label: string;
+    minDays: number | null;
+    maxDays: number | null;
+    count: number;
+  }>;
+  total: number;
+  items?: Array<{
+    cardName: string;
+    lastOrderDate: string | null;
+    email: string | null;
+    phone: string | null;
+  }>;
+}> {
+  const db = getPool();
+  const params: unknown[] = [];
+  let idx = 1;
+
+  let salesPersonCond = "";
+  if (opts.salesPerson != null) {
+    salesPersonCond = `AND o.sales_person_code = $${idx++}`;
+    params.push(opts.salesPerson);
+  }
+
+  const includeNever = opts.salesPerson == null;
+  const neverUnion = includeNever
+    ? `
+    UNION ALL
+    SELECT
+      COALESCE(NULLIF(TRIM(c.card_name), ''), c.card_code) AS card_name,
+      NULLIF(TRIM(c.email), '') AS email,
+      NULLIF(TRIM(c.phone), '') AS phone,
+      NULL::date AS last_order_date,
+      'never'::text AS bucket
+    FROM customers c
+    WHERE COALESCE(c.card_type, 'C') = 'C'
+      AND c.is_active = true
+      AND NOT EXISTS (SELECT 1 FROM last_orders l WHERE l.card_code = c.card_code)
+    `
+    : "";
+
+  const classifiedCte = `
+    WITH last_orders AS (
+      SELECT
+        o.card_code,
+        MAX(o.card_name) AS card_name,
+        MAX(o.doc_date) AS last_order_date
+      FROM sap_sales_orders o
+      WHERE o.cancelled = 'N'
+        AND COALESCE(o.num_lines, 0) > 0
+        AND COALESCE(o.total_quantity, 0) > 0
+        ${salesPersonCond}
+      GROUP BY o.card_code
+    ),
+    classified AS (
+      SELECT
+        COALESCE(NULLIF(TRIM(c.card_name), ''), NULLIF(TRIM(l.card_name), ''), l.card_code) AS card_name,
+        NULLIF(TRIM(c.email), '') AS email,
+        NULLIF(TRIM(c.phone), '') AS phone,
+        l.last_order_date,
+        CASE
+          WHEN (CURRENT_DATE - l.last_order_date) <= 90 THEN '0-3'
+          WHEN (CURRENT_DATE - l.last_order_date) <= 180 THEN '3-6'
+          WHEN (CURRENT_DATE - l.last_order_date) <= 270 THEN '6-9'
+          WHEN (CURRENT_DATE - l.last_order_date) <= 365 THEN '9-12'
+          ELSE '12+'
+        END AS bucket
+      FROM last_orders l
+      LEFT JOIN customers c ON c.card_code = l.card_code
+      ${neverUnion}
+    )
+  `;
+
+  const countRes = await db.query<{ bucket: string; count: string }>(
+    `${classifiedCte}
+     SELECT bucket, COUNT(*)::int AS count
+     FROM classified
+     GROUP BY bucket`,
+    params
+  );
+
+  const countById = new Map<string, number>();
+  for (const row of countRes.rows) {
+    countById.set(row.bucket, Number(row.count) || 0);
+  }
+
+  const buckets = CUSTOMER_INACTIVITY_BUCKETS.map((meta) => ({
+    id: meta.id,
+    label: meta.label,
+    minDays: meta.minDays,
+    maxDays: meta.maxDays,
+    count: countById.get(meta.id) ?? 0,
+  }));
+  const total = buckets.reduce((sum, b) => sum + b.count, 0);
+
+  if (!opts.bucket) {
+    return { buckets, total };
+  }
+
+  const bucketIdx = idx++;
+  params.push(opts.bucket);
+  const itemsRes = await db.query<{
+    card_name: string;
+    last_order_date: string | null;
+    email: string | null;
+    phone: string | null;
+  }>(
+    `${classifiedCte}
+     SELECT card_name, last_order_date::text AS last_order_date, email, phone
+     FROM classified
+     WHERE bucket = $${bucketIdx}
+     ORDER BY card_name ASC`,
+    params
+  );
+
+  return {
+    buckets,
+    total,
+    items: itemsRes.rows.map((row) => ({
+      cardName: row.card_name,
+      lastOrderDate: row.last_order_date,
+      email: row.email,
+      phone: row.phone,
+    })),
+  };
+}
+
 // ─── Invoice sync (Problema 1) ────────────────────────────────
 let invoiceSyncRunning = false;
 
